@@ -2,4 +2,4 @@
 User-agent: *
 Disallow:
 
-Sitemap: https://tesla.ngrok.pro/sitemap.xml
+Sitemap: http://tesla.wricardo.net/sitemap.xml
