@@ -10,6 +10,8 @@
 		setSlot,
 		tapeLengths,
 		tapeOf,
+		unreachableSubs,
+		usedSlots,
 		type DragSource,
 		type DropMode
 	} from '$lib/program';
@@ -24,7 +26,11 @@
 		callStack = [],
 		lastEvent = null,
 		status = 'READY',
-		onchange = () => {}
+		onchange = () => {},
+		canUndo = false,
+		canRedo = false,
+		onundo = () => {},
+		onredo = () => {}
 	}: {
 		program: Program;
 		/** Palette instruction placed on slot click. */
@@ -35,7 +41,15 @@
 		lastEvent?: StepEvent | null;
 		status?: Status;
 		onchange?: (p: Program) => void;
+		/** Undo/redo availability and handlers; each button is disabled until there is something to step through. */
+		canUndo?: boolean;
+		canRedo?: boolean;
+		onundo?: () => void;
+		onredo?: () => void;
 	} = $props();
+
+	// Filled subs nothing calls: they sit in the program but never run.
+	const neverCalled = $derived(new Set(unreachableSubs(program)));
 
 	let root: HTMLElement | undefined = $state();
 	let dropTarget = $state<string | null>(null);
@@ -191,6 +205,9 @@
 		return parts.join(', ');
 	}
 
+	const historyBtn =
+		'rounded-lg border border-indigo-300 px-2.5 py-1 text-xs font-semibold text-indigo-900 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent';
+
 	/** Empties every slot on every tape (the tape lengths stay the same). */
 	function clearAll() {
 		if (disabled) return;
@@ -201,20 +218,46 @@
 </script>
 
 <div bind:this={root} class="space-y-3" role="group" aria-label="Program tapes">
-	{#if !disabled && hasInstructions(program)}
-		<div class="flex justify-end">
-			<button
-				type="button"
-				data-testid="clear-program"
-				class="rounded-lg border border-rose-600 bg-rose-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-rose-700 hover:border-rose-700"
-				onclick={clearAll}>Clear all slots</button
-			>
+	{#if !disabled && (hasInstructions(program) || canUndo || canRedo)}
+		<div class="flex items-center justify-between gap-2">
+			<div class="flex gap-1.5">
+				<button
+					type="button"
+					data-testid="undo"
+					class={historyBtn}
+					disabled={!canUndo}
+					title="Undo (Ctrl+Z)"
+					onclick={onundo}>↶ Undo</button
+				>
+				<button
+					type="button"
+					data-testid="redo"
+					class={historyBtn}
+					disabled={!canRedo}
+					title="Redo (Ctrl+Shift+Z)"
+					onclick={onredo}>↷ Redo</button
+				>
+			</div>
+			{#if hasInstructions(program)}
+				<button
+					type="button"
+					data-testid="clear-program"
+					class="rounded-lg border border-rose-600 bg-rose-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-rose-700 hover:border-rose-700"
+					onclick={clearAll}>Clear all slots</button
+				>
+			{/if}
 		</div>
 	{/if}
 	{#each tapes as t (t.tape)}
 		<div>
 			<h3 class="text-xs font-semibold uppercase tracking-wide text-indigo-800 mb-1">
-				{tapeLabel(t.tape)} <span class="font-normal text-slate-500">({t.slots.length} slots)</span>
+				{tapeLabel(t.tape)}
+				<span class="font-normal text-slate-500" data-testid="slot-usage-{t.tape}">({usedSlots(t.slots)} of {t.slots.length} slots used)</span>
+				{#if t.tape >= 0 && neverCalled.has(t.tape)}
+					<span class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 font-medium normal-case tracking-normal text-amber-900" data-testid="never-called-{t.tape}"
+						>Never called, so it won't run</span
+					>
+				{/if}
 			</h3>
 			<div class="flex flex-wrap gap-1.5">
 				{#each t.slots as ins, slot (slot)}

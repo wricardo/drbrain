@@ -1,3 +1,4 @@
+import { callTarget } from './instructions';
 import type { Instruction, Program } from './types';
 
 /** Tape lengths of a map (the subset of GameMap this module needs). */
@@ -35,6 +36,29 @@ export function clearProgram(p: Program): Program {
 /** True when at least one slot on any tape holds an instruction. */
 export function hasInstructions(p: Program): boolean {
 	return p.main.some((i) => i !== 'EMPTY') || p.subs.some((s) => s.some((i) => i !== 'EMPTY'));
+}
+
+/** How many slots of a tape hold an instruction. */
+export function usedSlots(slots: readonly Instruction[]): number {
+	return slots.filter((i) => i !== 'EMPTY').length;
+}
+
+/**
+ * Subs (0-based) that hold instructions but can never run because nothing reachable
+ * from main calls them. Empty subs are not reported: there is nothing to run.
+ */
+export function unreachableSubs(p: Program): number[] {
+	const reached = new Set<number>();
+	const queue: Instruction[][] = [p.main];
+	while (queue.length) {
+		for (const ins of queue.pop()!) {
+			const sub = callTarget(ins);
+			if (sub === null || reached.has(sub) || sub >= p.subs.length) continue;
+			reached.add(sub);
+			queue.push(p.subs[sub]);
+		}
+	}
+	return p.subs.map((s, i) => (!reached.has(i) && usedSlots(s) > 0 ? i : -1)).filter((i) => i >= 0);
 }
 
 /** Deep-copies a program (also strips any reactive proxy wrappers). */

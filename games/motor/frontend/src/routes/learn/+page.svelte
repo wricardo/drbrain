@@ -51,6 +51,9 @@
 		['1 2 3', 'Call subroutine 1 / 2 / 3'],
 		['Backspace', 'Clear the slot'],
 		['Arrow keys', 'Move between slots'],
+		['Ctrl+Z / Ctrl+Shift+Z', 'Undo / redo a program edit'],
+		['Ctrl+Enter', 'Run, or pause while running'],
+		['S (no slot focused)', 'Step once'],
 		['R (no slot focused)', 'Reset the robot to the start'],
 		['?', 'Show the keyboard shortcuts']
 	];

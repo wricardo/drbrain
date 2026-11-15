@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyDrop, clearProgram, emptyProgram, hasInstructions, insertSlot, programsEqual, setSlot } from './program';
+import { applyDrop, clearProgram, emptyProgram, hasInstructions, insertSlot, programsEqual, setSlot, unreachableSubs, usedSlots } from './program';
 
 const cfg = { mainTapeLength: 4, subTapeLengths: [3, 2] };
 
@@ -114,5 +114,39 @@ describe('program editing', () => {
 			expect(swapped.main[0]).toBe('TURN_RIGHT');
 			expect(swapped.subs[0][0]).toBe('MOVE_FORWARD');
 		});
+	});
+});
+describe('slot usage and reachability', () => {
+	const three = { mainTapeLength: 4, subTapeLengths: [2, 2, 2] };
+
+	it('usedSlots counts non-empty slots', () => {
+		expect(usedSlots(['EMPTY', 'EMPTY'])).toBe(0);
+		expect(usedSlots(['MOVE_FORWARD', 'EMPTY', 'CALL_SUB_1'])).toBe(2);
+	});
+
+	it('reports a filled sub that nothing calls', () => {
+		let p = setSlot(emptyProgram(three), 1, 0, 'MOVE_FORWARD');
+		expect(unreachableSubs(p)).toEqual([1]);
+		p = setSlot(p, -1, 0, 'CALL_SUB_2');
+		expect(unreachableSubs(p)).toEqual([]);
+	});
+
+	it('ignores empty subs, even when uncalled', () => {
+		expect(unreachableSubs(emptyProgram(three))).toEqual([]);
+	});
+
+	it('follows calls transitively and is not fooled by calls from dead subs', () => {
+		let p = setSlot(emptyProgram(three), -1, 0, 'CALL_SUB_1'); // main -> 1
+		p = setSlot(p, 0, 0, 'CALL_SUB_2'); // 1 -> 2
+		p = setSlot(p, 1, 0, 'MOVE_FORWARD');
+		p = setSlot(p, 2, 0, 'CALL_SUB_2'); // sub 3 only calls itself, but nobody calls sub 3
+		expect(unreachableSubs(p)).toEqual([2]);
+	});
+
+	it('terminates on recursion and ignores calls to subs the map does not have', () => {
+		let p = setSlot(emptyProgram({ mainTapeLength: 2, subTapeLengths: [2] }), -1, 0, 'CALL_SUB_1');
+		p = setSlot(p, 0, 0, 'CALL_SUB_1');
+		p = setSlot(p, -1, 1, 'CALL_SUB_3');
+		expect(unreachableSubs(p)).toEqual([]);
 	});
 });

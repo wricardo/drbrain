@@ -14,7 +14,8 @@
 	import Stats from '$lib/components/Stats.svelte';
 	import Tape from '$lib/components/Tape.svelte';
 	import { describeError, lossReasonText, type DescribedError } from '$lib/errors';
-	import { globalKeyAction } from '$lib/globalKeys';
+		import { editKeyAction, globalKeyAction } from '$lib/globalKeys';
+	import { canRedo, canUndo, emptyHistory, recordEdit, redo, undo, type EditHistory } from '$lib/history';
 	import { nextMap } from '$lib/maps';
 	import {
 		CREATE_SESSION_MUTATION,
@@ -42,6 +43,8 @@
 	const connection = $derived($store.connection);
 
 	let draft = $state<Program | null>(null);
+	// Undo/redo stacks for draft edits (raw: programs are replaced, never mutated).
+	let history = $state.raw<EditHistory>(emptyHistory);
 	let selected = $state<Instruction | null>(null);
 	let speedMs = $state(500);
 	let busy = $state(false);
@@ -58,7 +61,11 @@
 		if (!sp) return;
 		untrack(() => {
 			if (draft === null) draft = cloneProgram(sp);
-			else if (lastServer && programsEqual(draft, lastServer) && !programsEqual(draft, sp)) draft = cloneProgram(sp);
+			else if (lastServer && programsEqual(draft, lastServer) && !programsEqual(draft, sp)) {
+				// Someone else (an agent, another tab) changed the program: keep ours reachable via undo.
+				history = recordEdit(history, draft);
+				draft = cloneProgram(sp);
+			}
 			lastServer = cloneProgram(sp);
 		});
 	});
@@ -154,7 +161,11 @@
 		});
 
 	const shortcutKeys = $derived<[string, string][]>([
+		['Ctrl+Enter', 'Run, or pause while running'],
+		['S', 'Step once (when no slot is focused)'],
 		['R', 'Reset the robot (when no slot is focused)'],
+		['Ctrl+Z', 'Undo a program edit'],
+		['Ctrl+Shift+Z', 'Redo (Ctrl+Y also works)'],
 		['?', 'Show this list'],
 		['Esc', 'Close a dialog or menu'],
 		['Tab', 'Focus a program slot'],
@@ -168,15 +179,55 @@
 
 	function onWindowKey(e: KeyboardEvent) {
 		if (showShortcuts || showModal) return;
+		const editAction = editKeyAction(e);
+		if (editAction) {
+			e.preventDefault();
+			if (editAction === 'undo') undoEdit();
+			else if (editAction === 'redo') redoEdit();
+			else toggleRun();
+			return;
+		}
 		const action = globalKeyAction(e);
 		if (!action) return;
 		e.preventDefault();
 		if (action === 'shortcuts') showShortcuts = true;
-		else if (!busy) reset();
+		else if (action === 'step') {
+			if (!busy && !playing && !terminal) stepOnce();
+		} else if (!busy) reset();
+	}
+
+	/** Applies a player edit to the draft, remembering the previous program for undo. */
+	function edit(p: Program) {
+		if (!draft || programsEqual(p, draft)) return;
+		history = recordEdit(history, draft);
+		draft = p;
+	}
+
+	function undoEdit() {
+		if (!draft || playing) return;
+		const r = undo(history, draft);
+		if (!r) return;
+		history = r.history;
+		draft = r.program;
+	}
+
+	function redoEdit() {
+		if (!draft || playing) return;
+		const r = redo(history, draft);
+		if (!r) return;
+		history = r.history;
+		draft = r.program;
 	}
 
 	function revert() {
-		if (session) draft = cloneProgram(session.program);
+		if (session) edit(cloneProgram(session.program));
+	}
+
+	/** Run, or pause when already running (Ctrl/Cmd+Enter). */
+	function toggleRun() {
+		if (busy) return;
+		if (playing) pause();
+		else if (!terminal) run();
 	}
 
 	const btn =
@@ -272,7 +323,7 @@
 							bind:selected
 							subCount={draft.subs.length}
 							disabled={playing}
-							onerase={(s) => (draft = setSlot(draft!, s.tape, s.slot, 'EMPTY'))}
+							onerase={(s) => edit(setSlot(draft!, s.tape, s.slot, 'EMPTY'))}
 						/>
 						<Tape
 							program={draft}
@@ -281,7 +332,11 @@
 							callStack={dirty ? [] : session.vm.callStack}
 							lastEvent={dirty ? null : session.lastEvent}
 							{status}
-							onchange={(p) => (draft = p)}
+							onchange={edit}
+							canUndo={canUndo(history)}
+							canRedo={canRedo(history)}
+							onundo={undoEdit}
+							onredo={redoEdit}
 						/>
 					</div>
 				{/if}
@@ -294,7 +349,8 @@
 						<li>Click a slot to pick an instruction, or arm one in the palette and click slots to stamp it.</li>
 						<li>Drag an instruction onto a slot to place it. Drag a slot to swap it with another, hold <kbd>Shift</kbd> to reorder a tape, <kbd>Alt</kbd> to copy, or drop it on Erase to clear it.</li>
 						<li>With a slot focused: <kbd>F</kbd> forward, <kbd>L</kbd>/<kbd>R</kbd> turn, {callKeys} <kbd>Backspace</kbd> clear, arrows move.</li>
-						<li><kbd>R</kbd> resets the robot when no slot is focused.</li>
+						<li><kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes a program edit, <kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs or pauses.</li>
+						<li><kbd>S</kbd> steps once and <kbd>R</kbd> resets the robot when no slot is focused.</li>
 						<li>Press <kbd>?</kbd> for shortcuts.</li>
 					</ul>
 					<a href="/learn" class="mt-2 inline-block text-sm font-medium text-indigo-700 underline">All rules →</a>

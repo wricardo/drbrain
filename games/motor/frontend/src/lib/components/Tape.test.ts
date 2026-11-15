@@ -107,6 +107,57 @@ describe('Tape', () => {
 		expect(screen.queryByTestId('clear-program')).toBeNull();
 	});
 
+	describe('slot usage and hints', () => {
+		it('shows how many slots each tape uses', () => {
+			let p = setSlot(setSlot(emptyProgram(cfg), -1, 0, 'MOVE_FORWARD'), -1, 2, 'TURN_LEFT');
+			p = setSlot(p, 0, 1, 'CALL_SUB_1');
+			render(Tape, { program: p, onchange: () => {} });
+			expect(screen.getByTestId('slot-usage--1').textContent).toBe('(2 of 3 slots used)');
+			expect(screen.getByTestId('slot-usage-0').textContent).toBe('(1 of 2 slots used)');
+		});
+
+		it('flags a filled sub that nothing calls, and clears the flag once main calls it', async () => {
+			const filledSub = setSlot(emptyProgram(cfg), 0, 0, 'MOVE_FORWARD');
+			const { rerender } = render(Tape, { program: filledSub, onchange: () => {} });
+			expect(screen.getByTestId('never-called-0').textContent).toMatch(/never called/i);
+			await rerender({ program: setSlot(filledSub, -1, 0, 'CALL_SUB_1'), onchange: () => {} });
+			expect(screen.queryByTestId('never-called-0')).toBeNull();
+		});
+
+		it('does not flag an empty sub', () => {
+			render(Tape, { program: emptyProgram(cfg), onchange: () => {} });
+			expect(screen.queryByTestId('never-called-0')).toBeNull();
+		});
+	});
+
+	describe('undo and redo buttons', () => {
+		const filled = () => setSlot(emptyProgram(cfg), -1, 0, 'MOVE_FORWARD');
+
+		it('are disabled until there is something to step through, then call the handlers', async () => {
+			const onundo = vi.fn();
+			const onredo = vi.fn();
+			const { rerender } = render(Tape, { program: filled(), onchange: () => {}, onundo, onredo });
+			expect((screen.getByTestId('undo') as HTMLButtonElement).disabled).toBe(true);
+			expect((screen.getByTestId('redo') as HTMLButtonElement).disabled).toBe(true);
+
+			await rerender({ program: filled(), onchange: () => {}, onundo, onredo, canUndo: true, canRedo: true });
+			await fireEvent.click(screen.getByTestId('undo'));
+			await fireEvent.click(screen.getByTestId('redo'));
+			expect(onundo).toHaveBeenCalledOnce();
+			expect(onredo).toHaveBeenCalledOnce();
+		});
+
+		it('stay reachable after Clear all empties the program, and hide on read-only tapes', async () => {
+			render(Tape, { program: emptyProgram(cfg), onchange: () => {}, canUndo: true });
+			expect((screen.getByTestId('undo') as HTMLButtonElement).disabled).toBe(false);
+			expect(screen.queryByTestId('clear-program')).toBeNull();
+
+			await cleanup();
+			render(Tape, { program: filled(), disabled: true, canUndo: true, onchange: () => {} });
+			expect(screen.queryByTestId('undo')).toBeNull();
+		});
+	});
+
 	describe('drag and drop', () => {
 		/** Minimal DataTransfer: jsdom doesn't implement one. */
 		function transfer() {
