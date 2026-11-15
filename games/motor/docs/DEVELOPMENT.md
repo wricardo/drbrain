@@ -122,6 +122,7 @@ HTTP /graphql (api) → gqlgen resolver (graph) → GameService (game/service)
 - After a restart, sessions load with `playing=false` and their program and VM state intact.
 - Each session embeds a copy of its map, so editing or deleting a map never affects existing sessions.
 - A session file also carries `account_id` and `owner_hash` when it belongs to an account or has an owner token (see [Accounts and sign-in](#accounts-and-sign-in)), and its best wins for the [leaderboard](#leaderboard) (`fewest_slots`, `fewest_steps`). Files written before leaderboards still load: a session whose VM is `WON` gets its win recovered from the program stored with it.
+- The session and map stores share `internal/fsutil` for the two file-system steps that differ by platform: `SyncDir` (fsync the directory after a rename or remove; a no-op on Windows, which cannot open a directory for syncing) and `RenameReplace` (os.Rename on Linux; on Windows a short retry, because replacing a file fails with "Access is denied" while a reader, virus scanner or indexer has it open). Production is Linux, where both are the plain calls; the point is that the whole test suite also passes on a Windows developer machine.
 - Idle sessions older than `SESSION_TTL` are removed on startup. `MAX_SESSIONS` caps how many exist.
 
 ### Errors
