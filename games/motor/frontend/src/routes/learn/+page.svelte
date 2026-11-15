@@ -51,6 +51,9 @@
 		['1 2 3', 'Call subroutine 1 / 2 / 3'],
 		['Backspace', 'Clear the slot'],
 		['Arrow keys', 'Move between slots'],
+		['Ctrl+Z / Ctrl+Shift+Z', 'Undo / redo a program edit'],
+		['Ctrl+Enter', 'Run, or pause while running'],
+		['S (no slot focused)', 'Step once'],
 		['R (no slot focused)', 'Reset the robot to the start'],
 		['?', 'Show the keyboard shortcuts']
 	];
@@ -149,7 +152,7 @@
 				<dd>{d}</dd>
 			{/each}
 		</dl>
-		<p class="mt-2 text-sm text-slate-800">You can also drag instructions from the palette to a slot, or drag one slot onto another to swap them (hold Alt/Option to copy instead).</p>
+		<p class="mt-2 text-sm text-slate-800">You can also drag instructions from the palette to a slot, or drag one slot onto another to swap them. Hold Alt/Option to copy instead, hold Shift to reorder within a tape (the slots in between shift over), or drop a slot on Erase to clear it.</p>
 	</section>
 
 	<section id="ai" class="scroll-mt-6" aria-labelledby="ai-h">

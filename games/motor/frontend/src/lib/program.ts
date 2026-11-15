@@ -1,3 +1,4 @@
+import { callTarget } from './instructions';
 import type { Instruction, Program } from './types';
 
 /** Tape lengths of a map (the subset of GameMap this module needs). */
@@ -37,6 +38,29 @@ export function hasInstructions(p: Program): boolean {
 	return p.main.some((i) => i !== 'EMPTY') || p.subs.some((s) => s.some((i) => i !== 'EMPTY'));
 }
 
+/** How many slots of a tape hold an instruction. */
+export function usedSlots(slots: readonly Instruction[]): number {
+	return slots.filter((i) => i !== 'EMPTY').length;
+}
+
+/**
+ * Subs (0-based) that hold instructions but can never run because nothing reachable
+ * from main calls them. Empty subs are not reported: there is nothing to run.
+ */
+export function unreachableSubs(p: Program): number[] {
+	const reached = new Set<number>();
+	const queue: Instruction[][] = [p.main];
+	while (queue.length) {
+		for (const ins of queue.pop()!) {
+			const sub = callTarget(ins);
+			if (sub === null || reached.has(sub) || sub >= p.subs.length) continue;
+			reached.add(sub);
+			queue.push(p.subs[sub]);
+		}
+	}
+	return p.subs.map((s, i) => (!reached.has(i) && usedSlots(s) > 0 ? i : -1)).filter((i) => i >= 0);
+}
+
 /** Deep-copies a program (also strips any reactive proxy wrappers). */
 export function cloneProgram(p: Program): Program {
 	return { main: [...p.main], subs: p.subs.map((s) => [...s]) };
@@ -70,16 +94,39 @@ export function setSlot(p: Program, tape: number, slot: number, ins: Instruction
 }
 
 /**
- * Applies a drag-and-drop. Palette drops place the instruction. Slot drops move
- * (swapping with the target so nothing is lost) or, when copy is true, duplicate.
+ * What a slot drop does: `move` swaps with the target (nothing is lost), `copy`
+ * duplicates, `insert` reorders within one tape, shifting the slots in between.
  */
-export function applyDrop(p: Program, source: DragSource, target: SlotRef, copy: boolean): Program {
+export type DropMode = 'move' | 'copy' | 'insert';
+
+/**
+ * Reorders one tape: lifts the slot at `from` and re-inserts it at `to`, shifting
+ * the slots in between by one. Cross-tape or out-of-range requests return the input.
+ */
+export function insertSlot(p: Program, from: SlotRef, to: SlotRef): Program {
+	if (from.tape !== to.tape) return p;
+	const t = tapeOf(p, from.tape);
+	if (!t || from.slot === to.slot) return p;
+	if (from.slot < 0 || from.slot >= t.length || to.slot < 0 || to.slot >= t.length) return p;
+	const next = cloneProgram(p);
+	const nt = tapeOf(next, from.tape)!;
+	const [moved] = nt.splice(from.slot, 1);
+	nt.splice(to.slot, 0, moved);
+	return next;
+}
+
+/**
+ * Applies a drag-and-drop. Palette drops place the instruction. Slot drops follow
+ * `mode`; `insert` across different tapes falls back to a swap.
+ */
+export function applyDrop(p: Program, source: DragSource, target: SlotRef, mode: DropMode): Program {
 	if (source.kind === 'palette') return setSlot(p, target.tape, target.slot, source.instruction);
 	const from = tapeOf(p, source.tape)?.[source.slot];
 	const to = tapeOf(p, target.tape)?.[target.slot];
 	if (from === undefined || to === undefined) return p;
 	if (source.tape === target.tape && source.slot === target.slot) return p;
+	if (mode === 'insert' && source.tape === target.tape) return insertSlot(p, source, target);
 	let next = setSlot(p, target.tape, target.slot, from);
-	if (!copy) next = setSlot(next, source.tape, source.slot, to);
+	if (mode !== 'copy') next = setSlot(next, source.tape, source.slot, to);
 	return next;
 }
