@@ -8,7 +8,7 @@ const maps = [map('h', 'Patterns 1', 'hard'), map('e2', 'Level 2', 'easy'), map(
 const run = (mapId: string, slots = 5, steps = 8, rank = 2, total = 9): PlayerRun => ({
 	mapId,
 	total,
-	entry: { rank, sessionId: 'aaaaaaaaaaaaaaaa', displayName: 'BraveOtter', slots, steps, achievedAt: '2026-01-02T03:04:05Z' }
+	entry: { rank, sessionId: 'aaaaaaaaaaaaaaaa', displayName: 'BraveOtter', handle: null, mine: false, slots, steps, achievedAt: '2026-01-02T03:04:05Z' }
 });
 
 describe('buildRunRows', () => {

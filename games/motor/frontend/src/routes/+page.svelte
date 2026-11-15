@@ -65,7 +65,7 @@
 			const data = await unwrap<{ createSession: Session }>(
 				client.mutation(CREATE_SESSION_MUTATION, { mapID: map.id, displayName: name || null })
 			);
-			rememberSession(data.createSession.id, data.createSession.displayName);
+			rememberSession(data.createSession.id, data.createSession.displayName, data.createSession.ownerToken);
 			await goto(`/play/${data.createSession.id}`);
 		} catch (e) {
 			error = describeError(e);

@@ -12,6 +12,7 @@ export default defineConfig({
 	server: {
 		proxy: {
 			'/graphql': { target: 'http://localhost:8000', ws: true },
+			'/auth': { target: 'http://localhost:8000' },
 			'/llms.txt': { target: 'http://localhost:8000' }
 		}
 	},

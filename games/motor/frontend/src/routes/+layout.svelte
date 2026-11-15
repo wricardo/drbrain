@@ -9,6 +9,11 @@
 	import { onMount } from 'svelte';
 	import { initTheme } from '$lib/stores/theme';
 	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
+	import AccountMenu from '$lib/components/AccountMenu.svelte';
+	import ClaimBanner from '$lib/components/ClaimBanner.svelte';
+	import { refreshAccount } from '$lib/stores/account';
+	import { signinNotice, withoutSigninParam } from '$lib/account';
+	import { goto } from '$app/navigation';
 
 	let { children } = $props();
 
@@ -35,7 +40,15 @@
 
 	// ssr=false so this always runs in the browser; safe to set the client synchronously.
 	if (browser) {
-		setContextClient(makeClient());
+		const client = makeClient();
+		setContextClient(client);
+		void refreshAccount(client); // signed-in player and sign-in options; guests are never blocked
+	}
+
+	// A sign-in that did not finish comes back as ?signin=failed|cancelled.
+	const notice = $derived(signinNotice($page.url.searchParams.get('signin')));
+	function closeNotice() {
+		void goto(withoutSigninParam($page.url.pathname, $page.url.search), { replaceState: true, noScroll: true, keepFocus: true });
 	}
 </script>
 
@@ -69,9 +82,23 @@
 					>
 				{/each}
 			</nav>
+			<AccountMenu />
 			<ThemeToggle />
 		</div>
 	</header>
+	{#if notice}
+		<div
+			class="border-b px-4 py-2 text-sm sm:px-6 {notice.kind === 'error' ? 'border-rose-300 bg-rose-50 text-rose-900' : 'border-indigo-200 bg-indigo-50 text-indigo-950'}"
+			role={notice.kind === 'error' ? 'alert' : 'status'}
+			data-testid="signin-notice"
+		>
+			<div class="mx-auto flex max-w-6xl items-center justify-between gap-3">
+				<p>{notice.message}</p>
+				<button type="button" class="rounded-full px-2 text-lg leading-none hover:bg-white/60" aria-label="Dismiss" onclick={closeNotice}>×</button>
+			</div>
+		</div>
+	{/if}
+	<ClaimBanner />
 
 	<main id="main" class="flex-1">
 		{@render children()}
