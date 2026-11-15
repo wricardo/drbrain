@@ -51,6 +51,8 @@
 	let facing = $state<Facing>('RIGHT');
 	let painting = $state(false);
 	let existing = $state(false);
+	/** A shipped map: only an admin may overwrite or delete it. */
+	let builtin = $state(false);
 	let adminKey = $state(getAdminKey());
 	let busy = $state(false);
 	let error = $state<DescribedError | null>(null);
@@ -101,6 +103,7 @@
 		maxCallDepth = m.maxCallDepth;
 		allowRecursion = m.allowRecursion;
 		existing = !duplicate;
+		builtin = m.builtin;
 		validation = null;
 	}
 
@@ -191,6 +194,7 @@
 			if (existing) await unwrap(client.mutation(UPDATE_MAP_MUTATION, { map: toInput() }));
 			else await unwrap(client.mutation(CREATE_MAP_MUTATION, { map: toInput() }));
 			existing = true;
+			builtin = false;
 			notice = `Saved map "${id.trim()}".`;
 		});
 
@@ -211,7 +215,7 @@
 <div class="mx-auto max-w-6xl px-4 sm:px-6 py-6">
 	<h1 class="text-2xl font-semibold text-indigo-950">Map editor</h1>
 	<p class="mt-1 text-sm text-slate-700">
-		Paint the board, set the start cell and tape sizes, validate, then save. Saving needs the admin key.
+		Paint the board, set the start cell and tape sizes, validate, then save. Anyone can create a map and edit their own; changing a built-in map needs the admin key.
 	</p>
 
 	{#if error}
@@ -356,16 +360,21 @@
 			</div>
 
 			<div class="rounded-xl border border-indigo-200 bg-white p-3 space-y-3">
-				<label class="block text-sm">Admin key
-					<input
-						type="password"
-						class={field}
-						bind:value={adminKey}
-						oninput={(e) => setAdminKey(e.currentTarget.value)}
-						autocomplete="off"
-						placeholder="X-Admin-Key (kept for this tab only)"
-					/>
-				</label>
+				{#if builtin}
+					<p class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid="builtin-warning">
+						This is a built-in map. Saving or deleting it needs the admin key; duplicate it to make your own copy.
+					</p>
+					<label class="block text-sm">Admin key
+						<input
+							type="password"
+							class={field}
+							bind:value={adminKey}
+							oninput={(e) => setAdminKey(e.currentTarget.value)}
+							autocomplete="off"
+							placeholder="X-Admin-Key (kept for this tab only)"
+						/>
+					</label>
+				{/if}
 				<div class="flex flex-wrap gap-2">
 					<button type="button" class="{btn} border border-indigo-300 text-indigo-900 hover:bg-indigo-50" disabled={busy} onclick={validate}>Validate</button>
 					<button type="button" class="{btn} bg-indigo-600 text-white hover:bg-indigo-700" disabled={busy || localIssues.length > 0 || !id.trim() || !name.trim()} onclick={save}>

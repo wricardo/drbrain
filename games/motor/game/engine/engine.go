@@ -151,6 +151,7 @@ func (s *VMState) step(m *Map, p *Program, evp *StepEvent) error {
 
 	from, facingBefore := s.Pos, s.Facing
 	blocked := false
+	callBlocked := false
 	var collected *Position
 
 	switch ins {
@@ -178,6 +179,7 @@ func (s *VMState) step(m *Map, p *Program, evp *StepEvent) error {
 	default:
 		if k, ok := ins.SubIndex(); ok {
 			if !m.AllowRecursion && s.onStack(k) {
+				callBlocked = true
 				break // no-op, still a step
 			}
 			s.CallStack = append(s.CallStack, Frame{Tape: k, PC: 0})
@@ -204,7 +206,7 @@ func (s *VMState) step(m *Map, p *Program, evp *StepEvent) error {
 		*evp = StepEvent{
 			Step: s.Steps, Instruction: ins, TapeIndex: tape, SlotIndex: slot,
 			From: from, To: s.Pos, FacingBefore: facingBefore, FacingAfter: s.Facing,
-			Blocked: blocked, Collected: collected,
+			Blocked: blocked, CallBlocked: callBlocked, Collected: collected,
 			CallStack: append([]Frame(nil), s.CallStack...),
 			Status:    s.Status, LossReason: s.LossReason,
 		}

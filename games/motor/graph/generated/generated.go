@@ -40,6 +40,7 @@ type Config struct {
 }
 
 type ResolverRoot interface {
+	Map() MapResolver
 	Mutation() MutationResolver
 	Query() QueryResolver
 	Subscription() SubscriptionResolver
@@ -56,6 +57,7 @@ type ComplexityRoot struct {
 
 	Map struct {
 		AllowRecursion func(childComplexity int) int
+		Builtin        func(childComplexity int) int
 		Description    func(childComplexity int) int
 		Difficulty     func(childComplexity int) int
 		Height         func(childComplexity int) int
@@ -140,6 +142,7 @@ type ComplexityRoot struct {
 
 	StepEvent struct {
 		Blocked      func(childComplexity int) int
+		CallBlocked  func(childComplexity int) int
 		CallStack    func(childComplexity int) int
 		Collected    func(childComplexity int) int
 		FacingAfter  func(childComplexity int) int
@@ -170,6 +173,9 @@ type ComplexityRoot struct {
 	}
 }
 
+type MapResolver interface {
+	Builtin(ctx context.Context, obj *model.Map) (bool, error)
+}
 type MutationResolver interface {
 	CreateSession(ctx context.Context, mapID string, displayName *string) (*model.Session, error)
 	DeleteSession(ctx context.Context, id string) (bool, error)
@@ -180,9 +186,9 @@ type MutationResolver interface {
 	Step(ctx context.Context, sessionID string) (*model.Session, error)
 	Reset(ctx context.Context, sessionID string) (*model.Session, error)
 	CreateMap(ctx context.Context, mapArg model.MapInput) (*model.Map, error)
+	ValidateMap(ctx context.Context, mapArg model.MapInput) (*model.MapValidationResult, error)
 	UpdateMap(ctx context.Context, mapArg model.MapInput) (*model.Map, error)
 	DeleteMap(ctx context.Context, id string) (bool, error)
-	ValidateMap(ctx context.Context, mapArg model.MapInput) (*model.MapValidationResult, error)
 }
 type QueryResolver interface {
 	Maps(ctx context.Context) ([]*model.Map, error)
@@ -233,6 +239,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Map.AllowRecursion(childComplexity), true
+
+	case "Map.builtin":
+		if e.complexity.Map.Builtin == nil {
+			break
+		}
+
+		return e.complexity.Map.Builtin(childComplexity), true
 
 	case "Map.description":
 		if e.complexity.Map.Description == nil {
@@ -708,6 +721,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.StepEvent.Blocked(childComplexity), true
 
+	case "StepEvent.callBlocked":
+		if e.complexity.StepEvent.CallBlocked == nil {
+			break
+		}
+
+		return e.complexity.StepEvent.CallBlocked(childComplexity), true
+
 	case "StepEvent.callStack":
 		if e.complexity.StepEvent.CallStack == nil {
 			break
@@ -1038,6 +1058,8 @@ type Map {
   name: String!
   description: String!
   difficulty: String!
+  "True for a map shipped with the game: only an admin may change or delete it."
+  builtin: Boolean!
   width: Int!
   height: Int!
   layout: [String!]!
@@ -1084,6 +1106,8 @@ type StepEvent {
   facingBefore: Facing!
   facingAfter: Facing!
   blocked: Boolean!
+  "True when a CALL_SUB_k was ignored because the map has allowRecursion: false and that sub is already on the call stack. The step is still spent."
+  callBlocked: Boolean!
   collected: Position
   callStack: [Frame!]!
   status: Status!
@@ -1156,11 +1180,13 @@ type Mutation {
   step(sessionID: ID!): Session!
   reset(sessionID: ID!): Session!
 
-  "Admin (X-Admin-Key) mutations."
+  "Anyone may create and validate a map."
   createMap(map: MapInput!): Map!
+  validateMap(map: MapInput!): MapValidationResult!
+
+  "Anyone may change or remove a player-created map; shipped maps need X-Admin-Key."
   updateMap(map: MapInput!): Map!
   deleteMap(id: ID!): Boolean!
-  validateMap(map: MapInput!): MapValidationResult!
 }
 
 type Subscription {
@@ -2168,6 +2194,50 @@ func (ec *executionContext) fieldContext_Map_difficulty(_ context.Context, field
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Map_builtin(ctx context.Context, field graphql.CollectedField, obj *model.Map) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Map_builtin(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Map().Builtin(rctx, obj)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Map_builtin(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Map",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
 		},
 	}
 	return fc, nil
@@ -3602,6 +3672,8 @@ func (ec *executionContext) fieldContext_Mutation_createMap(ctx context.Context,
 				return ec.fieldContext_Map_description(ctx, field)
 			case "difficulty":
 				return ec.fieldContext_Map_difficulty(ctx, field)
+			case "builtin":
+				return ec.fieldContext_Map_builtin(ctx, field)
 			case "width":
 				return ec.fieldContext_Map_width(ctx, field)
 			case "height":
@@ -3638,6 +3710,69 @@ func (ec *executionContext) fieldContext_Mutation_createMap(ctx context.Context,
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_createMap_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_validateMap(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_validateMap(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().ValidateMap(rctx, fc.Args["map"].(model.MapInput))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.MapValidationResult)
+	fc.Result = res
+	return ec.marshalNMapValidationResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐMapValidationResult(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mutation_validateMap(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "valid":
+				return ec.fieldContext_MapValidationResult_valid(ctx, field)
+			case "issues":
+				return ec.fieldContext_MapValidationResult_issues(ctx, field)
+			case "unreachableTreats":
+				return ec.fieldContext_MapValidationResult_unreachableTreats(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type MapValidationResult", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_validateMap_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -3691,6 +3826,8 @@ func (ec *executionContext) fieldContext_Mutation_updateMap(ctx context.Context,
 				return ec.fieldContext_Map_description(ctx, field)
 			case "difficulty":
 				return ec.fieldContext_Map_difficulty(ctx, field)
+			case "builtin":
+				return ec.fieldContext_Map_builtin(ctx, field)
 			case "width":
 				return ec.fieldContext_Map_width(ctx, field)
 			case "height":
@@ -3782,69 +3919,6 @@ func (ec *executionContext) fieldContext_Mutation_deleteMap(ctx context.Context,
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_deleteMap_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Mutation_validateMap(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Mutation_validateMap(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().ValidateMap(rctx, fc.Args["map"].(model.MapInput))
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(*model.MapValidationResult)
-	fc.Result = res
-	return ec.marshalNMapValidationResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐMapValidationResult(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Mutation_validateMap(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			switch field.Name {
-			case "valid":
-				return ec.fieldContext_MapValidationResult_valid(ctx, field)
-			case "issues":
-				return ec.fieldContext_MapValidationResult_issues(ctx, field)
-			case "unreachableTreats":
-				return ec.fieldContext_MapValidationResult_unreachableTreats(ctx, field)
-			}
-			return nil, fmt.Errorf("no field named %q was found under type MapValidationResult", field.Name)
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_validateMap_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -4074,6 +4148,8 @@ func (ec *executionContext) fieldContext_Query_maps(_ context.Context, field gra
 				return ec.fieldContext_Map_description(ctx, field)
 			case "difficulty":
 				return ec.fieldContext_Map_difficulty(ctx, field)
+			case "builtin":
+				return ec.fieldContext_Map_builtin(ctx, field)
 			case "width":
 				return ec.fieldContext_Map_width(ctx, field)
 			case "height":
@@ -4149,6 +4225,8 @@ func (ec *executionContext) fieldContext_Query_map(ctx context.Context, field gr
 				return ec.fieldContext_Map_description(ctx, field)
 			case "difficulty":
 				return ec.fieldContext_Map_difficulty(ctx, field)
+			case "builtin":
+				return ec.fieldContext_Map_builtin(ctx, field)
 			case "width":
 				return ec.fieldContext_Map_width(ctx, field)
 			case "height":
@@ -4668,6 +4746,8 @@ func (ec *executionContext) fieldContext_Session_map(_ context.Context, field gr
 				return ec.fieldContext_Map_description(ctx, field)
 			case "difficulty":
 				return ec.fieldContext_Map_difficulty(ctx, field)
+			case "builtin":
+				return ec.fieldContext_Map_builtin(ctx, field)
 			case "width":
 				return ec.fieldContext_Map_width(ctx, field)
 			case "height":
@@ -5170,6 +5250,8 @@ func (ec *executionContext) fieldContext_Session_lastEvent(_ context.Context, fi
 				return ec.fieldContext_StepEvent_facingAfter(ctx, field)
 			case "blocked":
 				return ec.fieldContext_StepEvent_blocked(ctx, field)
+			case "callBlocked":
+				return ec.fieldContext_StepEvent_callBlocked(ctx, field)
 			case "collected":
 				return ec.fieldContext_StepEvent_collected(ctx, field)
 			case "callStack":
@@ -5357,6 +5439,8 @@ func (ec *executionContext) fieldContext_SessionUpdate_event(_ context.Context, 
 				return ec.fieldContext_StepEvent_facingAfter(ctx, field)
 			case "blocked":
 				return ec.fieldContext_StepEvent_blocked(ctx, field)
+			case "callBlocked":
+				return ec.fieldContext_StepEvent_callBlocked(ctx, field)
 			case "collected":
 				return ec.fieldContext_StepEvent_collected(ctx, field)
 			case "callStack":
@@ -5768,6 +5852,50 @@ func (ec *executionContext) _StepEvent_blocked(ctx context.Context, field graphq
 }
 
 func (ec *executionContext) fieldContext_StepEvent_blocked(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "StepEvent",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _StepEvent_callBlocked(ctx context.Context, field graphql.CollectedField, obj *model.StepEvent) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_StepEvent_callBlocked(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.CallBlocked, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_StepEvent_callBlocked(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "StepEvent",
 		Field:      field,
@@ -8553,82 +8681,118 @@ func (ec *executionContext) _Map(ctx context.Context, sel ast.SelectionSet, obj 
 		case "id":
 			out.Values[i] = ec._Map_id(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "name":
 			out.Values[i] = ec._Map_name(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "description":
 			out.Values[i] = ec._Map_description(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "difficulty":
 			out.Values[i] = ec._Map_difficulty(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
+		case "builtin":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Map_builtin(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "width":
 			out.Values[i] = ec._Map_width(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "height":
 			out.Values[i] = ec._Map_height(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "layout":
 			out.Values[i] = ec._Map_layout(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "start":
 			out.Values[i] = ec._Map_start(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "startFacing":
 			out.Values[i] = ec._Map_startFacing(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "rocks":
 			out.Values[i] = ec._Map_rocks(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "treats":
 			out.Values[i] = ec._Map_treats(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "mainTapeLength":
 			out.Values[i] = ec._Map_mainTapeLength(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "subTapeLengths":
 			out.Values[i] = ec._Map_subTapeLengths(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "maxSteps":
 			out.Values[i] = ec._Map_maxSteps(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "maxCallDepth":
 			out.Values[i] = ec._Map_maxCallDepth(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "allowRecursion":
 			out.Values[i] = ec._Map_allowRecursion(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
@@ -8823,6 +8987,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "validateMap":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_validateMap(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "updateMap":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_updateMap(ctx, field)
@@ -8833,13 +9004,6 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "deleteMap":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_deleteMap(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "validateMap":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_validateMap(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -9284,6 +9448,11 @@ func (ec *executionContext) _StepEvent(ctx context.Context, sel ast.SelectionSet
 			}
 		case "blocked":
 			out.Values[i] = ec._StepEvent_blocked(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "callBlocked":
+			out.Values[i] = ec._StepEvent_callBlocked(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}

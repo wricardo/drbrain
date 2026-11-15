@@ -348,8 +348,11 @@ type StepEvent struct {
 	FacingBefore Facing      `json:"facing_before"`
 	FacingAfter  Facing      `json:"facing_after"`
 	Blocked      bool        `json:"blocked"`
-	Collected    *Position   `json:"collected,omitempty"`
-	CallStack    []Frame     `json:"call_stack"`
-	Status       Status      `json:"status"`
-	LossReason   LossReason  `json:"loss_reason,omitempty"`
+	// CallBlocked is true when the step was a CALL that recursion rules
+	// ignored: it still spent a step but pushed no frame.
+	CallBlocked bool       `json:"call_blocked"`
+	Collected   *Position  `json:"collected,omitempty"`
+	CallStack   []Frame    `json:"call_stack"`
+	Status      Status     `json:"status"`
+	LossReason  LossReason `json:"loss_reason,omitempty"`
 }

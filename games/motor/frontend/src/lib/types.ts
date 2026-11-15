@@ -30,6 +30,8 @@ export interface GameMap {
 	name: string;
 	description: string;
 	difficulty: string;
+	/** True for a map shipped with the game: only an admin may change or delete it. */
+	builtin: boolean;
 	width: number;
 	height: number;
 	layout: string[];
@@ -70,6 +72,7 @@ export interface StepEvent {
 	facingBefore: Facing;
 	facingAfter: Facing;
 	blocked: boolean;
+	callBlocked: boolean;
 	collected: Position | null;
 	callStack: Frame[];
 	status: Status;

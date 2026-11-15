@@ -17,7 +17,8 @@ import (
 
 type fakeService struct {
 	service.GameService
-	maps []*engine.Map
+	maps    []*engine.Map
+	builtin map[string]bool
 }
 
 func (f *fakeService) ListMaps() []*engine.Map { return f.maps }
@@ -31,6 +32,8 @@ func (f *fakeService) GetMap(id string) (*engine.Map, error) {
 	return nil, service.Errorf(service.CodeNotFound, "map %q not found", id)
 }
 
+func (f *fakeService) IsBuiltinMap(id string) bool { return f.builtin[id] }
+
 func (f *fakeService) SaveMap(cfg engine.MapConfig) (*engine.Map, error) { return engine.NewMap(cfg) }
 
 func (f *fakeService) CreateMap(cfg engine.MapConfig) (*engine.Map, error) {
@@ -39,6 +42,8 @@ func (f *fakeService) CreateMap(cfg engine.MapConfig) (*engine.Map, error) {
 	}
 	return engine.NewMap(cfg)
 }
+
+func (f *fakeService) DeleteMap(id string) error { return nil }
 
 func newTestServer(t *testing.T, opts Options) *httptest.Server {
 	t.Helper()
@@ -50,7 +55,7 @@ func newTestServer(t *testing.T, opts Options) *httptest.Server {
 	if opts.UIDirs == nil {
 		opts.UIDirs = []string{filepath.Join(t.TempDir(), "missing")}
 	}
-	s, err := NewServer(&fakeService{maps: []*engine.Map{m}}, websocket.NewHub(), opts)
+	s, err := NewServer(&fakeService{maps: []*engine.Map{m}, builtin: map[string]bool{"m1": true}}, websocket.NewHub(), opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,22 +107,34 @@ func TestMapsQueryOverHTTP(t *testing.T) {
 	}
 }
 
-func TestAdminMutationOverHTTP(t *testing.T) {
+func TestMapMutationsOverHTTP(t *testing.T) {
 	t.Setenv("ADMIN_API_KEY", "secret")
 	t.Setenv("ALLOW_UNAUTHENTICATED_ADMIN", "")
 	ts := newTestServer(t, Options{})
 
+	// Creating a map needs no key.
 	_, out := gql(t, ts.URL, createMapMutation, nil)
+	if out["errors"] != nil {
+		t.Fatalf("create without key rejected: %v", out)
+	}
+	// Editing a shipped map (m1) still does.
+	const updateMapMutation = `mutation { updateMap(map: {id: "m1", name: "F", layout: ["...", ">.*", "..."]}) { id } }`
+	_, out = gql(t, ts.URL, updateMapMutation, nil)
 	if got := firstErrCode(out); got != service.CodeForbidden {
 		t.Fatalf("no key: code %q out=%v", got, out)
 	}
-	_, out = gql(t, ts.URL, createMapMutation, map[string]string{"X-Admin-Key": "wrong"})
+	_, out = gql(t, ts.URL, updateMapMutation, map[string]string{"X-Admin-Key": "wrong"})
 	if got := firstErrCode(out); got != service.CodeForbidden {
 		t.Fatalf("wrong key: code %q", got)
 	}
-	_, out = gql(t, ts.URL, createMapMutation, map[string]string{"X-Admin-Key": "secret"})
+	_, out = gql(t, ts.URL, updateMapMutation, map[string]string{"X-Admin-Key": "secret"})
 	if out["errors"] != nil {
 		t.Fatalf("right key rejected: %v", out)
+	}
+	const deleteMapMutation = `mutation { deleteMap(id: "m1") }`
+	_, out = gql(t, ts.URL, deleteMapMutation, nil)
+	if got := firstErrCode(out); got != service.CodeForbidden {
+		t.Fatalf("delete no key: code %q out=%v", got, out)
 	}
 }
 

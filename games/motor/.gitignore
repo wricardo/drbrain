@@ -4,6 +4,7 @@
 
 # runtime state
 /sessions/
+/maps-user/
 .env
 
 # frontend

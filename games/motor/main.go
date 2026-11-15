@@ -28,6 +28,8 @@ const (
 	appName = "drbrain-motor-programming"
 
 	defaultMaxSessions = 1000
+	// defaultMaxUserMaps caps player-created maps (MAX_USER_MAPS).
+	defaultMaxUserMaps = 200
 	shutdownTimeout    = 10 * time.Second
 )
 
@@ -38,6 +40,7 @@ var (
 	port         = flag.Int("port", 8000, "HTTP server port")
 	host         = flag.String("host", "0.0.0.0", "HTTP server host")
 	mapsDir      = flag.String("maps-dir", "maps", "Directory containing map JSON files")
+	userMapsDir  = flag.String("user-maps-dir", "maps-user", "Directory for maps created through the API (survives deploys)")
 	sessionsDir  = flag.String("sessions-dir", "sessions", "Directory for persisted sessions")
 	solutionsDir = flag.String("solutions-dir", "solutions", "Directory containing reference solutions (used by `make validate`; never served)")
 	debug        = flag.Bool("debug", false, "Enable debug logging")
@@ -107,7 +110,11 @@ func main() {
 
 // run wires the application and blocks until SIGINT/SIGTERM.
 func run() error {
-	maps, err := config.NewManager(*mapsDir)
+	maps, err := config.NewManager(config.Options{
+		Dir:         *mapsDir,
+		UserDir:     *userMapsDir,
+		MaxUserMaps: envInt("MAX_USER_MAPS", defaultMaxUserMaps),
+	})
 	if err != nil {
 		return fmt.Errorf("load maps: %w", err)
 	}
@@ -151,7 +158,7 @@ func run() error {
 
 	serveErr := make(chan error, 1)
 	go func() {
-		log.Printf("listening on %s (maps=%s sessions=%s solutions=%s)", addr, *mapsDir, *sessionsDir, *solutionsDir)
+		log.Printf("listening on %s (maps=%s user-maps=%s sessions=%s solutions=%s)", addr, *mapsDir, *userMapsDir, *sessionsDir, *solutionsDir)
 		log.Printf("GraphQL: http://%s/graphql  llms.txt: http://%s/llms.txt", addr, addr)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serveErr <- err

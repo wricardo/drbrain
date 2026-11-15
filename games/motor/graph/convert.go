@@ -169,10 +169,11 @@ func toStepEvent(e *engine.StepEvent) *model.StepEvent {
 		TapeIndex: e.TapeIndex, SlotIndex: e.SlotIndex,
 		From: toPosition(e.From), To: toPosition(e.To),
 		FacingBefore: toFacing(e.FacingBefore), FacingAfter: toFacing(e.FacingAfter),
-		Blocked:    e.Blocked,
-		CallStack:  toFrames(e.CallStack),
-		Status:     model.Status(e.Status),
-		LossReason: toLossReason(e.LossReason),
+		Blocked:     e.Blocked,
+		CallBlocked: e.CallBlocked,
+		CallStack:   toFrames(e.CallStack),
+		Status:      model.Status(e.Status),
+		LossReason:  toLossReason(e.LossReason),
 	}
 	if e.Collected != nil {
 		ev.Collected = toPosition(*e.Collected)

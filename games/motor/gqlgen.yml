@@ -27,3 +27,9 @@ models:
       - github.com/99designs/gqlgen/graphql.Int32ID
   Time:
     model: github.com/99designs/gqlgen/graphql.Time
+  Map:
+    fields:
+      # Provenance lives in the map store, not in the engine map, so every
+      # occurrence of a Map (including a session snapshot) resolves it live.
+      builtin:
+        resolver: true

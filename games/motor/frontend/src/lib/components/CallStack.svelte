@@ -1,13 +1,21 @@
 <script lang="ts">
 	import { tapeLabel } from '$lib/instructions';
-	import type { Frame } from '$lib/types';
+	import { blockedCallNotice, recursionRule } from '$lib/recursion';
+	import type { Frame, GameMap, StepEvent } from '$lib/types';
 
-	let { callStack, maxCallDepth }: { callStack: Frame[]; maxCallDepth: number } = $props();
+	let {
+		callStack,
+		map,
+		lastEvent = null
+	}: { callStack: Frame[]; map: Pick<GameMap, 'maxCallDepth' | 'allowRecursion'>; lastEvent?: StepEvent | null } = $props();
 
+	const maxCallDepth = $derived(map.maxCallDepth);
 	// CallStack[0] is always main; depth counts calls in flight.
 	const depth = $derived(Math.max(0, callStack.length - 1));
 	const pct = $derived(maxCallDepth > 0 ? Math.min(100, (depth / maxCallDepth) * 100) : 0);
 	const frames = $derived(callStack.map((f, i) => ({ ...f, i })).reverse());
+	const rule = $derived(recursionRule(map));
+	const notice = $derived(blockedCallNotice(lastEvent));
 </script>
 
 <section aria-labelledby="callstack-h" class="rounded-xl border border-indigo-200 bg-white p-3">
@@ -33,4 +41,10 @@
 			</li>
 		{/each}
 	</ol>
+	<p class="mt-2 text-xs text-slate-600" data-testid="recursion-rule">{rule}</p>
+	{#if notice}
+		<p class="mt-2 rounded-lg bg-amber-50 px-2 py-1.5 text-xs text-amber-900" role="status" data-testid="blocked-call">
+			{notice}
+		</p>
+	{/if}
 </section>

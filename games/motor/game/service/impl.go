@@ -467,6 +467,9 @@ func (svc *gameService) ListMaps() []*engine.Map { return svc.maps.List() }
 // GetMap returns one map.
 func (svc *gameService) GetMap(id string) (*engine.Map, error) { return svc.maps.Get(id) }
 
+// IsBuiltinMap reports whether id is a shipped (read-only) map.
+func (svc *gameService) IsBuiltinMap(id string) bool { return svc.maps.Builtin(id) }
+
 // SaveMap validates and stores a map. Existing sessions keep their snapshot.
 func (svc *gameService) SaveMap(cfg engine.MapConfig) (*engine.Map, error) {
 	return svc.maps.Save(cfg)

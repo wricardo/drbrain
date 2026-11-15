@@ -13,6 +13,17 @@ import (
 	"github.com/wricardo/drbrain-motor-programming/validate"
 )
 
+// Builtin is the resolver for the builtin field. Provenance is not part of the
+// map snapshot, so it is looked up live; a map that is no longer stored (a
+// session snapshot of a deleted map) reports false, and writes to it fail with
+// NOT_FOUND before the admin gate is consulted.
+func (r *mapResolver) Builtin(ctx context.Context, obj *model.Map) (bool, error) {
+	if obj == nil {
+		return false, nil
+	}
+	return r.Service.IsBuiltinMap(obj.ID), nil
+}
+
 // CreateSession is the resolver for the createSession field.
 func (r *mutationResolver) CreateSession(ctx context.Context, mapID string, displayName *string) (*model.Session, error) {
 	name := ""
@@ -92,11 +103,11 @@ func (r *mutationResolver) Reset(ctx context.Context, sessionID string) (*model.
 	return toSession(s), nil
 }
 
-// CreateMap is the resolver for the createMap field.
+// CreateMap is the resolver for the createMap field. Open to everyone: the
+// caller becomes the owner of a new map and can edit or delete it afterwards.
+// Creating a map whose id already exists is INVALID_ARGUMENT, so shipped maps
+// cannot be overwritten this way.
 func (r *mutationResolver) CreateMap(ctx context.Context, mapArg model.MapInput) (*model.Map, error) {
-	if err := checkAdminKey(ctx); err != nil {
-		return nil, err
-	}
 	m, err := r.Service.CreateMap(fromMapInput(mapArg))
 	if err != nil {
 		return nil, toGQLError(err)
@@ -104,37 +115,9 @@ func (r *mutationResolver) CreateMap(ctx context.Context, mapArg model.MapInput)
 	return toMap(m), nil
 }
 
-// UpdateMap is the resolver for the updateMap field.
-func (r *mutationResolver) UpdateMap(ctx context.Context, mapArg model.MapInput) (*model.Map, error) {
-	if err := checkAdminKey(ctx); err != nil {
-		return nil, err
-	}
-	if _, err := r.Service.GetMap(mapArg.ID); err != nil {
-		return nil, toGQLError(err)
-	}
-	m, err := r.Service.SaveMap(fromMapInput(mapArg))
-	if err != nil {
-		return nil, toGQLError(err)
-	}
-	return toMap(m), nil
-}
-
-// DeleteMap is the resolver for the deleteMap field.
-func (r *mutationResolver) DeleteMap(ctx context.Context, id string) (bool, error) {
-	if err := checkAdminKey(ctx); err != nil {
-		return false, err
-	}
-	if err := r.Service.DeleteMap(id); err != nil {
-		return false, toGQLError(err)
-	}
-	return true, nil
-}
-
-// ValidateMap is the resolver for the validateMap field.
+// ValidateMap is the resolver for the validateMap field. Open to everyone: it
+// only checks a map definition and stores nothing.
 func (r *mutationResolver) ValidateMap(ctx context.Context, mapArg model.MapInput) (*model.MapValidationResult, error) {
-	if err := checkAdminKey(ctx); err != nil {
-		return nil, err
-	}
 	res := validate.Check(fromMapInput(mapArg))
 	out := &model.MapValidationResult{
 		Valid:             res.Valid,
@@ -145,6 +128,37 @@ func (r *mutationResolver) ValidateMap(ctx context.Context, mapArg model.MapInpu
 		out.Issues[i] = &model.MapValidationIssue{Message: msg}
 	}
 	return out, nil
+}
+
+// UpdateMap is the resolver for the updateMap field. Player-created maps are
+// open to everyone; a shipped map requires the admin key.
+func (r *mutationResolver) UpdateMap(ctx context.Context, mapArg model.MapInput) (*model.Map, error) {
+	if _, err := r.Service.GetMap(mapArg.ID); err != nil {
+		return nil, toGQLError(err)
+	}
+	if err := checkMapAdmin(ctx, r.Service.IsBuiltinMap(mapArg.ID)); err != nil {
+		return nil, err
+	}
+	m, err := r.Service.SaveMap(fromMapInput(mapArg))
+	if err != nil {
+		return nil, toGQLError(err)
+	}
+	return toMap(m), nil
+}
+
+// DeleteMap is the resolver for the deleteMap field. Player-created maps are
+// open to everyone; a shipped map requires the admin key.
+func (r *mutationResolver) DeleteMap(ctx context.Context, id string) (bool, error) {
+	if _, err := r.Service.GetMap(id); err != nil {
+		return false, toGQLError(err)
+	}
+	if err := checkMapAdmin(ctx, r.Service.IsBuiltinMap(id)); err != nil {
+		return false, err
+	}
+	if err := r.Service.DeleteMap(id); err != nil {
+		return false, toGQLError(err)
+	}
+	return true, nil
 }
 
 // Maps is the resolver for the maps field.
@@ -211,6 +225,9 @@ func (r *subscriptionResolver) SessionUpdated(ctx context.Context, sessionID str
 	return forwardSessionUpdates(ctx, s, updates, subscriptionBuffer), nil
 }
 
+// Map returns generated.MapResolver implementation.
+func (r *Resolver) Map() generated.MapResolver { return &mapResolver{r} }
+
 // Mutation returns generated.MutationResolver implementation.
 func (r *Resolver) Mutation() generated.MutationResolver { return &mutationResolver{r} }
 
@@ -220,6 +237,7 @@ func (r *Resolver) Query() generated.QueryResolver { return &queryResolver{r} }
 // Subscription returns generated.SubscriptionResolver implementation.
 func (r *Resolver) Subscription() generated.SubscriptionResolver { return &subscriptionResolver{r} }
 
+type mapResolver struct{ *Resolver }
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
 type subscriptionResolver struct{ *Resolver }

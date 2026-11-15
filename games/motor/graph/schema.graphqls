@@ -52,6 +52,8 @@ type Map {
   name: String!
   description: String!
   difficulty: String!
+  "True for a map shipped with the game: only an admin may change or delete it."
+  builtin: Boolean!
   width: Int!
   height: Int!
   layout: [String!]!
@@ -98,6 +100,8 @@ type StepEvent {
   facingBefore: Facing!
   facingAfter: Facing!
   blocked: Boolean!
+  "True when a CALL_SUB_k was ignored because the map has allowRecursion: false and that sub is already on the call stack. The step is still spent."
+  callBlocked: Boolean!
   collected: Position
   callStack: [Frame!]!
   status: Status!
@@ -170,11 +174,13 @@ type Mutation {
   step(sessionID: ID!): Session!
   reset(sessionID: ID!): Session!
 
-  "Admin (X-Admin-Key) mutations."
+  "Anyone may create and validate a map."
   createMap(map: MapInput!): Map!
+  validateMap(map: MapInput!): MapValidationResult!
+
+  "Anyone may change or remove a player-created map; shipped maps need X-Admin-Key."
   updateMap(map: MapInput!): Map!
   deleteMap(id: ID!): Boolean!
-  validateMap(map: MapInput!): MapValidationResult!
 }
 
 type Subscription {

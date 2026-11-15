@@ -20,8 +20,10 @@ import (
 type fakeService struct {
 	service.GameService
 	maps     map[string]*engine.Map
+	builtin  map[string]bool
 	sessions map[string]*service.Session
 	saved    []engine.MapConfig
+	deleted  []string
 	err      error
 }
 
@@ -34,6 +36,9 @@ func (f *fakeService) GetMap(id string) (*engine.Map, error) {
 	}
 	return nil, service.Errorf(service.CodeNotFound, "map %q not found", id)
 }
+
+// IsBuiltinMap reports whether id is shipped; shipped maps need the admin key.
+func (f *fakeService) IsBuiltinMap(id string) bool { return f.builtin[id] }
 
 func (f *fakeService) SaveMap(cfg engine.MapConfig) (*engine.Map, error) {
 	m, err := engine.NewMap(cfg)
@@ -54,7 +59,10 @@ func (f *fakeService) CreateMap(cfg engine.MapConfig) (*engine.Map, error) {
 	return f.SaveMap(cfg)
 }
 
-func (f *fakeService) DeleteMap(id string) error { return nil }
+func (f *fakeService) DeleteMap(id string) error {
+	f.deleted = append(f.deleted, id)
+	return nil
+}
 
 func (f *fakeService) GetSession(id string) (*service.Session, error) {
 	if s, ok := f.sessions[id]; ok {
@@ -109,7 +117,7 @@ func TestAdminGate(t *testing.T) {
 		adminKey  string
 		allowOpen string
 		ctx       context.Context
-		wantCode  string
+		wantCode  string // code for writes to a shipped map
 	}{
 		{"no key configured, not opted out", "", "", ctxWithKey(""), service.CodeForbidden},
 		{"no key configured, opted out", "", "true", ctxWithKey(""), ""},
@@ -125,9 +133,11 @@ func TestAdminGate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("ADMIN_API_KEY", tc.adminKey)
 			t.Setenv("ALLOW_UNAUTHENTICATED_ADMIN", tc.allowOpen)
-			fs := &fakeService{maps: map[string]*engine.Map{"existing": mustMap(t, "existing")}}
-			r := &Resolver{Service: fs}
-			m := &mutationResolver{r}
+			fs := &fakeService{
+				maps:    map[string]*engine.Map{"existing": mustMap(t, "existing"), "mine": mustMap(t, "mine")},
+				builtin: map[string]bool{"existing": true},
+			}
+			m := &mutationResolver{&Resolver{Service: fs}}
 
 			check := func(op string, err error) {
 				t.Helper()
@@ -144,26 +154,70 @@ func TestAdminGate(t *testing.T) {
 					t.Fatalf("%s: code = %q, want %q", op, got, tc.wantCode)
 				}
 			}
+			// Creating and validating need no key at all.
 			_, err := m.CreateMap(tc.ctx, input)
-			check("createMap", err)
+			if err != nil {
+				t.Fatalf("createMap: unexpected error %v", err)
+			}
+			_, err = m.ValidateMap(tc.ctx, input)
+			if err != nil {
+				t.Fatalf("validateMap: unexpected error %v", err)
+			}
+			// Writes to a shipped map are gated.
 			upd := input
 			upd.ID = "existing"
 			_, err = m.UpdateMap(tc.ctx, upd)
-			check("updateMap", err)
+			check("updateMap(builtin)", err)
 			_, err = m.DeleteMap(tc.ctx, "existing")
-			check("deleteMap", err)
-			_, err = m.ValidateMap(tc.ctx, input)
-			check("validateMap", err)
-			if tc.wantCode != "" && len(fs.saved) != 0 {
-				t.Fatalf("map saved despite gate: %v", fs.saved)
+			check("deleteMap(builtin)", err)
+			// Writes to a player-created map are open, whatever the key is.
+			upd.ID = "mine"
+			if _, err := m.UpdateMap(tc.ctx, upd); err != nil {
+				t.Fatalf("updateMap(player map): unexpected error %v", err)
+			}
+			if _, err := m.DeleteMap(tc.ctx, "mine"); err != nil {
+				t.Fatalf("deleteMap(player map): unexpected error %v", err)
+			}
+			if tc.wantCode != "" {
+				for _, cfg := range fs.saved {
+					if cfg.ID == "existing" {
+						t.Fatalf("shipped map saved despite gate: %v", fs.saved)
+					}
+				}
+				for _, id := range fs.deleted {
+					if id == "existing" {
+						t.Fatalf("shipped map deleted despite gate: %v", fs.deleted)
+					}
+				}
 			}
 		})
 	}
 }
 
+// Anyone may create a map; an existing id (including a shipped one) is a
+// conflict, so creation cannot overwrite anything.
+func TestCreateMapIsOpen(t *testing.T) {
+	t.Setenv("ADMIN_API_KEY", "secret")
+	t.Setenv("ALLOW_UNAUTHENTICATED_ADMIN", "")
+	layout := testMapConfig("x").Layout
+	fs := &fakeService{maps: map[string]*engine.Map{"shipped": mustMap(t, "shipped")}, builtin: map[string]bool{"shipped": true}}
+	m := &mutationResolver{&Resolver{Service: fs}}
+
+	if _, err := m.CreateMap(context.Background(), model.MapInput{ID: "shipped", Name: "n", Layout: layout}); codeOf(t, err) != service.CodeInvalidArgument {
+		t.Fatalf("create over shipped map: err = %v", err)
+	}
+	got, err := m.CreateMap(context.Background(), model.MapInput{ID: "player_map", Name: "n", Layout: layout})
+	if err != nil || got.ID != "player_map" {
+		t.Fatalf("open create = %+v, %v", got, err)
+	}
+	// Validation stores nothing and needs no key either.
+	if _, err := m.ValidateMap(context.Background(), model.MapInput{ID: "player_map", Name: "n", Layout: layout}); err != nil {
+		t.Fatalf("validateMap: %v", err)
+	}
+}
+
 func TestCreateUpdateMapSemantics(t *testing.T) {
-	t.Setenv("ALLOW_UNAUTHENTICATED_ADMIN", "true")
-	t.Setenv("ADMIN_API_KEY", "")
+	t.Setenv("ADMIN_API_KEY", "secret")
 	fs := &fakeService{maps: map[string]*engine.Map{"existing": mustMap(t, "existing")}}
 	m := &mutationResolver{&Resolver{Service: fs}}
 	ctx := context.Background()
@@ -188,8 +242,6 @@ func TestCreateUpdateMapSemantics(t *testing.T) {
 // An explicit empty subTapeLengths means zero subs; omitted means the engine
 // default. The distinction must survive the input conversion.
 func TestCreateMapSubTapeLengthsEmptyVsOmitted(t *testing.T) {
-	t.Setenv("ALLOW_UNAUTHENTICATED_ADMIN", "true")
-	t.Setenv("ADMIN_API_KEY", "")
 	layout := testMapConfig("x").Layout
 	cases := []struct {
 		name string
@@ -281,6 +333,19 @@ func TestSessionConversionDerivesTreatsRemaining(t *testing.T) {
 	}
 	if got.Seq != 3 || got.VM.Facing != model.FacingRight {
 		t.Fatalf("seq/facing = %d/%s", got.Seq, got.VM.Facing)
+	}
+}
+
+func TestStepEventConversionKeepsBlockedFlags(t *testing.T) {
+	// A move into a rock and an ignored recursive call are different no-ops;
+	// clients rely on the distinction to explain the step they just spent.
+	got := toStepEvent(&engine.StepEvent{Step: 2, Instruction: engine.CallSub1, CallBlocked: true})
+	if !got.CallBlocked || got.Blocked {
+		t.Fatalf("callBlocked=%v blocked=%v, want true/false", got.CallBlocked, got.Blocked)
+	}
+	got = toStepEvent(&engine.StepEvent{Step: 3, Instruction: engine.MoveForward, Blocked: true})
+	if got.CallBlocked || !got.Blocked {
+		t.Fatalf("callBlocked=%v blocked=%v, want false/true", got.CallBlocked, got.Blocked)
 	}
 }
 

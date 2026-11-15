@@ -84,7 +84,10 @@ type GameService interface {
 
 	ListMaps() []*engine.Map
 	GetMap(id string) (*engine.Map, error)
-	// Admin-gated by the transport; the service itself does not authenticate.
+	// IsBuiltinMap reports whether id is a shipped map. Shipped maps are
+	// read-only for players; the transport gates writes on the admin key.
+	IsBuiltinMap(id string) bool
+	// SaveMap replaces a map. Gated by the transport, not the service.
 	SaveMap(cfg engine.MapConfig) (*engine.Map, error)
 	// CreateMap is SaveMap that fails atomically (INVALID_ARGUMENT) if the id exists.
 	CreateMap(cfg engine.MapConfig) (*engine.Map, error)
@@ -98,6 +101,8 @@ type GameService interface {
 type MapStore interface {
 	List() []*engine.Map
 	Get(id string) (*engine.Map, error) // NOT_FOUND error if absent
+	// Builtin reports whether id is shipped (read-only for players).
+	Builtin(id string) bool
 	Save(cfg engine.MapConfig) (*engine.Map, error)
 	Create(cfg engine.MapConfig) (*engine.Map, error) // INVALID_ARGUMENT if id exists
 	Delete(id string) error

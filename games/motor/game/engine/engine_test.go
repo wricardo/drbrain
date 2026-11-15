@@ -127,6 +127,49 @@ func TestMutualRecursionBlocked(t *testing.T) {
 	if len(evs) != 5 {
 		t.Fatalf("events=%d", len(evs))
 	}
+	blocked := 0
+	for _, ev := range evs {
+		if ev.CallBlocked {
+			blocked++
+			if ev.Instruction != CallSub1 || len(ev.CallStack) != 3 {
+				t.Fatalf("blocked event should push no frame: %+v", ev)
+			}
+		}
+		if ev.Blocked {
+			t.Fatalf("no move was blocked: %+v", ev)
+		}
+	}
+	if blocked != 1 {
+		t.Fatalf("blocked calls = %d, want 1", blocked)
+	}
+}
+
+// Recursion maps must never report a blocked call, and a normal move must not
+// set CallBlocked: the two no-op reasons stay distinguishable.
+func TestCallBlockedOnlyForIgnoredCalls(t *testing.T) {
+	m := mustMap(t, corridor) // AllowRecursion: true
+	evs, _ := Simulate(m, prog(m, "1", "1F"), NewVMState(m), 0)
+	for _, ev := range evs {
+		if ev.CallBlocked {
+			t.Fatalf("recursion map reported a blocked call: %+v", ev)
+		}
+	}
+	strict := mustMap(t, func() MapConfig { c := straight; c.AllowRecursion = false; c.MainTapeLength = 12; return c }())
+	// Turn up and walk off the top edge, so the treat on the start row is never
+	// reached and a move really is blocked (same route as TestBlockedMoves).
+	evs, _ = Simulate(strict, prog(strict, "LFFFFFFFFF"), NewVMState(strict), 0)
+	var sawBlocked bool
+	for _, ev := range evs {
+		if ev.CallBlocked {
+			t.Fatalf("move step set CallBlocked: %+v", ev)
+		}
+		if ev.Blocked {
+			sawBlocked = true
+		}
+	}
+	if !sawBlocked {
+		t.Fatal("expected at least one blocked move")
+	}
 }
 
 func TestCallDepth(t *testing.T) {

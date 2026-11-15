@@ -74,8 +74,36 @@ describe('Tape', () => {
 		expect(onchange).not.toHaveBeenCalled();
 	});
 
-	it('read-only tapes ignore edits but still allow navigation, and expose highlights to AT', async () => {
+	it('clears every slot on every tape after confirmation, keeping the tape shape', async () => {
 		const onchange = vi.fn();
+		let p = setSlot(setSlot(emptyProgram(cfg), -1, 0, 'MOVE_FORWARD'), 0, 1, 'TURN_LEFT');
+		render(Tape, { program: p, onchange });
+
+		const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+		await fireEvent.click(screen.getByTestId('clear-program'));
+		expect(confirmSpy).toHaveBeenCalledOnce();
+		expect(onchange).not.toHaveBeenCalled();
+
+		confirmSpy.mockReturnValue(true);
+		await fireEvent.click(screen.getByTestId('clear-program'));
+		expect(onchange.mock.calls[0][0]).toEqual({
+			main: ['EMPTY', 'EMPTY', 'EMPTY'],
+			subs: [['EMPTY', 'EMPTY']]
+		});
+		confirmSpy.mockRestore();
+	});
+
+	it('hides the clear-all control for an empty program and on read-only tapes', async () => {
+		render(Tape, { program: emptyProgram(cfg), onchange: () => {} });
+		expect(screen.queryByTestId('clear-program')).toBeNull();
+
+		const filled = setSlot(emptyProgram(cfg), -1, 0, 'MOVE_FORWARD');
+		await cleanup();
+		render(Tape, { program: filled, disabled: true, onchange: () => {} });
+		expect(screen.queryByTestId('clear-program')).toBeNull();
+	});
+
+	it('read-only tapes ignore edits but still allow navigation, and expose highlights to AT', async () => {		const onchange = vi.fn();
 		render(Tape, {
 			program: emptyProgram(cfg),
 			disabled: true,

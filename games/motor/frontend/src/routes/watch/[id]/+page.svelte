@@ -80,7 +80,7 @@
 						{status}
 					/>
 				</div>
-				<CallStack callStack={session.vm.callStack} maxCallDepth={session.map.maxCallDepth} />
+				<CallStack callStack={session.vm.callStack} map={session.map} lastEvent={session.lastEvent} />
 				<AiPromptCard
 					prompt={buildSessionPrompt(origin, session)}
 					blurb="Copy this prompt into an AI chat and it will program the robot to win this session."

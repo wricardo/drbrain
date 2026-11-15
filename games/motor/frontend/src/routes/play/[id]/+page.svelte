@@ -88,6 +88,8 @@
 	const status = $derived(session?.vm.status ?? 'READY');
 	const terminal = $derived(status === 'WON' || status === 'LOST');
 	const playing = $derived(session?.playing ?? false);
+	// Reset only does something once the robot has moved or a run is under way.
+	const canReset = $derived(playing || !!session && (terminal || session.vm.steps > 0));
 	const showModal = $derived(terminal && !!session && dismissedAttempts !== session.attempts);
 	const resultText = $derived(
 		!session || !terminal
@@ -242,7 +244,9 @@
 							<button type="button" class="{btn} bg-indigo-600 text-white hover:bg-indigo-700" disabled={busy || terminal} onclick={run}>Run</button>
 						{/if}
 						<button type="button" class="{btn} border border-indigo-300 text-indigo-900 hover:bg-indigo-50" disabled={busy || playing || terminal} onclick={stepOnce}>Step</button>
-						<button type="button" class="{btn} border border-indigo-300 text-indigo-900 hover:bg-indigo-50" disabled={busy} onclick={reset}>Reset</button>
+						{#if canReset}
+							<button type="button" class="{btn} border border-indigo-300 text-indigo-900 hover:bg-indigo-50" disabled={busy} onclick={reset} data-testid="reset">Reset</button>
+						{/if}
 						{#if dirty}
 							<button type="button" class="{btn} border border-emerald-400 text-emerald-900 hover:bg-emerald-50" disabled={busy || playing} onclick={save}>Save program</button>
 							<button type="button" class="{btn} text-slate-700 underline" disabled={busy || playing} onclick={revert}>Revert</button>
@@ -277,7 +281,7 @@
 					</div>
 				{/if}
 
-				<CallStack callStack={session.vm.callStack} maxCallDepth={session.map.maxCallDepth} />
+				<CallStack callStack={session.vm.callStack} map={session.map} lastEvent={session.lastEvent} />
 
 				<div class="rounded-xl border border-indigo-200 bg-white p-4" data-testid="help">
 					<h2 class="text-xs font-semibold uppercase tracking-widest text-indigo-900">Help</h2>

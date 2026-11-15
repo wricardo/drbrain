@@ -45,6 +45,7 @@ Every map can be solved. Each one has been checked against a known solution.
 ## More to do
 
 - **Watch** anyone's game live from the sessions page, and see how other people solved a map.
+- **Build your own map** in the [map editor](https://motor-programming.wricardo.net/editor): paint rocks and treats, set the tape sizes, validate it and play it. No account needed.
 - **Learn** more on the in-game [how it works](https://motor-programming.wricardo.net/learn) page: rules, strategies and tips.
 
 ## Playing with AI

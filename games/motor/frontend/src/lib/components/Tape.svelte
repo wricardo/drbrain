@@ -2,7 +2,7 @@
 	import { DRAG_MIME, decodeDrag, encodeDrag } from '$lib/dnd';
 	import { computeSlotMarks, marksFor, type SlotMarks } from '$lib/highlight';
 	import { instructionMeta, tapeLabel } from '$lib/instructions';
-	import { applyDrop, setSlot, tapeLengths, tapeOf } from '$lib/program';
+	import { applyDrop, clearProgram, hasInstructions, setSlot, tapeLengths, tapeOf } from '$lib/program';
 	import { keyToAction, moveSelection } from '$lib/shortcuts';
 	import SlotPicker from './SlotPicker.svelte';
 	import type { Frame, Instruction, Program, Status, StepEvent } from '$lib/types';
@@ -136,9 +136,27 @@
 		if (m.executed) parts.push('just executed');
 		return parts.join(', ');
 	}
+
+	/** Empties every slot on every tape (the tape lengths stay the same). */
+	function clearAll() {
+		if (disabled) return;
+		if (!confirm('Clear every programmed slot on all tapes?')) return;
+		picker = null;
+		onchange(clearProgram(program));
+	}
 </script>
 
 <div bind:this={root} class="space-y-3" role="group" aria-label="Program tapes">
+	{#if !disabled && hasInstructions(program)}
+		<div class="flex justify-end">
+			<button
+				type="button"
+				data-testid="clear-program"
+				class="rounded-lg border border-rose-600 bg-rose-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-rose-700 hover:border-rose-700"
+				onclick={clearAll}>Clear all slots</button
+			>
+		</div>
+	{/if}
 	{#each tapes as t (t.tape)}
 		<div>
 			<h3 class="text-xs font-semibold uppercase tracking-wide text-indigo-800 mb-1">

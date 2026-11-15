@@ -62,7 +62,7 @@ jobs:
 
       # Systemd unit, nginx vhost and /opt/drbrain-motor-programming/.env are
       # provisioned once on the host; this step only swaps the release.
-      # sessions/ and .env are preserved.
+      # sessions/, maps-user/ (player-created maps) and .env are preserved.
       - name: Install and restart
         run: |
           ssh deploy '
@@ -71,7 +71,7 @@ jobs:
             rm -rf maps static
             tar xzf /tmp/drbrain-motor-programming-deploy.tgz -C .
             rm -f /tmp/drbrain-motor-programming-deploy.tgz
-            mkdir -p sessions
+            mkdir -p sessions maps-user
             sudo systemctl restart drbrain-motor-programming.service
             systemctl is-active drbrain-motor-programming.service
           '

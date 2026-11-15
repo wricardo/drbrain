@@ -24,6 +24,19 @@ export function emptyProgram(cfg: TapeConfig): Program {
 	};
 }
 
+/** Returns a new program with every slot on every tape EMPTY, keeping the tape lengths. */
+export function clearProgram(p: Program): Program {
+	return {
+		main: Array<Instruction>(p.main.length).fill('EMPTY'),
+		subs: p.subs.map((s) => Array<Instruction>(s.length).fill('EMPTY'))
+	};
+}
+
+/** True when at least one slot on any tape holds an instruction. */
+export function hasInstructions(p: Program): boolean {
+	return p.main.some((i) => i !== 'EMPTY') || p.subs.some((s) => s.some((i) => i !== 'EMPTY'));
+}
+
 /** Deep-copies a program (also strips any reactive proxy wrappers). */
 export function cloneProgram(p: Program): Program {
 	return { main: [...p.main], subs: p.subs.map((s) => [...s]) };

@@ -39,9 +39,10 @@ func NewResolver(svc service.GameService, hub *websocket.Hub) *Resolver {
 // by the HTTP middleware, so resolvers can read headers (X-Admin-Key).
 type HTTPRequestKey struct{}
 
-// checkAdminKey gates admin mutations. ADMIN_API_KEY must be configured and
-// sent as X-Admin-Key; local development can opt out explicitly with
-// ALLOW_UNAUTHENTICATED_ADMIN=true (only honoured while no key is configured).
+// checkAdminKey gates operations that change shipped content. ADMIN_API_KEY
+// must be configured and sent as X-Admin-Key; local development can opt out
+// explicitly with ALLOW_UNAUTHENTICATED_ADMIN=true (only honoured while no key
+// is configured).
 func checkAdminKey(ctx context.Context) error {
 	required := os.Getenv("ADMIN_API_KEY")
 	if required == "" {
@@ -61,6 +62,15 @@ func checkAdminKey(ctx context.Context) error {
 		return codedError(service.CodeForbidden, "forbidden: invalid or missing X-Admin-Key")
 	}
 	return nil
+}
+
+// checkMapAdmin gates a write to an existing map: player-created maps are open
+// to everyone, shipped maps need the admin key.
+func checkMapAdmin(ctx context.Context, builtin bool) error {
+	if !builtin {
+		return nil
+	}
+	return checkAdminKey(ctx)
 }
 
 // codedError builds a gqlerror carrying extensions.code.

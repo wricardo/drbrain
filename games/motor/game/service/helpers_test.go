@@ -82,6 +82,9 @@ func (f *fakeMaps) Get(id string) (*engine.Map, error) {
 	return m, nil
 }
 
+// Builtin reports false: every fake map is player-created, so writes are open.
+func (f *fakeMaps) Builtin(string) bool { return false }
+
 func (f *fakeMaps) Save(cfg engine.MapConfig) (*engine.Map, error) {
 	m, err := engine.NewMap(cfg)
 	if err != nil {

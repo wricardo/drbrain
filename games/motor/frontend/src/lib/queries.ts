@@ -13,6 +13,7 @@ const STEP_EVENT_FIELDS = `
   facingBefore
   facingAfter
   blocked
+  callBlocked
   collected { ${POSITION} }
   callStack { ${FRAME} }
   status
@@ -24,6 +25,7 @@ const MAP_FIELDS = `
   name
   description
   difficulty
+  builtin
   width
   height
   layout

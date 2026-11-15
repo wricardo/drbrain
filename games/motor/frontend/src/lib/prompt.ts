@@ -67,6 +67,7 @@ Limits: at most ${m.maxSteps} steps; ${recursion}
 - Instructions: ${instructionList(subs.length)}.
 - Each executed instruction is one step (a blocked move and a CALL both count). EMPTY slots are skipped for free.
 - MOVE_FORWARD into a rock or off the map is a harmless no-op (still a step, "blocked: true"). Treats are collected on arrival.
+- When recursion is off, a CALL to a sub already on the call stack is ignored but still costs a step ("callBlocked: true").
 - When a sub tape ends, control returns to the caller; when the main tape ends with treats left, you lose (PROGRAM_ENDED). Other losses: STEP_LIMIT, CALL_DEPTH.
 - Win beats the step limit on the same step. setProgram and reset put the robot back at the start. setProgram is rejected while the session is playing (SESSION_PLAYING); finished sessions refuse run/step until reset (SESSION_TERMINAL).
 
@@ -81,7 +82,7 @@ mutation {
    (Replace the EMPTY slots with real instructions.)
 3. Run it on the server (50-5000 ms per step) or step manually, then read the result:
 mutation { run(sessionID: "${s.id}", speedMs: 100) { playing vm { status steps } } }
-mutation { step(sessionID: "${s.id}") { vm { status steps pos { x y } } lastEvent { instruction blocked } } }
+mutation { step(sessionID: "${s.id}") { vm { status steps pos { x y } } lastEvent { instruction blocked callBlocked } } }
 query { session(id: "${s.id}") { playing attempts bestSteps vm { status lossReason steps pos { x y } facing treatsRemaining { x y } callStack { tape pc } } } }
 4. If the status is LOST, read lossReason and treatsRemaining, fix the program, and repeat from step 2 (call reset first if you want to run again without changing the program). Do not stop until vm.status is WON, then report the winning program and its step count.
 

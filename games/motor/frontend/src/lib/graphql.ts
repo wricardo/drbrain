@@ -24,7 +24,7 @@ export function getWsClient(): WsClient {
 	return wsClient;
 }
 
-/** Creates the urql client. Admin mutations carry X-Admin-Key read from sessionStorage per request. */
+/** Creates the urql client. Writes to built-in maps carry X-Admin-Key read from sessionStorage per request. */
 export function makeClient(): Client {
 	return createClient({
 		url: GRAPHQL_URL,

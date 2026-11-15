@@ -18,10 +18,12 @@ type Frame struct {
 }
 
 type Map struct {
-	ID             string      `json:"id"`
-	Name           string      `json:"name"`
-	Description    string      `json:"description"`
-	Difficulty     string      `json:"difficulty"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Difficulty  string `json:"difficulty"`
+	// True for a map shipped with the game: only an admin may change or delete it.
+	Builtin        bool        `json:"builtin"`
 	Width          int         `json:"width"`
 	Height         int         `json:"height"`
 	Layout         []string    `json:"layout"`
@@ -116,10 +118,12 @@ type StepEvent struct {
 	FacingBefore Facing      `json:"facingBefore"`
 	FacingAfter  Facing      `json:"facingAfter"`
 	Blocked      bool        `json:"blocked"`
-	Collected    *Position   `json:"collected,omitempty"`
-	CallStack    []*Frame    `json:"callStack"`
-	Status       Status      `json:"status"`
-	LossReason   *LossReason `json:"lossReason,omitempty"`
+	// True when a CALL_SUB_k was ignored because the map has allowRecursion: false and that sub is already on the call stack. The step is still spent.
+	CallBlocked bool        `json:"callBlocked"`
+	Collected   *Position   `json:"collected,omitempty"`
+	CallStack   []*Frame    `json:"callStack"`
+	Status      Status      `json:"status"`
+	LossReason  *LossReason `json:"lossReason,omitempty"`
 }
 
 type Subscription struct {

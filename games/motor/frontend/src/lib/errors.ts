@@ -13,7 +13,7 @@ const TITLES: Record<string, string> = {
 	SESSION_PLAYING: 'Session is running — pause it first',
 	SESSION_TERMINAL: 'Run is over — reset to try again',
 	INVALID_ARGUMENT: 'Invalid input',
-	FORBIDDEN: 'Forbidden — check the admin key'
+	FORBIDDEN: 'Forbidden — this built-in map needs the admin key'
 };
 
 interface GqlErrorLike {

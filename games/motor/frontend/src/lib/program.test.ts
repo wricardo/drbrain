@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyDrop, emptyProgram, programsEqual, setSlot } from './program';
+import { applyDrop, clearProgram, emptyProgram, hasInstructions, programsEqual, setSlot } from './program';
 
 const cfg = { mainTapeLength: 4, subTapeLengths: [3, 2] };
 
@@ -26,6 +26,23 @@ describe('program editing', () => {
 		expect(setSlot(p, -1, 9, 'TURN_LEFT')).toBe(p);
 		expect(setSlot(p, 5, 0, 'TURN_LEFT')).toBe(p);
 		expect(setSlot(p, -2, 0, 'TURN_LEFT')).toBe(p);
+	});
+
+	it('clearProgram empties every slot but keeps the tape lengths', () => {
+		let p = setSlot(setSlot(emptyProgram(cfg), -1, 0, 'MOVE_FORWARD'), 1, 2, 'CALL_SUB_1');
+		const cleared = clearProgram(p);
+		expect(cleared.main).toEqual(['EMPTY', 'EMPTY', 'EMPTY', 'EMPTY']);
+		expect(cleared.subs).toEqual([
+			['EMPTY', 'EMPTY', 'EMPTY'],
+			['EMPTY', 'EMPTY']
+		]);
+		expect(cleared).not.toBe(p);
+		expect(p.main[0]).toBe('MOVE_FORWARD'); // input untouched
+	});
+
+	it('hasInstructions reports any non-empty slot', () => {
+		expect(hasInstructions(emptyProgram(cfg))).toBe(false);
+		expect(hasInstructions(setSlot(emptyProgram(cfg), 1, 1, 'MOVE_FORWARD'))).toBe(true);
 	});
 
 	it('palette drops place the instruction', () => {

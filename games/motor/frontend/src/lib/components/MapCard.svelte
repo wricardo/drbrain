@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { GameMap } from '$lib/types';
 	import { splitMapName } from '$lib/maps';
+	import { recursionChip } from '$lib/recursion';
 	import MiniGrid from './MiniGrid.svelte';
 
 	let {
@@ -11,6 +12,7 @@
 	}: { map: GameMap; busy?: boolean; onplay?: (map: GameMap) => void; editHref?: string | null } = $props();
 
 	const parts = $derived(splitMapName(map.name));
+	const recursion = $derived(recursionChip(map));
 	const badge: Record<string, string> = {
 		easy: 'bg-emerald-100 text-emerald-800',
 		medium: 'bg-amber-100 text-amber-800',
@@ -31,12 +33,15 @@
 	</div>
 	<div class="flex flex-wrap gap-1.5 text-xs">
 		<span class="rounded-full px-2 py-0.5 {badge[map.difficulty] ?? 'bg-slate-100 text-slate-700'}">{map.difficulty}</span>
+		{#if !map.builtin}
+			<span class="rounded-full bg-violet-100 text-violet-800 px-2 py-0.5" data-testid="player-map">player-made</span>
+		{/if}
 		<span class="rounded-full bg-indigo-50 text-indigo-800 px-2 py-0.5">{map.width}×{map.height}</span>
 		<span class="rounded-full bg-indigo-50 text-indigo-800 px-2 py-0.5">{map.treats.length} {map.treats.length === 1 ? 'treat' : 'treats'}</span>
 		<span class="rounded-full bg-indigo-50 text-indigo-800 px-2 py-0.5">≤ {map.maxSteps} steps</span>
-		{#if map.allowRecursion}
-			<span class="rounded-full bg-violet-100 text-violet-800 px-2 py-0.5">recursion</span>
-		{/if}
+		<span class="rounded-full px-2 py-0.5 {recursion.classes}" title={recursion.title} data-testid="map-recursion"
+			>{recursion.label}</span
+		>
 	</div>
 	<p class="text-xs text-slate-600">Main {map.mainTapeLength} slots{map.subTapeLengths.length ? ` · subs ${map.subTapeLengths.join(' / ')}` : ''}</p>
 	<div class="mt-auto space-y-2">

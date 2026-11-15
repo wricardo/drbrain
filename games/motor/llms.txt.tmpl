@@ -33,7 +33,8 @@ createSession and MAP_ID with an id from the `maps` query.
 - MOVE_FORWARD into a rock or off the map is a silent no-op (still a step, `blocked: true`).
 - Collecting happens on arrival; the start cell never holds a treat.
 - A CALL_SUB_k that targets an already active sub (or one anywhere on the call stack) does
-  nothing (still counts as a step) unless the map has `allowRecursion: true`.
+  nothing (still counts as a step) unless the map has `allowRecursion: true`. That step reports
+  `callBlocked: true`; `blocked` is only about moves.
 - `setProgram` and `reset` put the robot back at the start. `setProgram` is rejected while the
   session is playing (`SESSION_PLAYING`). Terminal sessions (WON/LOST) refuse run/step until
   `reset` (`SESSION_TERMINAL`).
@@ -63,7 +64,7 @@ CALL_SUB_k is only valid when the map has at least k sub tapes.
 ### Errors
 
 Errors carry `extensions.code`: NOT_FOUND, INVALID_PROGRAM, SESSION_PLAYING, SESSION_TERMINAL,
-INVALID_ARGUMENT, FORBIDDEN, LIMIT_REACHED. Admin mutations need an `X-Admin-Key` header.
+INVALID_ARGUMENT, FORBIDDEN, LIMIT_REACHED.
 
 ---
 
@@ -99,7 +100,7 @@ mutation { run(sessionID: "SESSION_ID", speedMs: 100) { playing vm { status step
 ```
 
 ```graphql
-mutation { step(sessionID: "SESSION_ID") { vm { status steps pos { x y } } lastEvent { instruction blocked } } }
+mutation { step(sessionID: "SESSION_ID") { vm { status steps pos { x y } } lastEvent { instruction blocked callBlocked } } }
 ```
 
 5. Poll or subscribe for the result:
@@ -117,6 +118,30 @@ full snapshot; ignore updates whose `seq` is not greater than the last one you s
 
 Other session mutations: `pause`, `reset`, `renameSession(id, displayName)`,
 `deleteSession(id)`. Query `sessions(sort: RECENT, limit: 50, mapId: "...")` lists sessions.
+
+---
+
+## Creating maps
+
+Anyone can create a map — no key needed. Check a draft first, then store it:
+
+```graphql
+mutation { validateMap(map: {id: "my_map", name: "My Map", layout: [">...", "..#*", "...."]}) { valid issues { message } unreachableTreats { x y } } }
+```
+
+```graphql
+mutation { createMap(map: {id: "my_map", name: "My Map", layout: [">...", "..#*", "...."], mainTapeLength: 8, subTapeLengths: [4], maxSteps: 200}) { id name builtin } }
+```
+
+- `id` is the stable handle (`^[a-z0-9_-]{1,64}$`) and must be unused: creating over an id
+  that already exists is `INVALID_ARGUMENT`. Use a distinctive prefix.
+- The layout needs exactly one start glyph (`^ > v <`), at least one treat (`*`), one row per
+  `#`-free row of the same width, 3–20 cells per side.
+- Defaults: main tape 10, subs `[10]`, max steps 200, max call depth 16, recursion off.
+  `subTapeLengths: []` means no subs (different from omitting it).
+- `updateMap` and `deleteMap` work on the map you created. Maps with `builtin: true` ship with
+  the game and need an `X-Admin-Key` header to change; see provenance with `maps { id builtin }`.
+- Play your map like any other: `createSession(mapID: "my_map")`.
 
 ---
 
