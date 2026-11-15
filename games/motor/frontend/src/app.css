@@ -71,6 +71,11 @@ body {
   --color-amber-800: #fde68a;
   --color-amber-900: #fef3c7;
 
+  /* Third place on the leaderboard. */
+  --color-orange-100: #3a2410;
+  --color-orange-300: #8a4a14;
+  --color-orange-900: #ffedd5;
+
   --color-emerald-50: #0d2a22;
   --color-emerald-100: #0f3a2d;
   --color-emerald-300: #1f7a5b;

@@ -179,7 +179,7 @@
 			>
 		</div>
 	{:else if board && board.entries.length > 0}
-		<div class="overflow-x-auto rounded-xl border border-indigo-200 bg-white">
+		<div class="relative overflow-x-auto rounded-xl border border-indigo-200 bg-white">
 			<table class="w-full text-left text-sm" data-testid="lb-table">
 				<caption class="sr-only">{map?.name ?? 'Map'} leaderboard, {option.label.toLowerCase()} first</caption>
 				<thead class="bg-indigo-50 text-xs uppercase tracking-wide text-indigo-900">
