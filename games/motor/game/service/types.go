@@ -28,6 +28,11 @@ type Session struct {
 	LastActionAt time.Time
 	Attempts     int
 	BestSteps    int // 0 = never won
+	// FewestSlots and FewestSteps are the session's best wins under the two
+	// leaderboard orderings (nil = never won). They are recorded by the server
+	// when a run is won and survive later edits and resets of the program.
+	FewestSlots *Win
+	FewestSteps *Win
 	// LastEvent is the most recent step event; transient (not persisted).
 	LastEvent *engine.StepEvent
 }
@@ -46,6 +51,14 @@ func (s *Session) Clone() *Session {
 		Program: s.Program.Clone(), VM: s.VM.Clone(), Playing: s.Playing, SpeedMs: s.SpeedMs,
 		Seq: s.Seq, CreatedAt: s.CreatedAt, LastActionAt: s.LastActionAt,
 		Attempts: s.Attempts, BestSteps: s.BestSteps,
+	}
+	if s.FewestSlots != nil {
+		w := *s.FewestSlots
+		c.FewestSlots = &w
+	}
+	if s.FewestSteps != nil {
+		w := *s.FewestSteps
+		c.FewestSteps = &w
 	}
 	if s.LastEvent != nil {
 		ev := *s.LastEvent
@@ -81,6 +94,10 @@ type GameService interface {
 	Step(id string) (*Session, error)
 	// Reset puts the VM back to start, keeping the program; stops playback.
 	Reset(id string) (*Session, error)
+
+	// GetLeaderboard ranks the winning sessions of a map (see LeaderboardQuery).
+	// Errors: NOT_FOUND (unknown map), INVALID_ARGUMENT (bad order or limit).
+	GetLeaderboard(q LeaderboardQuery) (*Leaderboard, error)
 
 	ListMaps() []*engine.Map
 	GetMap(id string) (*engine.Map, error)

@@ -135,3 +135,27 @@ export interface MapInput {
 
 /** WebSocket connection indicator for spectator/play views. */
 export type ConnectionState = 'connecting' | 'live' | 'reconnecting' | 'offline';
+
+/** Leaderboard ordering: fewest slots first (default) or fewest steps first. */
+export type LeaderboardOrder = 'SLOTS' | 'STEPS';
+
+/** One ranked result. Slots and steps are recorded by the server when the run is won. */
+export interface LeaderboardEntry {
+	/** 1-based; entries tied on both slots and steps share a rank. */
+	rank: number;
+	sessionId: string;
+	displayName: string;
+	slots: number;
+	steps: number;
+	achievedAt: string;
+}
+
+export interface Leaderboard {
+	mapId: string;
+	order: LeaderboardOrder;
+	/** Ranked sessions on this board, not just the rows returned. */
+	total: number;
+	entries: LeaderboardEntry[];
+	/** The entry of the requested session, even beyond the returned rows; null when it has not won. */
+	yours: LeaderboardEntry | null;
+}

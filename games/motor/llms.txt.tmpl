@@ -145,8 +145,34 @@ mutation { createMap(map: {id: "my_map", name: "My Map", layout: [">...", "..#*"
 
 ---
 
+## Leaderboard
+
+Every map has a leaderboard of the sessions that won it. Numbers are recorded by the server
+when a run is won; nothing can be submitted, and a board never shows a program.
+
+```graphql
+query { leaderboard(mapId: "MAP_ID", order: SLOTS, limit: 20, sessionId: "SESSION_ID") { mapId order total entries { rank sessionId displayName slots steps achievedAt } yours { rank slots steps } } }
+```
+
+- **slots** is the number of non-EMPTY instructions in the winning program across the main tape
+  and every sub tape. **steps** is how many steps the winning run took.
+- `order: SLOTS` (default) ranks fewest slots first, ties by fewest steps, then earliest.
+  `order: STEPS` ranks fewest steps first, ties by fewest slots, then earliest. Entries tied on
+  both numbers share a rank (1, 2, 2, 4).
+- A session appears at most once per board, with its best result under that order. A later,
+  worse win never replaces a better one; winning again with a smaller program does. Edits and
+  resets after a win do not remove the entry.
+- `limit` defaults to 20 (max 100); `total` is the number of ranked sessions. `yours` is the
+  entry of `sessionId` even when it is outside the returned rows, or null if it has not won.
+- Empty display names show as "Anonymous". The query returns null for an unknown map.
+- Only sessions that played the map's current rules count: changing a map's layout, tape
+  lengths, limits or recursion rule starts a fresh board (renaming it does not).
+
+---
+
 ## Tips
 
 - Subroutines are reusable loops: put `CALL_SUB_1` as the last slot of `subs[0]` on a map with
   `allowRecursion: true` to repeat it until a limit or the win.
 - `bestSteps` is the fewest steps among winning runs of this session.
+- Winning is the start: the leaderboard rewards winning again with fewer slots or steps.

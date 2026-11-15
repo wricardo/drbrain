@@ -41,6 +41,9 @@ const (
 	// sessionsPerCostUnit: a sessions list of N rows costs ceil(N/10) times
 	// its per-row selection cost (the page asks for 500 rows of ~14 each).
 	sessionsPerCostUnit = 10
+	// leaderboardBaseCost is the flat cost of one leaderboard query (it scans
+	// every live session).
+	leaderboardBaseCost = 20
 )
 
 // Options configures the server.
@@ -140,6 +143,16 @@ func complexityRoot() generated.ComplexityRoot {
 		}
 		units := (n + sessionsPerCostUnit - 1) / sessionsPerCostUnit
 		return safeMul(child, units) + 1
+	}
+	// leaderboard: every call scans all live sessions, so it carries a flat
+	// cost, plus the per-row cost scaled by the (clamped) row limit.
+	c.Query.Leaderboard = func(child int, _ string, _ *model.LeaderboardOrder, limit *int, _ *string) int {
+		n := service.DefaultLeaderboardLimit
+		if limit != nil && *limit > 0 {
+			n = min(*limit, service.MaxLeaderboardLimit)
+		}
+		units := (n + sessionsPerCostUnit - 1) / sessionsPerCostUnit
+		return safeMul(child, units) + leaderboardBaseCost
 	}
 	return c
 }
@@ -285,7 +298,7 @@ func (s *Server) handleLLMS(w http.ResponseWriter, r *http.Request) {
 
 // spaRoutes mirrors the top-level directories in frontend/src/routes.
 var spaRoutes = map[string]bool{
-	"": true, "play": true, "watch": true, "maps": true, "editor": true, "learn": true, "sessions": true, "multi": true,
+	"": true, "play": true, "watch": true, "maps": true, "editor": true, "learn": true, "sessions": true, "multi": true, "leaderboard": true,
 }
 
 // isSPARoute reports whether the first path segment is a client-side route.

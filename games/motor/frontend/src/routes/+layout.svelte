@@ -15,6 +15,7 @@
 	const navItems = [
 		{ href: '/', label: 'Play' },
 		{ href: '/maps', label: 'Maps' },
+		{ href: '/leaderboard', label: 'Leaderboard' },
 		{ href: '/sessions', label: 'Sessions' },
 		{ href: '/learn', label: 'How it works' },
 		{ href: '/editor', label: 'Editor' }
@@ -55,7 +56,7 @@
 			<span class="hidden sm:inline border-l border-indigo-200 pl-2 text-sm text-indigo-600">{GAME}</span>
 		</a>
 		<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-			<nav class="flex items-center gap-1 text-sm" aria-label="Main">
+			<nav class="flex flex-wrap items-center gap-1 text-sm" aria-label="Main">
 				{#each navItems as item}
 					{@const active = isActive(item.href, $page.url.pathname)}
 					<a
@@ -86,6 +87,7 @@
 				<ul class="mt-2 space-y-1">
 					<li><a href="/" class={footerLink}>Home</a></li>
 					<li><a href="/maps" class={footerLink}>Maps</a></li>
+					<li><a href="/leaderboard" class={footerLink}>Leaderboard</a></li>
 					<li><a href="/sessions" class={footerLink}>Sessions</a></li>
 					<li><a href="/editor" class={footerLink}>Editor</a></li>
 				</ul>

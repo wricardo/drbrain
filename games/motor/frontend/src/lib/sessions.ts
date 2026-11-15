@@ -95,12 +95,38 @@ export function statusLine(s: {
 
 const LAST_SESSION_KEY = 'drbrain-motor-programming.lastSession';
 
-/** Remembers the session this browser created most recently (for the home "Continue" card). */
+const OWN_SESSIONS_KEY = 'drbrain-motor-programming.ownSessions';
+/** How many session ids this browser remembers as its own (newest kept). */
+export const MAX_OWN_SESSIONS = 200;
+
+/**
+ * Remembers the session this browser created most recently (for the home
+ * "Continue" card) and adds it to the list of sessions this browser owns (so
+ * the leaderboard can highlight its entries).
+ */
 export function rememberSession(id: string): void {
 	try {
 		localStorage.setItem(LAST_SESSION_KEY, id);
 	} catch {
 		// storage unavailable: the Continue card just won't show
+	}
+	try {
+		const ids = ownSessionIds().filter((x) => x !== id);
+		ids.push(id);
+		localStorage.setItem(OWN_SESSIONS_KEY, JSON.stringify(ids.slice(-MAX_OWN_SESSIONS)));
+	} catch {
+		// storage unavailable: no highlighting
+	}
+}
+
+/** Ids of the sessions created in this browser (oldest first); [] when none or storage is unavailable. */
+export function ownSessionIds(): string[] {
+	try {
+		const raw = localStorage.getItem(OWN_SESSIONS_KEY);
+		const parsed: unknown = raw ? JSON.parse(raw) : [];
+		return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+	} catch {
+		return [];
 	}
 }
 

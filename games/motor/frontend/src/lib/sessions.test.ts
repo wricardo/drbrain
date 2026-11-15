@@ -4,6 +4,8 @@ import {
 	progressText,
 	filterSessions,
 	lastSessionId,
+	MAX_OWN_SESSIONS,
+	ownSessionIds,
 	recentStarted,
 	rememberSession,
 	sortSessions,
@@ -108,6 +110,34 @@ describe('rememberSession', () => {
 		expect(lastSessionId()).toBeNull();
 		rememberSession('abc');
 		expect(lastSessionId()).toBe('abc');
+	});
+
+	it('keeps every session this browser created, oldest first, without duplicates', () => {
+		expect(ownSessionIds()).toEqual([]);
+		rememberSession('a');
+		rememberSession('b');
+		rememberSession('a');
+		expect(ownSessionIds()).toEqual(['b', 'a']);
+		expect(lastSessionId()).toBe('a');
+	});
+
+	it('forgets the oldest ids past the cap', () => {
+		for (let i = 0; i < MAX_OWN_SESSIONS + 5; i++) rememberSession(`s${i}`);
+		const ids = ownSessionIds();
+		expect(ids).toHaveLength(MAX_OWN_SESSIONS);
+		expect(ids[0]).toBe('s5');
+		expect(ids.at(-1)).toBe(`s${MAX_OWN_SESSIONS + 4}`);
+	});
+
+	it('ignores a corrupt stored list', () => {
+		localStorage.setItem('drbrain-motor-programming.ownSessions', '{not json');
+		expect(ownSessionIds()).toEqual([]);
+		localStorage.setItem('drbrain-motor-programming.ownSessions', '{"a":1}');
+		expect(ownSessionIds()).toEqual([]);
+		localStorage.setItem('drbrain-motor-programming.ownSessions', '["ok", 3, null]');
+		expect(ownSessionIds()).toEqual(['ok']);
+		rememberSession('new');
+		expect(ownSessionIds()).toEqual(['ok', 'new']);
 	});
 });
 

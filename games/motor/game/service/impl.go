@@ -137,8 +137,8 @@ func initVM(m *engine.Map, p *engine.Program) engine.VMState {
 // recordOutcome counts a finished run. Lock must be held and VM terminal.
 func recordOutcome(s *Session) {
 	s.Attempts++
-	if s.VM.Status == engine.StatusWon && (s.BestSteps == 0 || s.VM.Steps < s.BestSteps) {
-		s.BestSteps = s.VM.Steps
+	if s.VM.Status == engine.StatusWon {
+		s.recordWin(time.Now())
 	}
 }
 

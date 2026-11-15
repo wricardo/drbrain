@@ -204,6 +204,30 @@ func toSession(s *service.Session) *model.Session {
 	return out
 }
 
+func toLeaderboardEntry(e service.LeaderboardEntry) *model.LeaderboardEntry {
+	return &model.LeaderboardEntry{
+		Rank: e.Rank, SessionID: e.SessionID, DisplayName: e.DisplayName,
+		Slots: e.Slots, Steps: e.Steps, AchievedAt: e.At,
+	}
+}
+
+func toLeaderboard(lb *service.Leaderboard) *model.Leaderboard {
+	if lb == nil {
+		return nil
+	}
+	out := &model.Leaderboard{
+		MapID: lb.MapID, Order: model.LeaderboardOrder(lb.Order), Total: lb.Total,
+		Entries: make([]*model.LeaderboardEntry, len(lb.Entries)),
+	}
+	for i, e := range lb.Entries {
+		out.Entries[i] = toLeaderboardEntry(e)
+	}
+	if lb.Yours != nil {
+		out.Yours = toLeaderboardEntry(*lb.Yours)
+	}
+	return out
+}
+
 func toSessionUpdate(s *service.Session) *model.SessionUpdate {
 	return &model.SessionUpdate{Seq: int(s.Seq), Session: toSession(s), Event: toStepEvent(s.LastEvent)}
 }

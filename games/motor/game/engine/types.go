@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"regexp"
 	"strings"
@@ -355,4 +357,47 @@ type StepEvent struct {
 	CallStack   []Frame    `json:"call_stack"`
 	Status      Status     `json:"status"`
 	LossReason  LossReason `json:"loss_reason,omitempty"`
+}
+
+// SlotsUsed counts the non-EMPTY slots across the main tape and every sub
+// tape. It is the "size" of a program: the game is about fitting a route into
+// few slots.
+func (p Program) SlotsUsed() int {
+	n := 0
+	count := func(tape []Instruction) {
+		for _, in := range tape {
+			if in != Empty {
+				n++
+			}
+		}
+	}
+	count(p.Main)
+	for _, s := range p.Subs {
+		count(s)
+	}
+	return n
+}
+
+// Fingerprint identifies the rules of a map: layout, tape lengths, step and
+// depth limits and the recursion rule. Name, description and difficulty are
+// not part of it, so cosmetic edits keep it stable while any change that could
+// make the puzzle easier or harder changes it. Results recorded on one
+// fingerprint are comparable with each other and with no other.
+func (m *Map) Fingerprint() string {
+	h := sha256.New()
+	for _, row := range m.Layout {
+		fmt.Fprintf(h, "%s\n", row)
+	}
+	fmt.Fprintf(h, "main=%d subs=%v steps=%d depth=%d rec=%t", m.MainTapeLength, m.SubTapeLengths, m.MaxSteps, m.MaxCallDepth, m.AllowRecursion)
+	return hex.EncodeToString(h.Sum(nil)[:8])
+}
+
+// TotalSlots is the number of slots on the main tape and all sub tapes: the
+// most a program can use.
+func (m *Map) TotalSlots() int {
+	n := m.MainTapeLength
+	for _, l := range m.SubTapeLengths {
+		n += l
+	}
+	return n
 }

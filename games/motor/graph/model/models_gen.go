@@ -17,6 +17,34 @@ type Frame struct {
 	Pc int `json:"pc"`
 }
 
+// The ranking of one map. Each session appears at most once, with its best result
+// under the chosen order. Only sessions that played the map's current rules count.
+type Leaderboard struct {
+	MapID string           `json:"mapId"`
+	Order LeaderboardOrder `json:"order"`
+	// Ranked sessions on this board, not just the rows returned.
+	Total   int                 `json:"total"`
+	Entries []*LeaderboardEntry `json:"entries"`
+	// The entry of the requested sessionId, even beyond the returned rows; null when it has not won.
+	Yours *LeaderboardEntry `json:"yours,omitempty"`
+}
+
+// One ranked result. Slots and steps are recorded by the server when the run is won, never supplied by a client.
+type LeaderboardEntry struct {
+	// 1-based. Entries that tie on both slots and steps share a rank.
+	Rank int `json:"rank"`
+	// The winning session; spectate it at /watch/<sessionId>.
+	SessionID string `json:"sessionId"`
+	// Empty names are shown as Anonymous.
+	DisplayName string `json:"displayName"`
+	// Non-EMPTY instructions in the winning program, across main and all subs.
+	Slots int `json:"slots"`
+	// Steps the winning run took.
+	Steps int `json:"steps"`
+	// When the result was achieved.
+	AchievedAt time.Time `json:"achievedAt"`
+}
+
 type Map struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
@@ -260,6 +288,63 @@ func (e *Instruction) UnmarshalJSON(b []byte) error {
 }
 
 func (e Instruction) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type LeaderboardOrder string
+
+const (
+	// Fewest slots used first; ties by fewest steps, then earliest. The default.
+	LeaderboardOrderSlots LeaderboardOrder = "SLOTS"
+	// Fewest steps first; ties by fewest slots, then earliest.
+	LeaderboardOrderSteps LeaderboardOrder = "STEPS"
+)
+
+var AllLeaderboardOrder = []LeaderboardOrder{
+	LeaderboardOrderSlots,
+	LeaderboardOrderSteps,
+}
+
+func (e LeaderboardOrder) IsValid() bool {
+	switch e {
+	case LeaderboardOrderSlots, LeaderboardOrderSteps:
+		return true
+	}
+	return false
+}
+
+func (e LeaderboardOrder) String() string {
+	return string(e)
+}
+
+func (e *LeaderboardOrder) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = LeaderboardOrder(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid LeaderboardOrder", str)
+	}
+	return nil
+}
+
+func (e LeaderboardOrder) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *LeaderboardOrder) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e LeaderboardOrder) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

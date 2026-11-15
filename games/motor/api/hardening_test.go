@@ -81,6 +81,8 @@ func TestFrontendQueriesStayUnderComplexityLimit(t *testing.T) {
 		{"sessions page (limit 500)", sessionsQ, map[string]any{"limit": json.Number("500")}},
 		{"sessions home (limit 12)", sessionsQ, map[string]any{"limit": json.Number("12")}},
 		{"sessions default limit", sessionsQ, nil},
+		{"leaderboard (limit 100)", leaderboardQ, map[string]any{"mapId": "x", "limit": json.Number("100"), "sessionId": "y"}},
+		{"leaderboard default limit", leaderboardQ, map[string]any{"mapId": "x"}},
 		{"mutation with full session", `mutation($sessionID: ID!) { run(sessionID: $sessionID) { ` + sessionSel + ` } }`, map[string]any{"sessionID": "x"}},
 		{"subscription", `subscription($sessionID: ID!) { sessionUpdated(sessionID: $sessionID) { seq session { ` + sessionSel + ` } event { ` + eventSel + ` } } }`, map[string]any{"sessionID": "x"}},
 	}

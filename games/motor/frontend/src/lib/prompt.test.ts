@@ -76,6 +76,17 @@ describe('buildSessionPrompt', () => {
 	});
 });
 
+describe('leaderboard in prompts', () => {
+	it('tells a session agent how winners are ranked and how to read its own rank', () => {
+		const p = buildSessionPrompt('http://h:1', { id: 'abc123', map: map() });
+		expect(p).toContain('ranked per map by slots used');
+		expect(p).toContain('leaderboard(mapId: "tiny", sessionId: "abc123")');
+	});
+	it('mentions the board in the generic prompt', () => {
+		expect(buildGenericPrompt('http://h:1')).toContain('leaderboard(mapId: "MAP_ID")');
+	});
+});
+
 describe('buildGenericPrompt', () => {
 	it('points the agent at llms.txt and the create-session flow', () => {
 		const g = buildGenericPrompt('http://h:1');

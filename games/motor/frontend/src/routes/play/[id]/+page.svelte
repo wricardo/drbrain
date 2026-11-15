@@ -370,6 +370,8 @@
 				steps={session.vm.steps}
 				maxSteps={session.map.maxSteps}
 				bestSteps={session.bestSteps}
+				mapId={session.mapId}
+				sessionId={session.id}
 				treats={{ collected: session.map.treats.length - session.vm.treatsRemaining.length, total: session.map.treats.length }}
 				nextName={next?.name ?? null}
 				{busy}
