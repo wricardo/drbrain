@@ -12,11 +12,12 @@
 		handleChangeText,
 		handleProblem,
 		normalizeHandle,
+		passwordProblem,
 		profileHref,
 		summarizeClaims
 	} from '$lib/account';
 	import { describeError } from '$lib/errors';
-	import { CLAIM_SESSIONS_MUTATION, DELETE_ACCOUNT_MUTATION, UPDATE_ACCOUNT_MUTATION } from '$lib/queries';
+	import { CHANGE_PASSWORD_MUTATION, CLAIM_SESSIONS_MUTATION, DELETE_ACCOUNT_MUTATION, UPDATE_ACCOUNT_MUTATION } from '$lib/queries';
 	import { claimableSessions, forgetAllOwnerTokens, forgetOwnerTokens } from '$lib/sessions';
 	import { account, setMe } from '$lib/stores/account';
 	import type { Account, SessionClaimResult } from '$lib/types';
@@ -71,6 +72,32 @@
 			problem = describeError(err).message || 'Could not save.';
 		} finally {
 			saving = false;
+		}
+	}
+
+	// ---- password (username/password accounts only) ----
+	let currentPw = $state('');
+	let newPw = $state('');
+	let pwBusy = $state(false);
+	let pwMessage = $state('');
+	let pwError = $state('');
+	const newPwProblem = $derived(newPw ? passwordProblem(newPw, me?.handle ?? '') : null);
+
+	async function changePassword(e: SubmitEvent) {
+		e.preventDefault();
+		if (pwBusy || !currentPw || !newPw || newPwProblem) return;
+		pwBusy = true;
+		pwMessage = '';
+		pwError = '';
+		try {
+			await unwrap(client.mutation(CHANGE_PASSWORD_MUTATION, { currentPassword: currentPw, newPassword: newPw }));
+			currentPw = '';
+			newPw = '';
+			pwMessage = 'Password changed. Your other browsers were signed out.';
+		} catch (err) {
+			pwError = describeError(err).message || 'Could not change the password.';
+		} finally {
+			pwBusy = false;
 		}
 	}
 
@@ -180,6 +207,34 @@
 			{#if problem}<p class="text-sm text-rose-700" role="alert" data-testid="s-problem">{problem}</p>{/if}
 		</form>
 
+		{#if me.hasPassword}
+			<form class="space-y-3 rounded-xl border border-indigo-200 bg-white p-4" onsubmit={changePassword} data-testid="password-settings">
+				<h2 class="text-lg font-semibold text-indigo-950">Password</h2>
+				<div>
+					<label for="s-cur-pw" class="block text-sm font-medium text-indigo-950">Current password</label>
+					<input id="s-cur-pw" type="password" class={field} bind:value={currentPw} autocomplete="current-password" data-testid="s-cur-pw" />
+				</div>
+				<div>
+					<label for="s-new-pw" class="block text-sm font-medium text-indigo-950">New password</label>
+					<input id="s-new-pw" type="password" class={field} bind:value={newPw} autocomplete="new-password" data-testid="s-new-pw" />
+					{#if newPwProblem}<p class="mt-1 text-xs text-rose-700" role="alert">{newPwProblem}</p>{/if}
+				</div>
+				<p class="text-xs text-slate-600">
+					There is no email on this account, so a forgotten password cannot be reset. Changing it signs your other browsers out.
+				</p>
+				<div class="flex flex-wrap items-center gap-3">
+					<button
+						type="submit"
+						class="rounded-full bg-indigo-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+						disabled={pwBusy || !currentPw || !newPw || !!newPwProblem}
+						data-testid="s-pw-save">{pwBusy ? 'Saving…' : 'Change password'}</button
+					>
+					<span class="text-sm text-emerald-700" role="status" aria-live="polite" data-testid="s-pw-ok">{pwMessage}</span>
+				</div>
+				{#if pwError}<p class="text-sm text-rose-700" role="alert" data-testid="s-pw-error">{pwError}</p>{/if}
+			</form>
+		{/if}
+
 		<section class="space-y-2 rounded-xl border border-indigo-200 bg-white p-4" aria-labelledby="guest-title">
 			<h2 id="guest-title" class="text-lg font-semibold text-indigo-950">Guest runs in this browser</h2>
 			{#if claimable.length > 0}
@@ -216,7 +271,7 @@
 				>
 			{:else}
 				<div class="space-y-2 rounded-lg border border-rose-300 bg-rose-50 p-3" role="group" aria-label="Confirm account deletion" data-testid="delete-confirm">
-					<label for="s-confirm" class="block text-sm text-rose-950">Type your handle (<strong>{me.handle}</strong>) to confirm:</label>
+					<label for="s-confirm" class="block text-sm text-rose-900">Type your handle (<strong>{me.handle}</strong>) to confirm:</label>
 					<input id="s-confirm" class={field} bind:value={typed} autocomplete="off" autocapitalize="none" spellcheck="false" pattern={HANDLE_RE.source} data-testid="delete-input" />
 					<div class="flex flex-wrap gap-2">
 						<button

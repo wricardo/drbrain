@@ -55,6 +55,7 @@ type ComplexityRoot struct {
 		DisplayName        func(childComplexity int) int
 		Handle             func(childComplexity int) int
 		HandleChangeableAt func(childComplexity int) int
+		HasPassword        func(childComplexity int) int
 		ProfilePublic      func(childComplexity int) int
 	}
 
@@ -118,22 +119,23 @@ type ComplexityRoot struct {
 	}
 
 	Mutation struct {
-		ClaimSessions func(childComplexity int, claims []*model.SessionClaimInput) int
-		CreateMap     func(childComplexity int, mapArg model.MapInput) int
-		CreateSession func(childComplexity int, mapID string, displayName *string) int
-		DeleteAccount func(childComplexity int, confirmHandle string) int
-		DeleteMap     func(childComplexity int, id string) int
-		DeleteSession func(childComplexity int, id string) int
-		Logout        func(childComplexity int) int
-		Pause         func(childComplexity int, sessionID string) int
-		RenameSession func(childComplexity int, id string, displayName string) int
-		Reset         func(childComplexity int, sessionID string) int
-		Run           func(childComplexity int, sessionID string, speedMs *int) int
-		SetProgram    func(childComplexity int, sessionID string, program model.ProgramInput) int
-		Step          func(childComplexity int, sessionID string) int
-		UpdateAccount func(childComplexity int, input model.AccountInput) int
-		UpdateMap     func(childComplexity int, mapArg model.MapInput) int
-		ValidateMap   func(childComplexity int, mapArg model.MapInput) int
+		ChangePassword func(childComplexity int, currentPassword string, newPassword string) int
+		ClaimSessions  func(childComplexity int, claims []*model.SessionClaimInput) int
+		CreateMap      func(childComplexity int, mapArg model.MapInput) int
+		CreateSession  func(childComplexity int, mapID string, displayName *string) int
+		DeleteAccount  func(childComplexity int, confirmHandle string) int
+		DeleteMap      func(childComplexity int, id string) int
+		DeleteSession  func(childComplexity int, id string) int
+		Logout         func(childComplexity int) int
+		Pause          func(childComplexity int, sessionID string) int
+		RenameSession  func(childComplexity int, id string, displayName string) int
+		Reset          func(childComplexity int, sessionID string) int
+		Run            func(childComplexity int, sessionID string, speedMs *int) int
+		SetProgram     func(childComplexity int, sessionID string, program model.ProgramInput) int
+		Step           func(childComplexity int, sessionID string) int
+		UpdateAccount  func(childComplexity int, input model.AccountInput) int
+		UpdateMap      func(childComplexity int, mapArg model.MapInput) int
+		ValidateMap    func(childComplexity int, mapArg model.MapInput) int
 	}
 
 	PlayerRun struct {
@@ -248,6 +250,7 @@ type MutationResolver interface {
 	Reset(ctx context.Context, sessionID string) (*model.Session, error)
 	Logout(ctx context.Context) (bool, error)
 	UpdateAccount(ctx context.Context, input model.AccountInput) (*model.Account, error)
+	ChangePassword(ctx context.Context, currentPassword string, newPassword string) (bool, error)
 	DeleteAccount(ctx context.Context, confirmHandle string) (bool, error)
 	ClaimSessions(ctx context.Context, claims []*model.SessionClaimInput) ([]*model.SessionClaimResult, error)
 	CreateMap(ctx context.Context, mapArg model.MapInput) (*model.Map, error)
@@ -316,6 +319,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Account.HandleChangeableAt(childComplexity), true
+
+	case "Account.hasPassword":
+		if e.complexity.Account.HasPassword == nil {
+			break
+		}
+
+		return e.complexity.Account.HasPassword(childComplexity), true
 
 	case "Account.profilePublic":
 		if e.complexity.Account.ProfilePublic == nil {
@@ -589,6 +599,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.MapValidationResult.Valid(childComplexity), true
+
+	case "Mutation.changePassword":
+		if e.complexity.Mutation.ChangePassword == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_changePassword_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.ChangePassword(childComplexity, args["currentPassword"].(string), args["newPassword"].(string)), true
 
 	case "Mutation.claimSessions":
 		if e.complexity.Mutation.ClaimSessions == nil {
@@ -1616,6 +1638,8 @@ type Account {
   createdAt: Time!
   "When the handle may be changed again; null when it can be changed now."
   handleChangeableAt: Time
+  "True for a username/password account (the only kind that can change a password)."
+  hasPassword: Boolean!
 }
 
 "A way to sign in, enabled on this server. Sign in by navigating to /auth/<id>/login."
@@ -1698,6 +1722,8 @@ type Mutation {
   logout: Boolean!
   "Changes the signed-in player's handle, display name or profile visibility."
   updateAccount(input: AccountInput!): Account!
+  "Changes the password of a username/password account and signs out its other browsers. There is no email, so there is no password reset."
+  changePassword(currentPassword: String!, newPassword: String!): Boolean!
   "Permanently deletes the account and signs out. confirmHandle must equal the current handle. Its runs stay on the boards as guest entries."
   deleteAccount(confirmHandle: String!): Boolean!
   "Attaches guest sessions of this browser to the signed-in account; each needs its owner token (up to 100 per call)."
@@ -1723,6 +1749,57 @@ var parsedSchema = gqlparser.MustLoadSchema(sources...)
 // endregion ************************** generated!.gotpl **************************
 
 // region    ***************************** args.gotpl *****************************
+
+func (ec *executionContext) field_Mutation_changePassword_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Mutation_changePassword_argsCurrentPassword(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["currentPassword"] = arg0
+	arg1, err := ec.field_Mutation_changePassword_argsNewPassword(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["newPassword"] = arg1
+	return args, nil
+}
+func (ec *executionContext) field_Mutation_changePassword_argsCurrentPassword(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["currentPassword"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("currentPassword"))
+	if tmp, ok := rawArgs["currentPassword"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Mutation_changePassword_argsNewPassword(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["newPassword"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("newPassword"))
+	if tmp, ok := rawArgs["newPassword"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
 
 func (ec *executionContext) field_Mutation_claimSessions_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
@@ -2930,6 +3007,50 @@ func (ec *executionContext) fieldContext_Account_handleChangeableAt(_ context.Co
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Account_hasPassword(ctx context.Context, field graphql.CollectedField, obj *model.Account) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Account_hasPassword(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.HasPassword, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Account_hasPassword(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Account",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
 		},
 	}
 	return fc, nil
@@ -5422,6 +5543,8 @@ func (ec *executionContext) fieldContext_Mutation_updateAccount(ctx context.Cont
 				return ec.fieldContext_Account_createdAt(ctx, field)
 			case "handleChangeableAt":
 				return ec.fieldContext_Account_handleChangeableAt(ctx, field)
+			case "hasPassword":
+				return ec.fieldContext_Account_hasPassword(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Account", field.Name)
 		},
@@ -5434,6 +5557,61 @@ func (ec *executionContext) fieldContext_Mutation_updateAccount(ctx context.Cont
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_updateAccount_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_changePassword(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_changePassword(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().ChangePassword(rctx, fc.Args["currentPassword"].(string), fc.Args["newPassword"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mutation_changePassword(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_changePassword_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -6456,6 +6634,8 @@ func (ec *executionContext) fieldContext_Query_me(_ context.Context, field graph
 				return ec.fieldContext_Account_createdAt(ctx, field)
 			case "handleChangeableAt":
 				return ec.fieldContext_Account_handleChangeableAt(ctx, field)
+			case "hasPassword":
+				return ec.fieldContext_Account_hasPassword(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Account", field.Name)
 		},
@@ -11469,6 +11649,11 @@ func (ec *executionContext) _Account(ctx context.Context, sel ast.SelectionSet, 
 			}
 		case "handleChangeableAt":
 			out.Values[i] = ec._Account_handleChangeableAt(ctx, field, obj)
+		case "hasPassword":
+			out.Values[i] = ec._Account_hasPassword(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -12030,6 +12215,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "updateAccount":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_updateAccount(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "changePassword":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_changePassword(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++

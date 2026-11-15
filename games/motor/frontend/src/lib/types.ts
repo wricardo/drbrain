@@ -183,6 +183,8 @@ export interface Account {
 	createdAt: string;
 	/** When the handle may be changed again; null when it can be changed now. */
 	handleChangeableAt: string | null;
+	/** True for a username/password account (the only kind that can change a password). */
+	hasPassword: boolean;
 }
 
 /** A way to sign in that this server has enabled. Sign in by navigating to /auth/<id>/login. */

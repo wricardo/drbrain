@@ -146,3 +146,57 @@ export function claimResultText(o: ClaimOutcome): string {
 	if (o.rejected > 0) parts.push(`${o.rejected} could not be added (already on another account, or not from this browser).`);
 	return parts.join(' ') || 'Nothing to add.';
 }
+
+/** The provider id of username/password sign-in. It is a form, not a redirect like Google or GitHub. */
+export const PASSWORD_PROVIDER = 'password';
+export const MIN_PASSWORD = 8;
+export const MAX_PASSWORD_BYTES = 128;
+
+/**
+ * A short reason a new password cannot work, or null. The server also rejects very common passwords
+ * and is the authority; this only saves a round trip for the obvious cases.
+ */
+export function passwordProblem(password: string, handle = ''): string | null {
+	if ([...password].length < MIN_PASSWORD) return `Use at least ${MIN_PASSWORD} characters.`;
+	if (new TextEncoder().encode(password).length > MAX_PASSWORD_BYTES) return 'That password is too long.';
+	if (handle && password.toLowerCase() === normalizeHandle(handle)) return 'The password cannot be the same as your username.';
+	return null;
+}
+
+export type PasswordMode = 'login' | 'register';
+
+export interface PasswordResult {
+	ok: boolean;
+	/** The server's reason when not ok. */
+	message: string;
+}
+
+/**
+ * Posts the username/password form to /auth/password/login or /auth/password/register. The server
+ * sets the login cookie on success. The same-origin JSON request is what the server insists on.
+ */
+export async function submitPassword(
+	mode: PasswordMode,
+	handle: string,
+	password: string,
+	doFetch: typeof fetch = fetch
+): Promise<PasswordResult> {
+	try {
+		const res = await doFetch(`/auth/password/${mode}`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ handle: normalizeHandle(handle), password })
+		});
+		if (res.ok) return { ok: true, message: '' };
+		let message = '';
+		try {
+			const body = (await res.json()) as { error?: unknown };
+			if (typeof body.error === 'string') message = body.error;
+		} catch {
+			// not JSON: fall through to the generic text
+		}
+		return { ok: false, message: message || (res.status === 429 ? 'Too many attempts. Try again later.' : 'That did not work. Try again.') };
+	} catch {
+		return { ok: false, message: 'Could not reach the server.' };
+	}
+}

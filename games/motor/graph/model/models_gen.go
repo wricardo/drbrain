@@ -20,6 +20,8 @@ type Account struct {
 	CreatedAt     time.Time `json:"createdAt"`
 	// When the handle may be changed again; null when it can be changed now.
 	HandleChangeableAt *time.Time `json:"handleChangeableAt,omitempty"`
+	// True for a username/password account (the only kind that can change a password).
+	HasPassword bool `json:"hasPassword"`
 }
 
 type AccountInput struct {

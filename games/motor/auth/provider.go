@@ -328,12 +328,24 @@ func ProvidersFromEnv(getenv func(string) string, publicURL string) ([]Provider,
 		}
 		out = append(out, NewDev(u.String()))
 	}
-	if len(out) > 0 {
+	if len(out) > 0 || PasswordFromEnv(getenv) {
 		if _, err := ParseBaseURL(publicURL); err != nil {
-			return nil, fmt.Errorf("sign-in needs -public-url (the site's base URL, used for OAuth callbacks): %w", err)
+			return nil, fmt.Errorf("sign-in needs -public-url (the site's base URL, used for OAuth callbacks and same-origin checks): %w", err)
 		}
 	}
 	return out, nil
+}
+
+// PasswordFromEnv reports whether AUTH_PASSWORD enables username/password accounts.
+func PasswordFromEnv(getenv func(string) string) bool {
+	if getenv == nil {
+		getenv = os.Getenv
+	}
+	switch strings.ToLower(strings.TrimSpace(getenv("AUTH_PASSWORD"))) {
+	case "true", "1", "yes":
+		return true
+	}
+	return false
 }
 
 // ParseBaseURL parses an absolute http(s) base URL without path, query or user info.

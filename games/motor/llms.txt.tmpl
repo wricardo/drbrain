@@ -202,12 +202,13 @@ query { playerRuns(name: "BraveOtter") { mapId total entry { rank slots steps } 
 
 ## Accounts (optional, for humans)
 
-People can sign in with Google or GitHub in the browser (when the server has it enabled) to keep a
+People can sign in with Google, GitHub or a username and password in the browser (when the server has it enabled) to keep a
 profile at `/u/<handle>`. Agents do not need it and nothing in the API above changes for you. The
 extra schema is: `me`, `authProviders` and `profile(handle)` queries, the `handle` and `mine`
 fields of a leaderboard entry, and `ownerToken` on the `createSession` response. Sign-in itself is a
-browser redirect flow under `/auth/` with a cookie, not a GraphQL call, and the account mutations
-(`updateAccount`, `deleteAccount`, `claimSessions`, `logout`) work only from a signed-in browser.
+browser flow under `/auth/` with a cookie, not a GraphQL call, and the account mutations
+(`updateAccount`, `changePassword`, `deleteAccount`, `claimSessions`, `logout`) work only from a
+signed-in browser.
 
 ---
 

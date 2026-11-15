@@ -144,8 +144,9 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("sign-in configuration: %w", err)
 	}
+	passwordSignIn := auth.PasswordFromEnv(os.Getenv)
 	var accounts *account.Store
-	if len(providers) > 0 || dirExists(*accountsDir) {
+	if len(providers) > 0 || passwordSignIn || dirExists(*accountsDir) {
 		accounts, err = account.Open(*accountsDir, nil)
 		if err != nil {
 			return fmt.Errorf("accounts: %w", err)
@@ -154,8 +155,9 @@ func run() error {
 
 	hub := websocket.NewHub()
 	svcOpts := service.Options{
-		SessionTTL:  envDuration("SESSION_TTL", 7*24*time.Hour),
-		MaxAccounts: envInt("MAX_ACCOUNTS", defaultMaxAccounts),
+		SessionTTL:     envDuration("SESSION_TTL", 7*24*time.Hour),
+		MaxAccounts:    envInt("MAX_ACCOUNTS", defaultMaxAccounts),
+		PasswordSignIn: passwordSignIn,
 	}
 	if accounts != nil {
 		svcOpts.Accounts = accounts
@@ -163,9 +165,10 @@ func run() error {
 	svc := service.New(maps, sessions, hub, svcOpts)
 
 	var authHandler *auth.Auth
-	if len(providers) > 0 {
+	if len(providers) > 0 || passwordSignIn {
 		authHandler, err = auth.New(auth.Config{
 			Providers: providers, Accounts: svc, PublicURL: *publicURL, AllowedOrigins: os.Getenv("ALLOWED_ORIGINS"),
+			Password: passwordSignIn,
 		})
 		if err != nil {
 			return fmt.Errorf("sign-in: %w", err)
@@ -174,7 +177,7 @@ func run() error {
 		for i, p := range providers {
 			names[i] = p.ID()
 		}
-		log.Printf("sign-in enabled: %v (accounts=%s)", names, *accountsDir)
+		log.Printf("sign-in enabled: %v password=%t (accounts=%s)", names, passwordSignIn, *accountsDir)
 	}
 
 	introspection := envBool("GRAPHQL_INTROSPECTION", true)
