@@ -146,7 +146,8 @@ func TestLeaderboardRanking(t *testing.T) {
 	direct1 := e.wonBy(t, "wide", "Direct1", wideDirect())
 	waitClockAdvance(t, e.get(t, direct1).FewestSlots.At)
 	direct2 := e.wonBy(t, "wide", "Direct2", wideDirect())
-	waste := e.wonBy(t, "wide", "", wideWasteful())
+	waste := e.wonBy(t, "wide", "", wideWasteful()) // no name: the service assigns a guest name
+	guest := e.get(t, waste).DisplayName
 	e.create(t, "wide") // never won: not on the board
 
 	tests := []struct {
@@ -156,11 +157,11 @@ func TestLeaderboardRanking(t *testing.T) {
 		want  []string
 	}{
 		{"default is slots then steps", service.LeaderboardQuery{MapID: "wide"}, service.OrderSlots,
-			[]string{"Via #1 6/9", "Direct1 #2 7/7", "Direct2 #2 7/7", "Anonymous #4 8/11"}},
+			[]string{"Via #1 6/9", "Direct1 #2 7/7", "Direct2 #2 7/7", guest + " #4 8/11"}},
 		{"explicit slots, lowercase", service.LeaderboardQuery{MapID: "wide", Order: "slots"}, service.OrderSlots,
-			[]string{"Via #1 6/9", "Direct1 #2 7/7", "Direct2 #2 7/7", "Anonymous #4 8/11"}},
+			[]string{"Via #1 6/9", "Direct1 #2 7/7", "Direct2 #2 7/7", guest + " #4 8/11"}},
 		{"steps then slots", service.LeaderboardQuery{MapID: "wide", Order: service.OrderSteps}, service.OrderSteps,
-			[]string{"Direct1 #1 7/7", "Direct2 #1 7/7", "Via #3 6/9", "Anonymous #4 8/11"}},
+			[]string{"Direct1 #1 7/7", "Direct2 #1 7/7", "Via #3 6/9", guest + " #4 8/11"}},
 		{"limit", service.LeaderboardQuery{MapID: "wide", Limit: 2}, service.OrderSlots,
 			[]string{"Via #1 6/9", "Direct1 #2 7/7"}},
 	}

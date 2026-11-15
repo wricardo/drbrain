@@ -98,6 +98,9 @@ type GameService interface {
 	// GetLeaderboard ranks the winning sessions of a map (see LeaderboardQuery).
 	// Errors: NOT_FOUND (unknown map), INVALID_ARGUMENT (bad order or limit).
 	GetLeaderboard(q LeaderboardQuery) (*Leaderboard, error)
+	// GetPlayerRuns returns the best run per won map for a set of session ids
+	// or a display name (see RunsQuery). Errors: INVALID_ARGUMENT.
+	GetPlayerRuns(q RunsQuery) ([]PlayerRun, error)
 
 	ListMaps() []*engine.Map
 	GetMap(id string) (*engine.Map, error)

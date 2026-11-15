@@ -16,6 +16,7 @@
 		{ href: '/', label: 'Play' },
 		{ href: '/maps', label: 'Maps' },
 		{ href: '/leaderboard', label: 'Leaderboard' },
+		{ href: '/runs', label: 'My runs' },
 		{ href: '/sessions', label: 'Sessions' },
 		{ href: '/learn', label: 'How it works' },
 		{ href: '/editor', label: 'Editor' }
@@ -88,6 +89,7 @@
 					<li><a href="/" class={footerLink}>Home</a></li>
 					<li><a href="/maps" class={footerLink}>Maps</a></li>
 					<li><a href="/leaderboard" class={footerLink}>Leaderboard</a></li>
+					<li><a href="/runs" class={footerLink}>My runs</a></li>
 					<li><a href="/sessions" class={footerLink}>Sessions</a></li>
 					<li><a href="/editor" class={footerLink}>Editor</a></li>
 				</ul>

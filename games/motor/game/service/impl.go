@@ -158,10 +158,15 @@ func advance(s *Session) bool {
 	return false
 }
 
+// cleanName trims and length-checks a display name. An empty name becomes a
+// random guest name (see GuestName), so a session always has one.
 func (svc *gameService) cleanName(name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if n := utf8.RuneCountInString(name); n > svc.opts.MaxDisplayName {
 		return "", Errorf(CodeInvalidArgument, "display name too long (%d characters, max %d)", n, svc.opts.MaxDisplayName)
+	}
+	if name == "" {
+		name = GuestName(svc.opts.MaxDisplayName)
 	}
 	return name, nil
 }

@@ -114,22 +114,106 @@ type Leaderboard struct {
 	Yours *LeaderboardEntry
 }
 
-// GetLeaderboard ranks the winning sessions of a map. The board is derived
-// from the sessions themselves: every number was recorded by the server when
-// the run was won, so nothing here can be forged by a client.
-//
-// Only sessions that played the map's current rules count (see
-// engine.Map.Fingerprint): a session started before the map was edited keeps
-// its own snapshot but is not comparable with the current puzzle. A map that
-// no longer exists is NOT_FOUND.
-func (svc *gameService) GetLeaderboard(q LeaderboardQuery) (*Leaderboard, error) {
-	order := strings.ToUpper(q.Order)
-	switch order {
+// parseOrder normalises an order name; "" is the default.
+func parseOrder(s string) (string, error) {
+	switch o := strings.ToUpper(s); o {
 	case "":
-		order = OrderSlots
+		return OrderSlots, nil
 	case OrderSlots, OrderSteps:
-	default:
-		return nil, Errorf(CodeInvalidArgument, "unknown order %q (want %s or %s)", q.Order, OrderSlots, OrderSteps)
+		return o, nil
+	}
+	return "", Errorf(CodeInvalidArgument, "unknown order %q (want %s or %s)", s, OrderSlots, OrderSteps)
+}
+
+// boardRow is one session's recorded win under an ordering.
+type boardRow struct {
+	id, name string // name is the raw stored display name
+	mapID    string
+	win      Win
+	rank     int
+}
+
+// rankedBoards scans the live sessions once and returns, per map, the ranked
+// rows of the sessions that won it under order. If onlyMap is set only that
+// map is ranked. Only sessions that played a map's current rules count (see
+// engine.Map.Fingerprint); maps that no longer exist have no board. Rows are
+// sorted by the ordering, then earliest win, then session id; ties share a
+// rank.
+//
+// Every number was recorded by the server when the run was won, so nothing
+// here can be forged by a client. Each session lock is held only to copy a few
+// small values; there is no I/O.
+func (svc *gameService) rankedBoards(order, onlyMap string) map[string][]boardRow {
+	type fpRow struct {
+		boardRow
+		fp string
+	}
+	var all []fpRow
+	for _, s := range svc.sessions.List() {
+		s.Lock()
+		if onlyMap == "" || s.MapID == onlyMap {
+			w := s.FewestSlots
+			if order == OrderSteps {
+				w = s.FewestSteps
+			}
+			// s.Map is immutable after creation.
+			if w != nil {
+				all = append(all, fpRow{boardRow{id: s.ID, name: s.DisplayName, mapID: s.MapID, win: *w}, s.Map.Fingerprint()})
+			}
+		}
+		s.Unlock()
+	}
+
+	current := make(map[string]string) // map id -> current fingerprint ("" = no such map)
+	byMap := make(map[string][]boardRow)
+	for _, r := range all {
+		fp, ok := current[r.mapID]
+		if !ok {
+			if m, err := svc.maps.Get(r.mapID); err == nil {
+				fp = m.Fingerprint()
+			}
+			current[r.mapID] = fp
+		}
+		if fp != "" && r.fp == fp {
+			byMap[r.mapID] = append(byMap[r.mapID], r.boardRow)
+		}
+	}
+	for id, rows := range byMap {
+		sort.Slice(rows, func(i, j int) bool {
+			a, b := rows[i].win, rows[j].win
+			if ka, kb := a.key(order), b.key(order); ka != kb {
+				return ka[0] < kb[0] || (ka[0] == kb[0] && ka[1] < kb[1])
+			}
+			if !a.At.Equal(b.At) {
+				return a.At.Before(b.At)
+			}
+			return rows[i].id < rows[j].id
+		})
+		rank := 0
+		for i := range rows {
+			if i == 0 || rows[i].win.key(order) != rows[i-1].win.key(order) {
+				rank = i + 1
+			}
+			rows[i].rank = rank
+		}
+		byMap[id] = rows
+	}
+	return byMap
+}
+
+func (svc *gameService) entryOf(r boardRow) LeaderboardEntry {
+	return LeaderboardEntry{
+		Rank: r.rank, SessionID: r.id, DisplayName: PublicName(r.name, svc.opts.MaxDisplayName),
+		Slots: r.win.Slots, Steps: r.win.Steps, At: r.win.At,
+	}
+}
+
+// GetLeaderboard ranks the winning sessions of a map. A map that no longer
+// exists is NOT_FOUND.
+func (svc *gameService) GetLeaderboard(q LeaderboardQuery) (*Leaderboard, error) {
+	order, err := parseOrder(q.Order)
+	if err != nil {
+		return nil, err
 	}
 	limit := q.Limit
 	switch {
@@ -140,61 +224,87 @@ func (svc *gameService) GetLeaderboard(q LeaderboardQuery) (*Leaderboard, error)
 	case limit > MaxLeaderboardLimit:
 		limit = MaxLeaderboardLimit
 	}
-	m, err := svc.maps.Get(q.MapID)
-	if err != nil {
+	if _, err := svc.maps.Get(q.MapID); err != nil {
 		return nil, err
 	}
-	fp := m.Fingerprint()
 
-	type row struct {
-		id, name string
-		win      Win
-	}
-	var rows []row
-	for _, s := range svc.sessions.List() {
-		s.Lock()
-		if s.MapID == q.MapID {
-			w := s.FewestSlots
-			if order == OrderSteps {
-				w = s.FewestSteps
-			}
-			// s.Map is immutable after creation.
-			if w != nil && s.Map.Fingerprint() == fp {
-				rows = append(rows, row{id: s.ID, name: s.DisplayName, win: *w})
-			}
-		}
-		s.Unlock()
-	}
-	sort.Slice(rows, func(i, j int) bool {
-		a, b := rows[i].win, rows[j].win
-		if ka, kb := a.key(order), b.key(order); ka != kb {
-			return ka[0] < kb[0] || (ka[0] == kb[0] && ka[1] < kb[1])
-		}
-		if !a.At.Equal(b.At) {
-			return a.At.Before(b.At)
-		}
-		return rows[i].id < rows[j].id
-	})
-
+	rows := svc.rankedBoards(order, q.MapID)[q.MapID]
 	lb := &Leaderboard{MapID: q.MapID, Order: order, Total: len(rows), Entries: []LeaderboardEntry{}}
-	rank := 0
 	for i, r := range rows {
-		if i == 0 || r.win.key(order) != rows[i-1].win.key(order) {
-			rank = i + 1
-		}
-		e := LeaderboardEntry{
-			Rank: rank, SessionID: r.id, DisplayName: PublicName(r.name, svc.opts.MaxDisplayName),
-			Slots: r.win.Slots, Steps: r.win.Steps, At: r.win.At,
-		}
 		if i < limit {
-			lb.Entries = append(lb.Entries, e)
+			lb.Entries = append(lb.Entries, svc.entryOf(r))
 		}
 		if q.SessionID != "" && r.id == q.SessionID {
-			c := e
-			lb.Yours = &c
+			e := svc.entryOf(r)
+			lb.Yours = &e
 		}
 	}
 	return lb, nil
+}
+
+// MaxRunSessionIDs bounds RunsQuery.SessionIDs (the number of sessions a
+// browser remembers as its own).
+const MaxRunSessionIDs = 200
+
+// RunsQuery selects a player's sessions: either an explicit set of session
+// ids (the sessions one browser created) or a display name. Exactly one must
+// be given.
+//
+// There are no accounts yet, so a "player" is only whatever the caller can
+// name. Session ids are exact; a display name is a convenience that matches
+// every session with that name (case-insensitive) and therefore can mix
+// people who chose the same name. A future player id would be a third way to
+// select sessions and nothing else here would change.
+type RunsQuery struct {
+	SessionIDs []string
+	Name       string
+}
+
+// PlayerRun is a player's best result on one map: the best of their winning
+// sessions on the SLOTS board, with its current rank there.
+type PlayerRun struct {
+	MapID string
+	// Entry is the winning session's row (Entry.Rank is its rank on the SLOTS board).
+	Entry LeaderboardEntry
+	// Total is the number of ranked sessions on that board.
+	Total int
+}
+
+// GetPlayerRuns returns the best run per map (maps never won are absent) for
+// the selected sessions, ordered by map id. Errors: INVALID_ARGUMENT (neither
+// or both selectors, too many ids).
+func (svc *gameService) GetPlayerRuns(q RunsQuery) ([]PlayerRun, error) {
+	name := strings.TrimSpace(q.Name)
+	byID := len(q.SessionIDs) > 0
+	switch {
+	case byID == (name != ""):
+		return nil, Errorf(CodeInvalidArgument, "give either sessionIds or name")
+	case len(q.SessionIDs) > MaxRunSessionIDs:
+		return nil, Errorf(CodeInvalidArgument, "too many sessionIds (%d, max %d)", len(q.SessionIDs), MaxRunSessionIDs)
+	}
+	ids := make(map[string]bool, len(q.SessionIDs))
+	for _, id := range q.SessionIDs {
+		ids[id] = true
+	}
+	mine := func(r boardRow) bool {
+		if byID {
+			return ids[r.id]
+		}
+		return r.name != "" && strings.EqualFold(PublicName(r.name, svc.opts.MaxDisplayName), PublicName(name, svc.opts.MaxDisplayName))
+	}
+
+	boards := svc.rankedBoards(OrderSlots, "")
+	out := []PlayerRun{}
+	for mapID, rows := range boards {
+		for _, r := range rows { // best first
+			if mine(r) {
+				out = append(out, PlayerRun{MapID: mapID, Entry: svc.entryOf(r), Total: len(rows)})
+				break
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].MapID < out[j].MapID })
+	return out, nil
 }
 
 // PublicName turns a stored display name into what a leaderboard shows:

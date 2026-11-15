@@ -20,6 +20,7 @@
 		stepsText
 	} from '$lib/leaderboard';
 	import { sortMaps } from '$lib/maps';
+	import { runsHref } from '$lib/runs';
 	import { CREATE_SESSION_MUTATION, LEADERBOARD_QUERY, MAPS_QUERY } from '$lib/queries';
 	import { ownSessionIds, rememberSession, savedDisplayName } from '$lib/sessions';
 	import { absoluteTime, relativeTime } from '$lib/time';
@@ -203,7 +204,11 @@
 								>
 							</td>
 							<td class="px-4 py-2 font-medium">
-								{e.displayName}
+								{#if runsHref(e.displayName) && e.displayName !== 'Anonymous'}
+									<a href={runsHref(e.displayName)} class="hover:underline" title="See {e.displayName}'s runs">{e.displayName}</a>
+								{:else}
+									{e.displayName}
+								{/if}
 								{#if mine}
 									<span class="ml-1 rounded-full bg-indigo-600 px-2 py-0.5 text-xs font-medium text-white">You</span>
 								{/if}

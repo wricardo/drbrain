@@ -200,3 +200,14 @@ export const LEADERBOARD_QUERY = `
     }
   }
 `;
+
+/** Keep in sync with `playerRunsQ` in api/leaderboard_test.go (complexity check). Give exactly one of sessionIds or name. */
+export const PLAYER_RUNS_QUERY = `
+  query PlayerRuns($sessionIds: [ID!], $name: String) {
+    playerRuns(sessionIds: $sessionIds, name: $name) {
+      mapId
+      total
+      entry { ${LEADERBOARD_ENTRY_FIELDS} }
+    }
+  }
+`;

@@ -102,9 +102,15 @@ export const MAX_OWN_SESSIONS = 200;
 /**
  * Remembers the session this browser created most recently (for the home
  * "Continue" card) and adds it to the list of sessions this browser owns (so
- * the leaderboard can highlight its entries).
+ * the leaderboard can highlight its entries and "My runs" can find them).
+ *
+ * When the player had no name the server gave the session a random guest name
+ * ("BraveOtter"); pass it as `name` and it becomes this browser's saved name,
+ * so every later session is the same guest. A name the player typed is never
+ * replaced.
  */
-export function rememberSession(id: string): void {
+export function rememberSession(id: string, name?: string): void {
+	if (name?.trim() && !savedDisplayName().trim()) saveDisplayName(name.trim());
 	try {
 		localStorage.setItem(LAST_SESSION_KEY, id);
 	} catch {

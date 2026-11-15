@@ -194,6 +194,18 @@ type Leaderboard {
   yours: LeaderboardEntry
 }
 
+"""
+A player's best result on one map: their best winning session on the SLOTS board
+and where it ranks there.
+"""
+type PlayerRun {
+  mapId: ID!
+  "Ranked sessions on that map's SLOTS board."
+  total: Int!
+  "The winning session's row; entry.rank is its current rank."
+  entry: LeaderboardEntry!
+}
+
 type Query {
   maps: [Map!]!
   map(id: ID!): Map
@@ -201,6 +213,12 @@ type Query {
   sessions(sort: SessionSort = RECENT, limit: Int = 50, mapId: ID): [Session!]!
   "Ranks the winning sessions of a map (limit defaults to 20, at most 100). Null when the map does not exist."
   leaderboard(mapId: ID!, order: LeaderboardOrder = SLOTS, limit: Int = 20, sessionId: ID): Leaderboard
+  """
+  A player's best run per map they have won (maps never won are absent), ordered by map id.
+  Give exactly one of sessionIds (up to 200; exact) or name (case-insensitive; matches every
+  session with that display name, so it can mix people who picked the same name).
+  """
+  playerRuns(sessionIds: [ID!], name: String): [PlayerRun!]!
 }
 
 type Mutation {

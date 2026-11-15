@@ -155,7 +155,7 @@
 			const data = await unwrap<{ createSession: Session }>(
 				client.mutation(CREATE_SESSION_MUTATION, { mapID: next.id, displayName: session.displayName || null })
 			);
-			rememberSession(data.createSession.id);
+			rememberSession(data.createSession.id, data.createSession.displayName);
 			// Full navigation: this page keeps one session store for its lifetime.
 			window.location.assign(`/play/${data.createSession.id}`);
 		});

@@ -159,3 +159,11 @@ export interface Leaderboard {
 	/** The entry of the requested session, even beyond the returned rows; null when it has not won. */
 	yours: LeaderboardEntry | null;
 }
+
+/** A player's best result on one map: their best winning session on the SLOTS board and its current rank. */
+export interface PlayerRun {
+	mapId: string;
+	/** Ranked sessions on that map's SLOTS board. */
+	total: number;
+	entry: LeaderboardEntry;
+}

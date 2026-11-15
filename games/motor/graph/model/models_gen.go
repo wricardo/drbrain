@@ -93,6 +93,16 @@ type MapValidationResult struct {
 type Mutation struct {
 }
 
+// A player's best result on one map: their best winning session on the SLOTS board
+// and where it ranks there.
+type PlayerRun struct {
+	MapID string `json:"mapId"`
+	// Ranked sessions on that map's SLOTS board.
+	Total int `json:"total"`
+	// The winning session's row; entry.rank is its current rank.
+	Entry *LeaderboardEntry `json:"entry"`
+}
+
 type Position struct {
 	X int `json:"x"`
 	Y int `json:"y"`

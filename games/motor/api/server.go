@@ -44,6 +44,8 @@ const (
 	// leaderboardBaseCost is the flat cost of one leaderboard query (it scans
 	// every live session).
 	leaderboardBaseCost = 20
+	// playerRunsRowCost approximates the rows a playerRuns call can return (one per map).
+	playerRunsRowCost = 10
 )
 
 // Options configures the server.
@@ -153,6 +155,10 @@ func complexityRoot() generated.ComplexityRoot {
 		}
 		units := (n + sessionsPerCostUnit - 1) / sessionsPerCostUnit
 		return safeMul(child, units) + leaderboardBaseCost
+	}
+	// playerRuns: one scan of every session, then up to one row per map.
+	c.Query.PlayerRuns = func(child int, _ []string, _ *string) int {
+		return safeMul(child, playerRunsRowCost) + leaderboardBaseCost
 	}
 	return c
 }
@@ -298,7 +304,7 @@ func (s *Server) handleLLMS(w http.ResponseWriter, r *http.Request) {
 
 // spaRoutes mirrors the top-level directories in frontend/src/routes.
 var spaRoutes = map[string]bool{
-	"": true, "play": true, "watch": true, "maps": true, "editor": true, "learn": true, "sessions": true, "multi": true, "leaderboard": true,
+	"": true, "play": true, "watch": true, "maps": true, "editor": true, "learn": true, "sessions": true, "multi": true, "leaderboard": true, "runs": true,
 }
 
 // isSPARoute reports whether the first path segment is a client-side route.

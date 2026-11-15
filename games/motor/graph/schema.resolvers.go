@@ -236,6 +236,24 @@ func (r *queryResolver) Leaderboard(ctx context.Context, mapID string, order *mo
 	return toLeaderboard(lb), nil
 }
 
+// PlayerRuns is the resolver for the playerRuns field: one player's best run
+// per won map, selected by session ids or by display name (exactly one).
+func (r *queryResolver) PlayerRuns(ctx context.Context, sessionIds []string, name *string) ([]*model.PlayerRun, error) {
+	q := service.RunsQuery{SessionIDs: sessionIds}
+	if name != nil {
+		q.Name = *name
+	}
+	runs, err := r.Service.GetPlayerRuns(q)
+	if err != nil {
+		return nil, toGQLError(err)
+	}
+	out := make([]*model.PlayerRun, len(runs))
+	for i, run := range runs {
+		out[i] = &model.PlayerRun{MapID: run.MapID, Total: run.Total, Entry: toLeaderboardEntry(run.Entry)}
+	}
+	return out, nil
+}
+
 // SessionUpdated is the resolver for the sessionUpdated field. It subscribes
 // before reading the snapshot so no update is lost between the two, emits the
 // snapshot immediately, then forwards hub updates.

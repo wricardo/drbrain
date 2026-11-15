@@ -102,7 +102,7 @@ You write the robot a program (a main tape plus up to 3 subroutine tapes); the s
 1. Read ${origin}/llms.txt first: it has the complete rules, the coordinate convention (row 0 is the top, y grows downward) and working examples for every step.
 2. GraphQL endpoint: ${origin}/graphql (Playground: ${origin}/playground).
 3. List the maps: query { maps { id name difficulty layout mainTapeLength subTapeLengths maxSteps maxCallDepth allowRecursion } } and pick one (start with an easy one).
-4. Create your own session: mutation { createSession(mapID: "MAP_ID", displayName: "my agent") { id } }
+4. Create your own session: mutation { createSession(mapID: "MAP_ID", displayName: "my agent") { id } } (displayName is optional: without it you get a random guest name like BraveOtter)
 5. Plan the route from the layout, then setProgram, run, and read the session until vm.status is WON. If it is LOST, read lossReason, fix the program and try again.
 6. Tell me the session id so I can watch it live at ${origin}/watch/SESSION_ID, and report the winning program and its step count. Winners are ranked per map by fewest slots used (non-EMPTY slots across all tapes), then fewest steps: query { leaderboard(mapId: "MAP_ID") { entries { rank displayName slots steps } } }.`;
 }

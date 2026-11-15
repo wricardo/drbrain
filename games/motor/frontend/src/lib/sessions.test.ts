@@ -8,6 +8,8 @@ import {
 	ownSessionIds,
 	recentStarted,
 	rememberSession,
+	saveDisplayName,
+	savedDisplayName,
 	sortSessions,
 	statusGroup,
 	statusLine,
@@ -138,6 +140,28 @@ describe('rememberSession', () => {
 		expect(ownSessionIds()).toEqual(['ok']);
 		rememberSession('new');
 		expect(ownSessionIds()).toEqual(['ok', 'new']);
+	});
+});
+
+describe('guest name', () => {
+	beforeEach(() => localStorage.clear());
+	it('saves the name the server gave a nameless player, so later sessions reuse it', () => {
+		expect(savedDisplayName()).toBe('');
+		rememberSession('a', 'BraveOtter');
+		expect(savedDisplayName()).toBe('BraveOtter');
+		rememberSession('b', 'SleepyComet'); // a later guest name never replaces the identity
+		expect(savedDisplayName()).toBe('BraveOtter');
+	});
+	it('never replaces a name the player typed', () => {
+		saveDisplayName('Ada');
+		rememberSession('a', 'BraveOtter');
+		expect(savedDisplayName()).toBe('Ada');
+	});
+	it('ignores a blank name and works without one', () => {
+		rememberSession('a', '   ');
+		rememberSession('b');
+		expect(savedDisplayName()).toBe('');
+		expect(ownSessionIds()).toEqual(['a', 'b']);
 	});
 });
 
