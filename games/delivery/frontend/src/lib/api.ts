@@ -79,12 +79,12 @@ async function post<T>(query: string, variables?: Record<string, unknown>): Prom
 
 const CAR_FIELDS = `
 	id name className x y
-	battery maxBattery batteryPct capacity
+	battery maxBattery batteryPct capacity load freeBoxes
 	cargo state queuedMove lastReject
 `;
 
 const ORDER_FIELDS = `
-	id item itemName
+	id item itemName quantity
 	kitchenId kitchenName customerId customerName
 	state assignedCar
 	createdTick deadlineTick ticksLeft
@@ -106,6 +106,7 @@ const SNAPSHOT_FIELDS = `
 		money moneyEarned reputation
 		deliveries lateDeliveries expiredOrders ordersSpawned
 		onTimeStreak tows buildsCompleted
+		upkeepPaid towFees upkeepDue
 		deliveriesByItem { item count }
 	}
 	carClasses { className price capacity maxBattery stepCost unlocked affordable }
@@ -113,6 +114,7 @@ const SNAPSHOT_FIELDS = `
 	unlocks { id title description earned builds }
 	builds { id title description cost unlocked completed affordable applicable problem }
 	events { tick type message carId x y }
+	closures { id reason startTick endTick ticksLeft minX minY maxX maxY tiles { x y } }
 `;
 
 export const api = {

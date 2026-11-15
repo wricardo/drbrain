@@ -181,18 +181,27 @@ func TestBuildTerrainSurvivesPersistence(t *testing.T) {
 	// Record the actual TERRAIN at the bridge tiles before saving. RenderRows
 	// overlays entity glyphs, and the build also adds a charger on this row, so
 	// comparing rendered rows would fail for a reason unrelated to terrain.
-	// Read the grid directly.
+	// Read the grid directly, at the coordinates the build itself declares.
 	terrainAt := func(w *engine.World, x, y int) engine.CellType {
 		t, _ := w.City.At(engine.Position{X: x, Y: y})
 		return t
 	}
-	var t12, t13 engine.CellType
+	// The bridge tiles come from the shipped city config, not from a literal:
+	// the map is generated and its coordinates move when the layout changes.
+	bridgeTiles := engine.BridgeTilesForTest(mgr.CityFile(), buildID)
+	if len(bridgeTiles) == 0 {
+		t.Fatalf("build %s declares no bridge tiles", buildID)
+	}
+	got := make([]engine.CellType, len(bridgeTiles))
 	sess.Do(func(w *engine.World) {
-		t12 = terrainAt(w, 12, 2)
-		t13 = terrainAt(w, 13, 2)
+		for i, tw := range bridgeTiles {
+			got[i] = terrainAt(w, tw.X, tw.Y)
+		}
 	})
-	if t12 != engine.RoadTile || t13 != engine.RoadTile {
-		t.Fatalf("bridge not built in memory: (12,2)=%s (13,2)=%s", t12, t13)
+	for i, tw := range bridgeTiles {
+		if got[i] != engine.RoadTile {
+			t.Fatalf("bridge not built in memory: (%d,%d)=%s", tw.X, tw.Y, got[i])
+		}
 	}
 
 	if err := sess.Save(mgr.CityFileName()); err != nil {
@@ -204,11 +213,12 @@ func TestBuildTerrainSurvivesPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}
-	var a12, a13 engine.CellType
+	var after []engine.CellType
 	var completed bool
 	reloaded.Do(func(w *engine.World) {
-		a12 = terrainAt(w, 12, 2)
-		a13 = terrainAt(w, 13, 2)
+		for _, tw := range bridgeTiles {
+			after = append(after, terrainAt(w, tw.X, tw.Y))
+		}
 		for _, b := range w.Builds() {
 			if b.ID == buildID {
 				completed = b.Completed
@@ -216,8 +226,10 @@ func TestBuildTerrainSurvivesPersistence(t *testing.T) {
 		}
 	})
 
-	if a12 != t12 || a13 != t13 {
-		t.Errorf("terrain not restored: (12,2) %s -> %s, (13,2) %s -> %s", t12, a12, t13, a13)
+	for i, tw := range bridgeTiles {
+		if after[i] != got[i] {
+			t.Errorf("terrain not restored at (%d,%d): %s -> %s", tw.X, tw.Y, got[i], after[i])
+		}
 	}
 	if !completed {
 		t.Error("build not marked completed after reload")

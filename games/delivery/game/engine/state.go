@@ -132,8 +132,8 @@ func (w *World) ImportState(s SavedState) error {
 	for _, c := range w.Cars {
 		c.cargoBoxes = 0
 		for _, id := range c.Cargo {
-			if o, ok := w.Order(id); ok && o.Quantity > 0 {
-				c.cargoBoxes += o.Quantity
+			if o, ok := w.Order(id); ok {
+				c.cargoBoxes += o.Boxes()
 			}
 		}
 	}
@@ -148,6 +148,13 @@ func (w *World) ImportState(s SavedState) error {
 	if s.Events != nil {
 		w.Events = s.Events
 	}
+
+	// Street works are derived from (seed, tick, chapter) rather than stored, so
+	// the in-memory cache has to be rebuilt for the restored tick. Skipping this
+	// made a save taken during road works reload with the street open, and the
+	// reloaded world diverged from the original on the next tick.
+	w.rebuildClosures()
+
 	return nil
 }
 

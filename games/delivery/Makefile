@@ -42,6 +42,10 @@ serve-ui: ## build the UI and serve API + UI on :8080
 .PHONY: verify-ui
 verify-ui: ## headless-Chrome smoke test of the UI (needs a built UI)
 	$(GO) build -o $(BINARY)-server ./cmd/drbrain-server
+	@# The server serves frontend/build. Rebuilding only the Go binary tests a
+	@# stale bundle: a Svelte or api.ts change then passes the smoke test while
+	@# being absent from what the browser actually loaded.
+	cd frontend && npm run build
 	@bash scripts/verify-ui.sh
 
 .PHONY: check-frontend

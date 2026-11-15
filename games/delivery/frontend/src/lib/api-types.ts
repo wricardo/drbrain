@@ -53,13 +53,14 @@ export type Direction = 'NORTH' | 'SOUTH' | 'EAST' | 'WEST';
 
 export type OrderState = 'PENDING' | 'ASSIGNED' | 'PICKED_UP' | 'DONE' | 'EXPIRED';
 
-export type RejectReason = 'BAD_DIRECTION' | 'OFF_GRID' | 'BLOCKED' | 'NO_BATTERY';
+export type RejectReason = 'BAD_DIRECTION' | 'OFF_GRID' | 'BLOCKED' | 'NO_BATTERY' | 'CLOSED' | 'OCCUPIED';
 
 export interface AchievementView {
 	id: string;
 	title: string;
 	description: string;
 	done: boolean;
+	/** Progress toward target, in that requirement's own units. */
 	progress: number;
 	target: number;
 }
@@ -69,9 +70,12 @@ export interface BuildView {
 	title: string;
 	description: string;
 	cost: number;
+	/** The right to build has been earned. */
 	unlocked: boolean;
 	completed: boolean;
+	/** Money covers the cost right now. */
 	affordable: boolean;
+	/** A legal placement exists right now. */
 	applicable: boolean;
 	/** Why the build cannot be placed, when it cannot. */
 	problem: string | null;
@@ -80,9 +84,11 @@ export interface BuildView {
 export interface CarClassView {
 	className: string;
 	price: number;
+	/** Hold size in boxes. */
 	capacity: number;
 	maxBattery: number;
 	stepCost: number;
+	/** True once a build has granted this class, or it never needed one. */
 	unlocked: boolean;
 	affordable: boolean;
 }
@@ -96,7 +102,12 @@ export interface CarView {
 	battery: number;
 	maxBattery: number;
 	batteryPct: number;
+	/** Hold size in boxes. */
 	capacity: number;
+	/** Boxes currently in the hold. */
+	load: number;
+	/** Boxes still free. */
+	freeBoxes: number;
 	cargo: string[];
 	state: CarState;
 	/** The move queued for the next tick, if any. */
@@ -126,6 +137,7 @@ export interface CityView {
 	gridSize: number;
 	/** Full map as glyph rows. Unexplored tiles render '?'. */
 	rows: string[];
+	/** Tiles still unexplored. Always 0 on the static city query, which reveals all. */
 	hiddenTiles: number;
 	kitchens: PointView[];
 	customers: PointView[];
@@ -133,11 +145,33 @@ export interface CityView {
 	chargers: PointView[];
 }
 
+/**
+ * A stretch of street closed for works.
+ */
+export interface ClosureView {
+	id: string;
+	reason: string;
+	startTick: number;
+	endTick: number;
+	/** Ticks until it reopens; negative when it has already ended. */
+	ticksLeft: number;
+	/** The closed tiles, so a client can draw them without guessing. */
+	tiles: PointView[];
+	/** Bounding box of the closed tiles, for camera moves. */
+	minX: number;
+	minY: number;
+	maxX: number;
+	maxY: number;
+}
+
 export interface EventView {
 	tick: number;
+	/** One of the car_* / order_* / build_* / unlock_* / closure_* names the engine emits. */
 	type: string;
 	message: string;
+	/** Null for world events (spawns, builds, closures); set for anything a car caused. */
 	carId: string | null;
+	/** Position of the event, or 0,0 when it has none — non-null, so 0,0 is ambiguous. */
 	x: number;
 	y: number;
 }
@@ -152,34 +186,55 @@ export interface ItemCount {
 }
 
 export interface LedgerView {
+	/** Spendable balance. Buying a car or build reduces it. */
 	money: number;
+	/** Lifetime earnings; never decreases. Achievements read this, not money. */
 	moneyEarned: number;
+	/** 0-5, clamped. Grants and deliveries cannot push it past the scale. */
 	reputation: number;
+	/** On-time deliveries only. A late delivery increments lateDeliveries instead. */
 	deliveries: number;
 	lateDeliveries: number;
 	expiredOrders: number;
+	/** Every order ever raised, including the ones that later expired. */
 	ordersSpawned: number;
+	/** Consecutive on-time deliveries. Both a late delivery and an expiry reset it to 0. */
 	onTimeStreak: number;
 	tows: number;
+	/** Completed builds. Chapter() derives from this, capped at 4. */
 	buildsCompleted: number;
+	/** Delivered ORDERS per item, not boxes: a two-box delivery adds 1. */
 	deliveriesByItem: ItemCount[];
+	/** Lifetime fleet running cost paid, cumulative. Zero when the map disables upkeep. Not subtracted from moneyEarned: upkeep is a cost, not negative income, and achievements read moneyEarned. */
+	upkeepPaid: number;
+	/** Lifetime spend on tows, cumulative. A tow costs towFeePerTile x route distance, floored at towFeeMin, and is clamped to the balance. */
+	towFees: number;
+	/** What the fleet would be charged on the next upkeep interval, given where the cars are standing right now. A car on a depot tile contributes zero. Lets a client show the drain before it lands rather than only after. */
+	upkeepDue: number;
 }
 
 export interface OrderView {
 	id: string;
 	item: string;
 	itemName: string;
+	/** How many boxes the customer asked for. */
+	quantity: number;
 	kitchenId: string;
 	kitchenName: string;
 	customerId: string;
 	customerName: string;
 	state: OrderState;
+	/** The car holding or holding-to-be. Kept after DONE, so read it as history once state is terminal. */
 	assignedCar: string | null;
 	createdTick: number;
 	deadlineTick: number;
+	/** Ticks until the deadline. Signed: negative means already past it but not yet swept. */
 	ticksLeft: number;
+	/** What the job would pay if delivered now. */
 	reward: number;
+	/** What it actually paid. Zero until state is DONE. */
 	paid: number;
+	/** Delivered past the deadline, therefore paid at the late multiplier. */
 	late: boolean;
 }
 
@@ -208,19 +263,23 @@ export interface Snapshot {
 	id: string;
 	createdAt: string;
 	tick: number;
+	/** Clock multiplier: 0 paused, 1/2/4 running. */
 	speed: number;
 	paused: boolean;
+	/** Wall-clock length of one tick at 1x, from the city config. */
 	tickMs: number;
 	city: CityView;
 	cars: CarView[];
 	orders: OrderView[];
 	ledger: LedgerView;
-	/** The purchasable catalogue with per-session unlock and affordability flags. */
+	/** The purchasable catalogue with per-session unlock and affordability flags, cheapest first. */
 	carClasses: CarClassView[];
 	achievements: AchievementView[];
 	unlocks: UnlockView[];
 	builds: BuildView[];
 	events: EventView[];
+	/** Street works currently closing part of the map. */
+	closures: ClosureView[];
 }
 
 export interface UnlockView {
@@ -228,6 +287,7 @@ export interface UnlockView {
 	title: string;
 	description: string;
 	earned: boolean;
+	/** The build ids this unlock makes purchasable. */
 	builds: string[];
 }
 

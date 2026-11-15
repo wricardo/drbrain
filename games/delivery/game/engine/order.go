@@ -60,13 +60,45 @@ type Order struct {
 	Late          bool
 }
 
-// EstimateTicks is the remaining time before the deadline.
+// Boxes is the hold space this order occupies.
+//
+// It normalises a missing quantity to one box. That is not defensive
+// padding: saves written before quantities existed store orders with no size,
+// and a zero would let a car carry an unbounded number of them.
+func (o *Order) Boxes() int {
+	if o.Quantity <= 0 {
+		return 1
+	}
+	return o.Quantity
+}
+
+// TicksLeft is the remaining time before the deadline.
+//
+// It is signed: an overdue order that has not been swept yet reports a
+// negative number rather than clamping to zero, so a client can tell "due
+// this tick" from "already missed".
 func (o *Order) TicksLeft(now int64) int64 { return o.DeadlineTick - now }
 
-// Expired reports whether the order's deadline has passed at tick now.
+// Expired reports whether the deadline has passed at tick now.
+//
+// Strictly greater: an order is NOT expired during the tick its deadline names,
+// so a delivery landing exactly on deadlineTick still counts as on time. Off by
+// one here silently turns the last-chance tick into a failure.
 func (o *Order) Expired(now int64) bool { return now > o.DeadlineTick }
 
-// OpenOrders returns orders that are still actionable (not done, not expired).
+// OpenOrders returns orders whose STATE is still live — everything except DONE
+// and EXPIRED.
+//
+// Note the distinction: this is state-based, NOT deadline-based. An order whose
+// deadline has already passed but which the tick loop has not swept yet is
+// still included, even though Order.Expired(now) reports true for it. Verified:
+// forcing DeadlineTick to now-50 leaves the order in OpenOrders while Expired
+// returns true.
+//
+// That window is one tick wide in normal play (spawnOrders then expireOrders in
+// the same Advance), so callers gating on "how much work is outstanding" get the
+// value the spawner sees. A caller asking "is this order still deliverable"
+// must check Expired as well — an overdue-but-unswept order is not.
 func (w *World) OpenOrders() []*Order {
 	var out []*Order
 	for _, o := range w.Orders {
@@ -77,7 +109,12 @@ func (w *World) OpenOrders() []*Order {
 	return out
 }
 
-// Orders lists all orders, newest first, in a stable order.
+// OrdersList returns every order, newest first, in a stable order.
+//
+// It copies rather than aliasing w.Orders because the tick loop appends to that
+// slice: handing the live slice to a caller would let a read race with a spawn.
+// Ties on CreatedTick break by id, so two orders raised on the same tick always
+// list in the same order.
 func (w *World) OrdersList() []*Order {
 	out := make([]*Order, len(w.Orders))
 	copy(out, w.Orders)
@@ -90,7 +127,8 @@ func (w *World) OrdersList() []*Order {
 	return out
 }
 
-// ActiveOrderCount is how many orders are neither done nor expired.
+// ActiveOrderCount is the number of orders whose state is still live.
+// See OpenOrders for why this is not "orders before their deadline".
 func (w *World) ActiveOrderCount() int { return len(w.OpenOrders()) }
 
 // Order returns an order by id.
@@ -131,15 +169,22 @@ func (w *World) AssignOrder(orderID, carID string) error {
 	if o.State == OrderAssigned && o.AssignedCar != carID {
 		return fmt.Errorf("order %q is assigned to %s", orderID, o.AssignedCar)
 	}
-	if !car.SpaceFor(o.Quantity) && car.ID != o.AssignedCar {
+	if !car.SpaceFor(o.Boxes()) && car.ID != o.AssignedCar {
 		return fmt.Errorf("%s cannot take %d boxes (%d/%d in use)",
-			car.Name, o.Quantity, car.Load(), car.Class.Capacity)
+			car.Name, o.Boxes(), car.Load(), car.Class.Capacity)
 	}
 	o.AssignedCar = carID
 	o.State = OrderAssigned
 
 	// Refresh the deadline from this car's actual position, so the window
 	// measures the drive rather than the queue.
+	//
+	// This only ever EXTENDS. `fresh` is applied when it is later than the
+	// current deadline, so assigning a car that already sits next to the
+	// kitchen cannot pull in a deadline the player was already shown. Verified:
+	// an order forced to +999 ticks still reads +999 after assignment. Do not
+	// "fix" this into an unconditional assignment — shortening a quoted
+	// deadline retroactively is the kind of thing players read as a bug.
 	if k, ok := w.kitchenByID(o.KitchenID); ok {
 		if cu, ok := w.customerByID(o.CustomerID); ok {
 			fresh := w.Tick + w.estimateFrom(car.Pos, k.Pos, cu.Pos)
@@ -182,13 +227,13 @@ func (w *World) resolveTileInteractions(car *Car) {
 			// pickup was considered and rejected: it would let a scooter ferry
 			// a forty-box order four boxes at a time, which turns the size gate
 			// into a tedium gate and makes the truck pointless.
-			if !car.SpaceFor(o.Quantity) {
+			if !car.SpaceFor(o.Boxes()) {
 				continue
 			}
 			o.State = OrderPickedUp
-			car.addCargo(o.ID, o.Quantity)
+			car.addCargo(o.ID, o.Boxes())
 			w.emit(EventPickedUp, car,
-				fmt.Sprintf("%s picked up %d× %s from %s", car.Name, o.Quantity, w.itemLabel(o.Item), k.Name))
+				fmt.Sprintf("%s picked up %d× %s from %s", car.Name, o.Boxes(), w.itemLabel(o.Item), k.Name))
 		}
 	}
 
@@ -206,7 +251,7 @@ func (w *World) resolveTileInteractions(car *Car) {
 				kept = append(kept, orderID)
 				continue
 			}
-			car.cargoBoxes -= o.Quantity
+			car.cargoBoxes -= o.Boxes()
 			w.completeOrder(car, o, cu)
 		}
 		car.Cargo = kept
@@ -291,7 +336,7 @@ func (w *World) expireOrders() {
 		// Still held by a car? Drop it from the cargo, and free its boxes.
 		if o.State == OrderPickedUp {
 			if car, ok := w.Car(o.AssignedCar); ok {
-				car.removeCargo(o.ID, o.Quantity)
+				car.removeCargo(o.ID, o.Boxes())
 			}
 		}
 		o.State = OrderExpired

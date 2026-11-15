@@ -137,8 +137,20 @@ func (m *Manager) load(id string) (*Session, error) {
 		return nil, fmt.Errorf("restore session %s: %w", id, err)
 	}
 
-	if err := s.SetSpeed(p.Speed); err != nil {
-		_ = s.SetSpeed(Speed1x)
+	// A load ALWAYS starts paused, whatever speed the save recorded.
+	//
+	// This used to restore the saved speed and start ticking immediately, which
+	// meant opening a save at 2x advanced the world while the player was still
+	// reading it. That was merely surprising before; with fleet upkeep it is a
+	// money drain on a session nobody is playing. Loading is an act of opening a
+	// session, not an act of resuming one, and the client opts in to the clock
+	// explicitly with SetSpeed.
+	//
+	// p.Speed is still READ rather than discarded: Summary for an on-disk row
+	// reports it, so a save picker can show the pace the save was left at even
+	// though opening it will pause.
+	if err := s.SetSpeed(SpeedPaused); err != nil {
+		return nil, err
 	}
 	return s, nil
 }
@@ -281,7 +293,11 @@ func (m *Manager) Close() error {
 	return err
 }
 
-// Summary is the list-view of a session.
+// Summary is the list-view of a session: what a save picker shows.
+//
+// Loaded is true only for a session currently in memory. An on-disk row is a
+// save that has not been opened this process, so its Speed is the value it was
+// saved with, not a running clock.
 type Summary struct {
 	ID         string    `json:"id"`
 	CreatedAt  time.Time `json:"created_at"`

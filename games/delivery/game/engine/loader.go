@@ -11,6 +11,21 @@ import (
 // LoadCityConfig reads and decodes a city JSON file. Unknown fields are an
 // error: a typo in a knob name must not silently fall back to a zero value,
 // because most of these knobs are pacing multipliers where zero is harmful.
+//
+// The cost of that strictness is that a map file cannot carry prose. JSON has no
+// comments, and a "_comment" key is an unknown field like any other, so adding
+// one to maps/city.json makes the whole file unloadable with
+//
+//	parse city.json: json: unknown field "_comment"
+//
+// which is a startup failure, not a warning. Document knobs in the README or in
+// the config struct's field comments instead, and if a per-field note is truly
+// needed, add a real field to CityConfig for it rather than a pseudo-key.
+// (Observed for real: a "_comment" inside a new balance block broke six tests
+// and the server's startup until it was removed.)
+//
+// Keep the strictness. A silently-zeroed `every_ticks` or `duration_ticks` is a
+// far worse failure than a map that refuses to load.
 func LoadCityConfig(path string) (*CityConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -74,6 +89,13 @@ func (cfg *CityConfig) applyDefaults() error {
 	}
 	if cfg.Charging.ChargerRate <= 0 {
 		cfg.Charging.ChargerRate = DefaultChargerChargeRate
+	}
+	if cfg.Fleet.UpkeepIntervalTicks < 0 {
+		return fmt.Errorf("fleet.upkeep_interval_ticks is %d; use a positive value, or omit the block to disable upkeep", cfg.Fleet.UpkeepIntervalTicks)
+	}
+	if cfg.Fleet.TowFeePerTile < 0 || cfg.Fleet.TowFeeMin < 0 {
+		return fmt.Errorf("fleet tow fees must not be negative (got per_tile %d, min %d)",
+			cfg.Fleet.TowFeePerTile, cfg.Fleet.TowFeeMin)
 	}
 	return nil
 }

@@ -61,7 +61,12 @@
 						onclick={() => onSelectOrder?.(o.id)}
 					>
 						<div class="flex items-baseline justify-between gap-2">
-							<span class="text-sm text-fog-300">{o.itemName}</span>
+							<span class="text-sm text-fog-300">
+								{#if o.quantity > 1}
+									<span class="text-[var(--color-warn)]">{o.quantity}×</span>
+								{/if}
+								{o.itemName}
+							</span>
 							<span class="rounded px-1.5 py-0.5 text-[11px] {stateBadge[o.state].cls}"
 								>{stateBadge[o.state].text}</span
 							>
@@ -121,7 +126,7 @@
 					{#each finished as o (o.id)}
 						<li class="flex items-center justify-between px-3 py-1.5 text-xs">
 							<span class="text-fog-500">
-								{o.itemName} → {o.customerName}
+								{#if o.quantity > 1}{o.quantity}× {/if}{o.itemName} → {o.customerName}
 							</span>
 							<span class={stateBadge[o.state].cls + ' rounded px-1.5 py-0.5 text-[11px]'}>
 								{o.state === 'DONE' ? `+$${o.paid ?? o.reward}` : 'EXPIRED'}

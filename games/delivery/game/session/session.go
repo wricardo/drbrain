@@ -1,3 +1,23 @@
+// Package session owns everything between a World and the network: the runtime
+// clock, save files, and the view types the API serialises.
+//
+// The layering matters when you are deciding where a change belongs:
+//
+//	engine   pure simulation. No I/O, no wall clock, no knowledge of HTTP.
+//	session  owns time and storage. Mutex-protected, one goroutine per live
+//	         session, and the only place that reads or writes save files.
+//	graph    transport. Resolvers translate GraphQL into session calls and
+//	         view structs into generated model types. No game rules here.
+//
+// The view types in this package exist so the wire format is a deliberate
+// decision rather than whatever the engine happens to export. That is why
+// OrderView carries Name fields the engine stores as ids, and why Session's
+// snapshot is built under one lock rather than read field by field by the
+// resolver — a client must never observe a half-advanced world.
+//
+// A session is either loaded or not. Manager keeps only the loaded ones in
+// memory and lists everything else straight off disk, which is what makes
+// `loaded` meaningful in the API.
 package session
 
 import (

@@ -456,6 +456,20 @@
 			<div class="flex items-center gap-4 text-xs">
 				<span class="text-fog-500">tick <span class="text-fog-300">{snap.tick}</span></span>
 				<span class="text-[var(--color-money)]">${snap.ledger.money}</span>
+				{#if snap.ledger.upkeepDue > 0}
+					<!--
+						The running cost has to be visible or it is just a mysterious drop
+						in the money number. Shown as "due", not "paid", so the player can
+						act on it (park the car) before the charge lands.
+					-->
+					<span
+						class="text-fog-500"
+						data-upkeep-due={snap.ledger.upkeepDue}
+						title="Fleet upkeep charged next interval. Park cars on a depot tile to stop it."
+					>
+						−<span class="text-[var(--color-warn)]">${snap.ledger.upkeepDue}</span>/ivl
+					</span>
+				{/if}
 				<span class="text-fog-500">
 					rep <span class="text-fog-300">{snap.ledger.reputation.toFixed(2)}</span>
 				</span>
@@ -526,6 +540,7 @@
 						selectedCarId={selectedCar?.id ?? null}
 						highlightKitchen={highlightedOrder?.kitchenId ?? null}
 						highlightCustomer={highlightedOrder?.customerId ?? null}
+						closures={snap.closures}
 						onSelectCar={(id) => (selectedCarId = id)}
 					/>
 				</div>

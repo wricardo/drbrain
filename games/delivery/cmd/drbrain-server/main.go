@@ -1,3 +1,18 @@
+// Command drbrain-server serves the GraphQL API, and the web UI when one has
+// been built.
+//
+// Startup order is deliberate: the city file is loaded and validated before the
+// listener binds, so a bad map is a startup error rather than a runtime failure
+// on the first request. Sessions are loaded from -sessions-dir on demand; a
+// session appears in `sessions` whether or not it is in memory, and `loaded`
+// says which.
+//
+// On SIGINT/SIGTERM it saves every live session before exiting, so a clean
+// shutdown never loses progress. A hard kill does — there is no periodic
+// autosave.
+//
+// If -ui-dir has no build, the root route is simply not mounted and the API is
+// unaffected; the game is fully playable over GraphQL alone.
 package main
 
 import (

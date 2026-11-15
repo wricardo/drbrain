@@ -14,9 +14,18 @@
 	--color-fog-400: #a9b3c2;
 	--color-fog-300: #cbd3de;
 
-	--color-road: #4a5464;
-	--color-ground: #5f5340;
+	/* Roads are the LIGHT surface and buildings the dark one. A street grid only
+	   reads when the streets are clearly lighter ribbons between dark blocks.
+	   Measured: this pair is a 3.1:1 luminance ratio, against 1.9:1 for the
+	   previous (#5c6779 / #333d4d) which read as a checkerboard. The gap
+	   between tiles on the map is also 2px, so adjacent road tiles still read as
+	   a continuous street rather than a dotted line. */
+	--color-road: #6b7688;
+	--color-ground: #6b5c42;
 	--color-water: #163d50;
+	/* Deliberately close to the panel background (#11151d): buildings are the
+	   negative space the streets run between. */
+	--color-building: #232b36;
 	--color-depot: #3b82f6;
 	--color-charger: #22d3ee;
 	--color-kitchen: #f59e0b;

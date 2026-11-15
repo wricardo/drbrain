@@ -14,9 +14,10 @@ export interface GlyphStyle {
 
 const STYLES: Record<string, GlyphStyle> = {
 	'#': { cls: 'bg-[var(--color-water)]', label: 'Water — impassable', passable: false },
-	B: { cls: 'bg-ink-600', label: 'Building — impassable', passable: false },
+	B: { cls: 'bg-[var(--color-building)]', label: 'Building — impassable', passable: false },
 	'.': { cls: 'bg-[var(--color-road)]', label: 'Road', passable: true },
 	',': { cls: 'bg-[var(--color-ground)]', label: 'Ground — costs 2 battery', passable: true },
+	X: { cls: 'bg-[var(--color-warn)]/40', label: 'Street works — closed for now', passable: false },
 	D: { cls: 'bg-[var(--color-depot)]', label: 'Depot — parks and recharges fast', passable: true },
 	C: { cls: 'bg-[var(--color-charger)]', label: 'Charger', passable: true },
 	K: { cls: 'bg-[var(--color-kitchen)]', label: 'Kitchen — pickup', passable: true },

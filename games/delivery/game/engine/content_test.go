@@ -198,7 +198,7 @@ func TestEveryCustomerHasASupplyingKitchen(t *testing.T) {
 // bug made every build fail as soon as a map authored content for a district it
 // had not revealed yet, which is exactly how a map is meant to be authored.
 func TestHiddenEntitiesAreNotStranded(t *testing.T) {
-	city, _ := shippedCity(t)
+	city, cfg := shippedCity(t)
 
 	hidden := 0
 	for _, k := range city.Kitchens {
@@ -220,6 +220,24 @@ func TestHiddenEntitiesAreNotStranded(t *testing.T) {
 		t.Fatalf("entities in hidden districts reported as stranded: %v", stranded)
 	}
 
+	bridge, ok := buildByIDFromConfig(cfg, "b02_east_bridge")
+	if !ok {
+		t.Fatal("shipped city has no East Bridge build")
+	}
+	gate, ok := buildByIDFromConfig(cfg, "b04_harbour_gate")
+	if !ok {
+		t.Fatal("shipped city has no Harbour Gate build")
+	}
+	var district string
+	for _, e := range gate.Effects {
+		if e.Type == EffectRevealDistrict {
+			district = e.District
+		}
+	}
+	if district == "" {
+		t.Fatal("Harbour Gate reveals no district")
+	}
+
 	// The guard must still catch a genuinely cut-off region. Note that the
 	// harbour build also places a charger inside the district, and a charger is
 	// a reachability seed, so the harbour reaches itself. That is correct: the
@@ -230,11 +248,11 @@ func TestHiddenEntitiesAreNotStranded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Drop every charger/depot seed inside the harbour, then reveal it: with no
-	// route in and no seed within, its entities must be reported.
-	cut.Depots = []Depot{{ID: "d", Pos: Position{2, 2}, Capacity: 1}}
-	cut.Chargers = []Charger{{ID: "c", Pos: Position{11, 11}, Capacity: 1}}
-	cut.RevealRect(14, 1, 18, 8)
+	// Drop every charger/depot seed, leaving only the depot as a seed outside
+	// the harbour, then reveal the harbour unbridged: its entities must be
+	// reported because nothing reaches them.
+	cut.Chargers = nil
+	cut.RevealRegion(cut.DistrictTiles(district))
 	if stranded := cut.StrandedEntities(); len(stranded) == 0 {
 		t.Fatal("a revealed district with no road in and no charger inside should strand its entities")
 	}
@@ -244,12 +262,17 @@ func TestHiddenEntitiesAreNotStranded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, w := range []TileWrite{{X: 12, Y: 2, Terrain: "road"}, {X: 13, Y: 2, Terrain: "road"}} {
-		if err := fresh2.SetTerrain(Position{w.X, w.Y}, RoadTile); err != nil {
-			t.Fatal(err)
+	for _, e := range bridge.Effects {
+		if e.Type != EffectBuildBridge {
+			continue
+		}
+		for _, tw := range e.Tiles {
+			if err := fresh2.SetTerrain(Position{tw.X, tw.Y}, RoadTile); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
-	fresh2.RevealRect(14, 1, 18, 8)
+	fresh2.RevealRegion(fresh2.DistrictTiles(district))
 	if stranded := fresh2.StrandedEntities(); len(stranded) > 0 {
 		t.Fatalf("bridged and revealed harbour should be coherent, got %v", stranded)
 	}
@@ -362,8 +385,15 @@ func TestFullProgressionIsReachableFromTheStart(t *testing.T) {
 			}
 		}
 
-		// Step every car toward its goal.
+		// Step every car toward its goal, but let a car charge up first if it
+		// is standing on a charger with a low battery. Without this a car that
+		// has just been towed drives off on the one point of charge it was
+		// given, strands again, and gets towed again on the next tick: an
+		// infinite tow loop that looks like a content failure.
 		for _, c := range w.Cars {
+			if w.City.ChargingAt(c.Pos) && c.BatteryPct() < 80 {
+				continue
+			}
 			if goal, ok := goalFor(w, c); ok {
 				if dir := firstStep(w, c.Pos, goal); dir != "" {
 					_ = w.QueueMove(c.ID, dir)
@@ -469,42 +499,25 @@ func goalFor(w *World, c *Car) (Position, bool) {
 		}
 	}
 	if c.BatteryPct() < 60 {
-		if tiles := w.City.NearestChargingTiles(c.Pos, 1); len(tiles) > 0 {
-			return tiles[0], true
+		// Skip a charger another car is standing on: it holds one car, so the
+		// route would be blocked and the goal unreachable.
+		for _, tile := range w.City.NearestChargingTiles(c.Pos, 4) {
+			if tile != c.Pos && !w.HasRoom(tile) {
+				continue
+			}
+			return tile, true
 		}
 	}
 	return Position{}, false
 }
 
 // firstStep returns the first direction on a shortest path.
+//
+// It routes around cars, not just terrain. A tile holds one car (a depot or
+// charger holds its capacity), so a path through a parked car is a path the
+// engine refuses — and re-planning it every tick is a permanent stall rather
+// than a detour. This mirrors cmd/drbrain's harness so the content guard
+// measures content rather than driver blindness.
 func firstStep(w *World, from, to Position) Direction {
-	if from == to {
-		return ""
-	}
-	type qe struct {
-		p     Position
-		first Direction
-	}
-	queue := []qe{{p: from}}
-	seen := map[Position]bool{from: true}
-	for len(queue) > 0 {
-		cur := queue[0]
-		queue = queue[1:]
-		for _, d := range AllDirections {
-			n, ok := cur.p.Neighbour(d)
-			if !ok || seen[n] || !w.City.Walkable(n) {
-				continue
-			}
-			f := cur.first
-			if cur.p == from {
-				f = d
-			}
-			if n == to {
-				return f
-			}
-			seen[n] = true
-			queue = append(queue, qe{p: n, first: f})
-		}
-	}
-	return ""
+	return w.StepToward(from, to)
 }

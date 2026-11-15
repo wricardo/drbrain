@@ -15,8 +15,9 @@ type AchievementView struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	Done        bool   `json:"done"`
-	Progress    int    `json:"progress"`
-	Target      int    `json:"target"`
+	// Progress toward target, in that requirement's own units.
+	Progress int `json:"progress"`
+	Target   int `json:"target"`
 }
 
 type BuildView struct {
@@ -24,36 +25,46 @@ type BuildView struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	Cost        int    `json:"cost"`
-	Unlocked    bool   `json:"unlocked"`
-	Completed   bool   `json:"completed"`
-	Affordable  bool   `json:"affordable"`
-	Applicable  bool   `json:"applicable"`
+	// The right to build has been earned.
+	Unlocked  bool `json:"unlocked"`
+	Completed bool `json:"completed"`
+	// Money covers the cost right now.
+	Affordable bool `json:"affordable"`
+	// A legal placement exists right now.
+	Applicable bool `json:"applicable"`
 	// Why the build cannot be placed, when it cannot.
 	Problem *string `json:"problem,omitempty"`
 }
 
 type CarClassView struct {
-	ClassName  string `json:"className"`
-	Price      int    `json:"price"`
-	Capacity   int    `json:"capacity"`
-	MaxBattery int    `json:"maxBattery"`
-	StepCost   int    `json:"stepCost"`
-	Unlocked   bool   `json:"unlocked"`
-	Affordable bool   `json:"affordable"`
+	ClassName string `json:"className"`
+	Price     int    `json:"price"`
+	// Hold size in boxes.
+	Capacity   int `json:"capacity"`
+	MaxBattery int `json:"maxBattery"`
+	StepCost   int `json:"stepCost"`
+	// True once a build has granted this class, or it never needed one.
+	Unlocked   bool `json:"unlocked"`
+	Affordable bool `json:"affordable"`
 }
 
 type CarView struct {
-	ID         string   `json:"id"`
-	Name       string   `json:"name"`
-	ClassName  string   `json:"className"`
-	X          int      `json:"x"`
-	Y          int      `json:"y"`
-	Battery    int      `json:"battery"`
-	MaxBattery int      `json:"maxBattery"`
-	BatteryPct int      `json:"batteryPct"`
-	Capacity   int      `json:"capacity"`
-	Cargo      []string `json:"cargo"`
-	State      CarState `json:"state"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	ClassName  string `json:"className"`
+	X          int    `json:"x"`
+	Y          int    `json:"y"`
+	Battery    int    `json:"battery"`
+	MaxBattery int    `json:"maxBattery"`
+	BatteryPct int    `json:"batteryPct"`
+	// Hold size in boxes.
+	Capacity int `json:"capacity"`
+	// Boxes currently in the hold.
+	Load int `json:"load"`
+	// Boxes still free.
+	FreeBoxes int      `json:"freeBoxes"`
+	Cargo     []string `json:"cargo"`
+	State     CarState `json:"state"`
 	// The move queued for the next tick, if any.
 	QueuedMove *Direction `json:"queuedMove,omitempty"`
 	// Why the most recent move was rejected, if it was.
@@ -78,7 +89,8 @@ type CityView struct {
 	Name     string `json:"name"`
 	GridSize int    `json:"gridSize"`
 	// Full map as glyph rows. Unexplored tiles render '?'.
-	Rows        []string     `json:"rows"`
+	Rows []string `json:"rows"`
+	// Tiles still unexplored. Always 0 on the static city query, which reveals all.
 	HiddenTiles int          `json:"hiddenTiles"`
 	Kitchens    []*PointView `json:"kitchens"`
 	Customers   []*PointView `json:"customers"`
@@ -86,13 +98,33 @@ type CityView struct {
 	Chargers    []*PointView `json:"chargers"`
 }
 
+// A stretch of street closed for works.
+type ClosureView struct {
+	ID        string `json:"id"`
+	Reason    string `json:"reason"`
+	StartTick int    `json:"startTick"`
+	EndTick   int    `json:"endTick"`
+	// Ticks until it reopens; negative when it has already ended.
+	TicksLeft int `json:"ticksLeft"`
+	// The closed tiles, so a client can draw them without guessing.
+	Tiles []*PointView `json:"tiles"`
+	// Bounding box of the closed tiles, for camera moves.
+	MinX int `json:"minX"`
+	MinY int `json:"minY"`
+	MaxX int `json:"maxX"`
+	MaxY int `json:"maxY"`
+}
+
 type EventView struct {
-	Tick    int     `json:"tick"`
-	Type    string  `json:"type"`
-	Message string  `json:"message"`
-	CarID   *string `json:"carId,omitempty"`
-	X       int     `json:"x"`
-	Y       int     `json:"y"`
+	Tick int `json:"tick"`
+	// One of the car_* / order_* / build_* / unlock_* / closure_* names the engine emits.
+	Type    string `json:"type"`
+	Message string `json:"message"`
+	// Null for world events (spawns, builds, closures); set for anything a car caused.
+	CarID *string `json:"carId,omitempty"`
+	// Position of the event, or 0,0 when it has none — non-null, so 0,0 is ambiguous.
+	X int `json:"x"`
+	Y int `json:"y"`
 }
 
 type Health struct {
@@ -105,38 +137,63 @@ type ItemCount struct {
 }
 
 type LedgerView struct {
-	Money            int          `json:"money"`
-	MoneyEarned      int          `json:"moneyEarned"`
-	Reputation       float64      `json:"reputation"`
-	Deliveries       int          `json:"deliveries"`
-	LateDeliveries   int          `json:"lateDeliveries"`
-	ExpiredOrders    int          `json:"expiredOrders"`
-	OrdersSpawned    int          `json:"ordersSpawned"`
-	OnTimeStreak     int          `json:"onTimeStreak"`
-	Tows             int          `json:"tows"`
-	BuildsCompleted  int          `json:"buildsCompleted"`
+	// Spendable balance. Buying a car or build reduces it.
+	Money int `json:"money"`
+	// Lifetime earnings; never decreases. Achievements read this, not money.
+	MoneyEarned int `json:"moneyEarned"`
+	// 0-5, clamped. Grants and deliveries cannot push it past the scale.
+	Reputation float64 `json:"reputation"`
+	// On-time deliveries only. A late delivery increments lateDeliveries instead.
+	Deliveries     int `json:"deliveries"`
+	LateDeliveries int `json:"lateDeliveries"`
+	ExpiredOrders  int `json:"expiredOrders"`
+	// Every order ever raised, including the ones that later expired.
+	OrdersSpawned int `json:"ordersSpawned"`
+	// Consecutive on-time deliveries. Both a late delivery and an expiry reset it to 0.
+	OnTimeStreak int `json:"onTimeStreak"`
+	Tows         int `json:"tows"`
+	// Completed builds. Chapter() derives from this, capped at 4.
+	BuildsCompleted int `json:"buildsCompleted"`
+	// Delivered ORDERS per item, not boxes: a two-box delivery adds 1.
 	DeliveriesByItem []*ItemCount `json:"deliveriesByItem"`
+	// Lifetime fleet running cost paid, cumulative. Zero when the map disables
+	// upkeep. Not subtracted from moneyEarned: upkeep is a cost, not negative
+	// income, and achievements read moneyEarned.
+	UpkeepPaid int `json:"upkeepPaid"`
+	// Lifetime spend on tows, cumulative. A tow costs towFeePerTile x route distance, floored at towFeeMin, and is clamped to the balance.
+	TowFees int `json:"towFees"`
+	// What the fleet would be charged on the next upkeep interval, given where the
+	// cars are standing right now. A car on a depot tile contributes zero. Lets a
+	// client show the drain before it lands rather than only after.
+	UpkeepDue int `json:"upkeepDue"`
 }
 
 type Mutation struct {
 }
 
 type OrderView struct {
-	ID           string     `json:"id"`
-	Item         string     `json:"item"`
-	ItemName     string     `json:"itemName"`
+	ID       string `json:"id"`
+	Item     string `json:"item"`
+	ItemName string `json:"itemName"`
+	// How many boxes the customer asked for.
+	Quantity     int        `json:"quantity"`
 	KitchenID    string     `json:"kitchenId"`
 	KitchenName  string     `json:"kitchenName"`
 	CustomerID   string     `json:"customerId"`
 	CustomerName string     `json:"customerName"`
 	State        OrderState `json:"state"`
-	AssignedCar  *string    `json:"assignedCar,omitempty"`
-	CreatedTick  int        `json:"createdTick"`
-	DeadlineTick int        `json:"deadlineTick"`
-	TicksLeft    int        `json:"ticksLeft"`
-	Reward       int        `json:"reward"`
-	Paid         int        `json:"paid"`
-	Late         bool       `json:"late"`
+	// The car holding or holding-to-be. Kept after DONE, so read it as history once state is terminal.
+	AssignedCar  *string `json:"assignedCar,omitempty"`
+	CreatedTick  int     `json:"createdTick"`
+	DeadlineTick int     `json:"deadlineTick"`
+	// Ticks until the deadline. Signed: negative means already past it but not yet swept.
+	TicksLeft int `json:"ticksLeft"`
+	// What the job would pay if delivered now.
+	Reward int `json:"reward"`
+	// What it actually paid. Zero until state is DONE.
+	Paid int `json:"paid"`
+	// Delivered past the deadline, therefore paid at the late multiplier.
+	Late bool `json:"late"`
 }
 
 type PointView struct {
@@ -162,30 +219,35 @@ type SessionSummary struct {
 
 // The full client view of a session at one tick.
 type Snapshot struct {
-	ID        string       `json:"id"`
-	CreatedAt time.Time    `json:"createdAt"`
-	Tick      int          `json:"tick"`
-	Speed     int          `json:"speed"`
-	Paused    bool         `json:"paused"`
-	TickMs    int          `json:"tickMs"`
-	City      *CityView    `json:"city"`
-	Cars      []*CarView   `json:"cars"`
-	Orders    []*OrderView `json:"orders"`
-	Ledger    *LedgerView  `json:"ledger"`
-	// The purchasable catalogue with per-session unlock and affordability flags.
+	ID        string    `json:"id"`
+	CreatedAt time.Time `json:"createdAt"`
+	Tick      int       `json:"tick"`
+	// Clock multiplier: 0 paused, 1/2/4 running.
+	Speed  int  `json:"speed"`
+	Paused bool `json:"paused"`
+	// Wall-clock length of one tick at 1x, from the city config.
+	TickMs int          `json:"tickMs"`
+	City   *CityView    `json:"city"`
+	Cars   []*CarView   `json:"cars"`
+	Orders []*OrderView `json:"orders"`
+	Ledger *LedgerView  `json:"ledger"`
+	// The purchasable catalogue with per-session unlock and affordability flags, cheapest first.
 	CarClasses   []*CarClassView    `json:"carClasses"`
 	Achievements []*AchievementView `json:"achievements"`
 	Unlocks      []*UnlockView      `json:"unlocks"`
 	Builds       []*BuildView       `json:"builds"`
 	Events       []*EventView       `json:"events"`
+	// Street works currently closing part of the map.
+	Closures []*ClosureView `json:"closures"`
 }
 
 type UnlockView struct {
-	ID          string   `json:"id"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	Earned      bool     `json:"earned"`
-	Builds      []string `json:"builds"`
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Earned      bool   `json:"earned"`
+	// The build ids this unlock makes purchasable.
+	Builds []string `json:"builds"`
 }
 
 type CarState string
@@ -374,6 +436,10 @@ const (
 	RejectReasonOffGrid      RejectReason = "OFF_GRID"
 	RejectReasonBlocked      RejectReason = "BLOCKED"
 	RejectReasonNoBattery    RejectReason = "NO_BATTERY"
+	// The tile is closed for street works.
+	RejectReasonClosed RejectReason = "CLOSED"
+	// Another car already holds that tile, or it is at capacity.
+	RejectReasonOccupied RejectReason = "OCCUPIED"
 )
 
 var AllRejectReason = []RejectReason{
@@ -381,11 +447,13 @@ var AllRejectReason = []RejectReason{
 	RejectReasonOffGrid,
 	RejectReasonBlocked,
 	RejectReasonNoBattery,
+	RejectReasonClosed,
+	RejectReasonOccupied,
 }
 
 func (e RejectReason) IsValid() bool {
 	switch e {
-	case RejectReasonBadDirection, RejectReasonOffGrid, RejectReasonBlocked, RejectReasonNoBattery:
+	case RejectReasonBadDirection, RejectReasonOffGrid, RejectReasonBlocked, RejectReasonNoBattery, RejectReasonClosed, RejectReasonOccupied:
 		return true
 	}
 	return false

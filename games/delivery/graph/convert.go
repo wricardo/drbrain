@@ -41,6 +41,7 @@ func snapshotFrom(s session.Snapshot) *model.Snapshot {
 		Unlocks:      make([]*model.UnlockView, 0, len(s.Unlocks)),
 		Builds:       make([]*model.BuildView, 0, len(s.Builds)),
 		Events:       make([]*model.EventView, 0, len(s.Events)),
+		Closures:     make([]*model.ClosureView, 0, len(s.Closures)),
 	}
 	for _, c := range s.Cars {
 		out.Cars = append(out.Cars, carFrom(c))
@@ -81,6 +82,31 @@ func snapshotFrom(s session.Snapshot) *model.Snapshot {
 	}
 	for _, e := range s.Events {
 		out.Events = append(out.Events, eventFrom(e))
+	}
+	for _, cl := range s.Closures {
+		out.Closures = append(out.Closures, closureFrom(cl))
+	}
+	return out
+}
+
+// closureFrom converts one stretch of street works. Its tiles become PointViews
+// with an empty name, because a closure tile has no identity of its own: naming
+// them would invite a client to treat them as entities.
+func closureFrom(c session.ClosureView) *model.ClosureView {
+	out := &model.ClosureView{
+		ID:        c.ID,
+		Reason:    c.Reason,
+		StartTick: int(c.StartTick),
+		EndTick:   int(c.EndTick),
+		TicksLeft: int(c.TicksLeft),
+		MinX:      c.MinX,
+		MinY:      c.MinY,
+		MaxX:      c.MaxX,
+		MaxY:      c.MaxY,
+		Tiles:     make([]*model.PointView, 0, len(c.Tiles)),
+	}
+	for _, t := range c.Tiles {
+		out.Tiles = append(out.Tiles, &model.PointView{ID: "", Name: "", X: t.X, Y: t.Y})
 	}
 	return out
 }
@@ -123,6 +149,8 @@ func carFrom(c session.CarView) *model.CarView {
 		MaxBattery: c.MaxBattery,
 		BatteryPct: c.BatteryPct,
 		Capacity:   c.Capacity,
+		Load:       c.Load,
+		FreeBoxes:  c.FreeBoxes,
 		Cargo:      nonNil(c.Cargo),
 		State:      carStateFrom(c.State),
 	}
@@ -145,6 +173,7 @@ func orderFrom(o session.OrderView) *model.OrderView {
 		ID:           o.ID,
 		Item:         o.Item,
 		ItemName:     o.ItemName,
+		Quantity:     o.Quantity,
 		KitchenID:    o.KitchenID,
 		KitchenName:  o.KitchenName,
 		CustomerID:   o.CustomerID,
@@ -185,6 +214,9 @@ func ledgerFrom(l session.LedgerView) *model.LedgerView {
 		ExpiredOrders:    l.ExpiredOrders,
 		OrdersSpawned:    l.OrdersSpawned,
 		OnTimeStreak:     l.OnTimeStreak,
+		UpkeepPaid:       l.UpkeepPaid,
+		TowFees:          l.TowFees,
+		UpkeepDue:        l.UpkeepDue,
 		Tows:             l.Tows,
 		BuildsCompleted:  l.BuildsCompleted,
 		DeliveriesByItem: items,
@@ -259,6 +291,17 @@ func rejectFrom(s string) (model.RejectReason, bool) {
 		return model.RejectReasonBlocked, true
 	case "no_battery":
 		return model.RejectReasonNoBattery, true
+	case "closed":
+		// Street works reject entry just like a wall does, but for a reason the
+		// player can wait out rather than route around. Mapping it to BLOCKED
+		// would tell a client there is nothing to do but reroute.
+		return model.RejectReasonClosed, true
+	case "occupied":
+		// Traffic is the third kind of refusal: not a wall (reroute) and not a
+		// closure (wait), but a tile that another car holds and may vacate at any
+		// tick. Folding it into BLOCKED would tell the player their car hit
+		// scenery, which is the one diagnosis that makes them stop trying.
+		return model.RejectReasonOccupied, true
 	}
 	return "", false
 }

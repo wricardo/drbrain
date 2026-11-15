@@ -183,23 +183,43 @@ func TestAllCargoForOneCustomerIsDeliveredOnArrival(t *testing.T) {
 		t.Fatal(err)
 	}
 	car := w.Cars[0]
-	car.Class.Capacity = 3
+	car.Class.Capacity = 12
 
-	customer := Position{2, 5}
-	car.Pos = customer
+	// A customer address that is walkable from a neighbouring tile, read from
+	// the map rather than hardcoded.
+	var anna Position
+	for _, cu := range w.City.Customers {
+		if cu.ID == "c_anna" {
+			anna = cu.Pos
+		}
+	}
+	if anna == (Position{}) {
+		t.Fatal("shipped city has no c_anna")
+	}
+	car.Pos = anna
 	car.Cargo = nil
+	car.cargoBoxes = 0
 	for i := range 3 {
 		o := &Order{
 			ID: "x" + string(rune('a'+i)), Item: "pizza", KitchenID: "k_pizza",
 			CustomerID: "c_anna", State: OrderPickedUp, AssignedCar: car.ID,
-			DeadlineTick: 10000, Reward: 40,
+			DeadlineTick: 10000, Reward: 40, Quantity: 2,
 		}
 		w.Orders = append(w.Orders, o)
-		car.Cargo = append(car.Cargo, o.ID)
+		car.addCargo(o.ID, o.Boxes())
 	}
-	// resolveTileInteractions only runs for cars that moved; step off and back.
-	car.Pos = Position{2, 4}
-	_ = w.QueueMove(car.ID, South)
+	// resolveTileInteractions only runs for cars that moved; step in from a
+	// walkable neighbour and back onto the customer tile.
+	approach, ok := firstWalkableNeighbour(w.City, anna)
+	if !ok {
+		t.Fatal("customer tile has no walkable neighbour")
+	}
+	car.Pos = approach
+	dir := directionBetween(approach, anna)
+	if dir == "" {
+		t.Fatal("no direction from approach to customer")
+	}
+	_ = w.QueueMove(car.ID, dir)
 	w.Advance()
 	done := 0
 	for _, o := range w.Orders {
@@ -210,4 +230,24 @@ func TestAllCargoForOneCustomerIsDeliveredOnArrival(t *testing.T) {
 	if done != 3 {
 		t.Errorf("only %d of 3 same-customer orders delivered on arrival", done)
 	}
+}
+
+// firstWalkableNeighbour returns any walkable neighbour of p.
+func firstWalkableNeighbour(c *City, p Position) (Position, bool) {
+	for _, d := range AllDirections {
+		if n, ok := p.Neighbour(d); ok && c.Walkable(n) {
+			return n, true
+		}
+	}
+	return Position{}, false
+}
+
+// directionBetween returns the single step that takes from to to.
+func directionBetween(from, to Position) Direction {
+	for _, d := range AllDirections {
+		if n, ok := from.Neighbour(d); ok && n == to {
+			return d
+		}
+	}
+	return ""
 }

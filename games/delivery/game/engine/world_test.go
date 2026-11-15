@@ -362,6 +362,12 @@ func TestQueueMoveRejectsUnknownCarAndDirection(t *testing.T) {
 func TestTickOrderIsIndependentOfCarInsertionOrder(t *testing.T) {
 	// Two cars must resolve in id order, so the same commands produce the same
 	// events regardless of the order cars were added.
+	//
+	// The two cars move apart (A east, B south), not into each other. Before the
+	// occupancy rule this test used a head-on pair, which was only ever "both
+	// move" because cars could pass through each other; a head-on pair is now
+	// exactly the case that must NOT resolve, and it is covered by
+	// TestHeadOnCarsCannotSwap.
 	w := tinyWorld(t)
 	c2, err := w.BuyCar("scooter", "d1")
 	if err != nil {
@@ -369,7 +375,7 @@ func TestTickOrderIsIndependentOfCarInsertionOrder(t *testing.T) {
 	}
 	w.Cars[0].Pos, c2.Pos = Position{2, 2}, Position{4, 2}
 
-	_ = w.QueueMove(c2.ID, West)
+	_ = w.QueueMove(c2.ID, South)
 	_ = w.QueueMove(w.Cars[0].ID, East)
 	evs := w.Advance()
 

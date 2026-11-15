@@ -78,6 +78,147 @@ func (c *City) Distance(from, to Position) int {
 	return -1
 }
 
+// DistanceAvoiding is Distance with extra tiles treated as impassable.
+//
+// Closures need this: once a street is shut, the honest route estimate and the
+// honest reachability question both have to go around it, or the game quotes a
+// deadline for a drive nobody can make. It takes a predicate rather than a set
+// so the caller decides what "impassable" means without this package knowing
+// about closures.
+//
+// The ORIGIN is always passable, even when blocked reports it as impassable.
+// That asymmetry is the whole rule for street works: a closure blocks ENTRY, so
+// a car standing on a tile that closes under it can still drive off. Treating a
+// blocked origin as unreachable made four queries disagree about the same tile
+// -- movement said the car could leave, this returned -1, StepToward returned a
+// real direction, and estimateFrom quoted a SHORTER deadline because it skips a
+// negative leg.
+//
+// Note DistancesAvoiding and ReachAvoiding below keep the strict form (a blocked
+// start yields nothing). They answer "what can be reached FROM this seed", which
+// is a guard's question about a hypothetical grid, not a car's route. Do not
+// copy this rule into them.
+func (c *City) DistanceAvoiding(from, to Position, blocked func(Position) bool) int {
+	if from == to {
+		return 0
+	}
+	if !c.Walkable(from) {
+		return -1
+	}
+	dist := map[Position]int{from: 0}
+	queue := []Position{from}
+	for len(queue) > 0 {
+		p := queue[0]
+		queue = queue[1:]
+		if p == to {
+			return dist[p]
+		}
+		for _, d := range AllDirections {
+			n, ok := p.Neighbour(d)
+			if !ok {
+				continue
+			}
+			if _, seen := dist[n]; seen {
+				continue
+			}
+			if !c.Walkable(n) {
+				continue
+			}
+			if blocked != nil && blocked(n) {
+				continue
+			}
+			dist[n] = dist[p] + 1
+			queue = append(queue, n)
+		}
+	}
+	return -1
+}
+
+// DistanceAvoidingSet is DistanceAvoiding with a coordinate set.
+func (c *City) DistanceAvoidingSet(from Position, blocked map[Position]bool) (int, bool) {
+	return 0, false
+}
+
+// DistancesAvoiding returns the BFS distance from start to every reachable
+// tile when the blocked set is impassable. It is the map form of
+// DistanceAvoiding, used by the closure guard to reason about a whole grid at
+// once rather than one destination at a time.
+func (c *City) DistancesAvoiding(start Position, blocked map[Position]bool) map[Position]int {
+	dist := map[Position]int{}
+	if blocked[start] || !c.Walkable(start) {
+		return dist
+	}
+	dist[start] = 0
+	queue := []Position{start}
+	for len(queue) > 0 {
+		p := queue[0]
+		queue = queue[1:]
+		for _, d := range AllDirections {
+			n, ok := p.Neighbour(d)
+			if !ok {
+				continue
+			}
+			if _, seen := dist[n]; seen {
+				continue
+			}
+			if blocked[n] || !c.Walkable(n) {
+				continue
+			}
+			dist[n] = dist[p] + 1
+			queue = append(queue, n)
+		}
+	}
+	return dist
+}
+
+// ReachAvoiding is the set of tiles reachable from start when the blocked set
+// is impassable. It is the primitive behind both the closure safety check and
+// the tests that pin it.
+func (c *City) ReachAvoiding(start Position, blocked map[Position]bool) map[Position]bool {
+	seen := map[Position]bool{}
+	if blocked[start] || !c.Walkable(start) {
+		return seen
+	}
+	seen[start] = true
+	queue := []Position{start}
+	for len(queue) > 0 {
+		p := queue[0]
+		queue = queue[1:]
+		for _, d := range AllDirections {
+			n, ok := p.Neighbour(d)
+			if !ok || seen[n] || blocked[n] || !c.Walkable(n) {
+				continue
+			}
+			seen[n] = true
+			queue = append(queue, n)
+		}
+	}
+	return seen
+}
+
+// BridgeTilesForTest returns the terrain writes of a named build in a city
+// file. It exists so tests can assert on the tiles a build actually declares
+// instead of hardcoding coordinates that move when the map is regenerated.
+func BridgeTilesForTest(cityFile, buildID string) []TileWrite {
+	cfg, err := LoadCityConfig(cityFile)
+	if err != nil {
+		return nil
+	}
+	for _, b := range cfg.Builds {
+		if b.ID != buildID {
+			continue
+		}
+		var out []TileWrite
+		for _, e := range b.Effects {
+			if e.Type == EffectBuildBridge || e.Type == EffectPaveRoad {
+				out = append(out, e.Tiles...)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
 // NearestChargingTiles returns charging tiles reachable from start, nearest
 // first. It is used for battery-risk estimates and for suggesting where a
 // player should head when low.

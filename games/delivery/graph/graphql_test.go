@@ -7,10 +7,58 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/wricardo/drbrain-delivery/game/engine"
 	"github.com/wricardo/drbrain-delivery/game/session"
 )
+
+// testRoute plans a shortest path across rendered glyph rows and returns the
+// directions to drive.
+//
+// It reasons about the same rows the client receives, so it routes around
+// buildings without knowing the map. Test-only: the engine has no pathfinding
+// on the player's behalf by design (D1), and this must never grow into a game
+// feature.
+func testRoute(rows []string, from, to engine.Position) []engine.Direction {
+	if from == to {
+		return nil
+	}
+	walkable := func(p engine.Position) bool {
+		if p.Y < 0 || p.Y >= len(rows) || p.X < 0 || p.X >= len(rows[p.Y]) {
+			return false
+		}
+		switch rows[p.Y][p.X] {
+		case '.', ',', 'D', 'C', 'K', 'H', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+			return true
+		}
+		return false
+	}
+	type node struct {
+		p    engine.Position
+		path []engine.Direction
+	}
+	seen := map[engine.Position]bool{from: true}
+	queue := []node{{p: from}}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		for _, d := range engine.AllDirections {
+			n, ok := cur.p.Neighbour(d)
+			if !ok || seen[n] || !walkable(n) {
+				continue
+			}
+			path := append(append([]engine.Direction(nil), cur.path...), d)
+			if n == to {
+				return path
+			}
+			seen[n] = true
+			queue = append(queue, node{p: n, path: path})
+		}
+	}
+	return nil
+}
 
 // newTestServer wires the real GraphQL handler over a temp save dir.
 func newTestServer(t *testing.T) *httptest.Server {
@@ -122,11 +170,13 @@ func TestCreateSessionReturnsSnapshot(t *testing.T) {
 	if !s.Paused {
 		t.Error("new session should be paused")
 	}
-	if s.City.GridSize != 20 {
-		t.Errorf("gridSize = %d", s.City.GridSize)
+	// The map is generated, so assert internal consistency rather than a
+	// literal size: the rows returned must match the declared grid.
+	if s.City.GridSize < 20 {
+		t.Errorf("gridSize = %d, want at least 20", s.City.GridSize)
 	}
-	if len(s.City.Rows) != 20 {
-		t.Errorf("rows = %d", len(s.City.Rows))
+	if len(s.City.Rows) != s.City.GridSize {
+		t.Errorf("rows = %d, want %d", len(s.City.Rows), s.City.GridSize)
 	}
 	if s.City.Hidden == 0 {
 		t.Error("expected hidden tiles in a fresh city")
@@ -226,13 +276,60 @@ func TestFullDeliveryThroughGraphQL(t *testing.T) {
 		orders { state }
 	} }`, nil, &assigned)
 
-	// Drive: east to the kitchen, then west+ south to Anna's Flat.
 	drive := func(dir string) {
 		mustQuery(t, ts, `mutation { moveCar(id: "d1", carId: "car_1", direction: `+dir+`) { tick } }`, nil, nil)
 		mustQuery(t, ts, `mutation { tick(id: "d1", count: 1) { tick } }`, nil, nil)
 	}
-	drive("EAST")
-	drive("EAST")
+
+	// Read the city once: rows let the test plan a real route, and the entity
+	// lists give the target coordinates. Hardcoding "EAST EAST" would pin this
+	// test to one layout, and the map is generated from scripts/genmap.py.
+	var view struct {
+		Session struct {
+			City struct {
+				Rows     []string
+				Kitchens []struct {
+					ID   string
+					X, Y int
+				}
+				Customers []struct {
+					ID   string
+					X, Y int
+				}
+			}
+			Cars []struct{ X, Y int }
+		}
+	}
+	mustQuery(t, ts, `query { session(id: "d1") { city { rows kitchens { id x y } customers { id x y } } cars { x y } } }`, nil, &view)
+
+	var kx, ky, cx, cy int
+	for _, k := range view.Session.City.Kitchens {
+		if k.ID == o.KitchenID {
+			kx, ky = k.X, k.Y
+		}
+	}
+	for _, c := range view.Session.City.Customers {
+		if c.ID == o.CustomerID {
+			cx, cy = c.X, c.Y
+		}
+	}
+
+	// driveTo follows a BFS route across the rendered grid, one queued step at
+	// a time, so it goes around buildings exactly as a player would.
+	driveTo := func(toX, toY int) {
+		from := engine.Position{X: view.Session.Cars[0].X, Y: view.Session.Cars[0].Y}
+		path := testRoute(view.Session.City.Rows, from, engine.Position{X: toX, Y: toY})
+		if len(path) == 0 {
+			t.Fatalf("no route from %v to (%d,%d)", from, toX, toY)
+		}
+		for _, d := range path {
+			drive(strings.ToUpper(string(d)))
+		}
+		// Keep the local copy of the position in step for the next leg.
+		view.Session.Cars[0].X, view.Session.Cars[0].Y = toX, toY
+	}
+
+	driveTo(kx, ky)
 
 	var picked struct {
 		Session struct {
@@ -253,9 +350,7 @@ func TestFullDeliveryThroughGraphQL(t *testing.T) {
 		t.Fatalf("cargo = %v", picked.Session.Cars[0].Cargo)
 	}
 
-	for _, d := range []string{"WEST", "WEST", "SOUTH", "SOUTH", "SOUTH"} {
-		drive(d)
-	}
+	driveTo(cx, cy)
 
 	var done struct {
 		Session struct {
@@ -550,5 +645,27 @@ func TestCarViewRejectsNegativeRadius(t *testing.T) {
 	res := query(t, ts, `query { carView(id: "neg", carId: "car_1", radius: -1) { rowSpan } }`, nil)
 	if len(res.Errors) == 0 {
 		t.Fatal("expected a negative radius to be rejected")
+	}
+}
+
+// TestRejectClosedIsMapped guards the closure reject reason crossing the
+// GraphQL boundary. rejectFrom is the only translation point between the
+// engine's string reasons and the schema enum, and a missing case silently
+// degrades to null -- the client sees "no reason" for a move that was refused.
+func TestRejectClosedIsMapped(t *testing.T) {
+	// Every engine RejectReason must have an enum member. A missing mapping is
+	// invisible: convert.go quietly omits the field, so the client sees a null
+	// lastReject and reads it as "the move was legal".
+	for _, reason := range []string{
+		string(engine.RejectBadDirection),
+		string(engine.RejectOffGrid),
+		string(engine.RejectBlocked),
+		string(engine.RejectNoBattery),
+		string(engine.RejectClosed),
+		string(engine.RejectOccupied),
+	} {
+		if _, ok := rejectFrom(reason); !ok {
+			t.Errorf("rejectFrom(%q) is unmapped; the enum has a case for it", reason)
+		}
 	}
 }

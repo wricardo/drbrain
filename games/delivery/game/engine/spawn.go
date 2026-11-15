@@ -7,21 +7,39 @@ import (
 
 // Order spawning.
 //
-// Three gates decide whether a customer raises an order on a given tick
-// (IDEA.txt §7.1):
+// The tick's spawn decision runs in this order, and the order matters because
+// every branch returns:
 //
-//	GATE 1  that customer's own cooldown has elapsed
-//	GATE 2  the global cap is not reached
-//	GATE 3  the queue is below what the fleet can actually handle
+//	0. forced first order — until HasSpawned, one order is raised regardless
+//	   of every gate, so a player never starts in an empty world
+//	1. anti-dead-air — if nothing is live, nobody is carrying anything, and
+//	   MinSpawnGapTicks has elapsed, raise one immediately
+//	2. GATE 3 — the queue is below what the fleet can handle (targetActive)
+//	3. GATE 2 — the global cap MaxActiveOrders is not reached
+//	4. GATE 1 — per customer, in id order, that customer's cooldown has elapsed
 //
-// GATE 3 is the one that matters. Sizing the queue by customer count would
-// flood it as districts unlock; sizing it by fleet capacity keeps supply one
-// step behind throughput, which is what makes buying a car feel like progress
-// rather than a treadmill.
+// Note that GATE 3 is checked BEFORE GATE 2 and GATE 1, not after: once the
+// queue is full by fleet capacity, no customer is even considered. Sizing the
+// queue by customer count would flood it as districts unlock; sizing it by fleet
+// capacity keeps supply one step behind throughput, which is what makes buying a
+// car feel like progress rather than a treadmill.
 //
-// A fourth rule sits on top: if the queue is empty and no car is carrying
-// anything, spawn something. Waiting at the depot with nothing to do is the
-// worst possible early-game feel, and cooldowns alone cannot prevent it.
+// At most one order is raised per tick, and the customer loop is sorted by id so
+// a replay of (seed, commands) raises the same order for the same customer.
+//
+// Two different questions gate an individual customer, and they are NOT
+// symmetric:
+//
+//	customerIsServable  is ANY demand reachable right now? If not, the
+//	                    customer is skipped silently and its cooldown advanced.
+//	pickDemand          which demand to roll. For a single-demand customer this
+//	                    returns that demand unconditionally; only a
+//	                    multi-demand customer is filtered to viable items.
+//
+// Because spawnOneFor returns on customerIsServable before pickDemand runs, the
+// nearestKitchenFor failure branch further down is unreachable dead code. See its
+// comment for the measured cases, and docs/known-issues.md #4 for the
+// consequence: an unsupplied customer is silent rather than diagnosed.
 
 // spawnState is the per-customer memory the spawner needs. It lives on the
 // World so it survives across ticks and is saved with the session.
@@ -112,7 +130,7 @@ func (w *World) spawnForced() {
 	best := w.City.Customers[0]
 	bestDist := -1
 	for _, cu := range w.City.Customers {
-		d := w.City.Distance(depotPos, cu.Pos)
+		d := w.routeDistance(depotPos, cu.Pos)
 		if d < 0 {
 			continue
 		}
@@ -161,14 +179,36 @@ func (w *World) noCarCarrying() bool {
 // the customer cannot be served right now (no reachable kitchen, no demand
 // satisfiable), which is a content or geography fact rather than an error.
 func (w *World) spawnOneFor(cu Customer) bool {
+	// A customer cut off from the fleet must not raise work: a closure, a
+	// fogged district or a stranded fleet would otherwise sell orders that
+	// expire unsold. This is the check whose absence produced 72 impossible
+	// orders out of 175 with the bridge shut.
+	if !w.customerIsServable(cu) {
+		w.advanceCooldown(cu, "")
+		return false
+	}
+
 	item := w.pickDemand(cu)
 	if item == "" {
 		return false
 	}
 	kitchen, ok := w.nearestKitchenFor(cu.Pos, item)
 	if !ok {
-		// No reachable kitchen serves this item. Do not silently drop it: this
-		// is a content bug that the harness should surface.
+		// Unreachable in practice, and that is worth stating rather than
+		// pretending this is a live diagnostic. Reaching it needs
+		// customerIsServable(cu) == true together with nearestKitchenFor failing
+		// for the picked item. For a single-demand customer pickDemand returns
+		// that demand with NO supply check, while customerIsServable asked the
+		// same question about the same item — so both agree and one of them
+		// already returned. For a multi-demand customer pickDemand has already
+		// filtered out every item no kitchen can supply, so the lookup cannot
+		// fail either. Measured: clearing all menus gives
+		// single-demand {"pizza"} -> servable=false, pickDemand="pizza"
+		// multi-demand {pizza,sushi} -> servable=false, pickDemand="".
+		//
+		// The upshot is that an unsupplied customer is SILENT: no order, no
+		// event. TestEveryCustomerHasASupplyingKitchen is what actually catches
+		// a bad menu, at authoring time.
 		w.emit(EventSpawned, nil, fmt.Sprintf("order_starved: %s wants %s but no kitchen can supply it",
 			cu.Name, w.itemLabel(item)))
 		w.advanceCooldown(cu, item)
@@ -312,6 +352,31 @@ func (w *World) pickDemand(cu Customer) string {
 	return Pick(w.Seed, w.Tick, "demand:"+cu.ID, viable)
 }
 
+// customerIsServable reports whether the fleet could actually complete a job
+// for this customer right now.
+//
+// "Servable" is deliberately about geography, not battery or spare capacity:
+// a customer on the far side of the map with a car parked at the depot is a
+// legitimate job, while a customer behind a road closure is not. Hidden
+// districts are excluded because they are not yet in play.
+func (w *World) customerIsServable(cu Customer) bool {
+	if w.City.IsHidden(cu.Pos) {
+		return false
+	}
+	if w.ClosedAt(cu.Pos) {
+		return false
+	}
+	// A customer needs one reachable kitchen and a depot/charger that can
+	// reach both, which is exactly what routeDistance answers once closures
+	// are part of the routing.
+	for _, item := range cu.Demands {
+		if _, ok := w.nearestKitchenFor(cu.Pos, item); ok {
+			return true
+		}
+	}
+	return false
+}
+
 // nearestKitchenFor finds the kitchen serving item whose walking distance to
 // dest is smallest. Ties break by kitchen id so the choice is reproducible.
 func (w *World) nearestKitchenFor(dest Position, item string) (Kitchen, bool) {
@@ -321,7 +386,7 @@ func (w *World) nearestKitchenFor(dest Position, item string) (Kitchen, bool) {
 		if !k.Serves(item) || !w.City.Walkable(k.Pos) {
 			continue
 		}
-		d := w.City.Distance(k.Pos, dest)
+		d := w.routeDistance(k.Pos, dest)
 		if d < 0 {
 			continue
 		}
@@ -342,18 +407,36 @@ func (w *World) estimateTicks(kitchenPos, customerPos Position) int64 {
 	return w.estimateFrom(fromPos, kitchenPos, customerPos)
 }
 
-// estimateFrom is the deadline window for a courier starting at from: the
-// drive to the kitchen plus the drive to the customer, scaled by slack.
+// estimateFrom is the tick window a job from `from` would need: drive to the
+// kitchen, then to the customer, with slack applied.
+//
+// Each leg is routed (closure-aware). A leg of 0 is legitimate -- the car may
+// already be standing on the kitchen -- so it must be added, not skipped. A leg
+// of -1 means no route exists, and both legs answer that with the same flat
+// +20 long-haul assumption.
+//
+// Neither leg can be -1 merely because the car stands on a closed tile: a
+// closure blocks ENTRY, so DistanceAvoiding treats the origin as passable.
+// That is what keeps this window identical either side of a closure closing
+// under the car (measured 16 ticks both ways on the shipped map). Before that
+// was fixed this function skipped a negative first leg and quoted a SHORTER
+// deadline, which is `drbrain-delivery-bic` in docs/known-issues.md.
+//
+// Slack comes from OrderConfig.DeadlineSlack and tightens by chapter. Note the
+// zero-value fallback is 2.0, not the 1.8 the shipped map uses, so a map that
+// omits deadline_slack is more generous than city.json rather than identical.
 func (w *World) estimateFrom(from, kitchenPos, customerPos Position) int64 {
 	slack := w.deadlineSlack()
 
 	total := 0
-	if d := w.City.Distance(from, kitchenPos); d > 0 {
+	if d := w.routeDistance(from, kitchenPos); d >= 0 {
 		total += d
+	} else {
+		total += 20 // kitchen unreachable from here: assume a long haul
 	}
-	if d := w.City.Distance(kitchenPos, customerPos); d > 0 {
+	if d := w.routeDistance(kitchenPos, customerPos); d >= 0 {
 		total += d
-	} else if d < 0 {
+	} else {
 		total += 20 // unreachable at estimate time: assume a long haul
 	}
 	if total < 5 {
@@ -388,10 +471,21 @@ func (w *World) deadlineSlack() float64 {
 // rewardFor computes pay: base by item, scaled by chapter, plus a distance
 // bonus so long hauls are worth the battery.
 //
-// Quantity scales pay sublinearly on purpose. Linear pay per box makes bulk
-// strictly better -- forty boxes at the single-box rate would out-earn any
-// number of small runs and make order choice a non-decision. The exponent is
-// what keeps a full truck a good job and a small van job still worth taking.
+// Quantity scales pay sublinearly on purpose: 0.6 + 0.4*qty is affine, not
+// linear and not exponential, so the per-box rate falls as the order grows.
+// Linear pay per box would make bulk strictly better -- forty boxes at the
+// single-box rate would out-earn any number of small runs and make order choice
+// a non-decision. The shape is what keeps a full truck a good job while a small
+// van job is still worth taking.
+//
+// Measured on the shipped map for pizza (base 40, 6-tile haul, chapter 0):
+//
+//	qty  1 ->  58   (58.0 per box)
+//	qty 10 -> 202   (20.2 per box)
+//	qty 40 -> 682   (17.1 per box)
+//
+// The distance bonus is flat, so on short hauls the per-box rate is dominated by
+// the base multiplier; it is only on the long ones that distance shows.
 func (w *World) rewardFor(item string, kitchenPos, customerPos Position, quantity int) int {
 	base := w.ordersCfg.RewardBase[item]
 	if base <= 0 {
@@ -408,11 +502,11 @@ func (w *World) rewardFor(item string, kitchenPos, customerPos Position, quantit
 		}
 		mult = m[ch]
 	}
-	// 0.6 + 0.4*qty gives 1.0x at one box and 16.6x at forty, i.e. $1600
-	// rather than $1600-per-box-times-forty.
+	// Affine, not exponential: 1.0x at one box, 16.6x at forty, so a full truck
+	// pays 682 on the shipped map rather than 40x the single-box rate.
 	bulk := 0.6 + 0.4*float64(quantity)
 	reward := float64(base) * mult * bulk
-	if dist := w.City.Distance(kitchenPos, customerPos); dist > 0 {
+	if dist := w.routeDistance(kitchenPos, customerPos); dist > 0 {
 		reward += float64(dist * w.ordersCfg.DistanceBonusPerTile)
 	}
 	return int(reward + 0.5)

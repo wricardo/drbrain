@@ -18,6 +18,12 @@ func (s *Session) Snapshot() Snapshot {
 	return snap
 }
 
+// Summary returns the list view of one session: enough to render a save picker
+// without loading the world.
+//
+// Loaded separates a session that is in memory (and therefore ticking) from one
+// that exists only as a file. This method always reports true, because it reads
+// a live session; Manager.List reports false for the on-disk-only rows.
 func (s *Session) Summary() Summary {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -61,6 +67,10 @@ type Snapshot struct {
 	Builds       []BuildView       `json:"builds"`
 
 	Events []EventView `json:"events"`
+
+	// Closures are the street works live right now. Empty when none are, so a
+	// client can treat "no closures" as the common case without a nil check.
+	Closures []ClosureView `json:"closures"`
 }
 
 // CityView is the terrain and the fixed entities.
@@ -95,6 +105,8 @@ type CarView struct {
 	MaxBattery int      `json:"max_battery"`
 	BatteryPct int      `json:"battery_pct"`
 	Capacity   int      `json:"capacity"`
+	Load       int      `json:"load"`
+	FreeBoxes  int      `json:"free_boxes"`
 	Cargo      []string `json:"cargo"`
 	State      string   `json:"state"`
 	Queued     string   `json:"queued_move,omitempty"`
@@ -119,6 +131,7 @@ type OrderView struct {
 	ID           string `json:"id"`
 	Item         string `json:"item"`
 	ItemName     string `json:"item_name"`
+	Quantity     int    `json:"quantity"`
 	KitchenID    string `json:"kitchen_id"`
 	KitchenName  string `json:"kitchen_name"`
 	CustomerID   string `json:"customer_id"`
@@ -133,7 +146,45 @@ type OrderView struct {
 	Late         bool   `json:"late,omitempty"`
 }
 
+// ClosureView is one stretch of street closed for works.
+//
+// TicksLeft is derived, not stored: EndTick - now.
+//
+// The minimum observed value is 1, never 0. The closure window is half-open
+// (ActiveAt is StartTick <= tick < EndTick), so the closure is already absent
+// from the snapshot on the tick it counts down to; there is no snapshot in which
+// TicksLeft is 0. A countdown UI should therefore read 1 as "reopens next tick"
+// rather than expecting to see the street reopen while a closure is still listed.
+//
+// The bounding box (MinX..MaxY) is inclusive and exists so a client can decide
+// which map chunk to repaint without iterating Tiles, which is the authoritative
+// set. A closure is always a straight run along one street, so one of the two
+// spans is 1 wide.
+type ClosureView struct {
+	ID        string      `json:"id"`
+	Reason    string      `json:"reason"`
+	StartTick int64       `json:"start_tick"`
+	EndTick   int64       `json:"end_tick"`
+	TicksLeft int64       `json:"ticks_left"`
+	Tiles     []PointView `json:"tiles"`
+	MinX      int         `json:"min_x"`
+	MinY      int         `json:"min_y"`
+	MaxX      int         `json:"max_x"`
+	MaxY      int         `json:"max_y"`
+}
+
 // LedgerView is money, reputation and the counters achievements read.
+//
+// Deliveries excludes late ones: a late dropoff increments LateDeliveries
+// instead, so a client computing "jobs failed" must not read Deliveries alone.
+// MoneyEarned is lifetime and never decreases, which is why achievements test it
+// rather than Money — spending a build's cost must not undo progress.
+//
+// DeliveriesByItem is keyed by item id and counts ORDERS, not boxes. It is
+// incremented once per settled delivery, so a two-box order adds 1. Verified
+// end to end: delivering a quantity-2 pizza order gave
+// deliveriesByItem [{pizza, 1}] and deliveries 1. Do not multiply by quantity to
+// recover volume; a box count has to be summed from the orders themselves.
 type LedgerView struct {
 	Money            int            `json:"money"`
 	MoneyEarned      int            `json:"money_earned"`
@@ -146,6 +197,13 @@ type LedgerView struct {
 	Tows             int            `json:"tows"`
 	BuildsCompleted  int            `json:"builds_completed"`
 	DeliveriesByItem map[string]int `json:"deliveries_by_item"`
+
+	// Running-cost feedback. UpkeepDue is what the fleet would be charged on
+	// the next interval, so a client can show the drain before it lands rather
+	// than only after it has already happened.
+	UpkeepPaid int `json:"upkeep_paid"`
+	TowFees    int `json:"tow_fees"`
+	UpkeepDue  int `json:"upkeep_due"`
 }
 
 // AchievementView is one achievement's state.
@@ -194,7 +252,7 @@ type EventView struct {
 // read is consistent with the tick loop.
 func BuildSnapshot(w *engine.World) Snapshot {
 	city := w.City
-	rows := city.RenderRows(w.RenderCars())
+	rows := city.RenderRowsWithClosures(w.RenderCars(), w.ClosedSet())
 
 	snap := Snapshot{
 		Tick:   w.Tick,
@@ -208,6 +266,7 @@ func BuildSnapshot(w *engine.World) Snapshot {
 		Unlocks:      []UnlockView{},
 		Builds:       []BuildView{},
 		Events:       []EventView{},
+		Closures:     []ClosureView{},
 		City: CityView{
 			Name:      city.Name,
 			GridSize:  city.GridSize,
@@ -240,6 +299,8 @@ func BuildSnapshot(w *engine.World) Snapshot {
 			Battery: c.Battery, MaxBattery: c.Class.MaxBattery,
 			BatteryPct: c.BatteryPct(),
 			Capacity:   c.Class.Capacity,
+			Load:       c.Load(),
+			FreeBoxes:  c.FreeBoxes(),
 			Cargo:      nonNilStrings(c.Cargo),
 			State:      string(c.State(city)),
 			Queued:     string(c.QueuedMove),
@@ -262,6 +323,7 @@ func BuildSnapshot(w *engine.World) Snapshot {
 		snap.Orders = append(snap.Orders, OrderView{
 			ID: o.ID, Item: o.Item,
 			ItemName:     itemName(city, o.Item),
+			Quantity:     o.Boxes(),
 			KitchenID:    o.KitchenID,
 			KitchenName:  kitchenName,
 			CustomerID:   o.CustomerID,
@@ -289,6 +351,9 @@ func BuildSnapshot(w *engine.World) Snapshot {
 		Tows:             w.Ledger.Tows,
 		BuildsCompleted:  w.Ledger.BuildsCompleted,
 		DeliveriesByItem: w.Ledger.DeliveriesByItem,
+		UpkeepPaid:       w.Ledger.UpkeepPaid,
+		TowFees:          w.Ledger.TowFees,
+		UpkeepDue:        w.FleetUpkeep(),
 	}
 
 	for _, cc := range w.CarClassCatalog() {
@@ -328,6 +393,26 @@ func BuildSnapshot(w *engine.World) Snapshot {
 			Tick: e.Tick, Type: e.Type, Message: e.Message,
 			CarID: e.CarID, X: e.Pos.X, Y: e.Pos.Y,
 		})
+	}
+	for _, c := range w.ActiveClosures() {
+		cv := ClosureView{
+			ID: c.ID, Reason: c.Reason,
+			StartTick: c.StartTick, EndTick: c.EndTick,
+			TicksLeft: c.EndTick - w.Tick,
+			MinX:      -1, MinY: -1, MaxX: -1, MaxY: -1,
+		}
+		for i, p := range c.Tiles {
+			cv.Tiles = append(cv.Tiles, PointView{X: p.X, Y: p.Y})
+			if i == 0 {
+				cv.MinX, cv.MinY, cv.MaxX, cv.MaxY = p.X, p.Y, p.X, p.Y
+				continue
+			}
+			cv.MinX = min(cv.MinX, p.X)
+			cv.MinY = min(cv.MinY, p.Y)
+			cv.MaxX = max(cv.MaxX, p.X)
+			cv.MaxY = max(cv.MaxY, p.Y)
+		}
+		snap.Closures = append(snap.Closures, cv)
 	}
 	return snap
 }

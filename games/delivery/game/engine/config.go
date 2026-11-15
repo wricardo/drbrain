@@ -29,12 +29,22 @@ type CityConfig struct {
 	InitialCars []InitialCarConfig        `json:"initial_cars"`
 	CarClasses  map[string]CarClassConfig `json:"car_classes"`
 
-	Districts    map[string]DistrictConfig `json:"districts"`
-	Orders       OrdersConfig              `json:"orders"`
-	Charging     ChargingConfig            `json:"charging"`
-	Achievements []AchievementConfig       `json:"achievements"`
-	Unlocks      []UnlockConfig            `json:"unlocks"`
-	Builds       []BuildConfig             `json:"builds"`
+	Districts map[string]DistrictConfig `json:"districts"`
+	Orders    OrdersConfig              `json:"orders"`
+	Charging  ChargingConfig            `json:"charging"`
+
+	// Closures is the street-works pacing table. Its zero value means no
+	// closures, so a quiet map does not need to opt out.
+	Closures ClosureConfig `json:"closures,omitempty"`
+
+	// Fleet is the running-cost table for the vehicles. Its zero value means
+	// the fleet is free to keep, which is how the game behaved before upkeep
+	// existed; see FleetConfig.
+	Fleet FleetConfig `json:"fleet,omitempty"`
+
+	Achievements []AchievementConfig `json:"achievements"`
+	Unlocks      []UnlockConfig      `json:"unlocks"`
+	Builds       []BuildConfig       `json:"builds"`
 }
 
 // KitchenConfig is a restaurant: a pickup point serving a menu of items.
@@ -98,6 +108,14 @@ type CarClassConfig struct {
 	StepCost      int  `json:"step_cost"`
 	Price         int  `json:"price"`
 	RequiresGrant bool `json:"requires_grant,omitempty"`
+
+	// UpkeepPerInterval is this class's operating cost per upkeep interval,
+	// charged while it is away from a depot. Zero means "derive one from
+	// Capacity and the map's fleet.upkeep_per_box_per_interval", NOT "free": a
+	// class that is genuinely free to run has to say so explicitly, because
+	// hand-tuned rates that disagree with capacity quietly make one class
+	// strictly wrong to own.
+	UpkeepPerInterval int `json:"upkeep_per_interval,omitempty"`
 }
 
 // DistrictConfig marks a named region. Hidden districts render as unexplored
@@ -168,6 +186,48 @@ type QuantityBandConfig struct {
 type ChargingConfig struct {
 	DepotRate   int `json:"depot_rate"`   // per tick on a depot tile
 	ChargerRate int `json:"charger_rate"` // per tick on a roadside charger
+}
+
+// FleetConfig is the running cost of owning more vehicles than you drive.
+//
+// The cost applies to cars that are NOT parked on a depot tile. That is a
+// deliberate choice over "idle cars cost money": the engine has no sell or
+// scrap action, so a per-tick charge on an unsellable asset is an unrecoverable
+// mistake for the player, with no exit. Parking is the exit, and it needs no new
+// verb — it also gives DepotConfig.Capacity a meaning beyond gating purchases.
+//
+// The whole block is optional and its zero value DISABLES upkeep (UpkeepInterval
+// defaults to 0, and a zero interval charges nothing). A map that omits `fleet`
+// therefore behaves exactly as it did before this feature existed, which is what
+// keeps the shipped map and every existing save on the old economy until someone
+// tunes it on purpose.
+//
+// Rates are charged every UpkeepIntervalTicks rather than every tick on purpose.
+// Gross income on the shipped map is roughly $3.50 per car-tick, so an
+// integer-dollars-per-tick charge has no usable setting: $1/tick is ~29% of one
+// car's revenue and $0 is nothing at all. A per-interval charge (default 30
+// ticks) recovers the tuning room the integer floor throws away.
+type FleetConfig struct {
+	// UpkeepIntervalTicks is how many ticks pass between upkeep charges.
+	// Zero means upkeep is off entirely; negative is rejected by the loader.
+	UpkeepIntervalTicks int `json:"upkeep_interval_ticks,omitempty"`
+
+	// DefaultUpkeepPerInterval is the charge for a class that declares no
+	// `upkeep` of its own and has no capacity to derive one from.
+	DefaultUpkeepPerInterval int `json:"default_upkeep_per_interval,omitempty"`
+
+	// UpkeepPerBoxPerInterval scales the capacity-derived rate: a class's
+	// charge is Capacity * UpkeepPerBoxPerInterval (minimum 1). Scaling by
+	// capacity rather than hand-tuning each class is what keeps the rate
+	// proportional to the revenue headroom the class actually has, so a new
+	// class cannot be added with a rate that contradicts its own hold size.
+	UpkeepPerBoxPerInterval int `json:"upkeep_per_box_per_interval,omitempty"`
+
+	// TowFeePerTile and TowFeeMin price the tow. Before this, Tow was a free
+	// unconditional teleport to the nearest depot, which made every
+	// running-cost rule trivially avoidable.
+	TowFeePerTile int `json:"tow_fee_per_tile,omitempty"`
+	TowFeeMin     int `json:"tow_fee_min,omitempty"`
 }
 
 // Requirement is a single condition an achievement or unlock checks against

@@ -18,6 +18,31 @@ const (
 
 // RejectReason explains why a queued move did not happen. Every rejection is
 // surfaced to the player; a move never fails silently.
+//
+// The checks run in a fixed order and the FIRST failure wins, so a move that is
+// both off-battery and heading into water reports the battery:
+//
+//  0. no queued move at all  -> not a rejection, nothing is recorded
+//  1. battery <= 0           -> no_battery
+//  2. invalid direction      -> bad_direction
+//  3. destination closed     -> closed
+//  4. off-grid               -> off_grid
+//  5. water / building / fog -> blocked
+//  6. tile cost > battery    -> no_battery
+//  7. destination full       -> occupied
+//
+// Step 3 before 4 matters for the map edge: a closure on the border is still
+// reported as `closed`. Step 4 is distinct from 5 on purpose — an earlier
+// version reported the grid edge as "unexplored", which made a map boundary
+// look like a district the player had not bought yet.
+//
+// Occupancy is last because it is the only check whose answer depends on what
+// the OTHER cars did this tick. Putting it earlier would report "occupied" for a
+// move that also had no battery, which reads as a traffic problem when the car
+// is simply flat — and the player's fix (charge) would be the wrong one.
+//
+// A successful step resets the field to RejectNone, so a non-empty value always
+// describes the most recent failure rather than the most recent command.
 type RejectReason string
 
 const (
@@ -26,6 +51,8 @@ const (
 	RejectOffGrid      RejectReason = "off_grid"
 	RejectBlocked      RejectReason = "blocked" // water, building, unexplored
 	RejectNoBattery    RejectReason = "no_battery"
+	RejectClosed       RejectReason = "closed"   // street works
+	RejectOccupied     RejectReason = "occupied" // another car holds the tile
 )
 
 // Car is one deliverable vehicle, driven manually by the player.
@@ -113,6 +140,13 @@ func (c *Car) FreeBoxes() int {
 func (c *Car) HasSpace() bool { return c.FreeBoxes() > 0 }
 
 // SpaceFor reports whether an order of the given size fits in the hold.
+//
+// A quantity of zero or less is treated as one box rather than as a no-op, so a
+// malformed order from a map file cannot be accepted as "fits, takes no room".
+// Verified on a 4-box scooter: -5 and 0 both report true, and 5 reports false.
+// The coercion makes SpaceFor permissive about nonsense quantities, so this is a
+// capacity check, not a validation step — validate the quantity where the order
+// is constructed.
 func (c *Car) SpaceFor(quantity int) bool {
 	if quantity <= 0 {
 		quantity = 1

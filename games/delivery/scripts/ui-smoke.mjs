@@ -279,6 +279,20 @@ try {
 	const after = await carPos();
 	console.log('car position:', before, '->', after);
 
+	// --- fleet upkeep is visible, not just charged -------------------------
+	//
+	// The car started on the depot tile, where upkeep is zero, and the move
+	// above takes it off. So the running-cost chip must appear ONLY after this
+	// point: if it is missing the player is being billed invisibly, and if it
+	// was present before the move the rule is wrong.
+	const upkeepChip = () =>
+		page.eval(`(() => {
+			const el = document.querySelector('[data-upkeep-due]');
+			return el ? Number(el.getAttribute('data-upkeep-due')) : null;
+		})()`);
+	const upkeepAfterMove = await upkeepChip();
+	console.log('upkeep chip after leaving depot:', upkeepAfterMove);
+
 	// --- live refresh: a tick from another client must reach this tab --------
 	//
 	// The session stays paused here, which is exactly the case that used to
@@ -311,6 +325,9 @@ try {
 	const problems = [];
 	if (!report.hasTick) problems.push('no tick counter in header');
 	if (!report.hasMoney) problems.push('no money in header');
+	if (upkeepAfterMove === null)
+		problems.push('fleet upkeep chip absent after leaving the depot (player is billed invisibly)');
+	if (upkeepAfterMove === 0) problems.push('fleet upkeep chip shows $0 for a car off the depot');
 	if (!report.hasFleet) problems.push('fleet panel missing');
 	if (!report.hasOrders) problems.push('orders panel missing');
 	if (!report.hasGrowth) problems.push('city growth panel missing');

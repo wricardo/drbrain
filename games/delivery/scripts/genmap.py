@@ -167,10 +167,13 @@ def city_config(rows):
         },
         "orders": {
             "max_active_orders": 8,
-            "target_orders_per_car": 1.0,
+            # One queued order per car, damped: a full 1.0 keeps every car busy
+            # but floods the board when a truck joins, and 0.6 starves it.
+            # 0.75 was tuned against the harness at 6k ticks, three seeds.
+            "target_orders_per_car": 0.75,
             "min_spawn_gap_ticks": 12,
-            "deadline_slack": 1.6,
-            "deadline_slack_by_chapter": [1.6, 1.5, 1.4, 1.3, 1.2],
+            "deadline_slack": 1.8,
+            "deadline_slack_by_chapter": [1.8, 1.7, 1.6, 1.5, 1.4],
             "reward_base": {"pizza": 40, "sushi": 55, "meds": 70},
             "chapter_reward_multiplier": [1.0, 1.1, 1.25, 1.5, 1.8],
             "distance_bonus_per_tile": 3,
@@ -187,6 +190,17 @@ def city_config(rows):
             ],
         },
         "charging": {"depot_rate": 6, "charger_rate": 2},
+        # Street works. Off for the first chapter so a player with one scooter
+        # has time to learn the map; a detour is only interesting once there is
+        # more than one route to choose between.
+        "closures": {
+            "enabled": True,
+            "from_chapter": 1,
+            "every_ticks": 900,
+            "duration_ticks": 260,
+            "max_concurrent": 1,
+            "segment_tiles": 3,
+        },
         "achievements": [
             {"id": "a01_first_drop", "title": "First Drop",
              "description": "Deliver your first order.", "requires": {"deliveries": 1}},

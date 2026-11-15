@@ -31,8 +31,16 @@ func loadRepoCity(t *testing.T) (*City, *CityConfig) {
 func TestLoadShippedCity(t *testing.T) {
 	city, cfg := loadRepoCity(t)
 
-	if city.GridSize != 20 {
-		t.Errorf("grid size = %d, want 20", city.GridSize)
+	// The map is generated (scripts/genmap.py), so its size is not pinned to
+	// a literal here: what matters is that the file, the config and the
+	// loaded city agree, and that the shape is still the one the game is
+	// balanced around (a street grid with building blocks).
+	if city.GridSize != cfg.GridSize {
+		t.Errorf("grid size = %d, want %d from the config", city.GridSize, cfg.GridSize)
+	}
+	if cfg.GridSize < 20 {
+		t.Errorf("grid size = %d, want at least 20: a smaller city has no room for a street grid",
+			cfg.GridSize)
 	}
 	if got, want := len(city.Kitchens), len(cfg.Kitchens); got != want {
 		t.Errorf("kitchens = %d, want %d", got, want)
@@ -45,19 +53,85 @@ func TestLoadShippedCity(t *testing.T) {
 	}
 }
 
-func TestShippedCityHidesOuterDistricts(t *testing.T) {
+// TestShippedCityIsAStreetGrid pins the thing the Manhattan layout exists for:
+// real buildings, real intersections, and routes that are not a plaza.
+//
+// The previous map had zero building tiles and 62% of its walkable tiles with
+// four open neighbours, which is why a road closure there cost a median of zero
+// extra steps. This test fails if the map drifts back to open space.
+func TestShippedCityIsAStreetGrid(t *testing.T) {
 	city, _ := loadRepoCity(t)
+	city.RevealAll()
 
-	// The harbour is authored hidden: its tiles must start unexplored.
-	if !city.IsHidden(Position{17, 3}) {
-		t.Error("harbour charger tile should start hidden")
+	buildings := 0
+	walkable := 0
+	for y := range city.GridSize {
+		for x := range city.GridSize {
+			p := Position{x, y}
+			if !city.Walkable(p) {
+				if t, _ := city.At(p); t == BuildingTile {
+					buildings++
+				}
+				continue
+			}
+			walkable++
+		}
 	}
-	// Downtown is visible.
-	if city.IsHidden(Position{2, 2}) {
-		t.Error("depot tile should be visible at start")
+	if buildings < 100 {
+		t.Errorf("only %d building tiles: the city has no blocks to route around", buildings)
+	}
+	if walkable < 150 {
+		t.Errorf("only %d walkable tiles: too small to be a city", walkable)
+	}
+
+	// A street grid means a meaningful share of walkable tiles are corridors
+	// (two neighbours) rather than open intersections. Manhattan-style blocks
+	// land around 78% corridors at street period 3.
+	corridors := 0
+	for y := range city.GridSize {
+		for x := range city.GridSize {
+			p := Position{x, y}
+			if !city.Walkable(p) {
+				continue
+			}
+			open := 0
+			for _, d := range AllDirections {
+				if n, ok := p.Neighbour(d); ok && city.Walkable(n) {
+					open++
+				}
+			}
+			if open <= 2 {
+				corridors++
+			}
+		}
+	}
+	share := 100 * corridors / walkable
+	if share < 55 {
+		t.Errorf("only %d%% of walkable tiles are corridors: this is a plaza, not a grid "+
+			"(closures cannot reroute traffic here)", share)
+	}
+}
+
+func TestShippedCityHidesOuterDistricts(t *testing.T) {
+	city, cfg := loadRepoCity(t)
+
+	// The harbour district is authored hidden: its tiles must start
+	// unexplored, and downtown's must not. Both are read from the config
+	// rather than hardcoded, so a regenerated map cannot silently pass.
+	harbour, ok := cfg.Districts["harbour"]
+	if !ok || len(harbour.Rects) == 0 {
+		t.Fatal("shipped city has no harbour district")
+	}
+	r := harbour.Rects[0]
+	if !city.IsHidden(Position{r[0], r[1]}) {
+		t.Error("harbour district should start hidden")
 	}
 	if city.HiddenCount() == 0 {
 		t.Error("expected some hidden tiles at start")
+	}
+	// The depot's own tile is always known terrain.
+	if city.IsHidden(city.Depots[0].Pos) {
+		t.Error("depot tile should be visible at start")
 	}
 }
 
@@ -75,45 +149,84 @@ func TestShippedCityStrandsNothing(t *testing.T) {
 func TestHiddenTilesAreImpassable(t *testing.T) {
 	city, _ := loadRepoCity(t)
 
-	harbour := Position{17, 3}
-	if city.Walkable(harbour) {
-		t.Fatal("hidden harbour tile should not be walkable")
+	// Pick any hidden tile rather than a literal: the district geometry is
+	// generated, and what this test is about is the fog rule, not a coordinate.
+	var hidden Position
+	found := false
+	for y := range city.GridSize {
+		if found {
+			break
+		}
+		for x := range city.GridSize {
+			if city.IsHidden(Position{x, y}) {
+				hidden = Position{x, y}
+				found = true
+				break
+			}
+		}
 	}
-	city.RevealTile(harbour)
-	if !city.Walkable(harbour) {
-		t.Fatal("revealed charger tile should be walkable")
+	if !found {
+		t.Fatal("no hidden tiles in the shipped city")
+	}
+	if city.Walkable(hidden) {
+		t.Fatalf("hidden tile %v should not be walkable", hidden)
+	}
+	city.RevealTile(hidden)
+	if !city.Walkable(hidden) {
+		t.Fatalf("revealed tile %v should be walkable", hidden)
 	}
 }
 
 func TestEastBridgeConnectsHarbour(t *testing.T) {
-	city, _ := loadRepoCity(t)
-	city.RevealAll()
+	city, cfg := loadRepoCity(t)
+
+	// Find the bridge build and the district it opens from the config.
+	bridge, ok := buildByIDFromConfig(cfg, "b02_east_bridge")
+	if !ok {
+		t.Fatal("shipped city has no East Bridge build")
+	}
+	gate, ok := buildByIDFromConfig(cfg, "b04_harbour_gate")
+	if !ok {
+		t.Fatal("shipped city has no Harbour Gate build")
+	}
 
 	depot := city.Depots[0].Pos
-	harbour := Position{17, 3}
+	var harbourKitchen Position
+	for _, k := range city.Kitchens {
+		if k.ID == "k_sushi" {
+			harbourKitchen = k.Pos
+		}
+	}
+	if harbourKitchen == (Position{}) {
+		t.Fatal("shipped city has no harbour kitchen")
+	}
 
-	if d := city.Distance(depot, harbour); d >= 0 {
+	// Reveal the harbour but do NOT bridge it: the canal must still block it.
+	for _, e := range gate.Effects {
+		if e.Type == EffectRevealDistrict {
+			city.RevealRegion(city.DistrictTiles(e.District))
+		}
+	}
+	if d := city.Distance(depot, harbourKitchen); d >= 0 {
 		t.Fatalf("harbour should be unreachable before the bridge, got distance %d", d)
 	}
 
-	build := BuildConfig{
-		ID:   "b02_east_bridge",
-		Cost: 300,
-		Effects: []BuildEffect{{
-			Type: EffectBuildBridge,
-			Tiles: []TileWrite{
-				{X: 12, Y: 2, Terrain: "road"},
-				{X: 13, Y: 2, Terrain: "road"},
-			},
-		}},
-	}
-	if _, err := city.ApplyBuild(build); err != nil {
+	if _, err := city.ApplyBuild(bridge); err != nil {
 		t.Fatalf("apply bridge: %v", err)
 	}
-
-	if d := city.Distance(depot, harbour); d < 0 {
+	if d := city.Distance(depot, harbourKitchen); d < 0 {
 		t.Fatal("harbour still unreachable after building the east bridge")
 	}
+}
+
+// buildByIDFromConfig looks a build up in the city config.
+func buildByIDFromConfig(cfg *CityConfig, id string) (BuildConfig, bool) {
+	for _, b := range cfg.Builds {
+		if b.ID == id {
+			return b, true
+		}
+	}
+	return BuildConfig{}, false
 }
 
 func TestApplyBuildIsAtomicOnFailure(t *testing.T) {
@@ -145,14 +258,15 @@ func TestApplyBuildRejectsStranding(t *testing.T) {
 	city, _ := loadRepoCity(t)
 	city.RevealAll()
 
-	// Wall the kitchen off completely with water: the only way in is from
-	// the four neighbours of the kitchen tile.
-	kitchen := Position{4, 2}
-	walls := []TileWrite{
-		{X: kitchen.X, Y: kitchen.Y - 1, Terrain: "water"},
-		{X: kitchen.X, Y: kitchen.Y + 1, Terrain: "water"},
-		{X: kitchen.X - 1, Y: kitchen.Y, Terrain: "water"},
-		{X: kitchen.X + 1, Y: kitchen.Y, Terrain: "water"},
+	// Wall a kitchen off completely with water: the only way in is from the
+	// four neighbours of the kitchen tile. Derived from the map so the test
+	// keeps testing the guard rather than a coordinate.
+	kitchen := city.Kitchens[0].Pos
+	var walls []TileWrite
+	for _, d := range AllDirections {
+		if n, ok := kitchen.Neighbour(d); ok {
+			walls = append(walls, TileWrite{X: n.X, Y: n.Y, Terrain: "water"})
+		}
 	}
 	_, err := city.ApplyBuild(BuildConfig{
 		ID:      "b_wall",
@@ -166,9 +280,31 @@ func TestApplyBuildRejectsStranding(t *testing.T) {
 func TestWalkCostChargesExtraOnGround(t *testing.T) {
 	city, cfg := loadRepoCity(t)
 	class := cfg.CarClasses["scooter"]
+	city.RevealAll()
 
-	road := Position{3, 3}
-	ground := Position{1, 8}
+	// Locate one road tile and one ground tile on the map rather than naming
+	// coordinates: the ground tiles are authored into the generated layout.
+	var road, ground Position
+	haveRoad, haveGround := false, false
+	for y := range city.GridSize {
+		for x := range city.GridSize {
+			t, _ := city.At(Position{x, y})
+			switch t {
+			case RoadTile:
+				if !haveRoad {
+					road, haveRoad = Position{x, y}, true
+				}
+			case GroundTile:
+				if !haveGround {
+					ground, haveGround = Position{x, y}, true
+				}
+			}
+		}
+	}
+	if !haveRoad || !haveGround {
+		t.Fatalf("map needs at least one road and one ground tile (road=%v ground=%v)",
+			haveRoad, haveGround)
+	}
 	if got := city.WalkCost(road, class); got != 1 {
 		t.Errorf("road walk cost = %d, want 1", got)
 	}
@@ -257,16 +393,31 @@ func TestNeighbourStaysInBoundsByArithmetic(t *testing.T) {
 func TestHiddenTilesHideEntities(t *testing.T) {
 	city, _ := loadRepoCity(t)
 
-	// The harbour charger sits in a district that starts hidden. Rendering
-	// must not reveal it: fog that leaks entity positions is decorative, not a
-	// gate.
-	charger := Position{17, 3}
-	if !city.IsHidden(charger) {
-		t.Fatal("test precondition: harbour charger should start hidden")
+	// Fog that leaks entity positions is decorative, not a gate. Find an
+	// entity that starts hidden and assert it renders as '?' until revealed.
+	var hiddenEnt Position
+	var wantGlyph byte
+	found := false
+	for _, k := range city.Kitchens {
+		if city.IsHidden(k.Pos) {
+			hiddenEnt, wantGlyph, found = k.Pos, 'K', true
+			break
+		}
+	}
+	if !found {
+		for _, ch := range city.Chargers {
+			if city.IsHidden(ch.Pos) {
+				hiddenEnt, wantGlyph, found = ch.Pos, 'C', true
+				break
+			}
+		}
+	}
+	if !found {
+		t.Fatal("no entity starts in a hidden district; the map no longer gates content")
 	}
 
 	rows := city.RenderRows(nil)
-	if got := rows[charger.Y][charger.X]; got != '?' {
+	if got := rows[hiddenEnt.Y][hiddenEnt.X]; got != '?' {
 		t.Fatalf("hidden tile rendered %q, want '?' (entity leaked through fog)", string(got))
 	}
 
@@ -282,10 +433,10 @@ func TestHiddenTilesHideEntities(t *testing.T) {
 		}
 	}
 
-	// After revealing, the charger becomes visible as it should.
-	city.RevealRect(14, 1, 18, 8)
+	// After revealing its district, the entity becomes visible as it should.
+	city.RevealAll()
 	rows = city.RenderRows(nil)
-	if got := rows[charger.Y][charger.X]; got != 'C' {
-		t.Fatalf("revealed charger rendered %q, want 'C'", string(got))
+	if got := rows[hiddenEnt.Y][hiddenEnt.X]; got != wantGlyph {
+		t.Fatalf("revealed entity rendered %q, want %q", string(got), string(wantGlyph))
 	}
 }

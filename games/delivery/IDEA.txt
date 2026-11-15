@@ -122,6 +122,11 @@ MOVEMENT MODEL — how manual play and a tick loop coexist:
   - Rejected moves (wall, water, another car, no battery) fail without moving
     and return a reason. Do collisions matter? MVP: cars may share a tile;
     revisit if it feels wrong.
+    RESOLVED (drbrain-delivery-9by): revisited, and cars no longer share a tile.
+    A tile holds one car; a depot or charger holds its authored capacity, so
+    parking still works. The check is on ENTRY and evaluates last. Moves are
+    planned then resolved to a fixpoint, so a follower may enter a tile a car
+    vacated this tick while a head-on pair is refused on both sides.
 
 Why this shape: it gives every car its own input slot each tick (so N cars can
 all be driven concurrently without a global "whose turn is it" problem),

@@ -74,8 +74,10 @@ type ComplexityRoot struct {
 		Capacity   func(childComplexity int) int
 		Cargo      func(childComplexity int) int
 		ClassName  func(childComplexity int) int
+		FreeBoxes  func(childComplexity int) int
 		ID         func(childComplexity int) int
 		LastReject func(childComplexity int) int
+		Load       func(childComplexity int) int
 		MaxBattery func(childComplexity int) int
 		Name       func(childComplexity int) int
 		QueuedMove func(childComplexity int) int
@@ -104,6 +106,19 @@ type ComplexityRoot struct {
 		Kitchens    func(childComplexity int) int
 		Name        func(childComplexity int) int
 		Rows        func(childComplexity int) int
+	}
+
+	ClosureView struct {
+		EndTick   func(childComplexity int) int
+		ID        func(childComplexity int) int
+		MaxX      func(childComplexity int) int
+		MaxY      func(childComplexity int) int
+		MinX      func(childComplexity int) int
+		MinY      func(childComplexity int) int
+		Reason    func(childComplexity int) int
+		StartTick func(childComplexity int) int
+		TicksLeft func(childComplexity int) int
+		Tiles     func(childComplexity int) int
 	}
 
 	EventView struct {
@@ -135,7 +150,10 @@ type ComplexityRoot struct {
 		OnTimeStreak     func(childComplexity int) int
 		OrdersSpawned    func(childComplexity int) int
 		Reputation       func(childComplexity int) int
+		TowFees          func(childComplexity int) int
 		Tows             func(childComplexity int) int
+		UpkeepDue        func(childComplexity int) int
+		UpkeepPaid       func(childComplexity int) int
 	}
 
 	Mutation struct {
@@ -166,6 +184,7 @@ type ComplexityRoot struct {
 		KitchenName  func(childComplexity int) int
 		Late         func(childComplexity int) int
 		Paid         func(childComplexity int) int
+		Quantity     func(childComplexity int) int
 		Reward       func(childComplexity int) int
 		State        func(childComplexity int) int
 		TicksLeft    func(childComplexity int) int
@@ -204,6 +223,7 @@ type ComplexityRoot struct {
 		CarClasses   func(childComplexity int) int
 		Cars         func(childComplexity int) int
 		City         func(childComplexity int) int
+		Closures     func(childComplexity int) int
 		CreatedAt    func(childComplexity int) int
 		Events       func(childComplexity int) int
 		ID           func(childComplexity int) int
@@ -435,6 +455,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.CarView.ClassName(childComplexity), true
+	case "CarView.freeBoxes":
+		if e.ComplexityRoot.CarView.FreeBoxes == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CarView.FreeBoxes(childComplexity), true
 	case "CarView.id":
 		if e.ComplexityRoot.CarView.ID == nil {
 			break
@@ -447,6 +473,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.CarView.LastReject(childComplexity), true
+	case "CarView.load":
+		if e.ComplexityRoot.CarView.Load == nil {
+			break
+		}
+
+		return e.ComplexityRoot.CarView.Load(childComplexity), true
 	case "CarView.maxBattery":
 		if e.ComplexityRoot.CarView.MaxBattery == nil {
 			break
@@ -582,6 +614,67 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.CityView.Rows(childComplexity), true
 
+	case "ClosureView.endTick":
+		if e.ComplexityRoot.ClosureView.EndTick == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ClosureView.EndTick(childComplexity), true
+	case "ClosureView.id":
+		if e.ComplexityRoot.ClosureView.ID == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ClosureView.ID(childComplexity), true
+	case "ClosureView.maxX":
+		if e.ComplexityRoot.ClosureView.MaxX == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ClosureView.MaxX(childComplexity), true
+	case "ClosureView.maxY":
+		if e.ComplexityRoot.ClosureView.MaxY == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ClosureView.MaxY(childComplexity), true
+	case "ClosureView.minX":
+		if e.ComplexityRoot.ClosureView.MinX == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ClosureView.MinX(childComplexity), true
+	case "ClosureView.minY":
+		if e.ComplexityRoot.ClosureView.MinY == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ClosureView.MinY(childComplexity), true
+	case "ClosureView.reason":
+		if e.ComplexityRoot.ClosureView.Reason == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ClosureView.Reason(childComplexity), true
+	case "ClosureView.startTick":
+		if e.ComplexityRoot.ClosureView.StartTick == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ClosureView.StartTick(childComplexity), true
+	case "ClosureView.ticksLeft":
+		if e.ComplexityRoot.ClosureView.TicksLeft == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ClosureView.TicksLeft(childComplexity), true
+	case "ClosureView.tiles":
+		if e.ComplexityRoot.ClosureView.Tiles == nil {
+			break
+		}
+
+		return e.ComplexityRoot.ClosureView.Tiles(childComplexity), true
+
 	case "EventView.carId":
 		if e.ComplexityRoot.EventView.CarID == nil {
 			break
@@ -699,12 +792,30 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.LedgerView.Reputation(childComplexity), true
+	case "LedgerView.towFees":
+		if e.ComplexityRoot.LedgerView.TowFees == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LedgerView.TowFees(childComplexity), true
 	case "LedgerView.tows":
 		if e.ComplexityRoot.LedgerView.Tows == nil {
 			break
 		}
 
 		return e.ComplexityRoot.LedgerView.Tows(childComplexity), true
+	case "LedgerView.upkeepDue":
+		if e.ComplexityRoot.LedgerView.UpkeepDue == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LedgerView.UpkeepDue(childComplexity), true
+	case "LedgerView.upkeepPaid":
+		if e.ComplexityRoot.LedgerView.UpkeepPaid == nil {
+			break
+		}
+
+		return e.ComplexityRoot.LedgerView.UpkeepPaid(childComplexity), true
 
 	case "Mutation.assignOrder":
 		if e.ComplexityRoot.Mutation.AssignOrder == nil {
@@ -911,6 +1022,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.OrderView.Paid(childComplexity), true
+	case "OrderView.quantity":
+		if e.ComplexityRoot.OrderView.Quantity == nil {
+			break
+		}
+
+		return e.ComplexityRoot.OrderView.Quantity(childComplexity), true
 	case "OrderView.reward":
 		if e.ComplexityRoot.OrderView.Reward == nil {
 			break
@@ -1087,6 +1204,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.Snapshot.City(childComplexity), true
+	case "Snapshot.closures":
+		if e.ComplexityRoot.Snapshot.Closures == nil {
+			break
+		}
+
+		return e.ComplexityRoot.Snapshot.Closures(childComplexity), true
 	case "Snapshot.createdAt":
 		if e.ComplexityRoot.Snapshot.CreatedAt == nil {
 			break
@@ -1348,21 +1471,26 @@ type Snapshot {
   id: ID!
   createdAt: Time!
   tick: Int!
+  "Clock multiplier: 0 paused, 1/2/4 running."
   speed: Int!
   paused: Boolean!
+  "Wall-clock length of one tick at 1x, from the city config."
   tickMs: Int!
 
   city: CityView!
   cars: [CarView!]!
   orders: [OrderView!]!
   ledger: LedgerView!
-  "The purchasable catalogue with per-session unlock and affordability flags."
+  "The purchasable catalogue with per-session unlock and affordability flags, cheapest first."
   carClasses: [CarClassView!]!
 
   achievements: [AchievementView!]!
   unlocks: [UnlockView!]!
   builds: [BuildView!]!
   events: [EventView!]!
+
+  "Street works currently closing part of the map."
+  closures: [ClosureView!]!
 }
 
 "A window of the city around one car, for cheap polling."
@@ -1384,6 +1512,7 @@ type CityView {
   gridSize: Int!
   "Full map as glyph rows. Unexplored tiles render '?'."
   rows: [String!]!
+  "Tiles still unexplored. Always 0 on the static city query, which reveals all."
   hiddenTiles: Int!
   kitchens: [PointView!]!
   customers: [PointView!]!
@@ -1407,7 +1536,12 @@ type CarView {
   battery: Int!
   maxBattery: Int!
   batteryPct: Int!
+  "Hold size in boxes."
   capacity: Int!
+  "Boxes currently in the hold."
+  load: Int!
+  "Boxes still free."
+  freeBoxes: Int!
   cargo: [ID!]!
   state: CarState!
   "The move queued for the next tick, if any."
@@ -1428,14 +1562,20 @@ enum RejectReason {
   OFF_GRID
   BLOCKED
   NO_BATTERY
+  "The tile is closed for street works."
+  CLOSED
+  "Another car already holds that tile, or it is at capacity."
+  OCCUPIED
 }
 
 type CarClassView {
   className: String!
   price: Int!
+  "Hold size in boxes."
   capacity: Int!
   maxBattery: Int!
   stepCost: Int!
+  "True once a build has granted this class, or it never needed one."
   unlocked: Boolean!
   affordable: Boolean!
 }
@@ -1444,17 +1584,24 @@ type OrderView {
   id: ID!
   item: String!
   itemName: String!
+  "How many boxes the customer asked for."
+  quantity: Int!
   kitchenId: ID!
   kitchenName: String!
   customerId: ID!
   customerName: String!
   state: OrderState!
+  "The car holding or holding-to-be. Kept after DONE, so read it as history once state is terminal."
   assignedCar: ID
   createdTick: Int!
   deadlineTick: Int!
+  "Ticks until the deadline. Signed: negative means already past it but not yet swept."
   ticksLeft: Int!
+  "What the job would pay if delivered now."
   reward: Int!
+  "What it actually paid. Zero until state is DONE."
   paid: Int!
+  "Delivered past the deadline, therefore paid at the late multiplier."
   late: Boolean!
 }
 
@@ -1467,17 +1614,39 @@ enum OrderState {
 }
 
 type LedgerView {
+  "Spendable balance. Buying a car or build reduces it."
   money: Int!
+  "Lifetime earnings; never decreases. Achievements read this, not money."
   moneyEarned: Int!
+  "0-5, clamped. Grants and deliveries cannot push it past the scale."
   reputation: Float!
+  "On-time deliveries only. A late delivery increments lateDeliveries instead."
   deliveries: Int!
   lateDeliveries: Int!
   expiredOrders: Int!
+  "Every order ever raised, including the ones that later expired."
   ordersSpawned: Int!
+  "Consecutive on-time deliveries. Both a late delivery and an expiry reset it to 0."
   onTimeStreak: Int!
   tows: Int!
+  "Completed builds. Chapter() derives from this, capped at 4."
   buildsCompleted: Int!
+  "Delivered ORDERS per item, not boxes: a two-box delivery adds 1."
   deliveriesByItem: [ItemCount!]!
+  """
+  Lifetime fleet running cost paid, cumulative. Zero when the map disables
+  upkeep. Not subtracted from moneyEarned: upkeep is a cost, not negative
+  income, and achievements read moneyEarned.
+  """
+  upkeepPaid: Int!
+  "Lifetime spend on tows, cumulative. A tow costs towFeePerTile x route distance, floored at towFeeMin, and is clamped to the balance."
+  towFees: Int!
+  """
+  What the fleet would be charged on the next upkeep interval, given where the
+  cars are standing right now. A car on a depot tile contributes zero. Lets a
+  client show the drain before it lands rather than only after.
+  """
+  upkeepDue: Int!
 }
 
 type ItemCount {
@@ -1490,6 +1659,7 @@ type AchievementView {
   title: String!
   description: String!
   done: Boolean!
+  "Progress toward target, in that requirement's own units."
   progress: Int!
   target: Int!
 }
@@ -1499,6 +1669,7 @@ type UnlockView {
   title: String!
   description: String!
   earned: Boolean!
+  "The build ids this unlock makes purchasable."
   builds: [ID!]!
 }
 
@@ -1507,9 +1678,12 @@ type BuildView {
   title: String!
   description: String!
   cost: Int!
+  "The right to build has been earned."
   unlocked: Boolean!
   completed: Boolean!
+  "Money covers the cost right now."
   affordable: Boolean!
+  "A legal placement exists right now."
   applicable: Boolean!
   "Why the build cannot be placed, when it cannot."
   problem: String
@@ -1517,11 +1691,31 @@ type BuildView {
 
 type EventView {
   tick: Int!
+  "One of the car_* / order_* / build_* / unlock_* / closure_* names the engine emits."
   type: String!
   message: String!
+  "Null for world events (spawns, builds, closures); set for anything a car caused."
   carId: ID
+  "Position of the event, or 0,0 when it has none — non-null, so 0,0 is ambiguous."
   x: Int!
   y: Int!
+}
+
+"A stretch of street closed for works."
+type ClosureView {
+  id: ID!
+  reason: String!
+  startTick: Int!
+  endTick: Int!
+  "Ticks until it reopens; negative when it has already ended."
+  ticksLeft: Int!
+  "The closed tiles, so a client can draw them without guessing."
+  tiles: [PointView!]!
+  "Bounding box of the closed tiles, for camera moves."
+  minX: Int!
+  minY: Int!
+  maxX: Int!
+  maxY: Int!
 }
 `, BuiltIn: false},
 }
@@ -1613,6 +1807,10 @@ func (ec *executionContext) childFields_CarView(ctx context.Context, field graph
 		return ec.fieldContext_CarView_batteryPct(ctx, field)
 	case "capacity":
 		return ec.fieldContext_CarView_capacity(ctx, field)
+	case "load":
+		return ec.fieldContext_CarView_load(ctx, field)
+	case "freeBoxes":
+		return ec.fieldContext_CarView_freeBoxes(ctx, field)
 	case "cargo":
 		return ec.fieldContext_CarView_cargo(ctx, field)
 	case "state":
@@ -1667,6 +1865,32 @@ func (ec *executionContext) childFields_CityView(ctx context.Context, field grap
 		return ec.fieldContext_CityView_chargers(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type CityView", field.Name)
+}
+
+func (ec *executionContext) childFields_ClosureView(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+	switch field.Name {
+	case "id":
+		return ec.fieldContext_ClosureView_id(ctx, field)
+	case "reason":
+		return ec.fieldContext_ClosureView_reason(ctx, field)
+	case "startTick":
+		return ec.fieldContext_ClosureView_startTick(ctx, field)
+	case "endTick":
+		return ec.fieldContext_ClosureView_endTick(ctx, field)
+	case "ticksLeft":
+		return ec.fieldContext_ClosureView_ticksLeft(ctx, field)
+	case "tiles":
+		return ec.fieldContext_ClosureView_tiles(ctx, field)
+	case "minX":
+		return ec.fieldContext_ClosureView_minX(ctx, field)
+	case "minY":
+		return ec.fieldContext_ClosureView_minY(ctx, field)
+	case "maxX":
+		return ec.fieldContext_ClosureView_maxX(ctx, field)
+	case "maxY":
+		return ec.fieldContext_ClosureView_maxY(ctx, field)
+	}
+	return nil, fmt.Errorf("no field named %q was found under type ClosureView", field.Name)
 }
 
 func (ec *executionContext) childFields_EventView(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
@@ -1729,6 +1953,12 @@ func (ec *executionContext) childFields_LedgerView(ctx context.Context, field gr
 		return ec.fieldContext_LedgerView_buildsCompleted(ctx, field)
 	case "deliveriesByItem":
 		return ec.fieldContext_LedgerView_deliveriesByItem(ctx, field)
+	case "upkeepPaid":
+		return ec.fieldContext_LedgerView_upkeepPaid(ctx, field)
+	case "towFees":
+		return ec.fieldContext_LedgerView_towFees(ctx, field)
+	case "upkeepDue":
+		return ec.fieldContext_LedgerView_upkeepDue(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type LedgerView", field.Name)
 }
@@ -1741,6 +1971,8 @@ func (ec *executionContext) childFields_OrderView(ctx context.Context, field gra
 		return ec.fieldContext_OrderView_item(ctx, field)
 	case "itemName":
 		return ec.fieldContext_OrderView_itemName(ctx, field)
+	case "quantity":
+		return ec.fieldContext_OrderView_quantity(ctx, field)
 	case "kitchenId":
 		return ec.fieldContext_OrderView_kitchenId(ctx, field)
 	case "kitchenName":
@@ -1837,6 +2069,8 @@ func (ec *executionContext) childFields_Snapshot(ctx context.Context, field grap
 		return ec.fieldContext_Snapshot_builds(ctx, field)
 	case "events":
 		return ec.fieldContext_Snapshot_events(ctx, field)
+	case "closures":
+		return ec.fieldContext_Snapshot_closures(ctx, field)
 	}
 	return nil, fmt.Errorf("no field named %q was found under type Snapshot", field.Name)
 }
@@ -3104,6 +3338,52 @@ func (ec *executionContext) fieldContext_CarView_capacity(_ context.Context, fie
 	return graphql.NewScalarFieldContext("CarView", field, false, false, "Int")
 }
 
+func (ec *executionContext) _CarView_load(ctx context.Context, field graphql.CollectedField, obj *model.CarView) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CarView_load(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Load, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CarView_load(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CarView", field, false, false, "Int")
+}
+
+func (ec *executionContext) _CarView_freeBoxes(ctx context.Context, field graphql.CollectedField, obj *model.CarView) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_CarView_freeBoxes(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.FreeBoxes, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_CarView_freeBoxes(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("CarView", field, false, false, "Int")
+}
+
 func (ec *executionContext) _CarView_cargo(ctx context.Context, field graphql.CollectedField, obj *model.CarView) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -3627,6 +3907,245 @@ func (ec *executionContext) fieldContext_CityView_chargers(_ context.Context, fi
 	return fc, nil
 }
 
+func (ec *executionContext) _ClosureView_id(ctx context.Context, field graphql.CollectedField, obj *model.ClosureView) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ClosureView_id(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNID2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ClosureView_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ClosureView", field, false, false, "ID")
+}
+
+func (ec *executionContext) _ClosureView_reason(ctx context.Context, field graphql.CollectedField, obj *model.ClosureView) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ClosureView_reason(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Reason, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ClosureView_reason(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ClosureView", field, false, false, "String")
+}
+
+func (ec *executionContext) _ClosureView_startTick(ctx context.Context, field graphql.CollectedField, obj *model.ClosureView) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ClosureView_startTick(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.StartTick, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ClosureView_startTick(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ClosureView", field, false, false, "Int")
+}
+
+func (ec *executionContext) _ClosureView_endTick(ctx context.Context, field graphql.CollectedField, obj *model.ClosureView) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ClosureView_endTick(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.EndTick, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ClosureView_endTick(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ClosureView", field, false, false, "Int")
+}
+
+func (ec *executionContext) _ClosureView_ticksLeft(ctx context.Context, field graphql.CollectedField, obj *model.ClosureView) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ClosureView_ticksLeft(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.TicksLeft, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ClosureView_ticksLeft(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ClosureView", field, false, false, "Int")
+}
+
+func (ec *executionContext) _ClosureView_tiles(ctx context.Context, field graphql.CollectedField, obj *model.ClosureView) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ClosureView_tiles(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Tiles, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.PointView) graphql.Marshaler {
+			return ec.marshalNPointView2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑdeliveryᚋgraphᚋmodelᚐPointViewᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ClosureView_tiles(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ClosureView",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_PointView(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ClosureView_minX(ctx context.Context, field graphql.CollectedField, obj *model.ClosureView) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ClosureView_minX(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.MinX, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ClosureView_minX(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ClosureView", field, false, false, "Int")
+}
+
+func (ec *executionContext) _ClosureView_minY(ctx context.Context, field graphql.CollectedField, obj *model.ClosureView) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ClosureView_minY(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.MinY, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ClosureView_minY(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ClosureView", field, false, false, "Int")
+}
+
+func (ec *executionContext) _ClosureView_maxX(ctx context.Context, field graphql.CollectedField, obj *model.ClosureView) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ClosureView_maxX(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.MaxX, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ClosureView_maxX(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ClosureView", field, false, false, "Int")
+}
+
+func (ec *executionContext) _ClosureView_maxY(ctx context.Context, field graphql.CollectedField, obj *model.ClosureView) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_ClosureView_maxY(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.MaxY, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_ClosureView_maxY(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("ClosureView", field, false, false, "Int")
+}
+
 func (ec *executionContext) _EventView_tick(ctx context.Context, field graphql.CollectedField, obj *model.EventView) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -4094,6 +4613,75 @@ func (ec *executionContext) fieldContext_LedgerView_deliveriesByItem(_ context.C
 		},
 	}
 	return fc, nil
+}
+
+func (ec *executionContext) _LedgerView_upkeepPaid(ctx context.Context, field graphql.CollectedField, obj *model.LedgerView) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LedgerView_upkeepPaid(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.UpkeepPaid, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LedgerView_upkeepPaid(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LedgerView", field, false, false, "Int")
+}
+
+func (ec *executionContext) _LedgerView_towFees(ctx context.Context, field graphql.CollectedField, obj *model.LedgerView) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LedgerView_towFees(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.TowFees, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LedgerView_towFees(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LedgerView", field, false, false, "Int")
+}
+
+func (ec *executionContext) _LedgerView_upkeepDue(ctx context.Context, field graphql.CollectedField, obj *model.LedgerView) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_LedgerView_upkeepDue(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.UpkeepDue, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_LedgerView_upkeepDue(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("LedgerView", field, false, false, "Int")
 }
 
 func (ec *executionContext) _Mutation_createSession(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
@@ -4691,6 +5279,29 @@ func (ec *executionContext) _OrderView_itemName(ctx context.Context, field graph
 }
 func (ec *executionContext) fieldContext_OrderView_itemName(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("OrderView", field, false, false, "String")
+}
+
+func (ec *executionContext) _OrderView_quantity(ctx context.Context, field graphql.CollectedField, obj *model.OrderView) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_OrderView_quantity(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Quantity, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_OrderView_quantity(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("OrderView", field, false, false, "Int")
 }
 
 func (ec *executionContext) _OrderView_kitchenId(ctx context.Context, field graphql.CollectedField, obj *model.OrderView) (ret graphql.Marshaler) {
@@ -5970,6 +6581,38 @@ func (ec *executionContext) fieldContext_Snapshot_events(_ context.Context, fiel
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return ec.childFields_EventView(ctx, field)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Snapshot_closures(ctx context.Context, field graphql.CollectedField, obj *model.Snapshot) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Snapshot_closures(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Closures, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v []*model.ClosureView) graphql.Marshaler {
+			return ec.marshalNClosureView2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑdeliveryᚋgraphᚋmodelᚐClosureViewᚄ(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Snapshot_closures(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Snapshot",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_ClosureView(ctx, field)
 		},
 	}
 	return fc, nil
@@ -7421,6 +8064,16 @@ func (ec *executionContext) _CarView(ctx context.Context, sel ast.SelectionSet, 
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "load":
+			out.Values[i] = ec._CarView_load(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "freeBoxes":
+			out.Values[i] = ec._CarView_freeBoxes(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "cargo":
 			out.Values[i] = ec._CarView_cargo(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -7574,6 +8227,84 @@ func (ec *executionContext) _CityView(ctx context.Context, sel ast.SelectionSet,
 			}
 		case "chargers":
 			out.Values[i] = ec._CityView_chargers(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	if n := len(deferred.Defers); n > 0 {
+		atomic.AddInt32(&ec.Deferred, int32(min(n, math.MaxInt32)))
+		ec.ProcessDeferredGroup(deferred)
+	}
+
+	return out
+}
+
+var closureViewImplementors = []string{"ClosureView"}
+
+func (ec *executionContext) _ClosureView(ctx context.Context, sel ast.SelectionSet, obj *model.ClosureView) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, closureViewImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := graphql.NewDeferredGroup(ctx)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ClosureView")
+		case "id":
+			out.Values[i] = ec._ClosureView_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "reason":
+			out.Values[i] = ec._ClosureView_reason(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "startTick":
+			out.Values[i] = ec._ClosureView_startTick(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "endTick":
+			out.Values[i] = ec._ClosureView_endTick(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "ticksLeft":
+			out.Values[i] = ec._ClosureView_ticksLeft(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "tiles":
+			out.Values[i] = ec._ClosureView_tiles(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "minX":
+			out.Values[i] = ec._ClosureView_minX(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "minY":
+			out.Values[i] = ec._ClosureView_minY(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "maxX":
+			out.Values[i] = ec._ClosureView_maxX(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "maxY":
+			out.Values[i] = ec._ClosureView_maxY(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -7789,6 +8520,21 @@ func (ec *executionContext) _LedgerView(ctx context.Context, sel ast.SelectionSe
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "upkeepPaid":
+			out.Values[i] = ec._LedgerView_upkeepPaid(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "towFees":
+			out.Values[i] = ec._LedgerView_towFees(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "upkeepDue":
+			out.Values[i] = ec._LedgerView_upkeepDue(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -7949,6 +8695,11 @@ func (ec *executionContext) _OrderView(ctx context.Context, sel ast.SelectionSet
 			}
 		case "itemName":
 			out.Values[i] = ec._OrderView_itemName(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "quantity":
+			out.Values[i] = ec._OrderView_quantity(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -8314,6 +9065,11 @@ func (ec *executionContext) _Snapshot(ctx context.Context, sel ast.SelectionSet,
 			}
 		case "events":
 			out.Values[i] = ec._Snapshot_events(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "closures":
+			out.Values[i] = ec._Snapshot_closures(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -8883,6 +9639,30 @@ func (ec *executionContext) marshalNCityView2ᚖgithubᚗcomᚋwricardoᚋdrbrai
 		return graphql.Null
 	}
 	return ec._CityView(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNClosureView2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑdeliveryᚋgraphᚋmodelᚐClosureViewᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.ClosureView) graphql.Marshaler {
+	ret := graphql.MarshalSliceConcurrently(ctx, len(v), 0, false, func(ctx context.Context, i int) graphql.Marshaler {
+		fc := graphql.GetFieldContext(ctx)
+		fc.Result = &v[i]
+		return ec.marshalNClosureView2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑdeliveryᚋgraphᚋmodelᚐClosureView(ctx, sel, v[i])
+	})
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNClosureView2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑdeliveryᚋgraphᚋmodelᚐClosureView(ctx context.Context, sel ast.SelectionSet, v *model.ClosureView) graphql.Marshaler {
+	if v == nil {
+		graphql.AddInvalidNullError(ctx, "ClosureView!")
+		return graphql.Null
+	}
+	return ec._ClosureView(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNDirection2githubᚗcomᚋwricardoᚋdrbrainᚑdeliveryᚋgraphᚋmodelᚐDirection(ctx context.Context, v any) (model.Direction, error) {

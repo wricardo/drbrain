@@ -24,3 +24,6 @@ coverage.html
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+
+# Local CLI build (make build writes bin/, but `go build` at the root lands here)
+/drbrain

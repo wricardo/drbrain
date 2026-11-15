@@ -46,6 +46,16 @@ type Kitchen struct {
 }
 
 // Serves reports whether this kitchen offers the given item.
+//
+// This is the only runtime supply test in the engine: both the spawn filter and
+// the nearest-kitchen lookup call it, so a kitchen that gains an item on its
+// menu becomes a candidate for every customer wanting that item with no other
+// change. (The menu walk in City.validate is authoring-time validation, not a
+// supply query.)
+//
+// Item names are matched exactly as written in city.json, case included. A typo
+// in a menu yields a kitchen that serves nothing rather than an error, which is
+// why the loader separately rejects an empty menu and an unknown item.
 func (k Kitchen) Serves(item string) bool {
 	for _, m := range k.Menu {
 		if m == item {
@@ -147,6 +157,45 @@ func (c *City) CustomerAt(p Position) (Customer, bool) {
 		}
 	}
 	return Customer{}, false
+}
+
+// CarCapacity is how many cars may occupy p at once.
+//
+// It is NOT uniformly one. A depot tile is the yard cars park in, and the shipped
+// map authors it as capacity 4 with 4 charge slots; BuyCar already counts the
+// cars standing on depot.Pos against that number. A blanket one-car-per-tile rule
+// would therefore make parking a second car impossible and quietly break both
+// the upkeep mechanic (parking is the free state) and the depot yard build. The
+// same reasoning applies to a standalone charger, which authors its own capacity.
+//
+// Every other tile holds exactly one car. Off-grid positions hold none, so a
+// caller cannot read a capacity for a coordinate that does not exist.
+func (c *City) CarCapacity(p Position) int {
+	t, ok := c.At(p)
+	if !ok {
+		return 0
+	}
+	switch t {
+	case DepotTile:
+		for _, d := range c.Depots {
+			if d.Pos == p {
+				if d.Capacity > 0 {
+					return d.Capacity
+				}
+				return 1
+			}
+		}
+	case ChargerTile:
+		for _, ch := range c.Chargers {
+			if ch.Pos == p {
+				if ch.Capacity > 0 {
+					return ch.Capacity
+				}
+				return 1
+			}
+		}
+	}
+	return 1
 }
 
 // ChargingAt reports whether a car standing on p can recharge, i.e. it is a
@@ -369,6 +418,25 @@ func (c *City) checkEntityTile(id string, p Position, want CellType, kind string
 	return nil
 }
 
+// DistrictTiles returns every coordinate of a district, in row-major order.
+// It is the inverse of RevealRect for a whole district and is what a caller
+// needs to reason about a district as a set rather than as rectangles.
+func (c *City) DistrictTiles(name string) []Position {
+	d, ok := c.Districts[name]
+	if !ok {
+		return nil
+	}
+	var out []Position
+	for _, r := range d.Rects {
+		for y := r[1]; y <= r[3]; y++ {
+			for x := r[0]; x <= r[2]; x++ {
+				out = append(out, Position{x, y})
+			}
+		}
+	}
+	return out
+}
+
 // RevealRegion clears the hidden flag for every tile of a district-shaped
 // region described by a set of coordinates.
 func (c *City) RevealRegion(ps []Position) int {
@@ -394,6 +462,10 @@ func (c *City) RevealTile(p Position) bool {
 }
 
 // RevealRect reveals an inclusive rectangle and returns how many tiles changed.
+// Out-of-bounds coordinates are clipped rather than rejected, so a district rect
+// that overhangs the grid still reveals its legal part. Verified: revealing
+// already-visible tiles returns 0, and a reveal after a hide of the same rect
+// round-trips exactly (484 of 484 on the shipped map).
 func (c *City) RevealRect(x0, y0, x1, y1 int) int {
 	n := 0
 	for y := y0; y <= y1; y++ {
@@ -406,7 +478,14 @@ func (c *City) RevealRect(x0, y0, x1, y1 int) int {
 	return n
 }
 
-// HideRect marks an inclusive rectangle as unexplored.
+// HideRect marks an inclusive rectangle as unexplored and returns how many tiles
+// changed.
+//
+// Like RevealRect it CLIPS out-of-bounds coordinates rather than erroring, so a
+// district rect that overhangs the grid hides only the part that exists —
+// measured: HideRect(-5,-5,2,2) changed 9 tiles, not 64. Hiding an
+// already-hidden tile returns 0, so the count means "tiles that changed", not
+// "tiles in the rectangle".
 func (c *City) HideRect(x0, y0, x1, y1 int) int {
 	n := 0
 	for y := y0; y <= y1; y++ {
@@ -512,6 +591,33 @@ func (c *City) RenderASCII(cars []RenderCar) string {
 // RenderRows is RenderASCII without the trailing newlines, which is the shape
 // JSON clients and the web UI want.
 func (c *City) RenderRows(cars []RenderCar) []string {
+	return c.renderRows(cars, nil)
+}
+
+// RenderRowsWithClosures draws street works as 'X' on top of the terrain.
+//
+// 'X' is deliberately not one of the legend characters: a closed tile is a
+// temporary state of a tile, not a kind of tile, and giving it its own glyph
+// keeps the legend honest. Closures are drawn UNDER cars, because a car parked
+// on a closed street is the situation the player needs to see.
+//
+// Two limits are deliberate and worth remembering before wiring a new client to
+// these rows:
+//
+//   - Only the first nine cars are drawn (the loop breaks at i >= 9) because
+//     there are only nine digit glyphs. Cars beyond that exist in the snapshot
+//     but not in the map, so a fleet larger than nine is under-represented here.
+//   - Cars sharing a tile collapse to one glyph: the overlay is keyed by
+//     position, so the last car written wins. Measured, four cars parked at the
+//     depot render as a single '4'.
+//
+// Neither is a bug in the map view — it is a terminal/ASCII rendering of a grid
+// — but both mean `rows` is a convenience and the car list is the authority.
+func (c *City) RenderRowsWithClosures(cars []RenderCar, closed map[Position]bool) []string {
+	return c.renderRows(cars, closed)
+}
+
+func (c *City) renderRows(cars []RenderCar, closed map[Position]bool) []string {
 	glyph := map[CellType]byte{
 		WaterTile: '#', BuildingTile: 'B', RoadTile: '.', GroundTile: ',',
 		DepotTile: 'D', ChargerTile: 'C', KitchenTile: 'K', HouseTile: 'H',
@@ -538,6 +644,16 @@ func (c *City) RenderRows(cars []RenderCar) []string {
 		overlay[car.Pos] = byte('1' + i)
 	}
 
+	// Street works go UNDER the overlay and over the terrain: a car parked on
+	// a closed tile must still read as a car, and the closed tile must not look
+	// like a building.
+	closedGlyph := map[Position]bool{}
+	for p, v := range closed {
+		if v {
+			closedGlyph[p] = true
+		}
+	}
+
 	rows := make([]string, 0, c.GridSize)
 	for y := range c.GridSize {
 		row := make([]byte, 0, c.GridSize)
@@ -553,6 +669,10 @@ func (c *City) RenderRows(cars []RenderCar) []string {
 			}
 			if g, ok := overlay[p]; ok {
 				row = append(row, g)
+				continue
+			}
+			if closedGlyph[p] {
+				row = append(row, 'X')
 				continue
 			}
 			if g, ok := glyph[c.Grid[y][x]]; ok {

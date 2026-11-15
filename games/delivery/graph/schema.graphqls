@@ -83,21 +83,26 @@ type Snapshot {
   id: ID!
   createdAt: Time!
   tick: Int!
+  "Clock multiplier: 0 paused, 1/2/4 running."
   speed: Int!
   paused: Boolean!
+  "Wall-clock length of one tick at 1x, from the city config."
   tickMs: Int!
 
   city: CityView!
   cars: [CarView!]!
   orders: [OrderView!]!
   ledger: LedgerView!
-  "The purchasable catalogue with per-session unlock and affordability flags."
+  "The purchasable catalogue with per-session unlock and affordability flags, cheapest first."
   carClasses: [CarClassView!]!
 
   achievements: [AchievementView!]!
   unlocks: [UnlockView!]!
   builds: [BuildView!]!
   events: [EventView!]!
+
+  "Street works currently closing part of the map."
+  closures: [ClosureView!]!
 }
 
 "A window of the city around one car, for cheap polling."
@@ -119,6 +124,7 @@ type CityView {
   gridSize: Int!
   "Full map as glyph rows. Unexplored tiles render '?'."
   rows: [String!]!
+  "Tiles still unexplored. Always 0 on the static city query, which reveals all."
   hiddenTiles: Int!
   kitchens: [PointView!]!
   customers: [PointView!]!
@@ -142,7 +148,12 @@ type CarView {
   battery: Int!
   maxBattery: Int!
   batteryPct: Int!
+  "Hold size in boxes."
   capacity: Int!
+  "Boxes currently in the hold."
+  load: Int!
+  "Boxes still free."
+  freeBoxes: Int!
   cargo: [ID!]!
   state: CarState!
   "The move queued for the next tick, if any."
@@ -163,14 +174,20 @@ enum RejectReason {
   OFF_GRID
   BLOCKED
   NO_BATTERY
+  "The tile is closed for street works."
+  CLOSED
+  "Another car already holds that tile, or it is at capacity."
+  OCCUPIED
 }
 
 type CarClassView {
   className: String!
   price: Int!
+  "Hold size in boxes."
   capacity: Int!
   maxBattery: Int!
   stepCost: Int!
+  "True once a build has granted this class, or it never needed one."
   unlocked: Boolean!
   affordable: Boolean!
 }
@@ -179,17 +196,24 @@ type OrderView {
   id: ID!
   item: String!
   itemName: String!
+  "How many boxes the customer asked for."
+  quantity: Int!
   kitchenId: ID!
   kitchenName: String!
   customerId: ID!
   customerName: String!
   state: OrderState!
+  "The car holding or holding-to-be. Kept after DONE, so read it as history once state is terminal."
   assignedCar: ID
   createdTick: Int!
   deadlineTick: Int!
+  "Ticks until the deadline. Signed: negative means already past it but not yet swept."
   ticksLeft: Int!
+  "What the job would pay if delivered now."
   reward: Int!
+  "What it actually paid. Zero until state is DONE."
   paid: Int!
+  "Delivered past the deadline, therefore paid at the late multiplier."
   late: Boolean!
 }
 
@@ -202,17 +226,39 @@ enum OrderState {
 }
 
 type LedgerView {
+  "Spendable balance. Buying a car or build reduces it."
   money: Int!
+  "Lifetime earnings; never decreases. Achievements read this, not money."
   moneyEarned: Int!
+  "0-5, clamped. Grants and deliveries cannot push it past the scale."
   reputation: Float!
+  "On-time deliveries only. A late delivery increments lateDeliveries instead."
   deliveries: Int!
   lateDeliveries: Int!
   expiredOrders: Int!
+  "Every order ever raised, including the ones that later expired."
   ordersSpawned: Int!
+  "Consecutive on-time deliveries. Both a late delivery and an expiry reset it to 0."
   onTimeStreak: Int!
   tows: Int!
+  "Completed builds. Chapter() derives from this, capped at 4."
   buildsCompleted: Int!
+  "Delivered ORDERS per item, not boxes: a two-box delivery adds 1."
   deliveriesByItem: [ItemCount!]!
+  """
+  Lifetime fleet running cost paid, cumulative. Zero when the map disables
+  upkeep. Not subtracted from moneyEarned: upkeep is a cost, not negative
+  income, and achievements read moneyEarned.
+  """
+  upkeepPaid: Int!
+  "Lifetime spend on tows, cumulative. A tow costs towFeePerTile x route distance, floored at towFeeMin, and is clamped to the balance."
+  towFees: Int!
+  """
+  What the fleet would be charged on the next upkeep interval, given where the
+  cars are standing right now. A car on a depot tile contributes zero. Lets a
+  client show the drain before it lands rather than only after.
+  """
+  upkeepDue: Int!
 }
 
 type ItemCount {
@@ -225,6 +271,7 @@ type AchievementView {
   title: String!
   description: String!
   done: Boolean!
+  "Progress toward target, in that requirement's own units."
   progress: Int!
   target: Int!
 }
@@ -234,6 +281,7 @@ type UnlockView {
   title: String!
   description: String!
   earned: Boolean!
+  "The build ids this unlock makes purchasable."
   builds: [ID!]!
 }
 
@@ -242,9 +290,12 @@ type BuildView {
   title: String!
   description: String!
   cost: Int!
+  "The right to build has been earned."
   unlocked: Boolean!
   completed: Boolean!
+  "Money covers the cost right now."
   affordable: Boolean!
+  "A legal placement exists right now."
   applicable: Boolean!
   "Why the build cannot be placed, when it cannot."
   problem: String
@@ -252,9 +303,29 @@ type BuildView {
 
 type EventView {
   tick: Int!
+  "One of the car_* / order_* / build_* / unlock_* / closure_* names the engine emits."
   type: String!
   message: String!
+  "Null for world events (spawns, builds, closures); set for anything a car caused."
   carId: ID
+  "Position of the event, or 0,0 when it has none — non-null, so 0,0 is ambiguous."
   x: Int!
   y: Int!
+}
+
+"A stretch of street closed for works."
+type ClosureView {
+  id: ID!
+  reason: String!
+  startTick: Int!
+  endTick: Int!
+  "Ticks until it reopens; negative when it has already ended."
+  ticksLeft: Int!
+  "The closed tiles, so a client can draw them without guessing."
+  tiles: [PointView!]!
+  "Bounding box of the closed tiles, for camera moves."
+  minX: Int!
+  minY: Int!
+  maxX: Int!
+  maxY: Int!
 }

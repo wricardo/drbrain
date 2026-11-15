@@ -262,15 +262,15 @@
   },
   "orders": {
     "max_active_orders": 8,
-    "target_orders_per_car": 1.0,
+    "target_orders_per_car": 0.75,
     "min_spawn_gap_ticks": 12,
-    "deadline_slack": 1.6,
+    "deadline_slack": 1.8,
     "deadline_slack_by_chapter": [
+      1.8,
+      1.7,
       1.6,
       1.5,
-      1.4,
-      1.3,
-      1.2
+      1.4
     ],
     "reward_base": {
       "pizza": 40,
@@ -320,6 +320,21 @@
   "charging": {
     "depot_rate": 6,
     "charger_rate": 2
+  },
+  "fleet": {
+    "upkeep_interval_ticks": 40,
+    "upkeep_per_box_per_interval": 4,
+    "default_upkeep_per_interval": 4,
+    "tow_fee_per_tile": 2,
+    "tow_fee_min": 25
+  },
+  "closures": {
+    "enabled": true,
+    "from_chapter": 1,
+    "every_ticks": 900,
+    "duration_ticks": 260,
+    "max_concurrent": 1,
+    "segment_tiles": 3
   },
   "achievements": [
     {

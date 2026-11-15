@@ -74,10 +74,10 @@
 					<div class="flex items-center justify-between text-xs text-fog-500">
 						<span>at ({car.x},{car.y})</span>
 						<span>
-							{#if car.cargo.length > 0}
-								carrying {car.cargo.length}/{car.capacity}
+							{#if car.load > 0}
+								carrying {car.load}/{car.capacity} boxes
 							{:else}
-								empty
+								empty · {car.capacity} box{car.capacity === 1 ? '' : 'es'}
 							{/if}
 						</span>
 					</div>
@@ -90,6 +90,15 @@
 					{#if car.lastReject}
 						<div class="text-xs text-[var(--color-warn)]">
 							last move rejected: {car.lastReject}
+							{#if car.lastReject === 'OCCUPIED'}
+								<span class="text-fog-500">— another car holds that tile; it may move next tick</span>
+							{:else if car.lastReject === 'CLOSED'}
+								<span class="text-fog-500">— street works; wait it out</span>
+							{:else if car.lastReject === 'BLOCKED'}
+								<span class="text-fog-500">— water, building or unexplored; drive around</span>
+							{:else if car.lastReject === 'NO_BATTERY'}
+								<span class="text-fog-500">— charge up</span>
+							{/if}
 						</div>
 					{/if}
 				</button>

@@ -1,3 +1,12 @@
+// Package api serves the built web client. It deliberately contains no game
+// logic and no GraphQL wiring: the HTTP API lives in package graph, and this
+// package exists only so the optional UI has somewhere to be mounted from.
+//
+// The single rule worth knowing is that the UI is optional. StaticHandler
+// reports whether a build was found, and the server mounts the root route only
+// if it was, so a headless deployment (an agent driving the game over GraphQL,
+// a CI job, a fresh clone that has not run `npm run build`) serves the API and
+// nothing else rather than a 404 at `/`.
 package api
 
 import (

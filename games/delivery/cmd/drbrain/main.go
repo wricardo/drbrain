@@ -1,3 +1,20 @@
+// Command drbrain is the offline tool for the engine: validate and print the
+// city, drive cars in a terminal, and run the pacing simulation.
+//
+// It exists so the engine is exercised through a real program and not only
+// through tests. Three subcommands:
+//
+//	map    validate the city file and print it as ASCII glyph rows
+//	play   drive cars manually, one tick at a time, in the terminal
+//	sim    run the scripted bot and print a pacing table
+//
+// `sim` is the one to reach for when asking whether the game is balanced rather
+// than whether it is correct: it reports the queue depth against what the fleet
+// can handle. See the README for how to read its columns — two of the headings
+// (`tgt`, `cls`) do not mean what their names suggest.
+//
+// Nothing here writes to a save file; `play` and `sim` build a world in memory
+// and throw it away.
 package main
 
 import (
@@ -8,14 +25,6 @@ import (
 	"github.com/wricardo/drbrain-delivery/game/engine"
 )
 
-// The P0 CLI. It has two jobs while the engine is being built:
-//
-//	drbrain map            validate and print the city
-//	drbrain map -raw       print the grid without entity glyphs
-//
-// Later milestones grow this into `play` (manual driving in the terminal)
-// and `sim` (the pacing harness). Keeping a real CLI from P0 means the engine
-// is exercised through a program, not only through tests.
 func main() {
 	if len(os.Args) < 2 {
 		usage()
@@ -60,7 +69,8 @@ flags for map:
 ASCII legend:
   #  water      B  building   .  road      ,  ground
   D  depot      C  charger    K  kitchen   H  customer
-  ?  unexplored
+  ?  unexplored               X  closed for street works
+  1-9  car (by index, first nine only)
 `)
 }
 
