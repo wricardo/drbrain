@@ -13,6 +13,7 @@ import (
 
 	"github.com/wricardo/drbrain-motor-programming/game/engine"
 	"github.com/wricardo/drbrain-motor-programming/game/service"
+	"github.com/wricardo/drbrain-motor-programming/internal/fsutil"
 )
 
 // Options configures a Manager.
@@ -219,7 +220,7 @@ func (m *Manager) Delete(id string) error {
 	if err := os.Remove(filepath.Join(dir, id+".json")); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("delete map: %w", err)
 	}
-	if err := syncDir(dir); err != nil {
+	if err := fsutil.SyncDir(dir); err != nil {
 		return fmt.Errorf("delete map: %w", err)
 	}
 	delete(m.maps, id)
@@ -253,22 +254,9 @@ func writeAtomic(dir, name string, data []byte) error {
 		os.Remove(tmpName)
 		return err
 	}
-	if err := os.Rename(tmpName, filepath.Join(dir, name)); err != nil {
+	if err := fsutil.RenameReplace(tmpName, filepath.Join(dir, name)); err != nil {
 		os.Remove(tmpName)
 		return err
 	}
-	return syncDir(dir)
-}
-
-// syncDir fsyncs a directory so renames/removals in it are durable.
-func syncDir(dir string) error {
-	d, err := os.Open(dir)
-	if err != nil {
-		return err
-	}
-	if err := d.Sync(); err != nil {
-		d.Close()
-		return err
-	}
-	return d.Close()
+	return fsutil.SyncDir(dir)
 }

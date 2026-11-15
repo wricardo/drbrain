@@ -10,6 +10,7 @@ import (
 
 	"github.com/wricardo/drbrain-motor-programming/game/engine"
 	"github.com/wricardo/drbrain-motor-programming/game/service"
+	"github.com/wricardo/drbrain-motor-programming/internal/fsutil"
 )
 
 // SchemaVersion is the current on-disk format version of a session file.
@@ -120,10 +121,10 @@ func (fp *FilePersistence) Save(s *service.Session) (err error) {
 	if err = tmp.Close(); err != nil {
 		return fmt.Errorf("close session %s: %w", s.ID, err)
 	}
-	if err = os.Rename(tmp.Name(), fp.path(s.ID)); err != nil {
+	if err = fsutil.RenameReplace(tmp.Name(), fp.path(s.ID)); err != nil {
 		return fmt.Errorf("replace session file %s: %w", s.ID, err)
 	}
-	if err = syncDir(fp.dir); err != nil {
+	if err = fsutil.SyncDir(fp.dir); err != nil {
 		return fmt.Errorf("sync dir for session %s: %w", s.ID, err)
 	}
 	return nil
@@ -230,23 +231,10 @@ func (fp *FilePersistence) Delete(id string) error {
 		}
 		return fmt.Errorf("remove session %s: %w", id, err)
 	}
-	if err := syncDir(fp.dir); err != nil {
+	if err := fsutil.SyncDir(fp.dir); err != nil {
 		return fmt.Errorf("sync dir after removing session %s: %w", id, err)
 	}
 	return nil
-}
-
-// syncDir fsyncs a directory so renames/removals in it are durable.
-func syncDir(dir string) error {
-	d, err := os.Open(dir)
-	if err != nil {
-		return err
-	}
-	if err := d.Sync(); err != nil {
-		_ = d.Close()
-		return err
-	}
-	return d.Close()
 }
 
 // ListAll returns the ids of every <id>.json file with a valid id; other

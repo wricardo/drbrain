@@ -58,7 +58,7 @@ const (
 	eventSel   = `step instruction tapeIndex slotIndex from { x y } to { x y } facingBefore facingAfter blocked callBlocked collected { x y } callStack { tape pc } status lossReason`
 	sessionSel = `id displayName mapId map { ` + mapSel + ` } program { main subs } vm { pos { x y } facing treatsRemaining { x y } callStack { tape pc } steps status lossReason visited { x y } } playing speedMs seq createdAt lastActionAt attempts bestSteps lastEvent { ` + eventSel + ` }`
 	// The frontend's account and profile queries (frontend/src/lib/queries.ts).
-	accountQ  = `query Account { me { handle displayName profilePublic createdAt handleChangeableAt } authProviders { id name } }`
+	accountQ  = `query Account { me { handle displayName profilePublic createdAt handleChangeableAt hasPassword } authProviders { id name } }`
 	profileQ  = `query Profile($handle: String!) { profile(handle: $handle) { handle displayName createdAt isMine runs { mapId total entry { rank sessionId displayName handle mine slots steps achievedAt } } } }`
 	sessionsQ = `query Sessions($limit: Int, $sort: SessionSort, $mapId: ID) { sessions(sort: $sort, limit: $limit, mapId: $mapId) { id displayName mapId playing createdAt lastActionAt map { name } vm { status steps treatsRemaining { x y } } } }`
 )

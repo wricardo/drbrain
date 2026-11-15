@@ -212,7 +212,7 @@ export const PLAYER_RUNS_QUERY = `
   }
 `;
 
-const ACCOUNT_FIELDS = `handle displayName profilePublic createdAt handleChangeableAt`;
+const ACCOUNT_FIELDS = `handle displayName profilePublic createdAt handleChangeableAt hasPassword`;
 
 /** Keep in sync with `accountQ` in api/hardening_test.go (complexity check). */
 export const ACCOUNT_QUERY = `
@@ -244,6 +244,12 @@ export const LOGOUT_MUTATION = `
 export const UPDATE_ACCOUNT_MUTATION = `
   mutation UpdateAccount($input: AccountInput!) {
     updateAccount(input: $input) { ${ACCOUNT_FIELDS} }
+  }
+`;
+
+export const CHANGE_PASSWORD_MUTATION = `
+  mutation ChangePassword($currentPassword: String!, $newPassword: String!) {
+    changePassword(currentPassword: $currentPassword, newPassword: $newPassword)
   }
 `;
 

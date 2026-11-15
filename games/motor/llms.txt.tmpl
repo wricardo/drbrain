@@ -126,7 +126,12 @@ account. You can ignore it; never post it anywhere (a session id alone is public
 claimed).
 
 Other session mutations: `pause`, `reset`, `renameSession(id, displayName)`,
-`deleteSession(id)`. Query `sessions(sort: RECENT, limit: 50, mapId: "...")` lists sessions.
+`deleteSession(id)`. Sessions you create are guest sessions and anyone who knows the id can play,
+rename or delete them. A session that belongs to a signed-in human can still be played by anyone
+with its id (that is how an agent helps a person), but only that person's signed-in browser, or a
+call that passes the `ownerToken` argument (`deleteSession(id, ownerToken: "...")`,
+`renameSession(id, displayName, ownerToken: "...")`), can delete or rename it; anyone else gets
+`FORBIDDEN`. Query `sessions(sort: RECENT, limit: 50, mapId: "...")` lists sessions.
 
 ---
 
@@ -202,12 +207,13 @@ query { playerRuns(name: "BraveOtter") { mapId total entry { rank slots steps } 
 
 ## Accounts (optional, for humans)
 
-People can sign in with Google or GitHub in the browser (when the server has it enabled) to keep a
+People can sign in with Google, GitHub or a username and password in the browser (when the server has it enabled) to keep a
 profile at `/u/<handle>`. Agents do not need it and nothing in the API above changes for you. The
 extra schema is: `me`, `authProviders` and `profile(handle)` queries, the `handle` and `mine`
 fields of a leaderboard entry, and `ownerToken` on the `createSession` response. Sign-in itself is a
-browser redirect flow under `/auth/` with a cookie, not a GraphQL call, and the account mutations
-(`updateAccount`, `deleteAccount`, `claimSessions`, `logout`) work only from a signed-in browser.
+browser flow under `/auth/` with a cookie, not a GraphQL call, and the account mutations
+(`updateAccount`, `changePassword`, `deleteAccount`, `claimSessions`, `logout`) work only from a
+signed-in browser.
 
 ---
 

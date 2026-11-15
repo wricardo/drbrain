@@ -15,7 +15,7 @@ vi.mock('$app/stores', () => ({
 }));
 
 const CLIENT_KEY = '$$_urql';
-const me: Account = { handle: 'speedy_fox', displayName: 'Speedy', profilePublic: true, createdAt: '2026-01-01T00:00:00Z', handleChangeableAt: null };
+const me: Account = { handle: 'speedy_fox', displayName: 'Speedy', profilePublic: true, createdAt: '2026-01-01T00:00:00Z', handleChangeableAt: null, hasPassword: false };
 
 const ok = (data: unknown) => ({ toPromise: () => Promise.resolve({ data }) });
 const bad = (code: string, message: string) => ({

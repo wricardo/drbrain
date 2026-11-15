@@ -85,3 +85,88 @@ func ClientIP(r *http.Request) string {
 	}
 	return host
 }
+
+// FailTracker counts failed attempts per key and locks a key out for a while
+// once it has too many inside a window. Unlike Limiter it counts only failures,
+// and Blocked does not count. Used to slow down password guessing: a locked key
+// is refused before any password hashing happens.
+type FailTracker struct {
+	maxFails int
+	window   time.Duration
+	lock     time.Duration
+	now      func() time.Time
+
+	mu      sync.Mutex
+	entries map[string]*failEntry
+}
+
+type failEntry struct {
+	count       int
+	windowStart time.Time
+	lockedUntil time.Time
+}
+
+// NewFailTracker locks a key for lock after maxFails failures within window. now may be nil.
+func NewFailTracker(maxFails int, window, lock time.Duration, now func() time.Time) *FailTracker {
+	if now == nil {
+		now = time.Now
+	}
+	return &FailTracker{maxFails: maxFails, window: window, lock: lock, now: now, entries: make(map[string]*failEntry)}
+}
+
+// Blocked reports whether key is locked out and for how long.
+func (f *FailTracker) Blocked(key string) (bool, time.Duration) {
+	now := f.now()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if e, ok := f.entries[key]; ok && now.Before(e.lockedUntil) {
+		return true, e.lockedUntil.Sub(now)
+	}
+	return false, 0
+}
+
+// Fail records one failed attempt for key.
+func (f *FailTracker) Fail(key string) {
+	now := f.now()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.entries) >= maxBuckets {
+		for k, e := range f.entries {
+			if !now.Before(e.lockedUntil) && now.Sub(e.windowStart) >= f.window {
+				delete(f.entries, k)
+			}
+		}
+		for k := range f.entries { // still full: make room rather than refuse to track
+			if len(f.entries) < maxBuckets {
+				break
+			}
+			delete(f.entries, k)
+		}
+	}
+	e, ok := f.entries[key]
+	if !ok || now.Sub(e.windowStart) >= f.window {
+		e = &failEntry{windowStart: now, lockedUntil: e0(e)}
+		f.entries[key] = e
+	}
+	e.count++
+	if e.count >= f.maxFails {
+		e.lockedUntil = now.Add(f.lock)
+		e.count = 0
+		e.windowStart = now
+	}
+}
+
+// e0 keeps an existing lock when a fresh window starts.
+func e0(e *failEntry) time.Time {
+	if e == nil {
+		return time.Time{}
+	}
+	return e.lockedUntil
+}
+
+// Clear forgets key's failures (after a successful sign-in).
+func (f *FailTracker) Clear(key string) {
+	f.mu.Lock()
+	delete(f.entries, key)
+	f.mu.Unlock()
+}

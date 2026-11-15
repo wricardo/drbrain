@@ -56,6 +56,8 @@ type persistedAccount struct {
 	ProfilePublic   bool      `json:"profile_public"`
 	CreatedAt       time.Time `json:"created_at"`
 	HandleChangedAt time.Time `json:"handle_changed_at,omitempty"`
+	// PasswordHash is the argon2id hash of a username/password account (never the password).
+	PasswordHash string `json:"password_hash,omitempty"`
 }
 
 // persistedLogin is the JSON form of a login (the file name is its token hash).
@@ -196,7 +198,7 @@ func (s *Store) readAccount(id string) (service.Account, error) {
 	return service.Account{
 		ID: pa.ID, Provider: pa.Provider, ProviderUserID: pa.ProviderUserID, Handle: pa.Handle,
 		DisplayName: pa.DisplayName, ProfilePublic: pa.ProfilePublic,
-		CreatedAt: pa.CreatedAt, HandleChangedAt: pa.HandleChangedAt,
+		CreatedAt: pa.CreatedAt, HandleChangedAt: pa.HandleChangedAt, PasswordHash: pa.PasswordHash,
 	}, nil
 }
 
@@ -211,7 +213,7 @@ func (s *Store) writeAccount(a service.Account) error {
 	return writeJSON(s.accountsDir, a.ID, persistedAccount{
 		SchemaVersion: SchemaVersion, ID: a.ID, Provider: a.Provider, ProviderUserID: a.ProviderUserID,
 		Handle: a.Handle, DisplayName: a.DisplayName, ProfilePublic: a.ProfilePublic,
-		CreatedAt: a.CreatedAt, HandleChangedAt: a.HandleChangedAt,
+		CreatedAt: a.CreatedAt, HandleChangedAt: a.HandleChangedAt, PasswordHash: a.PasswordHash,
 	})
 }
 
@@ -378,6 +380,34 @@ func (s *Store) GetLogin(tokenHash string) (service.Login, bool) {
 	defer s.mu.RUnlock()
 	l, ok := s.logins[tokenHash]
 	return l, ok
+}
+
+// DeleteOtherLogins removes every login of the account except keepHash (pass ""
+// to remove them all).
+func (s *Store) DeleteOtherLogins(accountID, keepHash string) error {
+	if !idRE.MatchString(accountID) || (keepHash != "" && !hashRE.MatchString(keepHash)) {
+		return ErrInvalidID
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var kept []string
+	var firstErr error
+	for _, h := range s.byAccount[accountID] {
+		if h == keepHash {
+			kept = append(kept, h)
+			continue
+		}
+		if err := os.Remove(s.loginPath(h)); err != nil && !os.IsNotExist(err) {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("remove login: %w", err)
+			}
+			kept = append(kept, h) // still on disk: keep tracking it
+			continue
+		}
+		delete(s.logins, h)
+	}
+	s.byAccount[accountID] = kept
+	return firstErr
 }
 
 // DeleteLogin removes one login; unknown hashes are ignored.

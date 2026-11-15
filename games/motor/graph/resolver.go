@@ -76,6 +76,16 @@ func viewerID(ctx context.Context) string {
 	return ""
 }
 
+// sessionActor is who is asking to change a session: the signed-in account of
+// the request (if any) and the owner token they passed (if any).
+func sessionActor(ctx context.Context, ownerToken *string) service.SessionActor {
+	a := service.SessionActor{AccountID: viewerID(ctx)}
+	if ownerToken != nil {
+		a.OwnerToken = *ownerToken
+	}
+	return a
+}
+
 // requireViewer returns the signed-in account or an UNAUTHENTICATED error.
 func requireViewer(ctx context.Context) (*service.Account, error) {
 	if v := ViewerFrom(ctx); v != nil {

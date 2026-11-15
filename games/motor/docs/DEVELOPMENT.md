@@ -59,7 +59,7 @@ Routes:
 | `/leaderboard?map=<id>&order=slots` or `steps` | Per-map ranking of winners: map picker, two boards, your entries highlighted |
 | `/u/<handle>` | Public profile: solved counts (official and community), best run per map, recent activity; a private profile is "not found" for everyone but its owner |
 | `/settings` | Signed-in player: handle, display name, public/private profile, add guest runs, delete account |
-| `/auth/<provider>/login`, `/auth/<provider>/callback`, `POST /auth/logout` | Sign-in routes; only exist when a provider is configured (see [Accounts and sign-in](#accounts-and-sign-in)) |
+| `/auth/<provider>/login`, `/auth/<provider>/callback`, `POST /auth/logout`, `POST /auth/password/{register,login}` | Sign-in routes; only exist when the matching sign-in is enabled (see [Accounts and sign-in](#accounts-and-sign-in)) |
 | `/editor` | Map editor with server-side validation; anyone can create a map, changing a built-in one needs the admin key |
 | `/learn` | How it works: the game, instructions, rules, controls, how an AI plays, a generic AI prompt, tips |
 | `/graphql` | GraphQL over HTTP and WebSocket (`graphql-ws`); `/playground` when enabled |
@@ -122,6 +122,7 @@ HTTP /graphql (api) → gqlgen resolver (graph) → GameService (game/service)
 - After a restart, sessions load with `playing=false` and their program and VM state intact.
 - Each session embeds a copy of its map, so editing or deleting a map never affects existing sessions.
 - A session file also carries `account_id` and `owner_hash` when it belongs to an account or has an owner token (see [Accounts and sign-in](#accounts-and-sign-in)), and its best wins for the [leaderboard](#leaderboard) (`fewest_slots`, `fewest_steps`). Files written before leaderboards still load: a session whose VM is `WON` gets its win recovered from the program stored with it.
+- The session and map stores share `internal/fsutil` for the two file-system steps that differ by platform: `SyncDir` (fsync the directory after a rename or remove; a no-op on Windows, which cannot open a directory for syncing) and `RenameReplace` (os.Rename on Linux; on Windows a short retry, because replacing a file fails with "Access is denied" while a reader, virus scanner or indexer has it open). Production is Linux, where both are the plain calls; the point is that the whole test suite also passes on a Windows developer machine.
 - Idle sessions older than `SESSION_TTL` are removed on startup. `MAX_SESSIONS` caps how many exist.
 
 ### Errors
@@ -137,7 +138,7 @@ HTTP /graphql (api) → gqlgen resolver (graph) → GameService (game/service)
 - A corrupt player map file is logged and skipped at startup; a corrupt or misnamed built-in map is fatal.
 - `max_steps ≤ 10000` and `max_call_depth ≤ 64` bound the cost of a run.
 - Request body capped at 1 MiB; query complexity capped at 1000 with weighted costs (`sessions` by `limit`). `api/hardening_test.go` keeps a copy of the frontend queries to make sure they stay under the cap.
-- Accounts: handles are validated and blocklisted, login tokens and owner tokens are random 32-byte values stored only as SHA-256, cookies are `HttpOnly`/`SameSite=Lax`/`Secure` and only honoured on same-origin JSON POSTs, OAuth state is single use and bound to the browser, redirects are relative-only, `/auth` is rate limited. Details in [Accounts and sign-in](#accounts-and-sign-in).
+- Accounts: deleting or renaming a signed-in player's session needs their login or owner token (see [Who may change a session](#who-may-change-a-session)); handles are validated and blocklisted, login tokens and owner tokens are random 32-byte values stored only as SHA-256, cookies are `HttpOnly`/`SameSite=Lax`/`Secure` and only honoured on same-origin JSON POSTs, OAuth state is single use and bound to the browser, redirects are relative-only, `/auth` is rate limited. Details in [Accounts and sign-in](#accounts-and-sign-in).
 - WebSocket: 10 s init timeout, frame-size guard (`api/wslimit.go`), origin check against `ALLOWED_ORIGINS`, which also drives CORS on `/graphql`.
 - Map creation is atomic (`MapStore.Create`; a conflict is `INVALID_ARGUMENT`). Never check-then-save.
 
@@ -206,7 +207,7 @@ Maps can also be created by anyone in `/editor` or with the `createMap` mutation
 The schema lives in `graph/schema.graphqls`.
 
 - **Queries:** `maps`, `map(id)`, `session(id)`, `sessions(sort, limit, mapId)`, `leaderboard(mapId, order, limit, sessionId)`, `playerRuns(sessionIds, name)`, plus `me`, `authProviders` and `profile(handle)` for [accounts](#accounts-and-sign-in).
-- **Mutations:** `createSession` (its response also carries the optional secret `ownerToken`), `renameSession`, `deleteSession`, `setProgram`, `run`, `step`, `pause`, `reset`, plus `createMap` and `validateMap` (open) and `updateMap`/`deleteMap` (open for player maps, admin key for built-in ones). For signed-in browsers: `logout`, `updateAccount`, `deleteAccount(confirmHandle)`, `claimSessions`.
+- **Mutations:** `createSession` (its response also carries the optional secret `ownerToken`), `renameSession`, `deleteSession`, `setProgram`, `run`, `step`, `pause`, `reset`, plus `createMap` and `validateMap` (open) and `updateMap`/`deleteMap` (open for player maps, admin key for built-in ones). For signed-in browsers: `logout`, `updateAccount`, `changePassword`, `deleteAccount(confirmHandle)`, `claimSessions`.
 - **Subscription:** `sessionUpdated(sessionID)` emits the current snapshot, then every change.
 
 Agent support:
@@ -252,7 +253,7 @@ Entries that tie on both numbers share a rank (1, 2, 2, 4); the earlier win is l
 
 ## Accounts and sign-in
 
-Sign-in is **optional and off by default**. Guest play, the public API and the agent guide work exactly as before; a player who signs in keeps their runs on a profile, appears on the leaderboard under their own handle and gets a public page at `/u/<handle>`. With no provider configured nothing in this section is active: no `/auth` routes, no cookies, no `accounts/` directory is created, `me` is `null` and `authProviders` is empty.
+Sign-in is **optional and off by default** (Google, GitHub and username/password are each their own switch). Guest play, the public API and the agent guide work exactly as before; a player who signs in keeps their runs on a profile, appears on the leaderboard under their own handle and gets a public page at `/u/<handle>`. With no provider configured nothing in this section is active: no `/auth` routes, no cookies, no `accounts/` directory is created, `me` is `null` and `authProviders` is empty.
 
 ### What is stored
 
@@ -260,11 +261,11 @@ Only the minimum, because the game may be played by children:
 
 | Where | What |
 |---|---|
-| `accounts/accounts/<id>.json` | random id, provider name + the provider's opaque user id (only used to recognise the player at the next sign-in, never exposed), handle, display name, `profilePublic`, `createdAt`, `handleChangedAt` |
+| `accounts/accounts/<id>.json` | random id, provider name + the provider's opaque user id (only used to recognise the player at the next sign-in, never exposed), handle, display name, `profilePublic`, `createdAt`, `handleChangedAt`, and for [username/password accounts](#username-and-password-optional) the argon2id `password_hash` |
 | `accounts/logins/<sha256>.json` | account id and expiry of one signed-in browser, named by the SHA-256 of its cookie token |
 | session file | `account_id` and `owner_hash` (SHA-256 of the owner token), only when set |
 
-No email address, no avatar, no provider profile data is requested or stored (Google is asked for the `openid` scope only, GitHub for no scope: the one call made reads the numeric user id). Deleting an account removes its file and logins. The handle and provider indexes are in memory, rebuilt from the files at startup (`game/account`); writes are atomic like session files, ids and hashes are validated before they touch disk.
+No email address, no avatar, no provider profile data is requested or stored (a password account stores only a salted hash of its password) (Google is asked for the `openid` scope only, GitHub for no scope: the one call made reads the numeric user id). Deleting an account removes its file and logins. The handle and provider indexes are in memory, rebuilt from the files at startup (`game/account`); writes are atomic like session files, ids and hashes are validated before they touch disk.
 
 ### Providers and the sign-in flow
 
@@ -279,6 +280,18 @@ Plain HTTP routes outside GraphQL (`auth/auth.go`):
 | `POST /auth/logout` | same-origin only; ends the login and clears the cookie |
 
 Pending sign-ins live in memory (bounded to 5000); a restart only cancels sign-ins in progress. A failed or cancelled sign-in returns to the site with `?signin=failed` or `?signin=cancelled`, which the layout shows as a dismissible notice. `next` must be a same-site relative path (`SafeNext`: no scheme or host, no `//`, no backslashes or control characters, never `/auth/...`). All `/auth` routes are rate limited per client IP (30 requests a minute, in memory; behind the nginx proxy the last `X-Forwarded-For` entry is used, only when the peer is loopback) and sent with `Cache-Control: no-store`.
+
+### Username and password (optional)
+
+For players who do not want Google or GitHub. It is its own switch, **off by default**: `AUTH_PASSWORD=true` (it also needs `-public-url`, like every sign-in, for the same-origin check and the `Secure` cookie). It can run next to the OAuth providers or alone; nothing external has to be registered.
+
+- **Username = the public handle** (`^[a-z0-9_]{3,20}$`, same reserved list, blocklist and case-insensitive uniqueness). Changing the handle in Settings changes the login name too. A password account is an ordinary account (profile, leaderboard, claiming guest runs, delete); its `Provider` is `password`.
+- **No email, no recovery.** Nothing is stored that could reset a password, so a forgotten password means the account cannot be recovered (the player can start a new account). The UI says so before an account is created and in Settings. This was a deliberate choice for child privacy; adding recovery later would need either an email address or one-time recovery codes.
+- **Passwords** are 8 to 128 bytes, not on a small embedded list of the most common passwords (`commonPasswords` in `game/service/password.go`), and not equal to the username. There are no composition rules. They are stored only as an **argon2id** hash (19 MiB, 2 passes, 1 lane, random 16-byte salt, PHC string with its own parameters, in the account file as `password_hash`); the hash is read back with bounded parameters, compared in constant time, and never leaves the service (`Account.PasswordHash` is cleared on every account the service returns; `hasPassword` is exposed instead). At most four hashes run at once.
+- **Routes** (`auth/auth.go`, only mounted when enabled): `POST /auth/password/register` and `POST /auth/password/login` with `{"handle", "password"}`. Like the GraphQL cookie they need a same-origin `application/json` request, so another site cannot create accounts or probe passwords through a victim's browser; the body is capped at 4 KiB and unknown fields are refused. Success sets the same login cookie as the OAuth flow (rotating the previous one).
+- **Guessing.** A wrong password and an unknown username give the identical `401` and cost one hash each (a dummy hash is verified for unknown usernames). Failures are counted per (IP, username): 5 within 15 minutes locks that pair for 15 minutes, and per username: 40 within an hour locks the username for 15 minutes, from every address. A locked key is refused before any hashing, even with the right password. Trade-off: because handles are public, someone can keep a victim's *password login* locked with enough distributed attempts; sessions already signed in, and Google/GitHub sign-in, are unaffected. The per-IP request limit on `/auth` still applies.
+- **Changing the password** is the GraphQL mutation `changePassword(currentPassword, newPassword)`: it needs the current password even though the player is signed in, applies the same rules, and ends every other login of the account (the caller's own stays). Google/GitHub accounts have no password and cannot add one. `hasPassword` on `me` tells the UI which kind it is.
+- The frontend shows the form in the sign-in dialog when `authProviders` contains the `password` entry (`PasswordForm.svelte`: Sign in / Create account tabs, a "No email, no reset" warning on sign-up) and a "Password" section in Settings for password accounts.
 
 ### Login state, cookies and CSRF
 
@@ -298,6 +311,12 @@ A session id is public (anyone watching a winner sees it), so an account can **n
 - A signed-in creator's `createSession` attaches the session to the account from the cookie.
 - Every session made through `createSession` gets a secret **owner token**. Only its SHA-256 is stored (`Session.OwnerHash`); the token is returned once, in the `ownerToken` field of the `createSession` response, and is `null` in every query, list and subscription. Existing agents that read `id` are unaffected; the field is optional.
 - After signing in the browser offers (never automatically, since a shared computer may hold someone else's guest runs) to "add my guest runs": `claimSessions([{sessionID, ownerToken}])`, up to 100 a call. A claim succeeds only when the token matches (constant-time compare of the hashes) and the session belongs to no account. A session already on another account is never re-attached; unknown sessions, wrong tokens and sessions from before owner tokens all answer `REJECTED` without saying which. The browser keeps the tokens in `localStorage` (`lib/sessions.ts`) and forgets them once handled or when the account is deleted.
+
+### Who may change a session
+
+Session ids are public, so what an id lets you do is limited. **Guest sessions** are open to anyone who knows the id, as they always were: a human and an agent can share one, and every existing agent keeps working. A session that belongs to a **signed-in player's account** (created while signed in, or claimed) is protected against the two destructive actions: `deleteSession` and `renameSession` need that account's login (cookie) or the secret owner token, passed as the optional `ownerToken` argument (`AuthorizeSessionChange` in `game/service/accounts.go`, called by the resolvers before `DeleteSession`/`RenameSession`; anyone else gets `FORBIDDEN`, an unknown session is still `NOT_FOUND`). Deleting would destroy the account's leaderboard entry, and renaming would let anyone put text on a child's session in the public lists.
+
+Playing (`setProgram`, `run`, `step`, `pause`, `reset`) stays open on purpose: "Play with an AI" hands the session id to an agent, and recorded wins survive any program change, so playing someone's session cannot remove or worsen their entry. If that ever needs closing, the owner token (or a separate play token that the prompt card includes) is the mechanism. A link to an account that no longer exists, or accounts being off, counts as a guest session.
 
 ### Leaderboard and profiles
 
@@ -334,7 +353,8 @@ Sign-in appears on the live site only after the owner (the repository owner, who
 
 4. **Flags.** The systemd `ExecStart` must carry `-public-url https://motor-programming.wricardo.net` (it already does) and should add `-accounts-dir accounts`. Make sure `ALLOWED_ORIGINS` contains the site's origins (it already does in production). nginx needs nothing new: `/auth/` goes through the same proxy block; keep `X-Forwarded-Proto` and `X-Forwarded-For` set (`proxy_set_header X-Forwarded-Proto $scheme; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`).
 5. **Persistence.** `accounts/` lives next to `sessions/` and `maps-user/` in `/opt/drbrain-motor-programming` and **must survive deploys**. The deploy workflow only replaces `maps/` and `static/`, so it does; never `rm -rf` the directory, and include it in backups.
-6. Restart the service. The log shows `sign-in enabled: [google github]`; the header then shows "Sign in".
+6. Optional: add `AUTH_PASSWORD=true` to `.env` to let players use a username and password instead (no registration needed). Read [Username and password](#username-and-password-optional) first: there is no email, so no password reset.
+7. Restart the service. The log shows `sign-in enabled: [google github] password=true`; the header then shows "Sign in".
 
 ## Frontend architecture
 
@@ -441,6 +461,7 @@ Each instruction has a fixed colour, glyph and key, defined once in `lib/instruc
 | `MAX_SESSIONS` | `1000` | Cap on live sessions |
 | `AUTH_GOOGLE_CLIENT_ID`, `AUTH_GOOGLE_CLIENT_SECRET` | empty | Enable Google sign-in (both required; needs `-public-url`) |
 | `AUTH_GITHUB_CLIENT_ID`, `AUTH_GITHUB_CLIENT_SECRET` | empty | Enable GitHub sign-in (both required; needs `-public-url`) |
+| `AUTH_PASSWORD` | `false` | Enable username/password sign-up and sign-in (needs `-public-url`; no external registration) |
 | `AUTH_DEV_FAKE` | `false` | Local only: a fake provider for trying sign-in; the server refuses to start unless `-public-url` is a localhost URL |
 | `MAX_ACCOUNTS` | `10000` | Cap on accounts |
 | `SESSION_TTL` | `168h` | Idle sessions older than this are removed on startup |
