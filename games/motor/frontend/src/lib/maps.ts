@@ -3,20 +3,59 @@ import type { GameMap } from './types';
 const RANK: Record<string, number> = { easy: 0, medium: 1, hard: 2 };
 const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' });
 
+/** A map is official unless the API says otherwise (builtin: false marks a player-made map). */
+export function isOfficial(m: { builtin?: boolean }): boolean {
+	return m.builtin !== false;
+}
+
+type Sortable = Pick<GameMap, 'difficulty' | 'name'> & { builtin?: boolean };
+
 /**
  * The one map order used everywhere (home, maps page, dropdowns, "Next map"):
+ * official maps first, then community (player-made) ones; within each group
  * easy -> medium -> hard (unknown last), then by name with numeric compare so
  * the series number in the name ("Patterns 2" < "Patterns 10") keeps series order.
  * Does not mutate the input.
  */
-export function sortMaps<T extends Pick<GameMap, 'difficulty' | 'name'>>(maps: T[]): T[] {
+export function sortMaps<T extends Sortable>(maps: T[]): T[] {
 	const rank = (m: T) => RANK[m.difficulty] ?? 99;
-	return [...maps].sort((a, b) => rank(a) - rank(b) || collator.compare(a.name, b.name));
+	return [...maps].sort(
+		(a, b) => Number(isOfficial(b)) - Number(isOfficial(a)) || rank(a) - rank(b) || collator.compare(a.name, b.name)
+	);
 }
 
-/** Map after currentId in sortMaps order, or null when it is the last (or unknown). */
-export function nextMap<T extends Pick<GameMap, 'id' | 'difficulty' | 'name'>>(maps: T[], currentId: string): T | null {
+export type MapGroupId = 'official' | 'community';
+
+export interface MapGroup<T> {
+	id: MapGroupId;
+	label: string;
+	/** One line under the heading. */
+	blurb: string;
+	maps: T[];
+}
+
+/**
+ * Splits maps into the official campaign and community (player-made) maps, each in
+ * sortMaps order. Empty groups are left out, so a game with no community maps gets a
+ * single group.
+ */
+export function groupMaps<T extends Sortable>(maps: T[]): MapGroup<T>[] {
 	const sorted = sortMaps(maps);
+	const groups: MapGroup<T>[] = [
+		{ id: 'official', label: 'Official maps', blurb: 'The levels that ship with the game, from easy to hard.', maps: sorted.filter(isOfficial) },
+		{ id: 'community', label: 'Community maps', blurb: 'Made by players in the map editor.', maps: sorted.filter((m) => !isOfficial(m)) }
+	];
+	return groups.filter((g) => g.maps.length > 0);
+}
+
+/**
+ * Map after currentId in sortMaps order, or null when it is the last of its group (or
+ * unknown). It never crosses from the official levels into community maps.
+ */
+export function nextMap<T extends Sortable & Pick<GameMap, 'id'>>(maps: T[], currentId: string): T | null {
+	const current = maps.find((m) => m.id === currentId);
+	if (!current) return null;
+	const sorted = sortMaps(maps).filter((m) => isOfficial(m) === isOfficial(current));
 	const i = sorted.findIndex((m) => m.id === currentId);
 	return i >= 0 && i + 1 < sorted.length ? sorted[i + 1] : null;
 }

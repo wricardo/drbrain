@@ -7,6 +7,7 @@
 	import { unwrap } from '$lib/api';
 	import { describeError, type DescribedError } from '$lib/errors';
 	import { boardHref, rankBadgeClass, rankLabel } from '$lib/leaderboard';
+	import { isOfficial } from '$lib/maps';
 	import { CREATE_SESSION_MUTATION, MAPS_QUERY, PLAYER_RUNS_QUERY } from '$lib/queries';
 	import {
 		RUN_FILTERS,
@@ -204,7 +205,15 @@
 					</tr>
 				</thead>
 				<tbody class="divide-y divide-indigo-100">
-					{#each shown as r (r.map.id)}
+					{#each shown as r, i (r.map.id)}
+						{#if !isOfficial(r.map) && (i === 0 || isOfficial(shown[i - 1].map))}
+							<tr data-testid="runs-community-heading" class="bg-indigo-50/60">
+								<th scope="colgroup" colspan="6" class="px-4 py-2 text-xs font-semibold uppercase tracking-wide text-indigo-900">
+									Community maps
+									<span class="font-normal normal-case tracking-normal text-slate-600">· made by players</span>
+								</th>
+							</tr>
+						{/if}
 						<tr data-solved={r.run ? 'true' : 'false'}>
 							<td class="px-4 py-2">
 								<span class="font-medium">{r.map.name}</span>

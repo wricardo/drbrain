@@ -20,7 +20,7 @@
 		slotsText,
 		stepsText
 	} from '$lib/leaderboard';
-	import { sortMaps } from '$lib/maps';
+	import { groupMaps, isOfficial, sortMaps } from '$lib/maps';
 	import { CREATE_SESSION_MUTATION, LEADERBOARD_QUERY, MAPS_QUERY } from '$lib/queries';
 	import { ownSessionIds, rememberSession, savedDisplayName } from '$lib/sessions';
 	import { absoluteTime, relativeTime } from '$lib/time';
@@ -127,8 +127,14 @@
 				class="rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-sm"
 				data-testid="lb-map"
 			>
-				{#each maps as m (m.id)}
-					<option value={m.id}>{m.name}</option>
+				{#each groupMaps(maps) as g (g.id)}
+					{#if maps.some((m) => !isOfficial(m))}
+						<optgroup label={g.label}>
+							{#each g.maps as m (m.id)}<option value={m.id}>{m.name}</option>{/each}
+						</optgroup>
+					{:else}
+						{#each g.maps as m (m.id)}<option value={m.id}>{m.name}</option>{/each}
+					{/if}
 				{/each}
 			</select>
 		</label>
