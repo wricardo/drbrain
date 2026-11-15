@@ -1,0 +1,51 @@
+schema:
+  - graph/schema.graphqls
+
+exec:
+  filename: graph/generated/generated.go
+  package: generated
+
+model:
+  filename: graph/model/models_gen.go
+  package: model
+
+resolver:
+  layout: follow-schema
+  dir: graph
+  package: graph
+  filename_template: "{name}.resolvers.go"
+
+# The schema is the single source of truth: gqlgen generates the Go model types
+# from it, and cmd/gentypes generates the TypeScript from it. Neither side
+# hand-maintains a copy.
+#
+# The domain view structs (session.Snapshot and friends) are deliberately NOT
+# bound here. They were shaped by the old JSON tags, and binding them fights the
+# tool: field names differ (Class vs className) and some types differ
+# (map[string]int vs a list, string vs enum). graph/convert.go maps between the
+# two explicitly, which is compiler-checked and therefore cannot drift silently.
+# Built-in scalars are bound explicitly because declaring any `models` block
+# replaces gqlgen's defaults: omit one (String, Boolean) and generation fails
+# with "unable to find type", sometimes silently.
+models:
+  ID:
+    model:
+      - github.com/99designs/gqlgen/graphql.ID
+  String:
+    model:
+      - github.com/99designs/gqlgen/graphql.String
+  Int:
+    model:
+      - github.com/99designs/gqlgen/graphql.Int
+  Int64:
+    model:
+      - github.com/99designs/gqlgen/graphql.Int64
+  Float:
+    model:
+      - github.com/99designs/gqlgen/graphql.Float
+  Boolean:
+    model:
+      - github.com/99designs/gqlgen/graphql.Boolean
+  Time:
+    model:
+      - github.com/99designs/gqlgen/graphql.Time

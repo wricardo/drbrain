@@ -1,0 +1,57 @@
+@import 'tailwindcss';
+
+@theme {
+	/* Dark dashboard palette: this is a fleet console, not a marketing page.
+	   Colours are chosen so the map glyphs stay readable against the chrome. */
+	--color-ink-950: #0b0e14;
+	--color-ink-900: #11151d;
+	--color-ink-800: #171c26;
+	--color-ink-700: #1f2633;
+	--color-ink-600: #2b3444;
+	--color-ink-500: #3d4859;
+
+	--color-fog-500: #8b95a7;
+	--color-fog-400: #a9b3c2;
+	--color-fog-300: #cbd3de;
+
+	--color-road: #4a5464;
+	--color-ground: #5f5340;
+	--color-water: #163d50;
+	--color-depot: #3b82f6;
+	--color-charger: #22d3ee;
+	--color-kitchen: #f59e0b;
+	--color-customer: #a78bfa;
+	--color-money: #34d399;
+	--color-danger: #f87171;
+	--color-warn: #fbbf24;
+}
+
+html,
+body {
+	height: 100%;
+	background-color: var(--color-ink-950);
+	color: var(--color-fog-300);
+	font-family:
+		ui-sans-serif,
+		system-ui,
+		-apple-system,
+		'Segoe UI',
+		sans-serif;
+	font-variant-numeric: tabular-nums;
+}
+
+/* A visible focus ring everywhere: this UI is driven by keyboard as much as
+   the mouse, and the map is the primary surface. */
+:focus-visible {
+	outline: 2px solid var(--color-charger);
+	outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
+	}
+}

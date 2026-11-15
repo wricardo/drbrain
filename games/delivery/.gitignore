@@ -1,0 +1,19 @@
+# Build artefacts
+/bin/
+*.exe
+coverage.out
+coverage.html
+
+# Sessions / saves (runtime state, never committed)
+/sessions/
+
+# Editor / OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Frontend build output and deps
+/frontend/build/
+/frontend/node_modules/
+/frontend/.svelte-kit/

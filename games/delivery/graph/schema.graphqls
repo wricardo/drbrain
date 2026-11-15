@@ -1,0 +1,260 @@
+# DrBrain Delivery GraphQL schema.
+#
+# This is the only transport. The field names mirror the Go view structs in
+# game/session/view.go, which are bound in gqlgen.yml, so the schema and the
+# server types cannot drift apart silently: if a struct field is renamed,
+# gqlgen generation fails.
+
+scalar Time
+
+type Query {
+  "Liveness probe."
+  health: Health!
+  "The static city with every district revealed."
+  city: CityView!
+  "Every save on disk, newest first."
+  sessions: [SessionSummary!]!
+  "One session's full state. Rehydrates from disk when not in memory."
+  session(id: ID!): Snapshot!
+  "A window of the city around one car, for cheap agent polling."
+  carView(id: ID!, carId: ID!, radius: Int! = 2): CarWindow!
+  "Events newer than a tick, so a client can poll for deltas."
+  events(id: ID!, sinceTick: Int! = 0): [EventView!]!
+}
+
+type Mutation {
+  "Start a new city. Both fields optional; a seed makes it reproducible."
+  createSession(id: ID, seed: Int): Snapshot!
+
+  "Queue one step for one car. Does NOT advance the clock."
+  moveCar(id: ID!, carId: ID!, direction: Direction!): Snapshot!
+
+  "Advance the world manually. Useful when paused."
+  tick(id: ID!, count: Int! = 1): Snapshot!
+
+  "Set the clock multiplier. 0 pauses."
+  setSpeed(id: ID!, speed: Int!): Snapshot!
+
+  "Point an order at a car; refreshes its deadline from that car's position."
+  assignOrder(id: ID!, orderId: ID!, carId: ID!): Snapshot!
+  unassignOrder(id: ID!, orderId: ID!): Snapshot!
+
+  "Buy a vehicle at a depot."
+  buyCar(id: ID!, className: String!, depotId: String! = "d_main"): Snapshot!
+
+  "Return a stranded car to its nearest depot for a fee."
+  towCar(id: ID!, carId: ID!): Snapshot!
+
+  "Purchase an unlocked build; mutates the map atomically."
+  build(id: ID!, buildId: ID!): Snapshot!
+
+  "Write the save to disk."
+  saveSession(id: ID!): Snapshot!
+  "Save, then drop from memory. The next read rehydrates."
+  evictSession(id: ID!): Boolean!
+  "Delete the save file permanently."
+  deleteSession(id: ID!): Boolean!
+}
+
+enum Direction {
+  NORTH
+  SOUTH
+  EAST
+  WEST
+}
+
+type Health {
+  status: String!
+}
+
+type SessionSummary {
+  id: ID!
+  createdAt: Time!
+  tick: Int!
+  speed: Int!
+  money: Int!
+  reputation: Float!
+  deliveries: Int!
+  loaded: Boolean!
+}
+
+"The full client view of a session at one tick."
+type Snapshot {
+  id: ID!
+  createdAt: Time!
+  tick: Int!
+  speed: Int!
+  paused: Boolean!
+  tickMs: Int!
+
+  city: CityView!
+  cars: [CarView!]!
+  orders: [OrderView!]!
+  ledger: LedgerView!
+  "The purchasable catalogue with per-session unlock and affordability flags."
+  carClasses: [CarClassView!]!
+
+  achievements: [AchievementView!]!
+  unlocks: [UnlockView!]!
+  builds: [BuildView!]!
+  events: [EventView!]!
+}
+
+"A window of the city around one car, for cheap polling."
+type CarWindow {
+  car: CarView!
+  rowSpan: Int!
+  colSpan: Int!
+  "Row-major glyph rows for the window only."
+  rows: [String!]!
+  "Origin of rows[0][0] in city coordinates."
+  originX: Int!
+  originY: Int!
+  visibleCars: [CarView!]!
+  nearbyOrders: [OrderView!]!
+}
+
+type CityView {
+  name: String!
+  gridSize: Int!
+  "Full map as glyph rows. Unexplored tiles render '?'."
+  rows: [String!]!
+  hiddenTiles: Int!
+  kitchens: [PointView!]!
+  customers: [PointView!]!
+  depots: [PointView!]!
+  chargers: [PointView!]!
+}
+
+type PointView {
+  id: ID!
+  name: String!
+  x: Int!
+  y: Int!
+}
+
+type CarView {
+  id: ID!
+  name: String!
+  className: String!
+  x: Int!
+  y: Int!
+  battery: Int!
+  maxBattery: Int!
+  batteryPct: Int!
+  capacity: Int!
+  cargo: [ID!]!
+  state: CarState!
+  "The move queued for the next tick, if any."
+  queuedMove: Direction
+  "Why the most recent move was rejected, if it was."
+  lastReject: RejectReason
+}
+
+enum CarState {
+  IDLE
+  CARRYING
+  CHARGING
+  STRANDED
+}
+
+enum RejectReason {
+  BAD_DIRECTION
+  OFF_GRID
+  BLOCKED
+  NO_BATTERY
+}
+
+type CarClassView {
+  className: String!
+  price: Int!
+  capacity: Int!
+  maxBattery: Int!
+  stepCost: Int!
+  unlocked: Boolean!
+  affordable: Boolean!
+}
+
+type OrderView {
+  id: ID!
+  item: String!
+  itemName: String!
+  kitchenId: ID!
+  kitchenName: String!
+  customerId: ID!
+  customerName: String!
+  state: OrderState!
+  assignedCar: ID
+  createdTick: Int!
+  deadlineTick: Int!
+  ticksLeft: Int!
+  reward: Int!
+  paid: Int!
+  late: Boolean!
+}
+
+enum OrderState {
+  PENDING
+  ASSIGNED
+  PICKED_UP
+  DONE
+  EXPIRED
+}
+
+type LedgerView {
+  money: Int!
+  moneyEarned: Int!
+  reputation: Float!
+  deliveries: Int!
+  lateDeliveries: Int!
+  expiredOrders: Int!
+  ordersSpawned: Int!
+  onTimeStreak: Int!
+  tows: Int!
+  buildsCompleted: Int!
+  deliveriesByItem: [ItemCount!]!
+}
+
+type ItemCount {
+  item: String!
+  count: Int!
+}
+
+type AchievementView {
+  id: ID!
+  title: String!
+  description: String!
+  done: Boolean!
+  progress: Int!
+  target: Int!
+}
+
+type UnlockView {
+  id: ID!
+  title: String!
+  description: String!
+  earned: Boolean!
+  builds: [ID!]!
+}
+
+type BuildView {
+  id: ID!
+  title: String!
+  description: String!
+  cost: Int!
+  unlocked: Boolean!
+  completed: Boolean!
+  affordable: Boolean!
+  applicable: Boolean!
+  "Why the build cannot be placed, when it cannot."
+  problem: String
+}
+
+type EventView {
+  tick: Int!
+  type: String!
+  message: String!
+  carId: ID
+  x: Int!
+  y: Int!
+}
