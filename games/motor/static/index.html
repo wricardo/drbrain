@@ -4,34 +4,60 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="text-scale" content="scale" />
-		<link href="/_app/immutable/entry/start.C1qzbHK0.js" rel="modulepreload">
-		<link href="/_app/immutable/chunks/DPtzfsyl.js" rel="modulepreload">
-		<link href="/_app/immutable/chunks/CZgXN-iS.js" rel="modulepreload">
-		<link href="/_app/immutable/chunks/BtAXvmG5.js" rel="modulepreload">
-		<link href="/_app/immutable/chunks/Xow3RQqK.js" rel="modulepreload">
-		<link href="/_app/immutable/entry/app.BvrMEm-1.js" rel="modulepreload">
+		<meta name="theme-color" content="#ffffff" />
+		<!-- Applies the saved or OS theme before first paint, so there is no flash. Mirrors src/lib/theme.ts. -->
+		<script>
+			(function () {
+				var saved = null;
+				try {
+					saved = localStorage.getItem('drbrain-motor-programming.theme');
+				} catch (e) {}
+				var dark = saved === 'dark';
+				if (saved !== 'dark' && saved !== 'light') {
+					try {
+						dark = matchMedia('(prefers-color-scheme: dark)').matches;
+					} catch (e) {}
+				}
+				var root = document.documentElement;
+				root.classList.toggle('dark', dark);
+				root.style.colorScheme = dark ? 'dark' : 'light';
+				if (dark) document.querySelector('meta[name="theme-color"]').setAttribute('content', '#171936');
+			})();
+		</script>
+		<style>
+			/* Dark canvas until the stylesheet arrives (the app is a client-rendered SPA). */
+			html.dark {
+				background-color: #0e0f24;
+			}
+		</style>
+		<link href="/_app/immutable/entry/start.DeCNEzWv.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/MUUf57Vx.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/C-c4u71Z.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/C1wRcpXL.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/DmZXSnao.js" rel="modulepreload">
+		<link href="/_app/immutable/entry/app.MN8ldYgZ.js" rel="modulepreload">
 		<link href="/_app/immutable/chunks/xihTtKlq.js" rel="modulepreload">
-		<link href="/_app/immutable/nodes/0.TMi_P4_L.js" rel="modulepreload">
-		<link href="/_app/immutable/chunks/CpWaJWRQ.js" rel="modulepreload">
-		<link href="/_app/immutable/chunks/BlDN9l86.js" rel="modulepreload">
-		<link href="/_app/immutable/chunks/DNSQwnm6.js" rel="modulepreload">
+		<link href="/_app/immutable/nodes/0.mV9Eauvu.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/_QHJA4lu.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/DMjyfxFE.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/BIXu0mQk.js" rel="modulepreload">
 		<link href="/_app/immutable/chunks/CX2fdOv1.js" rel="modulepreload">
 		
-		<link href="/_app/immutable/assets/0.DPjmjzb_.css" rel="stylesheet">
+		<link href="/_app/immutable/assets/0.DPsNLsh4.css" rel="stylesheet">
 	</head>
 	<body data-sveltekit-preload-data="hover">
 		<div style="display: contents">
 			<script>
 				{
-					__sveltekit_1qlirtm = {
+					__sveltekit_1h6d6dx = {
 						base: ""
 					};
 
 					const element = document.currentScript.parentElement;
 
 					Promise.all([
-						import("/_app/immutable/entry/start.C1qzbHK0.js"),
-						import("/_app/immutable/entry/app.BvrMEm-1.js")
+						import("/_app/immutable/entry/start.DeCNEzWv.js"),
+						import("/_app/immutable/entry/app.MN8ldYgZ.js")
 					]).then(([kit, app]) => {
 						kit.start(app, element);
 					});

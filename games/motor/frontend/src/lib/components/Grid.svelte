@@ -49,19 +49,19 @@
 				y={y * CELL}
 				width={CELL}
 				height={CELL}
-				fill={(x + y) % 2 === 0 ? '#eef2ff' : '#e0e7ff'}
+				fill={(x + y) % 2 === 0 ? 'var(--board-tile-a)' : 'var(--board-tile-b)'}
 			/>
 		{/each}
 	{/each}
 
 	{#each trail as p, i (i)}
-		<circle cx={p.x * CELL + CELL / 2} cy={p.y * CELL + CELL / 2} r="5" fill="#6366f1" opacity="0.35" />
+		<circle cx={p.x * CELL + CELL / 2} cy={p.y * CELL + CELL / 2} r="5" fill="var(--board-trail)" opacity="var(--board-trail-opacity)" />
 	{/each}
 
 	{#each map.rocks as r (`${r.x},${r.y}`)}
 		<g aria-hidden="true">
-			<rect x={r.x * CELL + 3} y={r.y * CELL + 3} width={CELL - 6} height={CELL - 6} rx="8" fill="#64748b" />
-			<rect x={r.x * CELL + 7} y={r.y * CELL + 7} width={CELL - 22} height="8" rx="4" fill="#94a3b8" opacity="0.7" />
+			<rect x={r.x * CELL + 3} y={r.y * CELL + 3} width={CELL - 6} height={CELL - 6} rx="8" fill="var(--board-rock)" />
+			<rect x={r.x * CELL + 7} y={r.y * CELL + 7} width={CELL - 22} height="8" rx="4" fill="var(--board-rock-shine)" opacity="0.7" />
 		</g>
 	{/each}
 
@@ -77,13 +77,13 @@
 			height={CELL - 4}
 			rx="8"
 			fill="none"
-			stroke="#e11d48"
+			stroke="var(--board-bump)"
 			stroke-width="3"
 		/>
 	{/if}
 
 	<g class="robot" style="transform: translate({cx}px, {cy}px) rotate({angle}deg)" aria-hidden="true">
-		<polygon points="0,-15 12,12 0,6 -12,12" fill="#4338ca" stroke="#fff" stroke-width="2" stroke-linejoin="round" />
+		<polygon points="0,-15 12,12 0,6 -12,12" fill="var(--board-robot)" stroke="var(--board-robot-outline)" stroke-width="2" stroke-linejoin="round" />
 	</g>
 </svg>
 

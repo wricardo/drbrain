@@ -217,7 +217,7 @@ Agent support:
 
 ## UI look and feel
 
-The goal: friendly, bright and calm, like a puzzle book. Readable for kids and adults, clear enough for a screenshot to explain the game.
+The goal: friendly, bright and calm, like a puzzle book. There is a matching dark theme (see [Dark mode](#dark-mode)); the palette below describes light mode. Readable for kids and adults, clear enough for a screenshot to explain the game.
 
 ### Palette and typography
 
@@ -227,9 +227,18 @@ The goal: friendly, bright and calm, like a puzzle book. Readable for kids and a
 - System font stack (`system-ui, -apple-system, Segoe UI, Roboto`). No web fonts.
 - Navigation uses pills: `rounded-full`, the active page filled indigo.
 
+### Dark mode
+
+- **Choice:** System (default), Light or Dark, from the three-icon toggle at the right of the header (`ThemeToggle.svelte`). System follows `prefers-color-scheme` live; Light and Dark override it. The choice is saved in `localStorage` under `drbrain-motor-programming.theme` (System removes the key; every access is wrapped in try/catch).
+- **No flash:** an inline script in `src/app.html` reads the saved choice or the OS setting and sets the `dark` class, `color-scheme` and `theme-color` on `<html>` before first paint, and a dark `html` background covers the moment before the stylesheet arrives. The script repeats the logic of `lib/theme.ts` (resolution, storage, `applyTheme`); `theme.test.ts` runs it against those functions, so change them together. `lib/stores/theme.ts` holds the live state and the OS-change listener (`initTheme`, called once from the root layout).
+- **How colours work:** `@custom-variant dark` makes Tailwind's `dark:` variant class-based, but components rarely need it. `app.css` re-points, under `.dark`, the Tailwind colour variables the UI already uses, so existing classes get dark values and light mode is untouched. Light fills and borders (the 50–300 steps) become deep indigo-tinted ones; dark text steps (800–950, slate 600–700) become light; solid fills (400–700: buttons, progress bars, rocks) and the instruction border colours stay as they are. A few text classes share a step with a solid fill (`text-indigo-600`, `text-indigo-700`, `text-slate-500`, …) and `bg-white` has an explicit `.dark` rule in `app.css`. When you use a Tailwind colour step the UI doesn't use yet, check it in dark mode and add it to that block.
+- **Dark palette:** page `#0e0f24`; cards, header and modals `#171936` (`bg-white`); panels `#1e2149` (indigo-50); hover `#272b5e` (indigo-100); borders `#343a78` (indigo-200); body text `#e0e7ff`; secondary text `#b4bcdc` (slate-600); focus ring `#a5b4fc`. Instruction tiles keep their hue as a dark tint with light text; primary, pause, success and failure keep their solid colours. Modal backdrops use `dark:bg-black/60`.
+- **Board:** SVG colours are CSS variables (`--board-*` in `app.css`: tiles, trail, rocks, robot, bump outline) that `Grid.svelte` reads with `var()`. Dark uses navy tiles (`#1b1e46` / `#23275a`), a lighter slate rock, a brighter indigo robot with its white outline, and a lighter rose bump outline. Cookies are unchanged; they read well on both.
+- **Checking:** open play (mid-run and the result modal), watch, maps, sessions, learn and the editor in both themes at desktop and phone widths. Text contrast should stay at 4.5:1 or better, except on disabled controls.
+
 ### Layout
 
-- Header: logo, **Dr Brain** with **Motor Programming** next to it (hidden on small screens), pill navigation (Play, Maps, Sessions, How it works, Editor; Sessions stays active on `/watch/*` and `/multi`). Footer: four columns — tagline · Play (Home, Maps, Sessions, Editor) · Docs (How it works, `/llms.txt`, GraphQL endpoint) · Tools (GraphQL Playground), so agents and curious developers can find the API from any page.
+- Header: logo, **Dr Brain** with **Motor Programming** next to it (hidden on small screens), pill navigation (Play, Maps, Sessions, How it works, Editor; Sessions stays active on `/watch/*` and `/multi`) and the theme toggle. Footer: four columns — tagline · Play (Home, Maps, Sessions, Editor) · Docs (How it works, `/llms.txt`, GraphQL endpoint) · Tools (GraphQL Playground), so agents and curious developers can find the API from any page.
 - Map order everywhere is `sortMaps` (`lib/maps.ts`): difficulty, then name with numeric compare, so series numbers stay in order within a difficulty. Map cards show the series label ("Patterns 3") above the title, a square thumbnail, a 2-line description, tags (difficulty, size, treats, step limit, and the recursion rule — both states are labelled: "recursion" in violet or "no recursion" in slate, each with a tooltip from `lib/recursion.ts`) and a full-width Play button.
 - Times in lists are relative (`lib/time.ts`: "5m ago", "Oct 4") with the absolute time in a tooltip; bounded counters read "value / limit".
 - Content is centred at `max-w-6xl` with `px-4 sm:px-6`.

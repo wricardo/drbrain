@@ -6,6 +6,9 @@
 	import { browser } from '$app/environment';
 	import { page } from '$app/stores';
 	import { GAME, SITE, TITLE } from '$lib/brand';
+	import { onMount } from 'svelte';
+	import { initTheme } from '$lib/stores/theme';
+	import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 
 	let { children } = $props();
 
@@ -24,6 +27,9 @@
 	}
 
 	const footerLink = 'hover:text-indigo-900 hover:underline';
+
+	// Loads the saved theme and follows the OS setting while the choice is System.
+	onMount(initTheme);
 
 	// ssr=false so this always runs in the browser; safe to set the client synchronously.
 	if (browser) {
@@ -48,18 +54,21 @@
 			<span class="text-lg font-semibold tracking-wide text-indigo-900">{SITE}</span>
 			<span class="hidden sm:inline border-l border-indigo-200 pl-2 text-sm text-indigo-600">{GAME}</span>
 		</a>
-		<nav class="flex items-center gap-1 text-sm" aria-label="Main">
-			{#each navItems as item}
-				{@const active = isActive(item.href, $page.url.pathname)}
-				<a
-					href={item.href}
-					aria-current={active ? 'page' : undefined}
-					class="px-3 py-1.5 rounded-full transition-colors {active
-						? 'bg-indigo-600 text-white'
-						: 'text-indigo-900 hover:bg-indigo-100'}">{item.label}</a
-				>
-			{/each}
-		</nav>
+		<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+			<nav class="flex items-center gap-1 text-sm" aria-label="Main">
+				{#each navItems as item}
+					{@const active = isActive(item.href, $page.url.pathname)}
+					<a
+						href={item.href}
+						aria-current={active ? 'page' : undefined}
+						class="px-3 py-1.5 rounded-full transition-colors {active
+							? 'bg-indigo-600 text-white'
+							: 'text-indigo-900 hover:bg-indigo-100'}">{item.label}</a
+					>
+				{/each}
+			</nav>
+			<ThemeToggle />
+		</div>
 	</header>
 
 	<main id="main" class="flex-1">

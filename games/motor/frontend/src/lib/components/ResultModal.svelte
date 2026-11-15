@@ -42,7 +42,7 @@
 
 <svelte:window onkeydown={onKeyDown} />
 
-<div class="fixed inset-0 z-40 flex items-center justify-center bg-indigo-950/50 p-4">
+<div class="fixed inset-0 z-40 flex items-center justify-center bg-indigo-950/50 dark:bg-black/60 p-4">
 	<div
 		role="dialog"
 		aria-modal="true"
