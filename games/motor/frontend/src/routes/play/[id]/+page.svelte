@@ -9,6 +9,7 @@
 	import ConnectionBadge from '$lib/components/ConnectionBadge.svelte';
 	import Grid from '$lib/components/Grid.svelte';
 	import Palette from '$lib/components/Palette.svelte';
+	import RunControls from '$lib/components/RunControls.svelte';
 	import ResultModal from '$lib/components/ResultModal.svelte';
 	import ShortcutsDialog from '$lib/components/ShortcutsDialog.svelte';
 	import Stats from '$lib/components/Stats.svelte';
@@ -27,11 +28,16 @@
 		STEP_MUTATION
 	} from '$lib/queries';
 	import { rememberSession, statusLine } from '$lib/sessions';
+	import { serialRunner } from '$lib/serialRunner';
+	import { clampSpeed } from '$lib/speed';
 	import { cloneProgram, programsEqual, setSlot } from '$lib/program';
 	import { buildSessionPrompt } from '$lib/prompt';
 	import { createSessionStore } from '$lib/stores/session';
 	import { createSessionSource } from '$lib/stores/source';
 	import type { GameMap, Instruction, Program, Session } from '$lib/types';
+
+	/** Quiet period after the last edit before the draft is saved to the server. */
+	const AUTOSAVE_MS = 600;
 
 	const sessionId = $page.params.id ?? '';
 	const client = getContextClient();
@@ -74,7 +80,7 @@
 		const s = session;
 		if (!s || initialised) return;
 		initialised = true;
-		speedMs = Math.max(50, Math.min(5000, s.speedMs || 500));
+		speedMs = clampSpeed(s.speedMs || 500);
 		// Do not pop the result modal for an outcome that was already there on load.
 		if (s.vm.status === 'WON' || s.vm.status === 'LOST') dismissedAttempts = s.attempts;
 	});
@@ -128,16 +134,29 @@
 		store.apply(data.setProgram);
 	}
 
+	// Autosave and Run/Step share one queue, so two saves never race and the newest draft wins.
+	const flushSave = serialRunner(saveIfDirty);
+
+	// Save a moment after the player stops editing, so the server (spectators, agents) stays in step
+	// and the robot returns to the start as soon as the program changes.
+	$effect(() => {
+		if (!dirty || playing) return;
+		const timer = setTimeout(() => {
+			flushSave().catch((e) => (actionError = describeError(e)));
+		}, AUTOSAVE_MS);
+		return () => clearTimeout(timer);
+	});
+
 	const run = () =>
 		act(async () => {
-			await saveIfDirty();
+			await flushSave();
 			return (await unwrap<{ run: Session }>(client.mutation(RUN_MUTATION, { sessionID: sessionId, speedMs }))).run;
 		});
 	const pause = () =>
 		act(async () => (await unwrap<{ pause: Session }>(client.mutation(PAUSE_MUTATION, { sessionID: sessionId }))).pause);
 	const stepOnce = () =>
 		act(async () => {
-			await saveIfDirty();
+			await flushSave();
 			return (await unwrap<{ step: Session }>(client.mutation(STEP_MUTATION, { sessionID: sessionId }))).step;
 		});
 	const reset = () =>
@@ -146,7 +165,6 @@
 			dismissedAttempts = s.attempts;
 			return s;
 		});
-	const save = () => act(saveIfDirty);
 
 	/** Starts a session on the next map (standard order) with the same player name. */
 	const playNext = () =>
@@ -219,19 +237,14 @@
 		draft = r.program;
 	}
 
-	function revert() {
-		if (session) edit(cloneProgram(session.program));
-	}
-
-	/** Run, or pause when already running (Ctrl/Cmd+Enter). */
+	/** Run, pause when running, or start over after a finished run (Ctrl/Cmd+Enter), like the primary button. */
 	function toggleRun() {
 		if (busy) return;
 		if (playing) pause();
-		else if (!terminal) run();
+		else if (terminal) reset();
+		else run();
 	}
 
-	const btn =
-		'rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed';
 </script>
 
 <svelte:head><title>{pageTitle(session?.map.name)}</title></svelte:head>
@@ -288,30 +301,17 @@
 				<Stats {session} />
 
 				<div class="rounded-xl border border-indigo-200 bg-white p-3 space-y-3">
-					<div class="flex flex-wrap gap-2" role="group" aria-label="Run controls">
-						{#if playing}
-							<button type="button" class="{btn} bg-amber-500 text-white hover:bg-amber-600" disabled={busy} onclick={pause}>Pause</button>
-						{:else}
-							<button type="button" class="{btn} bg-indigo-600 text-white hover:bg-indigo-700" disabled={busy || terminal} onclick={run}>Run</button>
-						{/if}
-						<button type="button" class="{btn} border border-indigo-300 text-indigo-900 hover:bg-indigo-50" disabled={busy || playing || terminal} onclick={stepOnce}>Step</button>
-						{#if canReset}
-							<button type="button" class="{btn} border border-indigo-300 text-indigo-900 hover:bg-indigo-50" disabled={busy} onclick={reset} data-testid="reset">Reset</button>
-						{/if}
-						{#if dirty}
-							<button type="button" class="{btn} border border-emerald-400 text-emerald-900 hover:bg-emerald-50" disabled={busy || playing} onclick={save}>Save program</button>
-							<button type="button" class="{btn} text-slate-700 underline" disabled={busy || playing} onclick={revert}>Revert</button>
-						{/if}
-					</div>
-					<div>
-						<label for="speed" class="flex justify-between text-xs text-slate-700">
-							<span>Delay per step</span><span data-testid="speed-label">{speedMs} ms</span>
-						</label>
-						<input id="speed" type="range" min="50" max="5000" step="50" bind:value={speedMs} disabled={playing} class="w-full accent-indigo-600" />
-					</div>
-					{#if dirty}
-						<p class="text-xs text-amber-800" data-testid="dirty-note">Unsaved changes — saved automatically on Run/Step (this resets the robot to the start).</p>
-					{/if}
+					<RunControls
+						{playing}
+						finished={terminal}
+						{busy}
+						{canReset}
+						bind:speedMs
+						onrun={run}
+						onpause={pause}
+						onstep={stepOnce}
+						onreset={reset}
+					/>
 					{#if playing}
 						<p class="text-xs text-slate-600">Editing is locked while the program runs. Pause to edit.</p>
 					{/if}
