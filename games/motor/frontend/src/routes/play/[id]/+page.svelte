@@ -26,7 +26,7 @@
 		STEP_MUTATION
 	} from '$lib/queries';
 	import { rememberSession, statusLine } from '$lib/sessions';
-	import { cloneProgram, programsEqual } from '$lib/program';
+	import { cloneProgram, programsEqual, setSlot } from '$lib/program';
 	import { buildSessionPrompt } from '$lib/prompt';
 	import { createSessionStore } from '$lib/stores/session';
 	import { createSessionSource } from '$lib/stores/source';
@@ -268,7 +268,12 @@
 
 				{#if draft}
 					<div class="rounded-xl border border-indigo-200 bg-white p-3 space-y-3">
-						<Palette bind:selected subCount={draft.subs.length} disabled={playing} />
+						<Palette
+							bind:selected
+							subCount={draft.subs.length}
+							disabled={playing}
+							onerase={(s) => (draft = setSlot(draft!, s.tape, s.slot, 'EMPTY'))}
+						/>
 						<Tape
 							program={draft}
 							{selected}
@@ -287,7 +292,7 @@
 					<h2 class="text-xs font-semibold uppercase tracking-widest text-indigo-900">Help</h2>
 					<ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
 						<li>Click a slot to pick an instruction, or arm one in the palette and click slots to stamp it.</li>
-						<li>Drag to move an instruction (hold <kbd>Alt</kbd> to copy).</li>
+						<li>Drag an instruction onto a slot to place it. Drag a slot to swap it with another, hold <kbd>Shift</kbd> to reorder a tape, <kbd>Alt</kbd> to copy, or drop it on Erase to clear it.</li>
 						<li>With a slot focused: <kbd>F</kbd> forward, <kbd>L</kbd>/<kbd>R</kbd> turn, {callKeys} <kbd>Backspace</kbd> clear, arrows move.</li>
 						<li><kbd>R</kbd> resets the robot when no slot is focused.</li>
 						<li>Press <kbd>?</kbd> for shortcuts.</li>

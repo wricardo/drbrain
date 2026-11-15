@@ -1,9 +1,13 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
+import { cleanup, createEvent, fireEvent, render, screen } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { activeDrag } from '../dnd';
 import { emptyProgram, setSlot } from '../program';
 import Tape from './Tape.svelte';
 
-afterEach(cleanup);
+afterEach(() => {
+	cleanup();
+	activeDrag.set(null);
+});
 
 const cfg = { mainTapeLength: 3, subTapeLengths: [2] };
 
@@ -101,6 +105,109 @@ describe('Tape', () => {
 		await cleanup();
 		render(Tape, { program: filled, disabled: true, onchange: () => {} });
 		expect(screen.queryByTestId('clear-program')).toBeNull();
+	});
+
+	describe('drag and drop', () => {
+		/** Minimal DataTransfer: jsdom doesn't implement one. */
+		function transfer() {
+			const data = new Map<string, string>();
+			return {
+				setData: (k: string, v: string) => void data.set(k, v),
+				getData: (k: string) => data.get(k) ?? '',
+				setDragImage: vi.fn(),
+				effectAllowed: '',
+				dropEffect: ''
+			};
+		}
+
+		/** jsdom has no DragEvent, so modifier keys in the init dict are dropped; set them on the event. */
+		async function fireWith(type: 'dragOver' | 'drop', el: HTMLElement, dataTransfer: unknown, mods: Record<string, boolean>) {
+			const ev = createEvent[type](el, { dataTransfer });
+			for (const [k, v] of Object.entries(mods)) Object.defineProperty(ev, k, { value: v });
+			await fireEvent(el, ev);
+		}
+
+		const filled = () => {
+			let p = emptyProgram(cfg);
+			(['MOVE_FORWARD', 'TURN_LEFT', 'TURN_RIGHT'] as const).forEach((ins, i) => (p = setSlot(p, -1, i, ins)));
+			return p;
+		};
+
+		it('swaps on a plain drop, using a compact tile as the drag image', async () => {
+			const onchange = vi.fn();
+			render(Tape, { program: filled(), onchange });
+			const dt = transfer();
+			await fireEvent.dragStart(screen.getByTestId('slot--1-0'), { dataTransfer: dt });
+			expect(dt.setDragImage).toHaveBeenCalledOnce();
+			await fireEvent.dragOver(screen.getByTestId('slot--1-2'), { dataTransfer: dt });
+			await fireEvent.drop(screen.getByTestId('slot--1-2'), { dataTransfer: dt });
+			expect(onchange.mock.calls[0][0].main).toEqual(['TURN_RIGHT', 'TURN_LEFT', 'MOVE_FORWARD']);
+		});
+
+		it('Shift inserts: reorders within the tape and shows the insert marker', async () => {
+			const onchange = vi.fn();
+			render(Tape, { program: filled(), onchange });
+			const dt = transfer();
+			await fireEvent.dragStart(screen.getByTestId('slot--1-0'), { dataTransfer: dt });
+			await fireWith('dragOver', screen.getByTestId('slot--1-2'), dt, { shiftKey: true });
+			expect(screen.getByTestId('insert-marker')).toBeTruthy();
+			expect(dt.dropEffect).toBe('move');
+			await fireWith('drop', screen.getByTestId('slot--1-2'), dt, { shiftKey: true });
+			expect(onchange.mock.calls[0][0].main).toEqual(['TURN_LEFT', 'TURN_RIGHT', 'MOVE_FORWARD']);
+			expect(screen.queryByTestId('insert-marker')).toBeNull();
+		});
+
+		it('Shift across tapes previews and performs a swap, not an insert', async () => {
+			const onchange = vi.fn();
+			render(Tape, { program: filled(), onchange });
+			const dt = transfer();
+			await fireEvent.dragStart(screen.getByTestId('slot--1-0'), { dataTransfer: dt });
+			await fireWith('dragOver', screen.getByTestId('slot-0-0'), dt, { shiftKey: true });
+			expect(screen.queryByTestId('insert-marker')).toBeNull();
+			await fireWith('drop', screen.getByTestId('slot-0-0'), dt, { shiftKey: true });
+			const out = onchange.mock.calls[0][0];
+			expect(out.main[0]).toBe('EMPTY');
+			expect(out.subs[0][0]).toBe('MOVE_FORWARD');
+		});
+
+		it('Alt copies and signals the copy cursor', async () => {
+			const onchange = vi.fn();
+			render(Tape, { program: filled(), onchange });
+			const dt = transfer();
+			await fireEvent.dragStart(screen.getByTestId('slot--1-0'), { dataTransfer: dt });
+			await fireWith('dragOver', screen.getByTestId('slot-0-1'), dt, { altKey: true });
+			expect(dt.dropEffect).toBe('copy');
+			await fireWith('drop', screen.getByTestId('slot-0-1'), dt, { altKey: true });
+			const out = onchange.mock.calls[0][0];
+			expect(out.main[0]).toBe('MOVE_FORWARD');
+			expect(out.subs[0][1]).toBe('MOVE_FORWARD');
+		});
+
+		it('ignores foreign drags (no active drag) and read-only tapes', async () => {
+			const onchange = vi.fn();
+			render(Tape, { program: filled(), onchange });
+			const dt = transfer();
+			const over = await fireEvent.dragOver(screen.getByTestId('slot--1-1'), { dataTransfer: dt });
+			expect(over).toBe(true); // not cancelled, so the browser keeps its default handling
+
+			await cleanup();
+			render(Tape, { program: filled(), disabled: true, onchange });
+			await fireEvent.dragStart(screen.getByTestId('slot--1-0'), { dataTransfer: dt });
+			await fireEvent.drop(screen.getByTestId('slot--1-1'), { dataTransfer: dt });
+			expect(onchange).not.toHaveBeenCalled();
+		});
+
+		it('clears the drop highlight when the drag ends without a drop', async () => {
+			render(Tape, { program: filled(), onchange: () => {} });
+			const dt = transfer();
+			const source = screen.getByTestId('slot--1-0');
+			await fireEvent.dragStart(source, { dataTransfer: dt });
+			const target = screen.getByTestId('slot--1-1');
+			await fireEvent.dragOver(target, { dataTransfer: dt });
+			expect(target.className).toMatch(/outline-dashed/);
+			await fireEvent.dragEnd(source, { dataTransfer: dt });
+			expect(target.className).not.toMatch(/outline-dashed/);
+		});
 	});
 
 	it('read-only tapes ignore edits but still allow navigation, and expose highlights to AT', async () => {		const onchange = vi.fn();

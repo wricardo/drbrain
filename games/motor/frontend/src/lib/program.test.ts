@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyDrop, clearProgram, emptyProgram, hasInstructions, programsEqual, setSlot } from './program';
+import { applyDrop, clearProgram, emptyProgram, hasInstructions, insertSlot, programsEqual, setSlot } from './program';
 
 const cfg = { mainTapeLength: 4, subTapeLengths: [3, 2] };
 
@@ -46,32 +46,73 @@ describe('program editing', () => {
 	});
 
 	it('palette drops place the instruction', () => {
-		const p = applyDrop(emptyProgram(cfg), { kind: 'palette', instruction: 'TURN_RIGHT' }, { tape: 0, slot: 1 }, false);
+		const p = applyDrop(emptyProgram(cfg), { kind: 'palette', instruction: 'TURN_RIGHT' }, { tape: 0, slot: 1 }, 'copy');
 		expect(p.subs[0][1]).toBe('TURN_RIGHT');
 	});
 
 	it('slot drops swap by default so reordering never loses an instruction', () => {
 		let p = setSlot(emptyProgram(cfg), -1, 0, 'MOVE_FORWARD');
 		p = setSlot(p, -1, 1, 'TURN_LEFT');
-		const out = applyDrop(p, { kind: 'slot', tape: -1, slot: 0 }, { tape: -1, slot: 1 }, false);
+		const out = applyDrop(p, { kind: 'slot', tape: -1, slot: 0 }, { tape: -1, slot: 1 }, 'move');
 		expect(out.main.slice(0, 2)).toEqual(['TURN_LEFT', 'MOVE_FORWARD']);
 	});
 
 	it('slot drops with copy duplicate and keep the source', () => {
 		const p = setSlot(emptyProgram(cfg), -1, 0, 'MOVE_FORWARD');
-		const out = applyDrop(p, { kind: 'slot', tape: -1, slot: 0 }, { tape: 1, slot: 1 }, true);
+		const out = applyDrop(p, { kind: 'slot', tape: -1, slot: 0 }, { tape: 1, slot: 1 }, 'copy');
 		expect(out.main[0]).toBe('MOVE_FORWARD');
 		expect(out.subs[1][1]).toBe('MOVE_FORWARD');
 	});
 
 	it('moving into an empty slot clears the source', () => {
 		const p = setSlot(emptyProgram(cfg), -1, 0, 'MOVE_FORWARD');
-		const out = applyDrop(p, { kind: 'slot', tape: -1, slot: 0 }, { tape: -1, slot: 3 }, false);
+		const out = applyDrop(p, { kind: 'slot', tape: -1, slot: 0 }, { tape: -1, slot: 3 }, 'move');
 		expect(out.main).toEqual(['EMPTY', 'EMPTY', 'EMPTY', 'MOVE_FORWARD']);
 	});
 
 	it('dropping a slot on itself is a no-op', () => {
 		const p = setSlot(emptyProgram(cfg), -1, 0, 'MOVE_FORWARD');
-		expect(applyDrop(p, { kind: 'slot', tape: -1, slot: 0 }, { tape: -1, slot: 0 }, false)).toBe(p);
+		expect(applyDrop(p, { kind: 'slot', tape: -1, slot: 0 }, { tape: -1, slot: 0 }, 'move')).toBe(p);
+	});
+
+	describe('insert (reorder within a tape)', () => {
+		const filled = () => {
+			let p = emptyProgram(cfg);
+			(['MOVE_FORWARD', 'TURN_LEFT', 'TURN_RIGHT', 'CALL_SUB_1'] as const).forEach((ins, i) => (p = setSlot(p, -1, i, ins)));
+			return p;
+		};
+
+		it('moves a slot later and shifts the ones in between left', () => {
+			const out = insertSlot(filled(), { tape: -1, slot: 0 }, { tape: -1, slot: 2 });
+			expect(out.main).toEqual(['TURN_LEFT', 'TURN_RIGHT', 'MOVE_FORWARD', 'CALL_SUB_1']);
+		});
+
+		it('moves a slot earlier and shifts the ones in between right', () => {
+			const out = insertSlot(filled(), { tape: -1, slot: 3 }, { tape: -1, slot: 1 });
+			expect(out.main).toEqual(['MOVE_FORWARD', 'CALL_SUB_1', 'TURN_LEFT', 'TURN_RIGHT']);
+		});
+
+		it('is immutable and ignores same-slot, cross-tape and out-of-range requests', () => {
+			const p = filled();
+			expect(insertSlot(p, { tape: -1, slot: 1 }, { tape: -1, slot: 1 })).toBe(p);
+			expect(insertSlot(p, { tape: -1, slot: 0 }, { tape: 0, slot: 1 })).toBe(p);
+			expect(insertSlot(p, { tape: -1, slot: 0 }, { tape: -1, slot: 9 })).toBe(p);
+			expect(insertSlot(p, { tape: 5, slot: 0 }, { tape: 5, slot: 1 })).toBe(p);
+			insertSlot(p, { tape: -1, slot: 0 }, { tape: -1, slot: 2 });
+			expect(p.main[0]).toBe('MOVE_FORWARD');
+		});
+
+		it('applyDrop insert reorders in-tape and falls back to a swap across tapes', () => {
+			const p = setSlot(filled(), 0, 0, 'TURN_RIGHT');
+			expect(applyDrop(p, { kind: 'slot', tape: -1, slot: 0 }, { tape: -1, slot: 2 }, 'insert').main).toEqual([
+				'TURN_LEFT',
+				'TURN_RIGHT',
+				'MOVE_FORWARD',
+				'CALL_SUB_1'
+			]);
+			const swapped = applyDrop(p, { kind: 'slot', tape: -1, slot: 0 }, { tape: 0, slot: 0 }, 'insert');
+			expect(swapped.main[0]).toBe('TURN_RIGHT');
+			expect(swapped.subs[0][0]).toBe('MOVE_FORWARD');
+		});
 	});
 });
