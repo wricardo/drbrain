@@ -87,9 +87,10 @@ expire orders while the player was still reading the screen. Unpausing is
 available but off by default; agents and spectators can drive the clock at
 1×/2×/4×.
 
-A **loaded** city is the exception: it resumes at whatever speed it was saved
-with, so opening a save that was running brings the clock back running. Only a
-newly created city is guaranteed to be paused.
+This holds for a **loaded** city too: restoring a save that was running comes
+back paused, and the client opts in to the clock explicitly. Verified against a
+live server — create, `setSpeed(2)`, save, unload, reload reports
+`paused: true, speed: 0`.
 
 The UI is optional. Without `frontend/build` the server runs API-only and logs
 which directory it looked in — the game is fully playable over HTTP either way.
