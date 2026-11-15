@@ -90,6 +90,9 @@ type LeaderboardQuery struct {
 	// SessionID, when set, also reports that session's own entry and rank even
 	// if it is outside the first Limit rows.
 	SessionID string
+	// AccountID is the signed-in viewer: their entry is reported as Yours and
+	// flagged Mine ("" = not signed in).
+	AccountID string
 }
 
 // LeaderboardEntry is one ranked result. Entries that tie on both slots and
@@ -98,9 +101,14 @@ type LeaderboardEntry struct {
 	Rank        int
 	SessionID   string
 	DisplayName string
-	Slots       int
-	Steps       int
-	At          time.Time
+	// Handle is the account's handle when the entry belongs to a signed-in
+	// player with a public profile; "" for guests and private profiles.
+	Handle string
+	// Mine is true when the entry belongs to the viewing account.
+	Mine  bool
+	Slots int
+	Steps int
+	At    time.Time
 }
 
 // Leaderboard is the ranking of one map under one ordering.
@@ -131,6 +139,10 @@ type boardRow struct {
 	mapID    string
 	win      Win
 	rank     int
+	// accountID is the owning account ("" = guest row); acct is that account,
+	// nil when it no longer exists (such a row counts as a guest row).
+	accountID string
+	acct      *Account
 }
 
 // rankedBoards scans the live sessions once and returns, per map, the ranked
@@ -143,6 +155,9 @@ type boardRow struct {
 // Every number was recorded by the server when the run was won, so nothing
 // here can be forged by a client. Each session lock is held only to copy a few
 // small values; there is no I/O.
+//
+// Rows owned by an account are collapsed to one per account per map: the
+// account's best under the ordering. Guest rows stay one per session.
 func (svc *gameService) rankedBoards(order, onlyMap string) map[string][]boardRow {
 	type fpRow struct {
 		boardRow
@@ -158,12 +173,13 @@ func (svc *gameService) rankedBoards(order, onlyMap string) map[string][]boardRo
 			}
 			// s.Map is immutable after creation.
 			if w != nil {
-				all = append(all, fpRow{boardRow{id: s.ID, name: s.DisplayName, mapID: s.MapID, win: *w}, s.Map.Fingerprint()})
+				all = append(all, fpRow{boardRow{id: s.ID, name: s.DisplayName, mapID: s.MapID, win: *w, accountID: s.AccountID}, s.Map.Fingerprint()})
 			}
 		}
 		s.Unlock()
 	}
 
+	accounts := make(map[string]*Account)
 	current := make(map[string]string) // map id -> current fingerprint ("" = no such map)
 	byMap := make(map[string][]boardRow)
 	for _, r := range all {
@@ -175,7 +191,11 @@ func (svc *gameService) rankedBoards(order, onlyMap string) map[string][]boardRo
 			current[r.mapID] = fp
 		}
 		if fp != "" && r.fp == fp {
-			byMap[r.mapID] = append(byMap[r.mapID], r.boardRow)
+			row := r.boardRow
+			if row.acct = svc.accountFor(row.accountID, accounts); row.acct == nil {
+				row.accountID = "" // deleted or unknown account: a guest row
+			}
+			byMap[r.mapID] = append(byMap[r.mapID], row)
 		}
 	}
 	for id, rows := range byMap {
@@ -189,6 +209,19 @@ func (svc *gameService) rankedBoards(order, onlyMap string) map[string][]boardRo
 			}
 			return rows[i].id < rows[j].id
 		})
+		// One entry per account: the first (best) row of each account wins.
+		seen := make(map[string]bool)
+		kept := rows[:0]
+		for _, r := range rows {
+			if r.accountID != "" {
+				if seen[r.accountID] {
+					continue
+				}
+				seen[r.accountID] = true
+			}
+			kept = append(kept, r)
+		}
+		rows = kept
 		rank := 0
 		for i := range rows {
 			if i == 0 || rows[i].win.key(order) != rows[i-1].win.key(order) {
@@ -201,11 +234,19 @@ func (svc *gameService) rankedBoards(order, onlyMap string) map[string][]boardRo
 	return byMap
 }
 
-func (svc *gameService) entryOf(r boardRow) LeaderboardEntry {
-	return LeaderboardEntry{
+// entryOf converts a row for the API. Account rows show the account's display
+// name and handle, or "Private player" without a handle when the profile is
+// private. viewer is the signed-in account id ("" = none).
+func (svc *gameService) entryOf(r boardRow, viewer string) LeaderboardEntry {
+	e := LeaderboardEntry{
 		Rank: r.rank, SessionID: r.id, DisplayName: PublicName(r.name, svc.opts.MaxDisplayName),
 		Slots: r.win.Slots, Steps: r.win.Steps, At: r.win.At,
 	}
+	if r.acct != nil {
+		e.DisplayName, e.Handle = publicAccountName(r.acct, svc.opts.MaxDisplayName)
+		e.Mine = viewer != "" && r.accountID == viewer
+	}
+	return e
 }
 
 // GetLeaderboard ranks the winning sessions of a map. A map that no longer
@@ -228,14 +269,29 @@ func (svc *gameService) GetLeaderboard(q LeaderboardQuery) (*Leaderboard, error)
 		return nil, err
 	}
 
+	// The session's own account (if any), so a browser that remembers a session
+	// still finds the account's single collapsed entry.
+	sessAcct := ""
+	if q.SessionID != "" {
+		if s, ok := svc.sessions.Get(q.SessionID); ok {
+			s.Lock()
+			sessAcct = s.AccountID
+			s.Unlock()
+		}
+	}
 	rows := svc.rankedBoards(order, q.MapID)[q.MapID]
 	lb := &Leaderboard{MapID: q.MapID, Order: order, Total: len(rows), Entries: []LeaderboardEntry{}}
+	viewerRank := -1
 	for i, r := range rows {
 		if i < limit {
-			lb.Entries = append(lb.Entries, svc.entryOf(r))
+			lb.Entries = append(lb.Entries, svc.entryOf(r, q.AccountID))
 		}
-		if q.SessionID != "" && r.id == q.SessionID {
-			e := svc.entryOf(r)
+		switch {
+		case q.AccountID != "" && r.accountID == q.AccountID:
+			e := svc.entryOf(r, q.AccountID)
+			lb.Yours, viewerRank = &e, i
+		case viewerRank < 0 && q.SessionID != "" && (r.id == q.SessionID || (sessAcct != "" && r.accountID == sessAcct)):
+			e := svc.entryOf(r, q.AccountID)
 			lb.Yours = &e
 		}
 	}
@@ -246,18 +302,20 @@ func (svc *gameService) GetLeaderboard(q LeaderboardQuery) (*Leaderboard, error)
 // browser remembers as its own).
 const MaxRunSessionIDs = 200
 
-// RunsQuery selects a player's sessions: either an explicit set of session
-// ids (the sessions one browser created) or a display name. Exactly one must
-// be given.
+// RunsQuery selects a player's sessions: an explicit set of session ids (the
+// sessions one browser created), a display name, or the viewer's account.
 //
-// There are no accounts yet, so a "player" is only whatever the caller can
-// name. Session ids are exact; a display name is a convenience that matches
-// every session with that name (case-insensitive) and therefore can mix
-// people who chose the same name. A future player id would be a third way to
-// select sessions and nothing else here would change.
+// With SessionIDs the match is exact; if AccountID (the signed-in viewer) is
+// also set the account's own entries are included, so a signed-in player sees
+// both their profile's runs and the guest sessions of this browser. A display
+// name is a convenience that matches every guest session with that name
+// (case-insensitive) and therefore can mix people who chose the same name;
+// account entries never match by name. Name cannot be combined with
+// SessionIDs. With neither, a signed-in viewer gets just their account's runs.
 type RunsQuery struct {
 	SessionIDs []string
 	Name       string
+	AccountID  string
 }
 
 // PlayerRun is a player's best result on one map: the best of their winning
@@ -271,13 +329,15 @@ type PlayerRun struct {
 }
 
 // GetPlayerRuns returns the best run per map (maps never won are absent) for
-// the selected sessions, ordered by map id. Errors: INVALID_ARGUMENT (neither
-// or both selectors, too many ids).
+// the selected sessions, ordered by map id. Errors: INVALID_ARGUMENT (no
+// selector, name together with ids, too many ids).
 func (svc *gameService) GetPlayerRuns(q RunsQuery) ([]PlayerRun, error) {
 	name := strings.TrimSpace(q.Name)
 	byID := len(q.SessionIDs) > 0
 	switch {
-	case byID == (name != ""):
+	case byID && name != "":
+		return nil, Errorf(CodeInvalidArgument, "give either sessionIds or name")
+	case !byID && name == "" && q.AccountID == "":
 		return nil, Errorf(CodeInvalidArgument, "give either sessionIds or name")
 	case len(q.SessionIDs) > MaxRunSessionIDs:
 		return nil, Errorf(CodeInvalidArgument, "too many sessionIds (%d, max %d)", len(q.SessionIDs), MaxRunSessionIDs)
@@ -286,25 +346,34 @@ func (svc *gameService) GetPlayerRuns(q RunsQuery) ([]PlayerRun, error) {
 	for _, id := range q.SessionIDs {
 		ids[id] = true
 	}
+	want := PublicName(name, svc.opts.MaxDisplayName)
 	mine := func(r boardRow) bool {
-		if byID {
+		switch {
+		case name != "":
+			return r.acct == nil && r.name != "" && strings.EqualFold(PublicName(r.name, svc.opts.MaxDisplayName), want)
+		case q.AccountID != "" && r.acct != nil && r.accountID == q.AccountID:
+			return true
+		default:
 			return ids[r.id]
 		}
-		return r.name != "" && strings.EqualFold(PublicName(r.name, svc.opts.MaxDisplayName), PublicName(name, svc.opts.MaxDisplayName))
 	}
+	return svc.playerRuns(mine, q.AccountID), nil
+}
 
+// playerRuns picks, per map, the best SLOTS-board row that mine accepts.
+func (svc *gameService) playerRuns(mine func(boardRow) bool, viewer string) []PlayerRun {
 	boards := svc.rankedBoards(OrderSlots, "")
 	out := []PlayerRun{}
 	for mapID, rows := range boards {
 		for _, r := range rows { // best first
 			if mine(r) {
-				out = append(out, PlayerRun{MapID: mapID, Entry: svc.entryOf(r), Total: len(rows)})
+				out = append(out, PlayerRun{MapID: mapID, Entry: svc.entryOf(r, viewer), Total: len(rows)})
 				break
 			}
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].MapID < out[j].MapID })
-	return out, nil
+	return out
 }
 
 // PublicName turns a stored display name into what a leaderboard shows:

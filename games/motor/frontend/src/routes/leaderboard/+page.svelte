@@ -12,6 +12,7 @@
 		boardHref,
 		isMine,
 		orderOption,
+		playerHref,
 		parseOrder,
 		pickMap,
 		rankBadgeClass,
@@ -20,7 +21,6 @@
 		stepsText
 	} from '$lib/leaderboard';
 	import { sortMaps } from '$lib/maps';
-	import { runsHref } from '$lib/runs';
 	import { CREATE_SESSION_MUTATION, LEADERBOARD_QUERY, MAPS_QUERY } from '$lib/queries';
 	import { ownSessionIds, rememberSession, savedDisplayName } from '$lib/sessions';
 	import { absoluteTime, relativeTime } from '$lib/time';
@@ -96,7 +96,7 @@
 			const data = await unwrap<{ createSession: Session }>(
 				client.mutation(CREATE_SESSION_MUTATION, { mapID: map.id, displayName: savedDisplayName().trim() || null })
 			);
-			rememberSession(data.createSession.id);
+			rememberSession(data.createSession.id, undefined, data.createSession.ownerToken);
 			await goto(`/play/${data.createSession.id}`);
 		} catch (e) {
 			error = describeError(e);
@@ -204,8 +204,8 @@
 								>
 							</td>
 							<td class="px-4 py-2 font-medium">
-								{#if runsHref(e.displayName) && e.displayName !== 'Anonymous'}
-									<a href={runsHref(e.displayName)} class="hover:underline" title="See {e.displayName}'s runs">{e.displayName}</a>
+								{#if playerHref(e)}
+									<a href={playerHref(e)} class="hover:underline" title={e.handle ? `${e.displayName}'s profile` : `See ${e.displayName}'s runs`}>{e.displayName}</a>
 								{:else}
 									{e.displayName}
 								{/if}
@@ -225,7 +225,8 @@
 			</table>
 		</div>
 		<p class="text-xs text-slate-600">
-			Players who tie on both numbers share a rank. Each session appears once, with its best result: win again with a smaller program to move up.
+			Players who tie on both numbers share a rank. Each guest session appears once, and a signed-in player appears once, with their best result:
+			win again with a smaller program to move up.
 			Agents can read this board with the <code class="rounded bg-indigo-50 px-1">leaderboard</code> query (see
 			<a href="/llms.txt" class="text-indigo-700 underline">/llms.txt</a>).
 		</p>

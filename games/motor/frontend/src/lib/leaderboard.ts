@@ -1,5 +1,7 @@
 import type { GameMap, LeaderboardEntry, LeaderboardOrder } from './types';
 import { sortMaps } from './maps';
+import { profileHref } from './account';
+import { runsHref } from './runs';
 
 export interface OrderOption {
 	order: LeaderboardOrder;
@@ -63,10 +65,27 @@ export function pickMap<T extends Pick<GameMap, 'id' | 'difficulty' | 'name'>>(m
 	return found ?? sortMaps(maps)[0] ?? null;
 }
 
-/** True when the entry belongs to one of this browser's sessions. */
-export function isMine(entry: Pick<LeaderboardEntry, 'sessionId'>, ownIds: Iterable<string>): boolean {
+/**
+ * True when the entry is the viewer's: it belongs to their signed-in account (the server says so),
+ * or to one of this browser's own guest sessions.
+ */
+export function isMine(entry: Pick<LeaderboardEntry, 'sessionId'> & { mine?: boolean }, ownIds: Iterable<string>): boolean {
+	if (entry.mine) return true;
 	for (const id of ownIds) if (id === entry.sessionId) return true;
 	return false;
+}
+
+/** Name shown for an account whose profile is private. It has no page to link to. */
+export const PRIVATE_PLAYER = 'Private player';
+
+/**
+ * Where a player's name links: an account's profile, a guest's runs by name, or nowhere
+ * (anonymous and private players).
+ */
+export function playerHref(entry: Pick<LeaderboardEntry, 'displayName' | 'handle'>): string | null {
+	if (entry.handle) return profileHref(entry.handle);
+	if (entry.displayName === PRIVATE_PLAYER || entry.displayName === 'Anonymous') return null;
+	return runsHref(entry.displayName);
 }
 
 /** "1 slot" / "6 slots". */

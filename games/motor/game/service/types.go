@@ -33,6 +33,14 @@ type Session struct {
 	// when a run is won and survive later edits and resets of the program.
 	FewestSlots *Win
 	FewestSteps *Win
+	// AccountID is the account this session belongs to ("" = guest). It is only
+	// ever set from the signed-in creator or by ClaimSessions with the owner
+	// token, never from a session id alone.
+	AccountID string
+	// OwnerHash is the SHA-256 (hex) of the secret owner token returned once by
+	// CreateOwnedSession ("" for sessions created before owner tokens). Never
+	// exposed by the API.
+	OwnerHash string
 	// LastEvent is the most recent step event; transient (not persisted).
 	LastEvent *engine.StepEvent
 }
@@ -51,6 +59,7 @@ func (s *Session) Clone() *Session {
 		Program: s.Program.Clone(), VM: s.VM.Clone(), Playing: s.Playing, SpeedMs: s.SpeedMs,
 		Seq: s.Seq, CreatedAt: s.CreatedAt, LastActionAt: s.LastActionAt,
 		Attempts: s.Attempts, BestSteps: s.BestSteps,
+		AccountID: s.AccountID, OwnerHash: s.OwnerHash,
 	}
 	if s.FewestSlots != nil {
 		w := *s.FewestSlots
@@ -78,6 +87,10 @@ type SessionFilter struct {
 // GameService is the single facade used by every transport (GraphQL today).
 type GameService interface {
 	CreateSession(mapID, displayName string) (*Session, error)
+	// CreateOwnedSession is CreateSession for a caller that may be signed in:
+	// the session is attached to accountID (when not empty) and a secret owner
+	// token is returned (only its hash is kept).
+	CreateOwnedSession(mapID, displayName, accountID string) (*Session, string, error)
 	GetSession(id string) (*Session, error)
 	ListSessions(f SessionFilter) ([]*Session, error)
 	DeleteSession(id string) error
@@ -101,6 +114,26 @@ type GameService interface {
 	// GetPlayerRuns returns the best run per won map for a set of session ids
 	// or a display name (see RunsQuery). Errors: INVALID_ARGUMENT.
 	GetPlayerRuns(q RunsQuery) ([]PlayerRun, error)
+
+	// Accounts. All of these fail with FORBIDDEN when AccountsEnabled is false.
+	AccountsEnabled() bool
+	// SignIn finds or creates the account of a provider identity.
+	SignIn(provider, providerUserID string) (acct *Account, created bool, err error)
+	// StartLogin makes a new login for the account and returns the cookie token.
+	StartLogin(accountID string) (token string, expires time.Time, err error)
+	Authenticate(token string) (*Account, bool)
+	EndLogin(token string)
+	GetAccount(id string) (*Account, error)
+	UpdateAccount(id string, u AccountUpdate) (*Account, error)
+	// HandleChangeableAt is when the account may change its handle (zero = now).
+	HandleChangeableAt(a *Account) time.Time
+	// DeleteAccount removes the account, its logins and its links to runs.
+	DeleteAccount(id string) error
+	// GetProfile is NOT_FOUND for unknown handles and for private profiles
+	// unless viewerAccountID is the owner.
+	GetProfile(handle, viewerAccountID string) (*Profile, error)
+	// ClaimSessions attaches sessions to an account using their owner tokens.
+	ClaimSessions(accountID string, claims []SessionClaim) ([]ClaimResult, error)
 
 	ListMaps() []*engine.Map
 	GetMap(id string) (*engine.Map, error)

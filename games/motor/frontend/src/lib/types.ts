@@ -94,6 +94,8 @@ export interface Session {
 	attempts: number;
 	bestSteps: number | null;
 	lastEvent: StepEvent | null;
+	/** Secret proving who created the session. Only the createSession response carries it; null everywhere else. */
+	ownerToken?: string | null;
 }
 
 export interface SessionUpdate {
@@ -144,7 +146,12 @@ export interface LeaderboardEntry {
 	/** 1-based; entries tied on both slots and steps share a rank. */
 	rank: number;
 	sessionId: string;
+	/** An account's entry shows its display name, or "Private player" for a private profile. */
 	displayName: string;
+	/** Handle of the signed-in player who owns the entry (profile at /u/<handle>); null for guests and private profiles. */
+	handle: string | null;
+	/** True when the entry belongs to the signed-in viewer's account. */
+	mine: boolean;
 	slots: number;
 	steps: number;
 	achievedAt: string;
@@ -166,4 +173,47 @@ export interface PlayerRun {
 	/** Ranked sessions on that map's SLOTS board. */
 	total: number;
 	entry: LeaderboardEntry;
+}
+
+/** The signed-in player. Only a handle and names are kept: no email, no avatar. */
+export interface Account {
+	handle: string;
+	displayName: string;
+	profilePublic: boolean;
+	createdAt: string;
+	/** When the handle may be changed again; null when it can be changed now. */
+	handleChangeableAt: string | null;
+}
+
+/** A way to sign in that this server has enabled. Sign in by navigating to /auth/<id>/login. */
+export interface AuthProvider {
+	id: string;
+	name: string;
+}
+
+/** A public profile page: the account and its best run per map. */
+export interface Profile {
+	handle: string;
+	displayName: string;
+	createdAt: string;
+	isMine: boolean;
+	runs: PlayerRun[];
+}
+
+export type ClaimStatus = 'ATTACHED' | 'ALREADY_YOURS' | 'REJECTED';
+
+export interface SessionClaim {
+	sessionID: string;
+	ownerToken: string;
+}
+
+export interface SessionClaimResult {
+	sessionID: string;
+	status: ClaimStatus;
+}
+
+export interface AccountInput {
+	handle?: string;
+	displayName?: string;
+	profilePublic?: boolean;
 }

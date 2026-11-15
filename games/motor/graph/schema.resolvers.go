@@ -30,11 +30,15 @@ func (r *mutationResolver) CreateSession(ctx context.Context, mapID string, disp
 	if displayName != nil {
 		name = *displayName
 	}
-	s, err := r.Service.CreateSession(mapID, name)
+	// A signed-in creator (cookie, same-origin only) owns the session; everyone
+	// gets a secret owner token, shown only in this response.
+	s, token, err := r.Service.CreateOwnedSession(mapID, name, viewerID(ctx))
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	return toSession(s), nil
+	out := toSession(s)
+	out.OwnerToken = &token
+	return out, nil
 }
 
 // DeleteSession is the resolver for the deleteSession field.
@@ -103,6 +107,77 @@ func (r *mutationResolver) Reset(ctx context.Context, sessionID string) (*model.
 	return toSession(s), nil
 }
 
+// Logout is the resolver for the logout field. It is safe to call when signed
+// out.
+func (r *mutationResolver) Logout(ctx context.Context) (bool, error) {
+	if v := ViewerFrom(ctx); v != nil {
+		r.Service.EndLogin(v.Token)
+		if v.ClearSession != nil {
+			v.ClearSession()
+		}
+	}
+	return true, nil
+}
+
+// UpdateAccount is the resolver for the updateAccount field.
+func (r *mutationResolver) UpdateAccount(ctx context.Context, input model.AccountInput) (*model.Account, error) {
+	acct, err := requireViewer(ctx)
+	if err != nil {
+		return nil, err
+	}
+	a, err := r.Service.UpdateAccount(acct.ID, service.AccountUpdate{
+		Handle: input.Handle, DisplayName: input.DisplayName, ProfilePublic: input.ProfilePublic,
+	})
+	if err != nil {
+		return nil, toGQLError(err)
+	}
+	return r.toAccount(a), nil
+}
+
+// DeleteAccount is the resolver for the deleteAccount field. The caller must
+// retype the handle, so a stray request cannot delete an account.
+func (r *mutationResolver) DeleteAccount(ctx context.Context, confirmHandle string) (bool, error) {
+	acct, err := requireViewer(ctx)
+	if err != nil {
+		return false, err
+	}
+	if service.NormalizeHandle(confirmHandle) != acct.Handle {
+		return false, codedError(service.CodeInvalidArgument, "type your handle exactly to confirm")
+	}
+	if err := r.Service.DeleteAccount(acct.ID); err != nil {
+		return false, toGQLError(err)
+	}
+	if v := ViewerFrom(ctx); v != nil {
+		r.Service.EndLogin(v.Token)
+		if v.ClearSession != nil {
+			v.ClearSession()
+		}
+	}
+	return true, nil
+}
+
+// ClaimSessions is the resolver for the claimSessions field. Each claim needs the
+// session's owner token; knowing a session id is never enough.
+func (r *mutationResolver) ClaimSessions(ctx context.Context, claims []*model.SessionClaimInput) ([]*model.SessionClaimResult, error) {
+	acct, err := requireViewer(ctx)
+	if err != nil {
+		return nil, err
+	}
+	in := make([]service.SessionClaim, len(claims))
+	for i, c := range claims {
+		in[i] = service.SessionClaim{SessionID: c.SessionID, OwnerToken: c.OwnerToken}
+	}
+	res, err := r.Service.ClaimSessions(acct.ID, in)
+	if err != nil {
+		return nil, toGQLError(err)
+	}
+	out := make([]*model.SessionClaimResult, len(res))
+	for i, c := range res {
+		out[i] = &model.SessionClaimResult{SessionID: c.SessionID, Status: model.ClaimStatus(c.Status)}
+	}
+	return out, nil
+}
+
 // CreateMap is the resolver for the createMap field. Open to everyone: the
 // caller becomes the owner of a new map and can edit or delete it afterwards.
 // Creating a map whose id already exists is INVALID_ARGUMENT, so shipped maps
@@ -161,6 +236,45 @@ func (r *mutationResolver) DeleteMap(ctx context.Context, id string) (bool, erro
 	return true, nil
 }
 
+// Me is the resolver for the me field: the signed-in player, or null.
+func (r *queryResolver) Me(ctx context.Context) (*model.Account, error) {
+	v := ViewerFrom(ctx)
+	if v == nil {
+		return nil, nil
+	}
+	return r.toAccount(v.Account), nil
+}
+
+// AuthProviders is the resolver for the authProviders field; empty when
+// sign-in is off.
+func (r *queryResolver) AuthProviders(ctx context.Context) ([]*model.AuthProvider, error) {
+	out := make([]*model.AuthProvider, len(r.Providers))
+	for i, p := range r.Providers {
+		out[i] = &model.AuthProvider{ID: p.ID, Name: p.Name}
+	}
+	return out, nil
+}
+
+// Profile is the resolver for the profile field. Unknown handles and private
+// profiles (other than the viewer's own) are null.
+func (r *queryResolver) Profile(ctx context.Context, handle string) (*model.Profile, error) {
+	p, err := r.Service.GetProfile(handle, viewerID(ctx))
+	if err != nil {
+		if isNotFound(err) {
+			return nil, nil
+		}
+		return nil, toGQLError(err)
+	}
+	out := &model.Profile{
+		Handle: p.Account.Handle, DisplayName: p.Account.DisplayName, CreatedAt: p.Account.CreatedAt,
+		IsMine: p.IsMine, Runs: make([]*model.PlayerRun, len(p.Runs)),
+	}
+	for i, run := range p.Runs {
+		out.Runs[i] = &model.PlayerRun{MapID: run.MapID, Total: run.Total, Entry: toLeaderboardEntry(run.Entry)}
+	}
+	return out, nil
+}
+
 // Maps is the resolver for the maps field.
 func (r *queryResolver) Maps(ctx context.Context) ([]*model.Map, error) {
 	return toMaps(r.Service.ListMaps()), nil
@@ -216,7 +330,7 @@ func (r *queryResolver) Sessions(ctx context.Context, sort *model.SessionSort, l
 // Leaderboard is the resolver for the leaderboard field. The board is derived
 // from sessions server-side; a missing map is null like map(id:).
 func (r *queryResolver) Leaderboard(ctx context.Context, mapID string, order *model.LeaderboardOrder, limit *int, sessionID *string) (*model.Leaderboard, error) {
-	q := service.LeaderboardQuery{MapID: mapID, Order: service.OrderSlots}
+	q := service.LeaderboardQuery{MapID: mapID, Order: service.OrderSlots, AccountID: viewerID(ctx)}
 	if order != nil {
 		q.Order = string(*order)
 	}
@@ -239,7 +353,7 @@ func (r *queryResolver) Leaderboard(ctx context.Context, mapID string, order *mo
 // PlayerRuns is the resolver for the playerRuns field: one player's best run
 // per won map, selected by session ids or by display name (exactly one).
 func (r *queryResolver) PlayerRuns(ctx context.Context, sessionIds []string, name *string) ([]*model.PlayerRun, error) {
-	q := service.RunsQuery{SessionIDs: sessionIds}
+	q := service.RunsQuery{SessionIDs: sessionIds, AccountID: viewerID(ctx)}
 	if name != nil {
 		q.Name = *name
 	}

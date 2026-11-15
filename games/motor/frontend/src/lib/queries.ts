@@ -102,7 +102,7 @@ export const SESSIONS_QUERY = `
 
 export const CREATE_SESSION_MUTATION = `
   mutation CreateSession($mapID: ID!, $displayName: String) {
-    createSession(mapID: $mapID, displayName: $displayName) { ${SESSION_FIELDS} }
+    createSession(mapID: $mapID, displayName: $displayName) { ${SESSION_FIELDS} ownerToken }
   }
 `;
 
@@ -186,7 +186,7 @@ export const VALIDATE_MAP_MUTATION = `
   }
 `;
 
-const LEADERBOARD_ENTRY_FIELDS = `rank sessionId displayName slots steps achievedAt`;
+const LEADERBOARD_ENTRY_FIELDS = `rank sessionId displayName handle mine slots steps achievedAt`;
 
 /** Keep in sync with `leaderboardQ` in api/leaderboard_test.go (complexity check). */
 export const LEADERBOARD_QUERY = `
@@ -209,5 +209,52 @@ export const PLAYER_RUNS_QUERY = `
       total
       entry { ${LEADERBOARD_ENTRY_FIELDS} }
     }
+  }
+`;
+
+const ACCOUNT_FIELDS = `handle displayName profilePublic createdAt handleChangeableAt`;
+
+/** Keep in sync with `accountQ` in api/hardening_test.go (complexity check). */
+export const ACCOUNT_QUERY = `
+  query Account {
+    me { ${ACCOUNT_FIELDS} }
+    authProviders { id name }
+  }
+`;
+
+/** Keep in sync with `profileQ` in api/hardening_test.go (complexity check). */
+export const PROFILE_QUERY = `
+  query Profile($handle: String!) {
+    profile(handle: $handle) {
+      handle
+      displayName
+      createdAt
+      isMine
+      runs { mapId total entry { ${LEADERBOARD_ENTRY_FIELDS} } }
+    }
+  }
+`;
+
+export const LOGOUT_MUTATION = `
+  mutation Logout {
+    logout
+  }
+`;
+
+export const UPDATE_ACCOUNT_MUTATION = `
+  mutation UpdateAccount($input: AccountInput!) {
+    updateAccount(input: $input) { ${ACCOUNT_FIELDS} }
+  }
+`;
+
+export const DELETE_ACCOUNT_MUTATION = `
+  mutation DeleteAccount($confirmHandle: String!) {
+    deleteAccount(confirmHandle: $confirmHandle)
+  }
+`;
+
+export const CLAIM_SESSIONS_MUTATION = `
+  mutation ClaimSessions($claims: [SessionClaimInput!]!) {
+    claimSessions(claims: $claims) { sessionID status }
   }
 `;

@@ -10,6 +10,32 @@ import (
 	"time"
 )
 
+// A signed-in player. Nothing about the person beyond the public handle and name is stored: no email, no avatar.
+type Account struct {
+	// Unique public name, 3-20 of a-z 0-9 _; the profile lives at /u/<handle>.
+	Handle      string `json:"handle"`
+	DisplayName string `json:"displayName"`
+	// When false the profile page is hidden and board entries read "Private player".
+	ProfilePublic bool      `json:"profilePublic"`
+	CreatedAt     time.Time `json:"createdAt"`
+	// When the handle may be changed again; null when it can be changed now.
+	HandleChangeableAt *time.Time `json:"handleChangeableAt,omitempty"`
+}
+
+type AccountInput struct {
+	// New handle (3-20 of a-z 0-9 _, case-insensitive, unique); limited to one change per day.
+	Handle *string `json:"handle,omitempty"`
+	// Public display name; empty falls back to the handle.
+	DisplayName   *string `json:"displayName,omitempty"`
+	ProfilePublic *bool   `json:"profilePublic,omitempty"`
+}
+
+// A way to sign in, enabled on this server. Sign in by navigating to /auth/<id>/login.
+type AuthProvider struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
 type Frame struct {
 	// Tape index; -1 is the main tape.
 	Tape int `json:"tape"`
@@ -17,15 +43,16 @@ type Frame struct {
 	Pc int `json:"pc"`
 }
 
-// The ranking of one map. Each session appears at most once, with its best result
-// under the chosen order. Only sessions that played the map's current rules count.
+// The ranking of one map. A guest session appears at most once, with its best result under the
+// chosen order; the sessions of one account are collapsed into the account's single best entry.
+// Only sessions that played the map's current rules count.
 type Leaderboard struct {
 	MapID string           `json:"mapId"`
 	Order LeaderboardOrder `json:"order"`
 	// Ranked sessions on this board, not just the rows returned.
 	Total   int                 `json:"total"`
 	Entries []*LeaderboardEntry `json:"entries"`
-	// The entry of the requested sessionId, even beyond the returned rows; null when it has not won.
+	// The signed-in viewer's entry, else the entry of the requested sessionId, even beyond the returned rows; null when it has not won.
 	Yours *LeaderboardEntry `json:"yours,omitempty"`
 }
 
@@ -35,8 +62,12 @@ type LeaderboardEntry struct {
 	Rank int `json:"rank"`
 	// The winning session; spectate it at /watch/<sessionId>.
 	SessionID string `json:"sessionId"`
-	// Empty names are shown as Anonymous.
+	// Empty names are shown as Anonymous. An account's entry shows its display name, or "Private player" when its profile is private.
 	DisplayName string `json:"displayName"`
+	// Handle of the signed-in player who owns this entry (profile at /u/<handle>); null for guests and private profiles.
+	Handle *string `json:"handle,omitempty"`
+	// True when the entry belongs to the signed-in viewer's account (always false for guests).
+	Mine bool `json:"mine"`
 	// Non-EMPTY instructions in the winning program, across main and all subs.
 	Slots int `json:"slots"`
 	// Steps the winning run took.
@@ -108,6 +139,17 @@ type Position struct {
 	Y int `json:"y"`
 }
 
+// A public profile page: the account and its best run per map.
+type Profile struct {
+	Handle      string    `json:"handle"`
+	DisplayName string    `json:"displayName"`
+	CreatedAt   time.Time `json:"createdAt"`
+	// True when the viewer is this player (a private profile is visible only to its owner).
+	IsMine bool `json:"isMine"`
+	// Best run per map won (SLOTS board), ordered by map id.
+	Runs []*PlayerRun `json:"runs"`
+}
+
 type Program struct {
 	Main []Instruction   `json:"main"`
 	Subs [][]Instruction `json:"subs"`
@@ -138,6 +180,21 @@ type Session struct {
 	Attempts     int        `json:"attempts"`
 	BestSteps    *int       `json:"bestSteps,omitempty"`
 	LastEvent    *StepEvent `json:"lastEvent,omitempty"`
+	// Secret that proves the caller created this session; keep it private. Returned only by the
+	// createSession response that made the session and null everywhere else (queries, lists,
+	// subscriptions). A signed-in player can later attach the session to their account with
+	// claimSessions({sessionID, ownerToken}). Optional: clients that never select it are unaffected.
+	OwnerToken *string `json:"ownerToken,omitempty"`
+}
+
+type SessionClaimInput struct {
+	SessionID  string `json:"sessionID"`
+	OwnerToken string `json:"ownerToken"`
+}
+
+type SessionClaimResult struct {
+	SessionID string      `json:"sessionID"`
+	Status    ClaimStatus `json:"status"`
 }
 
 type SessionUpdate struct {
@@ -177,6 +234,66 @@ type VMState struct {
 	Status     Status      `json:"status"`
 	LossReason *LossReason `json:"lossReason,omitempty"`
 	Visited    []*Position `json:"visited"`
+}
+
+type ClaimStatus string
+
+const (
+	// The session now belongs to your account.
+	ClaimStatusAttached ClaimStatus = "ATTACHED"
+	// It already belonged to your account.
+	ClaimStatusAlreadyYours ClaimStatus = "ALREADY_YOURS"
+	// Unknown session, no or wrong owner token, or it belongs to another account.
+	ClaimStatusRejected ClaimStatus = "REJECTED"
+)
+
+var AllClaimStatus = []ClaimStatus{
+	ClaimStatusAttached,
+	ClaimStatusAlreadyYours,
+	ClaimStatusRejected,
+}
+
+func (e ClaimStatus) IsValid() bool {
+	switch e {
+	case ClaimStatusAttached, ClaimStatusAlreadyYours, ClaimStatusRejected:
+		return true
+	}
+	return false
+}
+
+func (e ClaimStatus) String() string {
+	return string(e)
+}
+
+func (e *ClaimStatus) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = ClaimStatus(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid ClaimStatus", str)
+	}
+	return nil
+}
+
+func (e ClaimStatus) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *ClaimStatus) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e ClaimStatus) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
 }
 
 type Facing string

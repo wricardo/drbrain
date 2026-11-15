@@ -20,6 +20,7 @@
 		type RunFilter
 	} from '$lib/runs';
 	import { ownSessionIds, rememberSession, savedDisplayName } from '$lib/sessions';
+	import { account } from '$lib/stores/account';
 	import { absoluteTime, relativeTime } from '$lib/time';
 	import type { GameMap, PlayerRun, Session } from '$lib/types';
 
@@ -39,13 +40,14 @@
 	// ?name=BraveOtter shows that player's runs (matched by display name); without it, this browser's own.
 	const sharedName = $derived(($page.url.searchParams.get('name') ?? '').trim());
 	const mine = $derived(!sharedName);
+	const signedIn = $derived($account.me !== null);
 	const rows = $derived(buildRunRows(maps, runs));
 	const counts = $derived(countRows(rows));
 	const shown = $derived(filterRows(rows, filter));
 	const link = $derived(mine && typeof location !== 'undefined' ? shareUrl(location.origin, myName) : null);
 
 	let requestId = 0;
-	async function load(name: string) {
+	async function load(name: string, withAccount: boolean) {
 		const mineRequest = ++requestId;
 		loading = true;
 		error = null;
@@ -54,7 +56,8 @@
 			ownCount = ids.length;
 			if (name) {
 				runs = (await unwrap<{ playerRuns: PlayerRun[] }>(client.query(PLAYER_RUNS_QUERY, { name }, { requestPolicy: 'network-only' }))).playerRuns;
-			} else if (ids.length > 0) {
+			} else if (ids.length > 0 || withAccount) {
+				// Signed in, the server adds the account's own runs to this browser's sessions.
 				runs = (await unwrap<{ playerRuns: PlayerRun[] }>(client.query(PLAYER_RUNS_QUERY, { sessionIds: ids }, { requestPolicy: 'network-only' }))).playerRuns;
 			} else {
 				runs = [];
@@ -78,7 +81,8 @@
 
 	$effect(() => {
 		const name = sharedName;
-		if (ready) void load(name);
+		const withAccount = signedIn;
+		if (ready && $account.loaded) void load(name, withAccount);
 	});
 
 	async function copyLink() {
@@ -99,7 +103,7 @@
 			const data = await unwrap<{ createSession: Session }>(
 				client.mutation(CREATE_SESSION_MUTATION, { mapID: map.id, displayName: savedDisplayName().trim() || null })
 			);
-			rememberSession(data.createSession.id, data.createSession.displayName);
+			rememberSession(data.createSession.id, data.createSession.displayName, data.createSession.ownerToken);
 			await goto(`/play/${data.createSession.id}`);
 		} catch (e) {
 			error = describeError(e);
@@ -130,8 +134,8 @@
 				</p>
 			{:else}
 				<p class="mt-1 text-sm text-slate-700">
-					Best runs of the players who chose the name <strong class="text-indigo-950">{sharedName}</strong>. There are no accounts yet, so anyone
-					can pick the same name: this page can mix people.
+					Best runs of the guests who chose the name <strong class="text-indigo-950">{sharedName}</strong>. Guests can pick any name, so
+					this page can mix people. Signed-in players have profile pages instead.
 				</p>
 			{/if}
 		</div>
@@ -160,7 +164,7 @@
 		</p>
 	{/if}
 
-	{#if mine && !loading && ownCount === 0}
+	{#if mine && !loading && ownCount === 0 && !signedIn}
 		<p class="rounded-xl border border-indigo-200 bg-white px-4 py-4 text-sm text-slate-700" data-testid="runs-empty">
 			This browser has not played yet. Pick a map below and your runs will show up here. They are remembered in this browser, so a different
 			browser starts empty.
@@ -260,7 +264,7 @@
 	{/if}
 
 	<p class="text-xs text-slate-600">
-		Each map shows the player's best result on the “Fewest slots” board. Runs are remembered in this browser and kept on the server for a while
-		after the last move; accounts to keep them for good may come later.
+		Each map shows the player's best result on the “Fewest slots” board. Guest runs are remembered in this browser and kept on the server for
+		a while after the last move. Sign in to keep your runs on a profile.
 	</p>
 </div>

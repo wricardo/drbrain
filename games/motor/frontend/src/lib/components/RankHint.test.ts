@@ -12,6 +12,8 @@ const yours: LeaderboardEntry = {
 	rank: 2,
 	sessionId: 'aaaaaaaaaaaaaaaa',
 	displayName: 'Ada',
+	handle: null,
+	mine: false,
 	slots: 6,
 	steps: 9,
 	achievedAt: '2026-01-02T03:04:05Z'

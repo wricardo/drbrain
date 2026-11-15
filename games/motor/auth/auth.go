@@ -1,0 +1,422 @@
+package auth
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/base64"
+	"errors"
+	"log"
+	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/gorilla/mux"
+	"github.com/wricardo/drbrain-motor-programming/game/service"
+	"golang.org/x/oauth2"
+)
+
+const (
+	// SessionCookie holds the login token (HttpOnly; only its SHA-256 is stored server-side).
+	SessionCookie = "dbmp_session"
+	// flowCookie binds an in-progress sign-in to the browser that started it.
+	flowCookie = "dbmp_oauth"
+	// flowTTL is how long a sign-in attempt may take; its state is single use.
+	flowTTL = 10 * time.Minute
+	// maxPending bounds the in-memory table of unfinished sign-ins.
+	maxPending = 5000
+	// exchangeTimeout bounds the calls to the provider during a callback.
+	exchangeTimeout = 15 * time.Second
+)
+
+// Accounts is the part of the game service sign-in needs.
+type Accounts interface {
+	SignIn(provider, providerUserID string) (acct *service.Account, created bool, err error)
+	StartLogin(accountID string) (token string, expires time.Time, err error)
+	Authenticate(token string) (*service.Account, bool)
+	EndLogin(token string)
+}
+
+// Config configures Auth.
+type Config struct {
+	Providers []Provider
+	Accounts  Accounts
+	// PublicURL is the site's base URL; callbacks are PublicURL/auth/<id>/callback
+	// and an https URL makes cookies Secure.
+	PublicURL string
+	// AllowedOrigins is the ALLOWED_ORIGINS list ("" or "*" = only this site's own origin).
+	AllowedOrigins string
+	// Limiter guards the /auth routes (default 30 requests per minute per IP).
+	Limiter *Limiter
+	Now     func() time.Time
+}
+
+// Auth owns the sign-in routes and the login cookie.
+type Auth struct {
+	cfg       Config
+	base      *url.URL
+	providers map[string]Provider
+	order     []Provider
+	allowed   map[string]bool // explicit allowed origins (without PublicURL's)
+	limiter   *Limiter
+	now       func() time.Time
+
+	mu      sync.Mutex
+	pending map[string]pendingFlow
+}
+
+type pendingFlow struct {
+	provider string
+	params   Params
+	binding  string
+	next     string
+	expires  time.Time
+}
+
+// New validates cfg and builds Auth. At least one provider is required.
+func New(cfg Config) (*Auth, error) {
+	if len(cfg.Providers) == 0 || cfg.Accounts == nil {
+		return nil, errors.New("auth: no providers configured")
+	}
+	base, err := ParseBaseURL(cfg.PublicURL)
+	if err != nil {
+		return nil, err
+	}
+	a := &Auth{
+		cfg: cfg, base: base, providers: make(map[string]Provider), allowed: make(map[string]bool),
+		limiter: cfg.Limiter, now: cfg.Now, pending: make(map[string]pendingFlow),
+	}
+	if a.now == nil {
+		a.now = time.Now
+	}
+	if a.limiter == nil {
+		a.limiter = NewLimiter(30, time.Minute, a.now)
+	}
+	for _, p := range cfg.Providers {
+		if _, dup := a.providers[p.ID()]; dup {
+			return nil, errors.New("auth: duplicate provider " + p.ID())
+		}
+		a.providers[p.ID()] = p
+		a.order = append(a.order, p)
+	}
+	if v := strings.TrimSpace(cfg.AllowedOrigins); v != "" && v != "*" {
+		for _, o := range strings.Split(v, ",") {
+			if o = strings.TrimRight(strings.TrimSpace(o), "/"); o != "" {
+				a.allowed[o] = true
+			}
+		}
+	}
+	return a, nil
+}
+
+// ProviderInfo is what the UI needs to offer a sign-in button.
+type ProviderInfo struct{ ID, Name string }
+
+// Providers lists the enabled providers in configuration order.
+func (a *Auth) Providers() []ProviderInfo {
+	out := make([]ProviderInfo, len(a.order))
+	for i, p := range a.order {
+		out[i] = ProviderInfo{ID: p.ID(), Name: p.Name()}
+	}
+	return out
+}
+
+// Routes mounts the /auth routes on r.
+func (a *Auth) Routes(r *mux.Router) {
+	r.HandleFunc("/auth/logout", a.guard(a.handleLogout)).Methods(http.MethodPost)
+	if p, ok := a.providers["dev"].(*DevProvider); ok {
+		r.HandleFunc("/auth/dev/authorize", a.guard(p.authorize)).Methods(http.MethodGet)
+	}
+	r.HandleFunc("/auth/{provider}/login", a.guard(a.handleLogin)).Methods(http.MethodGet)
+	r.HandleFunc("/auth/{provider}/callback", a.guard(a.handleCallback)).Methods(http.MethodGet)
+}
+
+// guard adds no-store caching and the per-IP rate limit.
+func (a *Auth) guard(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		if ok, retry := a.limiter.Allow(ClientIP(r)); !ok {
+			w.Header().Set("Retry-After", strconv.Itoa(int(retry.Seconds())+1))
+			http.Error(w, "too many sign-in requests; try again shortly", http.StatusTooManyRequests)
+			return
+		}
+		h(w, r)
+	}
+}
+
+func randomString(n int) (string, error) {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
+
+// ---- cookies ---------------------------------------------------------------
+
+// secure reports whether cookies get the Secure attribute: always for an https
+// public URL, otherwise when the request itself came in over https.
+func (a *Auth) secure(r *http.Request) bool {
+	return a.base.Scheme == "https" || (r != nil && (r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"))
+}
+
+// SetSession stores the login token in an HttpOnly, SameSite=Lax cookie that
+// expires with the login (Secure unless the site is plain-http localhost).
+func (a *Auth) SetSession(w http.ResponseWriter, r *http.Request, token string, expires time.Time) {
+	http.SetCookie(w, &http.Cookie{
+		Name: SessionCookie, Value: token, Path: "/", Expires: expires, MaxAge: int(expires.Sub(a.now()).Seconds()),
+		HttpOnly: true, Secure: a.secure(r), SameSite: http.SameSiteLaxMode,
+	})
+}
+
+// ClearSession removes the login cookie.
+func (a *Auth) ClearSession(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name: SessionCookie, Value: "", Path: "/", MaxAge: -1, Expires: time.Unix(0, 0),
+		HttpOnly: true, Secure: a.secure(r), SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func (a *Auth) setFlow(w http.ResponseWriter, r *http.Request, v string) {
+	http.SetCookie(w, &http.Cookie{
+		Name: flowCookie, Value: v, Path: "/auth", MaxAge: int(flowTTL.Seconds()),
+		HttpOnly: true, Secure: a.secure(r), SameSite: http.SameSiteLaxMode,
+	})
+}
+
+func (a *Auth) clearFlow(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name: flowCookie, Value: "", Path: "/auth", MaxAge: -1,
+		HttpOnly: true, Secure: a.secure(r), SameSite: http.SameSiteLaxMode,
+	})
+}
+
+// ---- same-origin check -------------------------------------------------------
+
+// originOf is the origin of the request's own site: PublicURL's, or, when the
+// request carries a Host, scheme://host as the proxy reported it.
+func (a *Auth) ownOrigins(r *http.Request) []string {
+	out := []string{a.base.Scheme + "://" + a.base.Host}
+	if len(a.allowed) == 0 {
+		scheme := "http"
+		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+			scheme = "https"
+		}
+		out = append(out, scheme+"://"+r.Host)
+	}
+	return out
+}
+
+// SameOrigin reports whether a state-changing request comes from this site (or
+// an origin listed in ALLOWED_ORIGINS). Browsers always send Origin on
+// cross-site POSTs, so a forged form or fetch from another site fails here;
+// requests without Origin must at least not be marked cross-site by
+// Sec-Fetch-Site. Cookies are never honoured for a request that fails this.
+func (a *Auth) SameOrigin(r *http.Request) bool {
+	site := r.Header.Get("Sec-Fetch-Site")
+	if origin := r.Header.Get("Origin"); origin != "" {
+		if a.allowed[strings.TrimRight(origin, "/")] {
+			return true
+		}
+		for _, o := range a.ownOrigins(r) {
+			if origin == o {
+				return true
+			}
+		}
+		return false
+	}
+	return site == "" || site == "same-origin" || site == "none"
+}
+
+// Viewer resolves the signed-in account of a request from its login cookie. It
+// returns nil for anonymous requests, bad or expired tokens, and any request that
+// fails SameOrigin or (for POST) is not JSON, so a cross-site page can never act
+// as the player. token is the cookie value, for logout.
+func (a *Auth) Viewer(r *http.Request) (acct *service.Account, token string) {
+	c, err := r.Cookie(SessionCookie)
+	if err != nil || c.Value == "" {
+		return nil, ""
+	}
+	if !a.SameOrigin(r) {
+		return nil, ""
+	}
+	if r.Method == http.MethodPost && !strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "application/json") {
+		return nil, ""
+	}
+	acct, ok := a.cfg.Accounts.Authenticate(c.Value)
+	if !ok {
+		return nil, ""
+	}
+	return acct, c.Value
+}
+
+// ---- routes ------------------------------------------------------------------
+
+func (a *Auth) callbackURL(id string) string { return a.base.String() + "/auth/" + id + "/callback" }
+
+func (a *Auth) handleLogin(w http.ResponseWriter, r *http.Request) {
+	p, ok := a.providers[mux.Vars(r)["provider"]]
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	state, err1 := randomString(32)
+	nonce, err2 := randomString(24)
+	binding, err3 := randomString(24)
+	if err := errors.Join(err1, err2, err3); err != nil {
+		log.Printf("auth: random: %v", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	params := Params{State: state, Nonce: nonce, Verifier: oauth2.GenerateVerifier(), RedirectURL: a.callbackURL(p.ID())}
+	if !a.putPending(state, pendingFlow{
+		provider: p.ID(), params: params, binding: binding, next: SafeNext(r.URL.Query().Get("next")),
+		expires: a.now().Add(flowTTL),
+	}) {
+		http.Error(w, "too many sign-ins in progress; try again shortly", http.StatusServiceUnavailable)
+		return
+	}
+	a.setFlow(w, r, binding)
+	http.Redirect(w, r, p.AuthURL(params), http.StatusFound)
+}
+
+// putPending stores an attempt, dropping expired ones; false when the table is full of live ones.
+func (a *Auth) putPending(state string, f pendingFlow) bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if len(a.pending) >= maxPending {
+		now := a.now()
+		for k, v := range a.pending {
+			if !now.Before(v.expires) {
+				delete(a.pending, k)
+			}
+		}
+		if len(a.pending) >= maxPending {
+			return false
+		}
+	}
+	a.pending[state] = f
+	return true
+}
+
+// takePending removes and returns an attempt: a state can be used exactly once.
+func (a *Auth) takePending(state string) (pendingFlow, bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	f, ok := a.pending[state]
+	delete(a.pending, state)
+	return f, ok && a.now().Before(f.expires)
+}
+
+// failRedirect sends the browser back to the site with a short reason.
+func failRedirect(w http.ResponseWriter, r *http.Request, next, reason string) {
+	http.Redirect(w, r, withQuery(next, "signin", reason), http.StatusFound)
+}
+
+func withQuery(path, key, val string) string {
+	u, err := url.Parse(path)
+	if err != nil {
+		return "/?" + key + "=" + url.QueryEscape(val)
+	}
+	q := u.Query()
+	q.Set(key, val)
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+func (a *Auth) handleCallback(w http.ResponseWriter, r *http.Request) {
+	id := mux.Vars(r)["provider"]
+	p, ok := a.providers[id]
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	q := r.URL.Query()
+	a.clearFlow(w, r)
+
+	// The state is consumed first, whatever happens next: it works once.
+	flow, ok := a.takePending(q.Get("state"))
+	bind, err := r.Cookie(flowCookie)
+	switch {
+	case !ok || flow.provider != id:
+		failRedirect(w, r, "/", "failed")
+		return
+	case err != nil || subtle.ConstantTimeCompare([]byte(bind.Value), []byte(flow.binding)) != 1:
+		// A callback from a browser that did not start this sign-in (login CSRF).
+		failRedirect(w, r, flow.next, "failed")
+		return
+	case q.Get("error") != "":
+		failRedirect(w, r, flow.next, "cancelled")
+		return
+	case q.Get("code") == "":
+		failRedirect(w, r, flow.next, "failed")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), exchangeTimeout)
+	defer cancel()
+	userID, err := p.Exchange(ctx, q.Get("code"), flow.params)
+	if err != nil {
+		log.Printf("auth: %s sign-in failed: %v", id, err)
+		failRedirect(w, r, flow.next, "failed")
+		return
+	}
+	acct, _, err := a.cfg.Accounts.SignIn(id, userID)
+	if err != nil {
+		log.Printf("auth: sign-in for %s: %v", id, err)
+		failRedirect(w, r, flow.next, "failed")
+		return
+	}
+	// Rotate: a token that existed before signing in is dropped, and the new
+	// login always gets a fresh random one (no session fixation).
+	if old, err := r.Cookie(SessionCookie); err == nil {
+		a.cfg.Accounts.EndLogin(old.Value)
+	}
+	token, expires, err := a.cfg.Accounts.StartLogin(acct.ID)
+	if err != nil {
+		log.Printf("auth: start login: %v", err)
+		failRedirect(w, r, flow.next, "failed")
+		return
+	}
+	a.SetSession(w, r, token, expires)
+	http.Redirect(w, r, flow.next, http.StatusFound)
+}
+
+func (a *Auth) handleLogout(w http.ResponseWriter, r *http.Request) {
+	if !a.SameOrigin(r) {
+		http.Error(w, "cross-site request refused", http.StatusForbidden)
+		return
+	}
+	if c, err := r.Cookie(SessionCookie); err == nil {
+		a.cfg.Accounts.EndLogin(c.Value)
+	}
+	a.ClearSession(w, r)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ---- redirect validation -----------------------------------------------------
+
+// SafeNext returns next if it is a same-site relative path ("/play/ab12?x=1"),
+// otherwise "/". Absolute URLs, scheme-relative ("//evil"), backslash tricks,
+// control characters and the /auth routes themselves are refused.
+func SafeNext(next string) string {
+	if next == "" || len(next) > 512 || next[0] != '/' || strings.HasPrefix(next, "//") {
+		return "/"
+	}
+	for _, r := range next {
+		if r < 0x20 || r == 0x7f || r == '\\' {
+			return "/"
+		}
+	}
+	u, err := url.Parse(next)
+	if err != nil || u.Scheme != "" || u.Host != "" || u.User != nil || !strings.HasPrefix(u.Path, "/") || strings.HasPrefix(u.Path, "//") {
+		return "/"
+	}
+	if u.Path == "/auth" || strings.HasPrefix(u.Path, "/auth/") {
+		return "/"
+	}
+	return u.RequestURI()
+}

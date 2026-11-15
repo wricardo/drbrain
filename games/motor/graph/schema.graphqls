@@ -125,6 +125,13 @@ type Session {
   attempts: Int!
   bestSteps: Int
   lastEvent: StepEvent
+  """
+  Secret that proves the caller created this session; keep it private. Returned only by the
+  createSession response that made the session and null everywhere else (queries, lists,
+  subscriptions). A signed-in player can later attach the session to their account with
+  claimSessions({sessionID, ownerToken}). Optional: clients that never select it are unaffected.
+  """
+  ownerToken: String
 }
 
 type SessionUpdate {
@@ -170,8 +177,12 @@ type LeaderboardEntry {
   rank: Int!
   "The winning session; spectate it at /watch/<sessionId>."
   sessionId: ID!
-  "Empty names are shown as Anonymous."
+  "Empty names are shown as Anonymous. An account's entry shows its display name, or \"Private player\" when its profile is private."
   displayName: String!
+  "Handle of the signed-in player who owns this entry (profile at /u/<handle>); null for guests and private profiles."
+  handle: String
+  "True when the entry belongs to the signed-in viewer's account (always false for guests)."
+  mine: Boolean!
   "Non-EMPTY instructions in the winning program, across main and all subs."
   slots: Int!
   "Steps the winning run took."
@@ -181,8 +192,9 @@ type LeaderboardEntry {
 }
 
 """
-The ranking of one map. Each session appears at most once, with its best result
-under the chosen order. Only sessions that played the map's current rules count.
+The ranking of one map. A guest session appears at most once, with its best result under the
+chosen order; the sessions of one account are collapsed into the account's single best entry.
+Only sessions that played the map's current rules count.
 """
 type Leaderboard {
   mapId: ID!
@@ -190,7 +202,7 @@ type Leaderboard {
   "Ranked sessions on this board, not just the rows returned."
   total: Int!
   entries: [LeaderboardEntry!]!
-  "The entry of the requested sessionId, even beyond the returned rows; null when it has not won."
+  "The signed-in viewer's entry, else the entry of the requested sessionId, even beyond the returned rows; null when it has not won."
   yours: LeaderboardEntry
 }
 
@@ -206,7 +218,69 @@ type PlayerRun {
   entry: LeaderboardEntry!
 }
 
+"A signed-in player. Nothing about the person beyond the public handle and name is stored: no email, no avatar."
+type Account {
+  "Unique public name, 3-20 of a-z 0-9 _; the profile lives at /u/<handle>."
+  handle: String!
+  displayName: String!
+  "When false the profile page is hidden and board entries read \"Private player\"."
+  profilePublic: Boolean!
+  createdAt: Time!
+  "When the handle may be changed again; null when it can be changed now."
+  handleChangeableAt: Time
+}
+
+"A way to sign in, enabled on this server. Sign in by navigating to /auth/<id>/login."
+type AuthProvider {
+  id: ID!
+  name: String!
+}
+
+"A public profile page: the account and its best run per map."
+type Profile {
+  handle: String!
+  displayName: String!
+  createdAt: Time!
+  "True when the viewer is this player (a private profile is visible only to its owner)."
+  isMine: Boolean!
+  "Best run per map won (SLOTS board), ordered by map id."
+  runs: [PlayerRun!]!
+}
+
+enum ClaimStatus {
+  "The session now belongs to your account."
+  ATTACHED
+  "It already belonged to your account."
+  ALREADY_YOURS
+  "Unknown session, no or wrong owner token, or it belongs to another account."
+  REJECTED
+}
+
+input SessionClaimInput {
+  sessionID: ID!
+  ownerToken: String!
+}
+
+type SessionClaimResult {
+  sessionID: ID!
+  status: ClaimStatus!
+}
+
+input AccountInput {
+  "New handle (3-20 of a-z 0-9 _, case-insensitive, unique); limited to one change per day."
+  handle: String
+  "Public display name; empty falls back to the handle."
+  displayName: String
+  profilePublic: Boolean
+}
+
 type Query {
+  "The signed-in player, or null."
+  me: Account
+  "Sign-in providers enabled on this server; empty means sign-in is off."
+  authProviders: [AuthProvider!]!
+  "A player's public profile; null when the handle is unknown or the profile is private (unless it is yours)."
+  profile(handle: String!): Profile
   maps: [Map!]!
   map(id: ID!): Map
   session(id: ID!): Session
@@ -216,7 +290,8 @@ type Query {
   """
   A player's best run per map they have won (maps never won are absent), ordered by map id.
   Give exactly one of sessionIds (up to 200; exact) or name (case-insensitive; matches every
-  session with that display name, so it can mix people who picked the same name).
+  session with that display name, so it can mix people who picked the same name; guest sessions only).
+  When signed in, the account's own runs are included with sessionIds, and sessionIds may be left out.
   """
   playerRuns(sessionIds: [ID!], name: String): [PlayerRun!]!
 }
@@ -230,6 +305,15 @@ type Mutation {
   pause(sessionID: ID!): Session!
   step(sessionID: ID!): Session!
   reset(sessionID: ID!): Session!
+
+  "Signs the player out (clears the login cookie). Always true."
+  logout: Boolean!
+  "Changes the signed-in player's handle, display name or profile visibility."
+  updateAccount(input: AccountInput!): Account!
+  "Permanently deletes the account and signs out. confirmHandle must equal the current handle. Its runs stay on the boards as guest entries."
+  deleteAccount(confirmHandle: String!): Boolean!
+  "Attaches guest sessions of this browser to the signed-in account; each needs its owner token (up to 100 per call)."
+  claimSessions(claims: [SessionClaimInput!]!): [SessionClaimResult!]!
 
   "Anyone may create and validate a map."
   createMap(map: MapInput!): Map!

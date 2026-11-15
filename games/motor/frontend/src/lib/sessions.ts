@@ -109,8 +109,9 @@ export const MAX_OWN_SESSIONS = 200;
  * so every later session is the same guest. A name the player typed is never
  * replaced.
  */
-export function rememberSession(id: string, name?: string): void {
+export function rememberSession(id: string, name?: string, ownerToken?: string | null): void {
 	if (name?.trim() && !savedDisplayName().trim()) saveDisplayName(name.trim());
+	if (ownerToken) rememberOwnerToken(id, ownerToken);
 	try {
 		localStorage.setItem(LAST_SESSION_KEY, id);
 	} catch {
@@ -122,6 +123,67 @@ export function rememberSession(id: string, name?: string): void {
 		localStorage.setItem(OWN_SESSIONS_KEY, JSON.stringify(ids.slice(-MAX_OWN_SESSIONS)));
 	} catch {
 		// storage unavailable: no highlighting
+	}
+}
+
+const OWNER_TOKENS_KEY = 'drbrain-motor-programming.ownerTokens';
+
+/**
+ * Remembers the secret owner token the server returned when this browser created
+ * a session. A session id is public (spectator links), so the token is what lets
+ * a player who signs in later attach this browser's guest runs to their account.
+ * Only the newest MAX_OWN_SESSIONS are kept.
+ */
+export function rememberOwnerToken(id: string, token: string): void {
+	try {
+		const all = ownerTokens();
+		delete all[id];
+		all[id] = token; // object keys keep insertion order: newest last
+		const keep = Object.entries(all).slice(-MAX_OWN_SESSIONS);
+		localStorage.setItem(OWNER_TOKENS_KEY, JSON.stringify(Object.fromEntries(keep)));
+	} catch {
+		// storage unavailable: the runs just cannot be attached later
+	}
+}
+
+/** Owner tokens remembered by this browser, by session id. */
+export function ownerTokens(): Record<string, string> {
+	try {
+		const raw = localStorage.getItem(OWNER_TOKENS_KEY);
+		const parsed: unknown = raw ? JSON.parse(raw) : {};
+		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+		const out: Record<string, string> = {};
+		for (const [k, v] of Object.entries(parsed)) if (typeof v === 'string' && v) out[k] = v;
+		return out;
+	} catch {
+		return {};
+	}
+}
+
+/** What to send to claimSessions: this browser's sessions that have an owner token (at most max). */
+export function claimableSessions(max = 100): { sessionID: string; ownerToken: string }[] {
+	return Object.entries(ownerTokens())
+		.slice(-max)
+		.map(([sessionID, ownerToken]) => ({ sessionID, ownerToken }));
+}
+
+/** Forgets the tokens of the given sessions (after they were attached, or refused). */
+export function forgetOwnerTokens(ids: string[]): void {
+	try {
+		const all = ownerTokens();
+		for (const id of ids) delete all[id];
+		localStorage.setItem(OWNER_TOKENS_KEY, JSON.stringify(all));
+	} catch {
+		// ignore
+	}
+}
+
+/** Forgets every owner token (when the player deletes their account on this browser). */
+export function forgetAllOwnerTokens(): void {
+	try {
+		localStorage.removeItem(OWNER_TOKENS_KEY);
+	} catch {
+		// ignore
 	}
 }
 

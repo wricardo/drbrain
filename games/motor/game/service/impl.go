@@ -40,6 +40,18 @@ type Options struct {
 	// MaxDisplayName is the maximum display-name length in characters
 	// (default DefaultMaxDisplayName).
 	MaxDisplayName int
+	// Accounts enables sign-in and profiles; nil (the default) keeps the game
+	// guest-only and every account method returns FORBIDDEN.
+	Accounts AccountStore
+	// LoginTTL is how long a login lasts (default DefaultLoginTTL).
+	LoginTTL time.Duration
+	// HandleCooldown is the minimum time between handle changes (default
+	// DefaultHandleCooldown).
+	HandleCooldown time.Duration
+	// MaxAccounts caps the number of accounts (default DefaultMaxAccounts).
+	MaxAccounts int
+	// Now overrides the clock used by account logic (tests).
+	Now func() time.Time
 }
 
 // gameService implements GameService.
@@ -184,6 +196,12 @@ func newSessionID() (string, error) {
 // CreateSession starts a session on a private snapshot of map mapID with an
 // all-EMPTY program.
 func (svc *gameService) CreateSession(mapID, displayName string) (*Session, error) {
+	// No owner token: the caller cannot attach this session to an account later.
+	return svc.createSession(mapID, displayName, "", "")
+}
+
+// createSession builds and registers a session; accountID and ownerHash may be empty.
+func (svc *gameService) createSession(mapID, displayName, accountID, ownerHash string) (*Session, error) {
 	name, err := svc.cleanName(displayName)
 	if err != nil {
 		return nil, err
@@ -203,6 +221,7 @@ func (svc *gameService) CreateSession(mapID, displayName string) (*Session, erro
 		ID: id, DisplayName: name, MapID: snapMap.ID, Map: snapMap,
 		Program: prog, VM: initVM(snapMap, &prog), SpeedMs: DefaultSpeedMs,
 		Seq: 1, CreatedAt: now, LastActionAt: now,
+		AccountID: accountID, OwnerHash: ownerHash,
 	}
 	if err := svc.sessions.Put(s); err != nil {
 		return nil, err
