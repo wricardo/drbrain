@@ -34,6 +34,10 @@ type PersistedSession struct {
 	LastActionAt  time.Time        `json:"last_action_at"`
 	Attempts      int              `json:"attempts"`
 	BestSteps     int              `json:"best_steps"`
+	// FewestSlots and FewestSteps hold the best recorded win under each
+	// leaderboard ordering; absent in files written before leaderboards.
+	FewestSlots *service.Win `json:"fewest_slots,omitempty"`
+	FewestSteps *service.Win `json:"fewest_steps,omitempty"`
 }
 
 // FilePersistence stores one JSON file per session in a directory.
@@ -81,6 +85,8 @@ func (fp *FilePersistence) Save(s *service.Session) (err error) {
 		LastActionAt:  s.LastActionAt,
 		Attempts:      s.Attempts,
 		BestSteps:     s.BestSteps,
+		FewestSlots:   s.FewestSlots,
+		FewestSteps:   s.FewestSteps,
 	})
 	if err != nil {
 		return fmt.Errorf("marshal session %s: %w", s.ID, err)
@@ -156,12 +162,26 @@ func (fp *FilePersistence) Load(id string) (*service.Session, error) {
 	if last.IsZero() {
 		last = ps.CreatedAt
 	}
-	return &service.Session{
+	s := &service.Session{
 		ID: ps.ID, DisplayName: ps.DisplayName, MapID: m.ID, Map: m,
 		Program: ps.Program, VM: ps.VM, Playing: false, SpeedMs: ps.SpeedMs,
 		Seq: ps.Seq, CreatedAt: ps.CreatedAt, LastActionAt: last,
 		Attempts: ps.Attempts, BestSteps: ps.BestSteps,
-	}, nil
+		FewestSlots: sanitizeWin(m, ps.FewestSlots), FewestSteps: sanitizeWin(m, ps.FewestSteps),
+	}
+	// Sessions saved before leaderboards existed: a WON VM identifies its win.
+	s.BackfillWin()
+	return s, nil
+}
+
+// sanitizeWin drops a recorded win that cannot have happened on m (a
+// hand-edited or corrupt file must not put an impossible result on a board).
+func sanitizeWin(m *engine.Map, w *service.Win) *service.Win {
+	if w == nil || w.Steps < 1 || w.Steps > m.MaxSteps || w.Slots < 1 || w.Slots > m.TotalSlots() {
+		return nil
+	}
+	c := *w
+	return &c
 }
 
 // Delete removes <dir>/<id>.json. It returns ErrNotFound if there is none.

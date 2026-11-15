@@ -65,7 +65,7 @@
 			const data = await unwrap<{ createSession: Session }>(
 				client.mutation(CREATE_SESSION_MUTATION, { mapID: map.id, displayName: name || null })
 			);
-			rememberSession(data.createSession.id);
+			rememberSession(data.createSession.id, data.createSession.displayName);
 			await goto(`/play/${data.createSession.id}`);
 		} catch (e) {
 			error = describeError(e);
@@ -163,7 +163,7 @@
 				type="text"
 				maxlength="40"
 				bind:value={displayName}
-				placeholder="Anonymous"
+				placeholder="A random guest name"
 				class="mt-1 w-full rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm"
 			/>
 		</div>

@@ -85,6 +85,8 @@ mutation { run(sessionID: "${s.id}", speedMs: 100) { playing vm { status steps }
 mutation { step(sessionID: "${s.id}") { vm { status steps pos { x y } } lastEvent { instruction blocked callBlocked } } }
 query { session(id: "${s.id}") { playing attempts bestSteps vm { status lossReason steps pos { x y } facing treatsRemaining { x y } callStack { tape pc } } } }
 4. If the status is LOST, read lossReason and treatsRemaining, fix the program, and repeat from step 2 (call reset first if you want to run again without changing the program). Do not stop until vm.status is WON, then report the winning program and its step count.
+5. Winners are ranked per map by slots used (non-EMPTY slots across all tapes; fewer is better), then by steps. Once you have won, you may try to win again with fewer slots or steps (setProgram, then run) and read your rank:
+query { leaderboard(mapId: "${s.map.id}", sessionId: "${s.id}") { total yours { rank slots steps } entries { rank displayName slots steps } } }
 
 Other mutations: pause, reset, renameSession, deleteSession. Do not try to guess other sessions' ids and do not delete this one.`;
 }
@@ -100,7 +102,7 @@ You write the robot a program (a main tape plus up to 3 subroutine tapes); the s
 1. Read ${origin}/llms.txt first: it has the complete rules, the coordinate convention (row 0 is the top, y grows downward) and working examples for every step.
 2. GraphQL endpoint: ${origin}/graphql (Playground: ${origin}/playground).
 3. List the maps: query { maps { id name difficulty layout mainTapeLength subTapeLengths maxSteps maxCallDepth allowRecursion } } and pick one (start with an easy one).
-4. Create your own session: mutation { createSession(mapID: "MAP_ID", displayName: "my agent") { id } }
+4. Create your own session: mutation { createSession(mapID: "MAP_ID", displayName: "my agent") { id } } (displayName is optional: without it you get a random guest name like BraveOtter)
 5. Plan the route from the layout, then setProgram, run, and read the session until vm.status is WON. If it is LOST, read lossReason, fix the program and try again.
-6. Tell me the session id so I can watch it live at ${origin}/watch/SESSION_ID, and report the winning program and its step count.`;
+6. Tell me the session id so I can watch it live at ${origin}/watch/SESSION_ID, and report the winning program and its step count. Winners are ranked per map by fewest slots used (non-EMPTY slots across all tapes), then fewest steps: query { leaderboard(mapId: "MAP_ID") { entries { rank displayName slots steps } } }.`;
 }

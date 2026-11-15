@@ -95,12 +95,44 @@ export function statusLine(s: {
 
 const LAST_SESSION_KEY = 'drbrain-motor-programming.lastSession';
 
-/** Remembers the session this browser created most recently (for the home "Continue" card). */
-export function rememberSession(id: string): void {
+const OWN_SESSIONS_KEY = 'drbrain-motor-programming.ownSessions';
+/** How many session ids this browser remembers as its own (newest kept). */
+export const MAX_OWN_SESSIONS = 200;
+
+/**
+ * Remembers the session this browser created most recently (for the home
+ * "Continue" card) and adds it to the list of sessions this browser owns (so
+ * the leaderboard can highlight its entries and "My runs" can find them).
+ *
+ * When the player had no name the server gave the session a random guest name
+ * ("BraveOtter"); pass it as `name` and it becomes this browser's saved name,
+ * so every later session is the same guest. A name the player typed is never
+ * replaced.
+ */
+export function rememberSession(id: string, name?: string): void {
+	if (name?.trim() && !savedDisplayName().trim()) saveDisplayName(name.trim());
 	try {
 		localStorage.setItem(LAST_SESSION_KEY, id);
 	} catch {
 		// storage unavailable: the Continue card just won't show
+	}
+	try {
+		const ids = ownSessionIds().filter((x) => x !== id);
+		ids.push(id);
+		localStorage.setItem(OWN_SESSIONS_KEY, JSON.stringify(ids.slice(-MAX_OWN_SESSIONS)));
+	} catch {
+		// storage unavailable: no highlighting
+	}
+}
+
+/** Ids of the sessions created in this browser (oldest first); [] when none or storage is unavailable. */
+export function ownSessionIds(): string[] {
+	try {
+		const raw = localStorage.getItem(OWN_SESSIONS_KEY);
+		const parsed: unknown = raw ? JSON.parse(raw) : [];
+		return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+	} catch {
+		return [];
 	}
 }
 

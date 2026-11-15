@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { lossReasonText } from '$lib/errors';
+	import RankHint from '$lib/components/RankHint.svelte';
 	import type { LossReason, Status } from '$lib/types';
 
 	let {
@@ -8,6 +9,8 @@
 		steps,
 		maxSteps,
 		bestSteps = null,
+		mapId = null,
+		sessionId = null,
 		treats = null,
 		nextName = null,
 		busy = false,
@@ -20,6 +23,9 @@
 		steps: number;
 		maxSteps: number;
 		bestSteps?: number | null;
+		/** With sessionId: shows where a win ranks on the map's leaderboard. */
+		mapId?: string | null;
+		sessionId?: string | null;
 		/** Collected / total treats, shown on a loss. */
 		treats?: { collected: number; total: number } | null;
 		/** Name of the next map in the standard order; null hides "Next map". */
@@ -78,6 +84,9 @@
 				<dd class="font-semibold tabular-nums">{bestSteps != null ? `${bestSteps} steps` : '—'}</dd>
 			</div>
 		</dl>
+		{#if status === 'WON' && mapId && sessionId}
+			<RankHint {mapId} {sessionId} />
+		{/if}
 		<div class="mt-5 flex flex-wrap justify-center gap-2">
 			<button
 				bind:this={primary}

@@ -132,4 +132,22 @@ var e={NOT_FOUND:`Not found`,INVALID_PROGRAM:`Invalid program`,SESSION_PLAYING:`
       unreachableTreats { ${i} }
     }
   }
-`;export{r as _,u as a,h as c,y as d,m as f,n as g,C as h,l as i,f as l,x as m,p as n,g as o,_ as p,S as r,v as s,b as t,d as u};
+`,w=`rank sessionId displayName slots steps achievedAt`,T=`
+  query Leaderboard($mapId: ID!, $order: LeaderboardOrder, $limit: Int, $sessionId: ID) {
+    leaderboard(mapId: $mapId, order: $order, limit: $limit, sessionId: $sessionId) {
+      mapId
+      order
+      total
+      entries { ${w} }
+      yours { ${w} }
+    }
+  }
+`,E=`
+  query PlayerRuns($sessionIds: [ID!], $name: String) {
+    playerRuns(sessionIds: $sessionIds, name: $name) {
+      mapId
+      total
+      entry { ${w} }
+    }
+  }
+`;export{C as _,l as a,E as c,f as d,d as f,x as g,_ as h,T as i,v as l,m,p as n,u as o,y as p,S as r,g as s,b as t,h as u,n as v,r as y};

@@ -8,6 +8,7 @@ How Motor Programming is built, how it looks, how to maintain it, and how to bui
 - [Game rules and engine semantics](#game-rules-and-engine-semantics)
 - [Maps and reference solutions](#maps-and-reference-solutions)
 - [API for humans and AI agents](#api-for-humans-and-ai-agents)
+- [Leaderboard](#leaderboard)
 - [Frontend architecture](#frontend-architecture)
 - [UI look and feel](#ui-look-and-feel)
 - [Configuration](#configuration)
@@ -53,6 +54,8 @@ Routes:
 | `/sessions` | All sessions: status chips, search (name/id/map), map filter, sort, Load more, select rows to watch together; auto-refreshes every 10 s |
 | `/multi?ids=a,b` | Several sessions as compact live boards (from "Watch selected" on `/sessions`) |
 | `/maps` | All maps as cards: search and difficulty chips |
+| `/runs` or `/runs?name=<name>` | My runs: best run, rank and solved/unsolved for every map (this browser's sessions, or a shared player by name) |
+| `/leaderboard?map=<id>&order=slots` or `steps` | Per-map ranking of winners: map picker, two boards, your entries highlighted |
 | `/editor` | Map editor with server-side validation; anyone can create a map, changing a built-in one needs the admin key |
 | `/learn` | How it works: the game, instructions, rules, controls, how an AI plays, a generic AI prompt, tips |
 | `/graphql` | GraphQL over HTTP and WebSocket (`graphql-ws`); `/playground` when enabled |
@@ -63,7 +66,7 @@ Routes:
 ```
 game/engine          pure rules, no deps/IO: MapConfig/NewMap, Program, VMState (Settle/Step), Simulate, Run
 game/service         Session type, GameService facade + impl + Runner (ticker goroutine per playing session);
-                     interfaces MapStore, SessionStore, Broadcaster; coded errors
+                     interfaces MapStore, SessionStore, Broadcaster; coded errors; leaderboard (recorded wins + ranking)
 game/config          MapStore impl: maps/*.json (shipped, admin-only writes) + maps-user/*.json
                      (player-created), RWMutex, atomic writes
 game/session         SessionStore impl: in-memory Manager + FilePersistence (sessions/<id>.json)
@@ -110,6 +113,7 @@ HTTP /graphql (api) → gqlgen resolver (graph) → GameService (game/service)
 - Sessions are written on create, set program, pause, reset, win/loss, rename and graceful shutdown. Not on every tick.
 - After a restart, sessions load with `playing=false` and their program and VM state intact.
 - Each session embeds a copy of its map, so editing or deleting a map never affects existing sessions.
+- A session file also carries its best wins for the [leaderboard](#leaderboard) (`fewest_slots`, `fewest_steps`). Files written before leaderboards still load: a session whose VM is `WON` gets its win recovered from the program stored with it.
 - Idle sessions older than `SESSION_TTL` are removed on startup. `MAX_SESSIONS` caps how many exist.
 
 ### Errors
@@ -192,7 +196,7 @@ Maps can also be created by anyone in `/editor` or with the `createMap` mutation
 
 The schema lives in `graph/schema.graphqls`.
 
-- **Queries:** `maps`, `map(id)`, `session(id)`, `sessions(sort, limit, mapId)`.
+- **Queries:** `maps`, `map(id)`, `session(id)`, `sessions(sort, limit, mapId)`, `leaderboard(mapId, order, limit, sessionId)`, `playerRuns(sessionIds, name)`.
 - **Mutations:** `createSession`, `renameSession`, `deleteSession`, `setProgram`, `run`, `step`, `pause`, `reset`, plus `createMap` and `validateMap` (open) and `updateMap`/`deleteMap` (open for player maps, admin key for built-in ones).
 - **Subscription:** `sessionUpdated(sessionID)` emits the current snapshot, then every change.
 
@@ -202,6 +206,41 @@ Agent support:
 - The **Play with an AI** card on `/play` and `/watch` (`frontend/src/lib/prompt.ts`) builds a prompt for that exact session: id, map layout with an x/y ruler, tape lengths, recursion rule and ready-to-run GraphQL calls. Never a solution.
 - `/learn` has a generic prompt for any map.
 
+## Leaderboard
+
+Every map ranks the sessions that won it. The point of the game is fitting a route into few slots, so the main board counts those.
+
+**What is ranked.** For a winning run: *slots* = non-`EMPTY` instructions across the main tape and every sub tape of the program that won (`Program.SlotsUsed`), and *steps* = `vm.steps` at the win. Two boards per map, chosen with `LeaderboardOrder`:
+
+| Order | Sorted by |
+|---|---|
+| `SLOTS` (default) | fewest slots, then fewest steps, then earliest |
+| `STEPS` | fewest steps, then fewest slots, then earliest |
+
+Entries that tie on both numbers share a rank (1, 2, 2, 4); the earlier win is listed first.
+
+**Trust.** Nothing is submitted. `recordOutcome` (`game/service/impl.go`) calls `Session.recordWin` under the session lock the moment a run is won, from the session's own program and VM, so a client cannot choose its numbers. A client can only store a program and let the engine run it, as always.
+
+**One entry per session.** A session keeps its best win under each ordering (`Session.FewestSlots`, `Session.FewestSteps`). A later, worse win never replaces it, a better one (smaller program or fewer steps) does, and editing or clearing the program afterwards does not remove it. Both are persisted with the session. A player who wants several entries can start several sessions: there are no accounts, so there is no player identity to dedupe on, and a display name is not one (anyone could type someone else's). The board is a list of *sessions*, and each row links to `/watch/<sessionId>`.
+
+**Derived, not stored separately.** `GetLeaderboard` scans the live sessions (at most `MAX_SESSIONS`, 1000 by default), reads each one's recorded win and sorts. There is no second store to keep in sync: deleting a session or the TTL sweep takes its entry with it, and a restart reloads everything from the session files. It holds each session lock only to copy a few small values and does no I/O. If the session cap ever grows by orders of magnitude, add an in-memory index maintained from `recordOutcome`.
+
+**Only the current rules count.** A session embeds a snapshot of its map, and player maps can be edited by anyone, so wins on an older version are not comparable with the current puzzle. `Map.Fingerprint` hashes everything that changes difficulty (layout, tape lengths, `max_steps`, `max_call_depth`, the recursion rule; not name, description or difficulty tag), and only sessions whose snapshot matches the map's current fingerprint are ranked. Editing a map's rules therefore starts a fresh board; renaming it does not. A deleted map has no board (`leaderboard` returns null).
+
+**What is exposed.** Rank, session id, display name, slots, steps and when. Never the program, so reading a board cannot reveal a route (spectating a session already shows its program, as before; reference solutions stay private). Names go through `PublicName`: control, bidi and zero-width characters become spaces, whitespace collapses, the result is cut to `MaxDisplayName`; empty (only sessions from before guest names) means `Anonymous`. The UI escapes names like any text.
+
+**API.** `leaderboard(mapId, order = SLOTS, limit = 20, sessionId)` returns `{ mapId, order, total, entries, yours }`. `limit` is clamped to 1..100 (negative is `INVALID_ARGUMENT`). `total` counts every ranked session. `yours` is the entry of `sessionId` even outside the returned rows (`null` if it has not won). An unknown map is `null`. Each call scans every session, so it has a flat complexity cost plus a per-row cost scaled by `limit` (`complexityRoot` in `api/server.go`), like `sessions`.
+
+**Frontend.** `/leaderboard` (`routes/leaderboard`, in `spaRoutes` and the nav): map picker in the standard map order, two board chips, a ranked table, `?map=` and `?order=` kept in the URL so boards can be linked, refresh every 15 s. This browser's own sessions (`ownSessionIds` in `lib/sessions.ts`, filled by `rememberSession`, newest 200) get a "You" pill. After a win the result modal shows "Rank 2 of 14 · 6 slots · 9 steps" with a link to the board (`RankHint.svelte`, one request with `limit: 1`; silent if the lookup fails). Pure logic lives in `lib/leaderboard.ts`.
+
+**Guest names.** A session created (or renamed) without a display name gets a random `<Adjective><Noun>` name from `GuestName` (`game/service/guest.go`: 40 × 40 curated, one-word, family-friendly lists, shortened to `MaxDisplayName`; no digits, since a name is not an identity and a clash is harmless). It is generated on the server, in `cleanName`, so browser players and agents calling `createSession` get the same behaviour and the existing `displayName` field carries it. The browser keeps one identity: `rememberSession(id, name)` (`lib/sessions.ts`) saves the server-assigned name as the saved name when none is saved, so the next session reuses it; a name the player typed is never replaced, and clearing the name field gives a new guest. Sessions that predate guest names and have no name still show as `Anonymous`.
+
+**Player runs.** `playerRuns(sessionIds | name)` returns one row per map a player has won: their best session on the SLOTS board with its current rank and the board total (`GetPlayerRuns`, one scan of the sessions through the same ranking as `leaderboard`, so the fingerprint rule applies). Exactly one selector is allowed. `sessionIds` (up to 200, the number a browser remembers) is exact and is what "My runs" uses. `name` (case-insensitive) matches every session with that display name and powers the shareable link `/runs?name=BraveOtter`; it can mix people who chose the same name and says so on the page. Leaderboard rows link player names to it. There are no accounts, cookies or sign-in in this stage. Room for accounts: `RunsQuery` is the single place that selects a player's sessions, so a future `playerId` is one more selector there (and one more argument on `playerRuns`), and a profile page would reuse `/runs`; nothing else in the ranking needs to change.
+
+**My runs page.** `/runs` (`routes/runs`, in `spaRoutes` and the nav): every map in the standard order with Solved / Not yet, best run (slots · steps), rank "n of total", when, and Watch / Leaderboard links, or a Play button for unsolved maps; filter chips and a "Solved x of y" count; "Copy link to share" for the saved name. Row building and filters are in `lib/runs.ts`. Runs live as long as their sessions (`SESSION_TTL`, 7 days idle by default) and as the browser remembers their ids.
+
+**Agents.** `/llms.txt` has a Leaderboard section, and the per-session and generic prompts (`lib/prompt.ts`) say how winners are ranked and how to read the board.
+
 ## Frontend architecture
 
 - SvelteKit with `adapter-static`, built as a single-page app: `ssr = false`, `prerender = false`, fallback `index.html`. The Go server serves `frontend/build` if present, otherwise `static/`, and falls back to `index.html` for the routes listed in `spaRoutes` (`api/server.go`). A new top-level route must be added there too.
@@ -210,7 +249,7 @@ Agent support:
 - GraphQL: urql for queries and mutations (`network-only`, POST); one lazily created, shared `graphql-ws` client for subscriptions (`lib/graphql.ts`). `unwrap()` turns urql errors into exceptions; `lib/errors.ts` maps error codes to friendly titles and messages.
 - Live sessions: `lib/stores/session.ts` fetches the snapshot, subscribes, and keeps only updates with a higher `seq`. The transport is injected (`lib/stores/source.ts`), so the store is tested with a fake source. Connection state (`connecting`, `live`, `reconnecting`, `offline`) drives the connection badge.
 - Program editing works on a local draft. The draft is saved with `setProgram` on Run or Step; saving resets the robot to the start, and the UI says so.
-- Logic lives in plain TypeScript modules in `lib/` (`program.ts`, `grid.ts`, `highlight.ts`, `dnd.ts`, `shortcuts.ts`, `instructions.ts`, `prompt.ts`), each with Vitest tests. Components stay thin.
+- Logic lives in plain TypeScript modules in `lib/` (`program.ts`, `grid.ts`, `highlight.ts`, `dnd.ts`, `shortcuts.ts`, `instructions.ts`, `prompt.ts`, `leaderboard.ts`), each with Vitest tests. Components stay thin.
 - GraphQL documents and types are written by hand in `lib/queries.ts` and `lib/types.ts`. Update them whenever the schema changes.
 - Brand names come from `lib/brand.ts` (`SITE`, `GAME`, `TITLE`, `pageTitle()`); don't hard-code them. `localStorage` keys use the `drbrain-motor-programming.` prefix; the admin key is kept in `sessionStorage` only and is asked for only when editing a built-in map.
 - Gotcha: explicit `onchange`/`oninput` handlers run *before* `bind:value` updates. Read `event.currentTarget.value`, not the bound variable.
@@ -238,7 +277,7 @@ The goal: friendly, bright and calm, like a puzzle book. There is a matching dar
 
 ### Layout
 
-- Header: logo, **Dr Brain** with **Motor Programming** next to it (hidden on small screens), pill navigation (Play, Maps, Sessions, How it works, Editor; Sessions stays active on `/watch/*` and `/multi`) and the theme toggle. Footer: four columns — tagline · Play (Home, Maps, Sessions, Editor) · Docs (How it works, `/llms.txt`, GraphQL endpoint) · Tools (GraphQL Playground), so agents and curious developers can find the API from any page.
+- Header: logo, **Dr Brain** with **Motor Programming** next to it (hidden on small screens), pill navigation (Play, Maps, Leaderboard, Sessions, How it works, Editor; Sessions stays active on `/watch/*` and `/multi`; the pills wrap on narrow screens) and the theme toggle. Footer: four columns — tagline · Play (Home, Maps, Leaderboard, Sessions, Editor) · Docs (How it works, `/llms.txt`, GraphQL endpoint) · Tools (GraphQL Playground), so agents and curious developers can find the API from any page.
 - Map order everywhere is `sortMaps` (`lib/maps.ts`): difficulty, then name with numeric compare, so series numbers stay in order within a difficulty. Map cards show the series label ("Patterns 3") above the title, a square thumbnail, a 2-line description, tags (difficulty, size, treats, step limit, and the recursion rule — both states are labelled: "recursion" in violet or "no recursion" in slate, each with a tooltip from `lib/recursion.ts`) and a full-width Play button.
 - Times in lists are relative (`lib/time.ts`: "5m ago", "Oct 4") with the absolute time in a tooltip; bounded counters read "value / limit".
 - Content is centred at `max-w-6xl` with `px-4 sm:px-6`.
@@ -279,7 +318,7 @@ Each instruction has a fixed colour, glyph and key, defined once in `lib/instruc
 
 - Run and Step are always in the same place; **Reset** appears only once there is something to undo (a run in progress, steps taken, or a finished run), so a fresh session shows just Run and Step. Unsaved changes show **Save program** and **Revert**, and an amber note explains that saving resets the robot.
 - A delay-per-step slider (50–5000 ms) sets the run speed.
-- On win or loss: a centred modal ("You won!" in emerald or "Run lost" in rose, with the reason in plain words), focus on **Reset & try again**, Escape closes it. A coloured banner stays under the board after the modal is closed.
+- On win or loss: a centred modal ("You won!" in emerald or "Run lost" in rose, with the reason in plain words; a win also shows a one-line leaderboard rank), focus on **Reset & try again**, Escape closes it. A coloured banner stays under the board after the modal is closed.
 - Errors appear inline as rose alert boxes with a friendly title, plus the error code in small monospace.
 - A connection badge shows whether live updates are connected.
 

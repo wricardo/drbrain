@@ -213,6 +213,47 @@ func (r *queryResolver) Sessions(ctx context.Context, sort *model.SessionSort, l
 	return out, nil
 }
 
+// Leaderboard is the resolver for the leaderboard field. The board is derived
+// from sessions server-side; a missing map is null like map(id:).
+func (r *queryResolver) Leaderboard(ctx context.Context, mapID string, order *model.LeaderboardOrder, limit *int, sessionID *string) (*model.Leaderboard, error) {
+	q := service.LeaderboardQuery{MapID: mapID, Order: service.OrderSlots}
+	if order != nil {
+		q.Order = string(*order)
+	}
+	if limit != nil {
+		q.Limit = *limit
+	}
+	if sessionID != nil {
+		q.SessionID = *sessionID
+	}
+	lb, err := r.Service.GetLeaderboard(q)
+	if err != nil {
+		if isNotFound(err) {
+			return nil, nil
+		}
+		return nil, toGQLError(err)
+	}
+	return toLeaderboard(lb), nil
+}
+
+// PlayerRuns is the resolver for the playerRuns field: one player's best run
+// per won map, selected by session ids or by display name (exactly one).
+func (r *queryResolver) PlayerRuns(ctx context.Context, sessionIds []string, name *string) ([]*model.PlayerRun, error) {
+	q := service.RunsQuery{SessionIDs: sessionIds}
+	if name != nil {
+		q.Name = *name
+	}
+	runs, err := r.Service.GetPlayerRuns(q)
+	if err != nil {
+		return nil, toGQLError(err)
+	}
+	out := make([]*model.PlayerRun, len(runs))
+	for i, run := range runs {
+		out[i] = &model.PlayerRun{MapID: run.MapID, Total: run.Total, Entry: toLeaderboardEntry(run.Entry)}
+	}
+	return out, nil
+}
+
 // SessionUpdated is the resolver for the sessionUpdated field. It subscribes
 // before reading the snapshot so no update is lost between the two, emits the
 // snapshot immediately, then forwards hub updates.

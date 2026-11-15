@@ -42,6 +42,11 @@ done
 [ "${STATUS}" = "WON" ] || fail "session did not reach WON (status=${STATUS})"
 echo "session WON"
 
+# The win is on the map's leaderboard with server-recorded slots (7 moves = 7 slots) and steps.
+gql "{ leaderboard(mapId:\"straight_line\", sessionId:\"${SID}\") { total yours { rank slots steps } } }" \
+  | jq -e '.data.leaderboard.total >= 1 and .data.leaderboard.yours.rank == 1 and .data.leaderboard.yours.slots == 7 and .data.leaderboard.yours.steps == 7' >/dev/null || fail "leaderboard entry"
+echo "leaderboard ok"
+
 curl -sf "${URL}/llms.txt" | grep -q "Dr Brain" || fail "/llms.txt"
 echo "llms.txt ok"
 

@@ -185,3 +185,29 @@ export const VALIDATE_MAP_MUTATION = `
     }
   }
 `;
+
+const LEADERBOARD_ENTRY_FIELDS = `rank sessionId displayName slots steps achievedAt`;
+
+/** Keep in sync with `leaderboardQ` in api/leaderboard_test.go (complexity check). */
+export const LEADERBOARD_QUERY = `
+  query Leaderboard($mapId: ID!, $order: LeaderboardOrder, $limit: Int, $sessionId: ID) {
+    leaderboard(mapId: $mapId, order: $order, limit: $limit, sessionId: $sessionId) {
+      mapId
+      order
+      total
+      entries { ${LEADERBOARD_ENTRY_FIELDS} }
+      yours { ${LEADERBOARD_ENTRY_FIELDS} }
+    }
+  }
+`;
+
+/** Keep in sync with `playerRunsQ` in api/leaderboard_test.go (complexity check). Give exactly one of sessionIds or name. */
+export const PLAYER_RUNS_QUERY = `
+  query PlayerRuns($sessionIds: [ID!], $name: String) {
+    playerRuns(sessionIds: $sessionIds, name: $name) {
+      mapId
+      total
+      entry { ${LEADERBOARD_ENTRY_FIELDS} }
+    }
+  }
+`;

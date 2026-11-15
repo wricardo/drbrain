@@ -157,11 +157,68 @@ input MapInput {
   allowRecursion: Boolean
 }
 
+enum LeaderboardOrder {
+  "Fewest slots used first; ties by fewest steps, then earliest. The default."
+  SLOTS
+  "Fewest steps first; ties by fewest slots, then earliest."
+  STEPS
+}
+
+"One ranked result. Slots and steps are recorded by the server when the run is won, never supplied by a client."
+type LeaderboardEntry {
+  "1-based. Entries that tie on both slots and steps share a rank."
+  rank: Int!
+  "The winning session; spectate it at /watch/<sessionId>."
+  sessionId: ID!
+  "Empty names are shown as Anonymous."
+  displayName: String!
+  "Non-EMPTY instructions in the winning program, across main and all subs."
+  slots: Int!
+  "Steps the winning run took."
+  steps: Int!
+  "When the result was achieved."
+  achievedAt: Time!
+}
+
+"""
+The ranking of one map. Each session appears at most once, with its best result
+under the chosen order. Only sessions that played the map's current rules count.
+"""
+type Leaderboard {
+  mapId: ID!
+  order: LeaderboardOrder!
+  "Ranked sessions on this board, not just the rows returned."
+  total: Int!
+  entries: [LeaderboardEntry!]!
+  "The entry of the requested sessionId, even beyond the returned rows; null when it has not won."
+  yours: LeaderboardEntry
+}
+
+"""
+A player's best result on one map: their best winning session on the SLOTS board
+and where it ranks there.
+"""
+type PlayerRun {
+  mapId: ID!
+  "Ranked sessions on that map's SLOTS board."
+  total: Int!
+  "The winning session's row; entry.rank is its current rank."
+  entry: LeaderboardEntry!
+}
+
 type Query {
   maps: [Map!]!
   map(id: ID!): Map
   session(id: ID!): Session
   sessions(sort: SessionSort = RECENT, limit: Int = 50, mapId: ID): [Session!]!
+  "Ranks the winning sessions of a map (limit defaults to 20, at most 100). Null when the map does not exist."
+  leaderboard(mapId: ID!, order: LeaderboardOrder = SLOTS, limit: Int = 20, sessionId: ID): Leaderboard
+  """
+  A player's best run per map they have won (maps never won are absent), ordered by map id.
+  Give exactly one of sessionIds (up to 200; exact) or name (case-insensitive; matches every
+  session with that display name, so it can mix people who picked the same name).
+  """
+  playerRuns(sessionIds: [ID!], name: String): [PlayerRun!]!
 }
 
 type Mutation {

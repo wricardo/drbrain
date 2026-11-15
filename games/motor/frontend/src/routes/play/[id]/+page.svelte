@@ -155,7 +155,7 @@
 			const data = await unwrap<{ createSession: Session }>(
 				client.mutation(CREATE_SESSION_MUTATION, { mapID: next.id, displayName: session.displayName || null })
 			);
-			rememberSession(data.createSession.id);
+			rememberSession(data.createSession.id, data.createSession.displayName);
 			// Full navigation: this page keeps one session store for its lifetime.
 			window.location.assign(`/play/${data.createSession.id}`);
 		});
@@ -370,6 +370,8 @@
 				steps={session.vm.steps}
 				maxSteps={session.map.maxSteps}
 				bestSteps={session.bestSteps}
+				mapId={session.mapId}
+				sessionId={session.id}
 				treats={{ collected: session.map.treats.length - session.vm.treatsRemaining.length, total: session.map.treats.length }}
 				nextName={next?.name ?? null}
 				{busy}
