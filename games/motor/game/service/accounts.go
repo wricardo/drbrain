@@ -61,6 +61,20 @@ type Account struct {
 	// HandleChangedAt is when the player last chose a handle; zero until the
 	// first change (the generated handle is free to replace once).
 	HandleChangedAt time.Time
+	// PasswordHash is the argon2id hash of a username/password account's
+	// password ("" for Google/GitHub accounts). It exists only inside the store
+	// and password code: every Account the service hands out has it cleared and
+	// HasPassword set instead.
+	PasswordHash string
+	// HasPassword reports that the account signs in with a password.
+	HasPassword bool
+}
+
+// publicAccount is a's copy that is safe to pass around: no password hash.
+func publicAccount(a Account) Account {
+	a.HasPassword = a.PasswordHash != ""
+	a.PasswordHash = ""
+	return a
 }
 
 // Login is one signed-in browser. Only the SHA-256 of the cookie token is
@@ -85,6 +99,8 @@ type AccountStore interface {
 	Update(id string, fn func(*Account) error) (Account, error)
 	// Delete removes the account and every login it owns.
 	Delete(id string) error
+	// DeleteOtherLogins removes every login of the account except keepHash ("" keeps none).
+	DeleteOtherLogins(accountID, keepHash string) error
 	Count() int
 
 	// PutLogin stores a login, dropping the account's oldest ones beyond MaxLoginsPerAccount.
@@ -182,6 +198,7 @@ func (svc *gameService) SignIn(provider, providerUserID string) (acct *Account, 
 		return nil, false, Errorf(CodeInvalidArgument, "missing sign-in identity")
 	}
 	if a, ok := st.ByIdentity(provider, providerUserID); ok {
+		a = publicAccount(a)
 		return &a, false, nil
 	}
 	if st.Count() >= svc.maxAccounts() {
@@ -202,12 +219,14 @@ func (svc *gameService) SignIn(provider, providerUserID string) (acct *Account, 
 		}
 		switch err := st.Create(a); {
 		case err == nil:
+			a = publicAccount(a)
 			return &a, true, nil
 		case errors.Is(err, ErrHandleTaken):
 			continue
 		case errors.Is(err, ErrIdentityExists):
 			// Two sign-ins raced; the other one won.
 			if ex, ok := st.ByIdentity(provider, providerUserID); ok {
+				ex = publicAccount(ex)
 				return &ex, false, nil
 			}
 			return nil, false, err
@@ -277,6 +296,7 @@ func (svc *gameService) Authenticate(token string) (*Account, bool) {
 	if !ok {
 		return nil, false
 	}
+	a = publicAccount(a)
 	return &a, true
 }
 
@@ -303,6 +323,7 @@ func (svc *gameService) GetAccount(id string) (*Account, error) {
 	if !ok {
 		return nil, Errorf(CodeNotFound, "account not found")
 	}
+	a = publicAccount(a)
 	return &a, nil
 }
 
@@ -371,6 +392,7 @@ func (svc *gameService) UpdateAccount(id string, u AccountUpdate) (*Account, err
 		}
 		return nil, err
 	}
+	a = publicAccount(a)
 	return &a, nil
 }
 
@@ -420,7 +442,7 @@ func (svc *gameService) GetProfile(handle, viewerAccountID string) (*Profile, er
 		return nil, Errorf(CodeNotFound, "profile not found")
 	}
 	runs := svc.playerRuns(func(r boardRow) bool { return r.accountID == a.ID && r.acct != nil }, viewerAccountID)
-	return &Profile{Account: a, Runs: runs, IsMine: a.ID == viewerAccountID}, nil
+	return &Profile{Account: publicAccount(a), Runs: runs, IsMine: a.ID == viewerAccountID}, nil
 }
 
 // ---- owned sessions --------------------------------------------------------

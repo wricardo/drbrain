@@ -132,6 +132,13 @@ type GameService interface {
 	// GetProfile is NOT_FOUND for unknown handles and for private profiles
 	// unless viewerAccountID is the owner.
 	GetProfile(handle, viewerAccountID string) (*Profile, error)
+	// RegisterPassword creates a username/password account (username = handle).
+	// VerifyPassword checks a login: every failure is ErrBadCredentials.
+	// ChangePassword needs the current password and ends the account's other logins.
+	// All three need AUTH_PASSWORD and fail with FORBIDDEN otherwise.
+	RegisterPassword(handle, password string) (*Account, error)
+	VerifyPassword(handle, password string) (*Account, error)
+	ChangePassword(accountID, current, next, keepToken string) error
 	// ClaimSessions attaches sessions to an account using their owner tokens.
 	ClaimSessions(accountID string, claims []SessionClaim) ([]ClaimResult, error)
 

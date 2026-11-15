@@ -134,6 +134,24 @@ func (r *mutationResolver) UpdateAccount(ctx context.Context, input model.Accoun
 	return r.toAccount(a), nil
 }
 
+// ChangePassword is the resolver for the changePassword field. It needs the
+// current password even though the player is signed in (a stolen session is not
+// enough), and ends the account's other logins; the caller's own stays.
+func (r *mutationResolver) ChangePassword(ctx context.Context, currentPassword string, newPassword string) (bool, error) {
+	acct, err := requireViewer(ctx)
+	if err != nil {
+		return false, err
+	}
+	token := ""
+	if v := ViewerFrom(ctx); v != nil {
+		token = v.Token
+	}
+	if err := r.Service.ChangePassword(acct.ID, currentPassword, newPassword, token); err != nil {
+		return false, toGQLError(err)
+	}
+	return true, nil
+}
+
 // DeleteAccount is the resolver for the deleteAccount field. The caller must
 // retype the handle, so a stray request cannot delete an account.
 func (r *mutationResolver) DeleteAccount(ctx context.Context, confirmHandle string) (bool, error) {

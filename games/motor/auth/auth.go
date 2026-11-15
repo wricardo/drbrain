@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -38,7 +39,13 @@ type Accounts interface {
 	StartLogin(accountID string) (token string, expires time.Time, err error)
 	Authenticate(token string) (*service.Account, bool)
 	EndLogin(token string)
+	RegisterPassword(handle, password string) (*service.Account, error)
+	VerifyPassword(handle, password string) (*service.Account, error)
 }
+
+// PasswordProviderID is the id the UI sees for username/password sign-in. It is
+// not a redirect provider: the browser posts the form to /auth/password/...
+const PasswordProviderID = service.PasswordProvider
 
 // Config configures Auth.
 type Config struct {
@@ -52,6 +59,10 @@ type Config struct {
 	// Limiter guards the /auth routes (default 30 requests per minute per IP).
 	Limiter *Limiter
 	Now     func() time.Time
+	// Password enables username/password sign-up and sign-in
+	// (/auth/password/register and /auth/password/login), next to or instead of
+	// the OAuth providers.
+	Password bool
 }
 
 // Auth owns the sign-in routes and the login cookie.
@@ -63,6 +74,9 @@ type Auth struct {
 	allowed   map[string]bool // explicit allowed origins (without PublicURL's)
 	limiter   *Limiter
 	now       func() time.Time
+	// Failed password logins: locked per (IP, username) and per username.
+	failIP   *FailTracker
+	failUser *FailTracker
 
 	mu      sync.Mutex
 	pending map[string]pendingFlow
@@ -78,7 +92,7 @@ type pendingFlow struct {
 
 // New validates cfg and builds Auth. At least one provider is required.
 func New(cfg Config) (*Auth, error) {
-	if len(cfg.Providers) == 0 || cfg.Accounts == nil {
+	if (len(cfg.Providers) == 0 && !cfg.Password) || cfg.Accounts == nil {
 		return nil, errors.New("auth: no providers configured")
 	}
 	base, err := ParseBaseURL(cfg.PublicURL)
@@ -95,6 +109,8 @@ func New(cfg Config) (*Auth, error) {
 	if a.limiter == nil {
 		a.limiter = NewLimiter(30, time.Minute, a.now)
 	}
+	a.failIP = NewFailTracker(5, 15*time.Minute, 15*time.Minute, a.now)
+	a.failUser = NewFailTracker(40, time.Hour, 15*time.Minute, a.now)
 	for _, p := range cfg.Providers {
 		if _, dup := a.providers[p.ID()]; dup {
 			return nil, errors.New("auth: duplicate provider " + p.ID())
@@ -121,12 +137,19 @@ func (a *Auth) Providers() []ProviderInfo {
 	for i, p := range a.order {
 		out[i] = ProviderInfo{ID: p.ID(), Name: p.Name()}
 	}
+	if a.cfg.Password {
+		out = append(out, ProviderInfo{ID: PasswordProviderID, Name: "Username and password"})
+	}
 	return out
 }
 
 // Routes mounts the /auth routes on r.
 func (a *Auth) Routes(r *mux.Router) {
 	r.HandleFunc("/auth/logout", a.guard(a.handleLogout)).Methods(http.MethodPost)
+	if a.cfg.Password {
+		r.HandleFunc("/auth/password/register", a.guard(a.handlePassword(true))).Methods(http.MethodPost)
+		r.HandleFunc("/auth/password/login", a.guard(a.handlePassword(false))).Methods(http.MethodPost)
+	}
 	if p, ok := a.providers["dev"].(*DevProvider); ok {
 		r.HandleFunc("/auth/dev/authorize", a.guard(p.authorize)).Methods(http.MethodGet)
 	}
@@ -395,6 +418,104 @@ func (a *Auth) handleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 	a.ClearSession(w, r)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ---- username / password -------------------------------------------------
+
+type passwordRequest struct {
+	Handle   string `json:"handle"`
+	Password string `json:"password"`
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func jsonError(w http.ResponseWriter, status int, code, msg string) {
+	writeJSON(w, status, map[string]string{"error": msg, "code": code})
+}
+
+// handlePassword serves register (register=true) and login. Both need a
+// same-origin JSON POST, so a cross-site page can neither create accounts nor
+// probe passwords from a victim's browser. Login failures are counted per
+// (IP, username) and per username; a locked key is refused before any hashing.
+// The answer is the same for an unknown username and a wrong password.
+func (a *Auth) handlePassword(register bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !a.SameOrigin(r) {
+			jsonError(w, http.StatusForbidden, service.CodeForbidden, "cross-site request refused")
+			return
+		}
+		if !strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "application/json") {
+			jsonError(w, http.StatusUnsupportedMediaType, service.CodeInvalidArgument, "send application/json")
+			return
+		}
+		var req passwordRequest
+		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&req); err != nil {
+			jsonError(w, http.StatusBadRequest, service.CodeInvalidArgument, "expected {\"handle\", \"password\"}")
+			return
+		}
+		handle := service.NormalizeHandle(req.Handle)
+		ipKey := ClientIP(r) + "|" + handle
+		if !register {
+			for _, t := range []struct {
+				f   *FailTracker
+				key string
+			}{{a.failIP, ipKey}, {a.failUser, handle}} {
+				if blocked, wait := t.f.Blocked(t.key); blocked {
+					w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
+					jsonError(w, http.StatusTooManyRequests, service.CodeLimit,
+						"too many failed attempts; try again in "+strconv.Itoa(int(wait.Minutes())+1)+" minutes")
+					return
+				}
+			}
+		}
+		var acct *service.Account
+		var err error
+		if register {
+			acct, err = a.cfg.Accounts.RegisterPassword(req.Handle, req.Password)
+		} else {
+			acct, err = a.cfg.Accounts.VerifyPassword(req.Handle, req.Password)
+		}
+		if err != nil {
+			status, code := http.StatusBadRequest, service.CodeInvalidArgument
+			var se *service.Error
+			if errors.As(err, &se) {
+				code = se.Code
+				switch se.Code {
+				case service.CodeUnauthenticated:
+					status = http.StatusUnauthorized
+					a.failIP.Fail(ipKey)
+					a.failUser.Fail(handle)
+				case service.CodeForbidden:
+					status = http.StatusNotFound
+				case service.CodeLimit:
+					status = http.StatusTooManyRequests
+				}
+				jsonError(w, status, code, se.Msg)
+				return
+			}
+			log.Printf("auth: password %s: %v", map[bool]string{true: "register", false: "login"}[register], err)
+			jsonError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
+			return
+		}
+		a.failIP.Clear(ipKey)
+		if old, err := r.Cookie(SessionCookie); err == nil {
+			a.cfg.Accounts.EndLogin(old.Value)
+		}
+		token, expires, err := a.cfg.Accounts.StartLogin(acct.ID)
+		if err != nil {
+			log.Printf("auth: start login: %v", err)
+			jsonError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
+			return
+		}
+		a.SetSession(w, r, token, expires)
+		writeJSON(w, http.StatusOK, map[string]string{"handle": acct.Handle})
+	}
 }
 
 // ---- redirect validation -----------------------------------------------------
