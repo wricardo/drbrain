@@ -300,8 +300,14 @@ type Query {
 
 type Mutation {
   createSession(mapID: ID!, displayName: String): Session!
-  deleteSession(id: ID!): Boolean!
-  renameSession(id: ID!, displayName: String!): Session!
+  """
+  Deletes a session. A guest session can be deleted by anyone who knows its id. A session that belongs to a
+  signed-in player can only be deleted by that player's signed-in browser, or by passing the ownerToken
+  that createSession returned (FORBIDDEN otherwise).
+  """
+  deleteSession(id: ID!, ownerToken: String): Boolean!
+  "Renames a session; the same rule as deleteSession applies."
+  renameSession(id: ID!, displayName: String!, ownerToken: String): Session!
   setProgram(sessionID: ID!, program: ProgramInput!): Session!
   run(sessionID: ID!, speedMs: Int = 500): Session!
   pause(sessionID: ID!): Session!

@@ -126,7 +126,12 @@ account. You can ignore it; never post it anywhere (a session id alone is public
 claimed).
 
 Other session mutations: `pause`, `reset`, `renameSession(id, displayName)`,
-`deleteSession(id)`. Query `sessions(sort: RECENT, limit: 50, mapId: "...")` lists sessions.
+`deleteSession(id)`. Sessions you create are guest sessions and anyone who knows the id can play,
+rename or delete them. A session that belongs to a signed-in human can still be played by anyone
+with its id (that is how an agent helps a person), but only that person's signed-in browser, or a
+call that passes the `ownerToken` argument (`deleteSession(id, ownerToken: "...")`,
+`renameSession(id, displayName, ownerToken: "...")`), can delete or rename it; anyone else gets
+`FORBIDDEN`. Query `sessions(sort: RECENT, limit: 50, mapId: "...")` lists sessions.
 
 ---
 

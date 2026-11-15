@@ -524,6 +524,52 @@ func (svc *gameService) claimOne(accountID string, c SessionClaim) string {
 	return ClaimAttached
 }
 
+// SessionActor is who asks to delete or rename a session: the signed-in account
+// of the request (""= none) and/or the owner token the session's creator was
+// given.
+type SessionActor struct {
+	AccountID  string
+	OwnerToken string
+}
+
+// AuthorizeSessionChange decides whether actor may delete or rename a session.
+// Guest sessions stay open to anyone who knows the id, as they always were (a
+// human and an agent can share one). A session that belongs to a signed-in
+// player's account is theirs: it needs that account's login, or the secret
+// owner token (constant-time compare of hashes). Playing a session (setProgram,
+// run, step, pause, reset) is deliberately not gated, so "Play with an AI" keeps
+// working for signed-in players; recorded wins survive those anyway, and
+// deleting a session is what would destroy a leaderboard entry. An unknown
+// session is NOT_FOUND, as before. A link to an account that no longer exists
+// (or accounts being off) counts as a guest session.
+func (svc *gameService) AuthorizeSessionChange(id string, actor SessionActor) error {
+	s, err := svc.get(id)
+	if err != nil {
+		return err
+	}
+	s.Lock()
+	owner, hash := s.AccountID, s.OwnerHash
+	s.Unlock()
+	if owner == "" {
+		return nil
+	}
+	st := svc.opts.Accounts
+	if st == nil {
+		return nil
+	}
+	if _, ok := st.Get(owner); !ok {
+		return nil
+	}
+	if actor.AccountID == owner {
+		return nil
+	}
+	if actor.OwnerToken != "" && hash != "" &&
+		subtle.ConstantTimeCompare([]byte(HashToken(actor.OwnerToken)), []byte(hash)) == 1 {
+		return nil
+	}
+	return Errorf(CodeForbidden, "this run belongs to a signed-in player; only they can delete or rename it")
+}
+
 // accountFor looks up an account for a board row; false when accounts are off
 // or the account no longer exists.
 func (svc *gameService) accountFor(id string, cache map[string]*Account) *Account {

@@ -125,10 +125,10 @@ type ComplexityRoot struct {
 		CreateSession  func(childComplexity int, mapID string, displayName *string) int
 		DeleteAccount  func(childComplexity int, confirmHandle string) int
 		DeleteMap      func(childComplexity int, id string) int
-		DeleteSession  func(childComplexity int, id string) int
+		DeleteSession  func(childComplexity int, id string, ownerToken *string) int
 		Logout         func(childComplexity int) int
 		Pause          func(childComplexity int, sessionID string) int
-		RenameSession  func(childComplexity int, id string, displayName string) int
+		RenameSession  func(childComplexity int, id string, displayName string, ownerToken *string) int
 		Reset          func(childComplexity int, sessionID string) int
 		Run            func(childComplexity int, sessionID string, speedMs *int) int
 		SetProgram     func(childComplexity int, sessionID string, program model.ProgramInput) int
@@ -241,8 +241,8 @@ type MapResolver interface {
 }
 type MutationResolver interface {
 	CreateSession(ctx context.Context, mapID string, displayName *string) (*model.Session, error)
-	DeleteSession(ctx context.Context, id string) (bool, error)
-	RenameSession(ctx context.Context, id string, displayName string) (*model.Session, error)
+	DeleteSession(ctx context.Context, id string, ownerToken *string) (bool, error)
+	RenameSession(ctx context.Context, id string, displayName string, ownerToken *string) (*model.Session, error)
 	SetProgram(ctx context.Context, sessionID string, program model.ProgramInput) (*model.Session, error)
 	Run(ctx context.Context, sessionID string, speedMs *int) (*model.Session, error)
 	Pause(ctx context.Context, sessionID string) (*model.Session, error)
@@ -682,7 +682,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.DeleteSession(childComplexity, args["id"].(string)), true
+		return e.complexity.Mutation.DeleteSession(childComplexity, args["id"].(string), args["ownerToken"].(*string)), true
 
 	case "Mutation.logout":
 		if e.complexity.Mutation.Logout == nil {
@@ -713,7 +713,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.RenameSession(childComplexity, args["id"].(string), args["displayName"].(string)), true
+		return e.complexity.Mutation.RenameSession(childComplexity, args["id"].(string), args["displayName"].(string), args["ownerToken"].(*string)), true
 
 	case "Mutation.reset":
 		if e.complexity.Mutation.Reset == nil {
@@ -1710,8 +1710,14 @@ type Query {
 
 type Mutation {
   createSession(mapID: ID!, displayName: String): Session!
-  deleteSession(id: ID!): Boolean!
-  renameSession(id: ID!, displayName: String!): Session!
+  """
+  Deletes a session. A guest session can be deleted by anyone who knows its id. A session that belongs to a
+  signed-in player can only be deleted by that player's signed-in browser, or by passing the ownerToken
+  that createSession returned (FORBIDDEN otherwise).
+  """
+  deleteSession(id: ID!, ownerToken: String): Boolean!
+  "Renames a session; the same rule as deleteSession applies."
+  renameSession(id: ID!, displayName: String!, ownerToken: String): Session!
   setProgram(sessionID: ID!, program: ProgramInput!): Session!
   run(sessionID: ID!, speedMs: Int = 500): Session!
   pause(sessionID: ID!): Session!
@@ -1972,6 +1978,11 @@ func (ec *executionContext) field_Mutation_deleteSession_args(ctx context.Contex
 		return nil, err
 	}
 	args["id"] = arg0
+	arg1, err := ec.field_Mutation_deleteSession_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg1
 	return args, nil
 }
 func (ec *executionContext) field_Mutation_deleteSession_argsID(
@@ -1989,6 +2000,24 @@ func (ec *executionContext) field_Mutation_deleteSession_argsID(
 	}
 
 	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Mutation_deleteSession_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
 	return zeroVal, nil
 }
 
@@ -2033,6 +2062,11 @@ func (ec *executionContext) field_Mutation_renameSession_args(ctx context.Contex
 		return nil, err
 	}
 	args["displayName"] = arg1
+	arg2, err := ec.field_Mutation_renameSession_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg2
 	return args, nil
 }
 func (ec *executionContext) field_Mutation_renameSession_argsID(
@@ -2068,6 +2102,24 @@ func (ec *executionContext) field_Mutation_renameSession_argsDisplayName(
 	}
 
 	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Mutation_renameSession_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
 	return zeroVal, nil
 }
 
@@ -4887,7 +4939,7 @@ func (ec *executionContext) _Mutation_deleteSession(ctx context.Context, field g
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().DeleteSession(rctx, fc.Args["id"].(string))
+		return ec.resolvers.Mutation().DeleteSession(rctx, fc.Args["id"].(string), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -4942,7 +4994,7 @@ func (ec *executionContext) _Mutation_renameSession(ctx context.Context, field g
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().RenameSession(rctx, fc.Args["id"].(string), fc.Args["displayName"].(string))
+		return ec.resolvers.Mutation().RenameSession(rctx, fc.Args["id"].(string), fc.Args["displayName"].(string), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
