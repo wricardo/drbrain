@@ -142,4 +142,12 @@ var e={NOT_FOUND:`Not found`,INVALID_PROGRAM:`Invalid program`,SESSION_PLAYING:`
       yours { ${w} }
     }
   }
-`;export{n as _,l as a,v as c,d,y as f,C as g,x as h,T as i,h as l,_ as m,p as n,u as o,m as p,S as r,g as s,b as t,f as u,r as v};
+`,E=`
+  query PlayerRuns($sessionIds: [ID!], $name: String) {
+    playerRuns(sessionIds: $sessionIds, name: $name) {
+      mapId
+      total
+      entry { ${w} }
+    }
+  }
+`;export{C as _,l as a,E as c,f as d,d as f,x as g,_ as h,T as i,v as l,m,p as n,u as o,y as p,S as r,g as s,b as t,h as u,n as v,r as y};
