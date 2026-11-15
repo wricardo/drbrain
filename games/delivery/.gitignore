@@ -17,3 +17,10 @@ coverage.html
 /frontend/build/
 /frontend/node_modules/
 /frontend/.svelte-kit/
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
+*.gate.lock*
