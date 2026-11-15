@@ -1,3 +1,4 @@
+import { isOfficial } from './maps';
 import { buildRunRows, type RunRow } from './runs';
 import type { Account, GameMap, PlayerRun, SessionClaimResult } from './types';
 
@@ -70,11 +71,6 @@ export function handleChangeText(account: Pick<Account, 'handleChangeableAt'>, n
 	if (Number.isNaN(at.getTime()) || at.getTime() <= now.getTime()) return null;
 	const hours = Math.ceil((at.getTime() - now.getTime()) / 3_600_000);
 	return hours <= 1 ? 'You can change your handle again in about an hour.' : `You can change your handle again in about ${hours} hours.`;
-}
-
-/** The official campaign is the set of maps shipped with the game; everything else is a community map. */
-export function isOfficial(map: Pick<GameMap, 'builtin'>): boolean {
-	return map.builtin;
 }
 
 export interface Tally {

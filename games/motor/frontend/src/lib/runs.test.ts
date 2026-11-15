@@ -40,6 +40,13 @@ describe('filters and counts', () => {
 		expect(solvedSummary(rows)).toBe('Solved 2 of 4 maps');
 		expect(solvedSummary(buildRunRows([maps[0]], []))).toBe('Solved 0 of 1 map');
 	});
+	it('counts the official campaign on its own once community maps exist, and lists them last', () => {
+		const community = { id: 'zig', name: 'Claude Zigzag 7x5', difficulty: 'easy', builtin: false } as GameMap;
+		const official = maps.map((m) => ({ ...m, builtin: true }) as GameMap);
+		const withCommunity = buildRunRows([community, ...official], [run('e1'), run('zig')]);
+		expect(withCommunity.map((r) => r.map.id)).toEqual(['e1', 'e2', 'm', 'h', 'zig']);
+		expect(solvedSummary(withCommunity)).toBe('Solved 1 of 4 official maps · 1 of 1 community map');
+	});
 });
 
 describe('links and text', () => {

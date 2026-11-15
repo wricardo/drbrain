@@ -1,4 +1,4 @@
-import { sortMaps } from './maps';
+import { isOfficial, sortMaps } from './maps';
 import type { GameMap, PlayerRun } from './types';
 
 /** One map on the "My runs" page: the map and the player's best run on it, or null when unsolved. */
@@ -51,8 +51,17 @@ export function runText(run: PlayerRun): string {
 	return `${slots} ${slots === 1 ? 'slot' : 'slots'} · ${steps} ${steps === 1 ? 'step' : 'steps'}`;
 }
 
-/** "Solved 5 of 17 maps". */
+/**
+ * "Solved 5 of 17 maps". Once community maps exist the official campaign is counted on
+ * its own, so the headline number does not move when a player makes a map:
+ * "Solved 5 of 17 official maps · 1 of 2 community maps".
+ */
 export function solvedSummary(rows: RunRow[]): string {
-	const { solved, all } = countRows(rows);
-	return `Solved ${solved} of ${all} ${all === 1 ? 'map' : 'maps'}`;
+	const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+	const official = rows.filter((r) => isOfficial(r.map));
+	const community = rows.filter((r) => !isOfficial(r.map));
+	const o = countRows(official);
+	if (community.length === 0) return `Solved ${o.solved} of ${plural(o.all, 'map')}`;
+	const c = countRows(community);
+	return `Solved ${o.solved} of ${plural(o.all, 'official map')} · ${c.solved} of ${plural(c.all, 'community map')}`;
 }

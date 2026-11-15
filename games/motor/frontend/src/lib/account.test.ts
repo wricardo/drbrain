@@ -123,8 +123,8 @@ describe('summarizeProfile', () => {
 		expect(s.community).toEqual({ solved: 1, total: 2 });
 		expect(tallyText(s.official, 'solved')).toBe('2 of 3 solved');
 	});
-	it('lists solved maps in the standard order and drops deleted maps', () => {
-		expect(s.rows.map((r) => r.map.id)).toEqual(['c1', 'e1', 'h']);
+	it('lists solved maps in the standard order (official maps first, then community) and drops deleted maps', () => {
+		expect(s.rows.map((r) => r.map.id)).toEqual(['e1', 'h', 'c1']);
 	});
 	it('lists the latest wins first, limited', () => {
 		expect(s.recent.map((r) => r.mapId)).toEqual(['c1', 'h', 'e1']);
