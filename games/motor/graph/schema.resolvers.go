@@ -42,7 +42,10 @@ func (r *mutationResolver) CreateSession(ctx context.Context, mapID string, disp
 }
 
 // DeleteSession is the resolver for the deleteSession field.
-func (r *mutationResolver) DeleteSession(ctx context.Context, id string) (bool, error) {
+func (r *mutationResolver) DeleteSession(ctx context.Context, id string, ownerToken *string) (bool, error) {
+	if err := r.Service.AuthorizeSessionChange(id, sessionActor(ctx, ownerToken)); err != nil {
+		return false, toGQLError(err)
+	}
 	if err := r.Service.DeleteSession(id); err != nil {
 		return false, toGQLError(err)
 	}
@@ -50,7 +53,10 @@ func (r *mutationResolver) DeleteSession(ctx context.Context, id string) (bool, 
 }
 
 // RenameSession is the resolver for the renameSession field.
-func (r *mutationResolver) RenameSession(ctx context.Context, id string, displayName string) (*model.Session, error) {
+func (r *mutationResolver) RenameSession(ctx context.Context, id string, displayName string, ownerToken *string) (*model.Session, error) {
+	if err := r.Service.AuthorizeSessionChange(id, sessionActor(ctx, ownerToken)); err != nil {
+		return nil, toGQLError(err)
+	}
 	s, err := r.Service.RenameSession(id, displayName)
 	if err != nil {
 		return nil, toGQLError(err)

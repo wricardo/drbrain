@@ -138,7 +138,7 @@ HTTP /graphql (api) → gqlgen resolver (graph) → GameService (game/service)
 - A corrupt player map file is logged and skipped at startup; a corrupt or misnamed built-in map is fatal.
 - `max_steps ≤ 10000` and `max_call_depth ≤ 64` bound the cost of a run.
 - Request body capped at 1 MiB; query complexity capped at 1000 with weighted costs (`sessions` by `limit`). `api/hardening_test.go` keeps a copy of the frontend queries to make sure they stay under the cap.
-- Accounts: handles are validated and blocklisted, login tokens and owner tokens are random 32-byte values stored only as SHA-256, cookies are `HttpOnly`/`SameSite=Lax`/`Secure` and only honoured on same-origin JSON POSTs, OAuth state is single use and bound to the browser, redirects are relative-only, `/auth` is rate limited. Details in [Accounts and sign-in](#accounts-and-sign-in).
+- Accounts: deleting or renaming a signed-in player's session needs their login or owner token (see [Who may change a session](#who-may-change-a-session)); handles are validated and blocklisted, login tokens and owner tokens are random 32-byte values stored only as SHA-256, cookies are `HttpOnly`/`SameSite=Lax`/`Secure` and only honoured on same-origin JSON POSTs, OAuth state is single use and bound to the browser, redirects are relative-only, `/auth` is rate limited. Details in [Accounts and sign-in](#accounts-and-sign-in).
 - WebSocket: 10 s init timeout, frame-size guard (`api/wslimit.go`), origin check against `ALLOWED_ORIGINS`, which also drives CORS on `/graphql`.
 - Map creation is atomic (`MapStore.Create`; a conflict is `INVALID_ARGUMENT`). Never check-then-save.
 
@@ -311,6 +311,12 @@ A session id is public (anyone watching a winner sees it), so an account can **n
 - A signed-in creator's `createSession` attaches the session to the account from the cookie.
 - Every session made through `createSession` gets a secret **owner token**. Only its SHA-256 is stored (`Session.OwnerHash`); the token is returned once, in the `ownerToken` field of the `createSession` response, and is `null` in every query, list and subscription. Existing agents that read `id` are unaffected; the field is optional.
 - After signing in the browser offers (never automatically, since a shared computer may hold someone else's guest runs) to "add my guest runs": `claimSessions([{sessionID, ownerToken}])`, up to 100 a call. A claim succeeds only when the token matches (constant-time compare of the hashes) and the session belongs to no account. A session already on another account is never re-attached; unknown sessions, wrong tokens and sessions from before owner tokens all answer `REJECTED` without saying which. The browser keeps the tokens in `localStorage` (`lib/sessions.ts`) and forgets them once handled or when the account is deleted.
+
+### Who may change a session
+
+Session ids are public, so what an id lets you do is limited. **Guest sessions** are open to anyone who knows the id, as they always were: a human and an agent can share one, and every existing agent keeps working. A session that belongs to a **signed-in player's account** (created while signed in, or claimed) is protected against the two destructive actions: `deleteSession` and `renameSession` need that account's login (cookie) or the secret owner token, passed as the optional `ownerToken` argument (`AuthorizeSessionChange` in `game/service/accounts.go`, called by the resolvers before `DeleteSession`/`RenameSession`; anyone else gets `FORBIDDEN`, an unknown session is still `NOT_FOUND`). Deleting would destroy the account's leaderboard entry, and renaming would let anyone put text on a child's session in the public lists.
+
+Playing (`setProgram`, `run`, `step`, `pause`, `reset`) stays open on purpose: "Play with an AI" hands the session id to an agent, and recorded wins survive any program change, so playing someone's session cannot remove or worsen their entry. If that ever needs closing, the owner token (or a separate play token that the prompt card includes) is the mechanism. A link to an account that no longer exists, or accounts being off, counts as a guest session.
 
 ### Leaderboard and profiles
 
