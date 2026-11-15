@@ -14,7 +14,7 @@
 	}}
 />
 
-<div class="fixed inset-0 z-50 flex items-center justify-center bg-indigo-950/40 p-4" role="presentation" onclick={(e) => e.target === e.currentTarget && onclose()}>
+<div class="fixed inset-0 z-50 flex items-center justify-center bg-indigo-950/40 dark:bg-black/60 p-4" role="presentation" onclick={(e) => e.target === e.currentTarget && onclose()}>
 	<div role="dialog" aria-modal="true" aria-labelledby="shortcuts-title" class="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl" data-testid="shortcuts-dialog">
 		<div class="flex items-center justify-between">
 			<h2 id="shortcuts-title" class="text-lg font-semibold text-indigo-950">Keyboard shortcuts</h2>
