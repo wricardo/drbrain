@@ -103,7 +103,9 @@
 		maxCallDepth = m.maxCallDepth;
 		allowRecursion = m.allowRecursion;
 		existing = !duplicate;
-		builtin = m.builtin;
+		// A duplicate is a brand-new map: it is never built-in, so it needs
+		// no admin key however the source map is stored.
+		builtin = duplicate ? false : m.builtin;
 		validation = null;
 	}
 
