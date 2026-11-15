@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { account, refreshAccount, setMe, signOut } from './account';
 import type { Account } from '../types';
 
-const me: Account = { handle: 'speedy_fox', displayName: 'Speedy', profilePublic: true, createdAt: '2026-01-01T00:00:00Z', handleChangeableAt: null };
+const me: Account = { handle: 'speedy_fox', displayName: 'Speedy', profilePublic: true, createdAt: '2026-01-01T00:00:00Z', handleChangeableAt: null, hasPassword: false };
 const ok = <T>(data: T) => ({ toPromise: () => Promise.resolve({ data }) });
 const fails = () => ({ toPromise: () => Promise.resolve({ error: new Error('offline') }) });
 

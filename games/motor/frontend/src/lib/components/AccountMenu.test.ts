@@ -11,7 +11,7 @@ vi.mock('$app/stores', () => ({
 }));
 
 const CLIENT_KEY = '$$_urql';
-const me: Account = { handle: 'speedy_fox', displayName: 'Speedy', profilePublic: true, createdAt: '2026-01-01T00:00:00Z', handleChangeableAt: null };
+const me: Account = { handle: 'speedy_fox', displayName: 'Speedy', profilePublic: true, createdAt: '2026-01-01T00:00:00Z', handleChangeableAt: null, hasPassword: false };
 
 // The store is module-level, so each test sets the state through refreshAccount with a fake client.
 async function load(data: { me: Account | null; authProviders: { id: string; name: string }[] }) {
