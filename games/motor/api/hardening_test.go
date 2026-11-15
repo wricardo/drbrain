@@ -25,16 +25,17 @@ func TestCreateMapSubTapeLengthsOverHTTP(t *testing.T) {
 	const layout = `["...", ">.*", "..."]`
 	cases := []struct {
 		name  string
+		id    string
 		extra string
 		want  string
 	}{
-		{"omitted", ``, `[10]`},
-		{"empty", `, subTapeLengths: []`, `[]`},
-		{"explicit", `, subTapeLengths: [3, 4]`, `[3,4]`},
+		{"omitted", "fresh_omitted", ``, `[10]`},
+		{"empty", "fresh_empty", `, subTapeLengths: []`, `[]`},
+		{"explicit", "fresh_explicit", `, subTapeLengths: [3, 4]`, `[3,4]`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			q := `mutation { createMap(map: {id: "fresh", name: "F", layout: ` + layout + tc.extra + `}) { subTapeLengths } }`
+			q := `mutation { createMap(map: {id: "` + tc.id + `", name: "F", layout: ` + layout + tc.extra + `}) { subTapeLengths } }`
 			_, out := gql(t, ts.URL, q, nil)
 			if out["errors"] != nil {
 				t.Fatalf("errors: %v", out)

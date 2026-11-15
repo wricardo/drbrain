@@ -34,16 +34,38 @@ func (f *fakeService) GetMap(id string) (*engine.Map, error) {
 
 func (f *fakeService) IsBuiltinMap(id string) bool { return f.builtin[id] }
 
-func (f *fakeService) SaveMap(cfg engine.MapConfig) (*engine.Map, error) { return engine.NewMap(cfg) }
+func (f *fakeService) SaveMap(cfg engine.MapConfig) (*engine.Map, error) {
+	m, err := engine.NewMap(cfg)
+	if err != nil {
+		return nil, err
+	}
+	for i, existing := range f.maps {
+		if existing.ID == cfg.ID {
+			f.maps[i] = m
+			return m, nil
+		}
+	}
+	f.maps = append(f.maps, m)
+	return m, nil
+}
 
 func (f *fakeService) CreateMap(cfg engine.MapConfig) (*engine.Map, error) {
 	if _, err := f.GetMap(cfg.ID); err == nil {
 		return nil, service.Errorf(service.CodeInvalidArgument, "map %q already exists", cfg.ID)
 	}
-	return engine.NewMap(cfg)
+	return f.SaveMap(cfg)
 }
 
-func (f *fakeService) DeleteMap(id string) error { return nil }
+func (f *fakeService) DeleteMap(id string) error {
+	for i, m := range f.maps {
+		if m.ID == id {
+			f.maps = append(f.maps[:i], f.maps[i+1:]...)
+			delete(f.builtin, id)
+			return nil
+		}
+	}
+	return service.Errorf(service.CodeNotFound, "map %q not found", id)
+}
 
 func newTestServer(t *testing.T, opts Options) *httptest.Server {
 	t.Helper()
@@ -135,6 +157,25 @@ func TestMapMutationsOverHTTP(t *testing.T) {
 	_, out = gql(t, ts.URL, deleteMapMutation, nil)
 	if got := firstErrCode(out); got != service.CodeForbidden {
 		t.Fatalf("delete no key: code %q out=%v", got, out)
+	}
+	// A player-created map is fully open: update, delete, no key.
+	const createMutation = `mutation { createMap(map: {id: "mine", name: "Mine", layout: ["...", ">.*", "..."]}) { id builtin } }`
+	_, out = gql(t, ts.URL, createMutation, nil)
+	created, _ := out["data"].(map[string]any)["createMap"].(map[string]any)
+	if created == nil || created["builtin"] != false {
+		t.Fatalf("create: out=%v", out)
+	}
+	const updateMine = `mutation { updateMap(map: {id: "mine", name: "Mine 2", layout: ["...", ">.*", "..."]}) { id name } }`
+	if _, out = gql(t, ts.URL, updateMine, nil); out["errors"] != nil {
+		t.Fatalf("update own map: %v", out)
+	}
+	const deleteMine = `mutation { deleteMap(id: "mine") }`
+	if _, out = gql(t, ts.URL, deleteMine, nil); out["errors"] != nil {
+		t.Fatalf("delete own map: %v", out)
+	}
+	// Deleting a map that does not exist is NOT_FOUND, not silently true.
+	if _, out = gql(t, ts.URL, deleteMine, nil); firstErrCode(out) != service.CodeNotFound {
+		t.Fatalf("delete missing: out=%v", out)
 	}
 }
 
