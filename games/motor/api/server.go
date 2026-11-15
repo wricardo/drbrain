@@ -22,6 +22,7 @@ import (
 	"github.com/99designs/gqlgen/graphql/playground"
 	"github.com/gorilla/mux"
 	gorillaws "github.com/gorilla/websocket"
+	"github.com/wricardo/drbrain-motor-programming/auth"
 	"github.com/wricardo/drbrain-motor-programming/game/service"
 	"github.com/wricardo/drbrain-motor-programming/graph"
 	"github.com/wricardo/drbrain-motor-programming/graph/generated"
@@ -68,6 +69,10 @@ type Options struct {
 	// UIDirs are candidate frontend directories, first existing wins.
 	// Defaults to ./frontend/build then ./static.
 	UIDirs []string
+	// Auth enables sign-in: it mounts the /auth routes and lets /graphql read
+	// the login cookie. nil (no provider configured) leaves the server exactly
+	// as it was: no routes, no cookies, `me` is null and `authProviders` empty.
+	Auth *auth.Auth
 }
 
 // Server is the HTTP handler for the whole application.
@@ -85,7 +90,10 @@ func NewServer(svc service.GameService, hub *websocket.Hub, opts Options) (*Serv
 	}
 	s := &Server{router: mux.NewRouter(), llms: llms, opts: opts}
 
-	s.router.Handle("/graphql", withCORS(opts.AllowedOrigins, withHTTPRequest(limitBody(limitWebsocketMessages(newGraphQLServer(svc, hub, opts))))))
+	s.router.Handle("/graphql", withCORS(opts.AllowedOrigins, withHTTPRequest(withViewer(opts.Auth, limitBody(limitWebsocketMessages(newGraphQLServer(svc, hub, opts)))))))
+	if opts.Auth != nil {
+		opts.Auth.Routes(s.router)
+	}
 	if opts.Playground {
 		s.router.Handle("/playground", playground.Handler("Dr Brain - Motor Programming GraphQL playground", "/graphql"))
 	}
@@ -109,8 +117,14 @@ func newGraphQLServer(svc service.GameService, hub *websocket.Hub, opts Options)
 	if initTimeout == 0 {
 		initTimeout = wsInitTimeout
 	}
+	resolver := graph.NewResolver(svc, hub)
+	if opts.Auth != nil {
+		for _, p := range opts.Auth.Providers() {
+			resolver.Providers = append(resolver.Providers, graph.Provider{ID: p.ID, Name: p.Name})
+		}
+	}
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{
-		Resolvers:  graph.NewResolver(svc, hub),
+		Resolvers:  resolver,
 		Complexity: complexityRoot(),
 	}))
 	srv.AddTransport(transport.POST{})
@@ -159,6 +173,14 @@ func complexityRoot() generated.ComplexityRoot {
 	// playerRuns: one scan of every session, then up to one row per map.
 	c.Query.PlayerRuns = func(child int, _ []string, _ *string) int {
 		return safeMul(child, playerRunsRowCost) + leaderboardBaseCost
+	}
+	// profile: the same scan plus one row per map.
+	c.Query.Profile = func(child int, _ string) int {
+		return safeMul(child, playerRunsRowCost) + leaderboardBaseCost
+	}
+	// claimSessions: bounded by the service (service.MaxClaims); each claim is a lookup.
+	c.Mutation.ClaimSessions = func(child int, claims []*model.SessionClaimInput) int {
+		return safeMul(child, len(claims)) + 1
 	}
 	return c
 }
@@ -222,6 +244,26 @@ func withHTTPRequest(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := context.WithValue(r.Context(), graph.HTTPRequestKey{}, r)
 		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// withViewer resolves the signed-in player from the login cookie and stores
+// it in the context. Only POST requests carry a viewer (subscriptions and
+// everything else stay public), and only same-origin JSON ones: a request that
+// fails Auth.Viewer is treated as anonymous, so another site can never act as
+// the player. With auth nil (sign-in off) the cookie is never looked at.
+func withViewer(a *auth.Auth, next http.Handler) http.Handler {
+	if a == nil {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			if acct, token := a.Viewer(r); acct != nil {
+				v := &graph.Viewer{Account: acct, Token: token, ClearSession: func() { a.ClearSession(w, r) }}
+				r = r.WithContext(context.WithValue(r.Context(), graph.ViewerKey{}, v))
+			}
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 
@@ -305,6 +347,7 @@ func (s *Server) handleLLMS(w http.ResponseWriter, r *http.Request) {
 // spaRoutes mirrors the top-level directories in frontend/src/routes.
 var spaRoutes = map[string]bool{
 	"": true, "play": true, "watch": true, "maps": true, "editor": true, "learn": true, "sessions": true, "multi": true, "leaderboard": true, "runs": true,
+	"u": true, "settings": true,
 }
 
 // isSPARoute reports whether the first path segment is a client-side route.

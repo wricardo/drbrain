@@ -62,7 +62,8 @@ jobs:
 
       # Systemd unit, nginx vhost and /opt/drbrain-motor-programming/.env are
       # provisioned once on the host; this step only swaps the release.
-      # sessions/, maps-user/ (player-created maps) and .env are preserved.
+      # sessions/, maps-user/ (player-created maps), accounts/ (player accounts) and
+      # .env are preserved: only maps/ and static/ are replaced.
       - name: Install and restart
         run: |
           ssh deploy '

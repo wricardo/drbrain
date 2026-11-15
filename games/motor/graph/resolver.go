@@ -27,7 +27,12 @@ const subscriptionBuffer = 8
 type Resolver struct {
 	Service service.GameService
 	Hub     *websocket.Hub
+	// Providers lists the enabled sign-in providers (empty = sign-in is off).
+	Providers []Provider
 }
+
+// Provider is a sign-in provider as shown to clients.
+type Provider struct{ ID, Name string }
 
 // NewResolver builds the resolver root from the game service and the
 // subscription hub.
@@ -38,6 +43,46 @@ func NewResolver(svc service.GameService, hub *websocket.Hub) *Resolver {
 // HTTPRequestKey is the context key under which the *http.Request is stored
 // by the HTTP middleware, so resolvers can read headers (X-Admin-Key).
 type HTTPRequestKey struct{}
+
+// ViewerKey is the context key under which the HTTP middleware stores the
+// *Viewer of a request.
+type ViewerKey struct{}
+
+// Viewer is the signed-in player of a request. It is only set when the login
+// cookie is valid and the request passed the same-origin check, so a cross-site
+// page can never act as the player.
+type Viewer struct {
+	Account *service.Account
+	// Token is the login cookie's value (for logout).
+	Token string
+	// ClearSession removes the login cookie from the response.
+	ClearSession func()
+}
+
+// ViewerFrom returns the request's viewer, or nil.
+func ViewerFrom(ctx context.Context) *Viewer {
+	v, _ := ctx.Value(ViewerKey{}).(*Viewer)
+	if v == nil || v.Account == nil {
+		return nil
+	}
+	return v
+}
+
+// viewerID is the viewer's account id, "" for guests.
+func viewerID(ctx context.Context) string {
+	if v := ViewerFrom(ctx); v != nil {
+		return v.Account.ID
+	}
+	return ""
+}
+
+// requireViewer returns the signed-in account or an UNAUTHENTICATED error.
+func requireViewer(ctx context.Context) (*service.Account, error) {
+	if v := ViewerFrom(ctx); v != nil {
+		return v.Account, nil
+	}
+	return nil, codedError(service.CodeUnauthenticated, "sign in first")
+}
 
 // checkAdminKey gates operations that change shipped content. ADMIN_API_KEY
 // must be configured and sent as X-Admin-Key; local development can opt out

@@ -38,6 +38,11 @@ type PersistedSession struct {
 	// leaderboard ordering; absent in files written before leaderboards.
 	FewestSlots *service.Win `json:"fewest_slots,omitempty"`
 	FewestSteps *service.Win `json:"fewest_steps,omitempty"`
+	// AccountID links the session to a signed-in player's account; OwnerHash is
+	// the SHA-256 of its secret owner token. Absent for guest sessions and for
+	// files written before accounts.
+	AccountID string `json:"account_id,omitempty"`
+	OwnerHash string `json:"owner_hash,omitempty"`
 }
 
 // FilePersistence stores one JSON file per session in a directory.
@@ -87,6 +92,8 @@ func (fp *FilePersistence) Save(s *service.Session) (err error) {
 		BestSteps:     s.BestSteps,
 		FewestSlots:   s.FewestSlots,
 		FewestSteps:   s.FewestSteps,
+		AccountID:     s.AccountID,
+		OwnerHash:     s.OwnerHash,
 	})
 	if err != nil {
 		return fmt.Errorf("marshal session %s: %w", s.ID, err)
@@ -168,6 +175,7 @@ func (fp *FilePersistence) Load(id string) (*service.Session, error) {
 		Seq: ps.Seq, CreatedAt: ps.CreatedAt, LastActionAt: last,
 		Attempts: ps.Attempts, BestSteps: ps.BestSteps,
 		FewestSlots: sanitizeWin(m, ps.FewestSlots), FewestSteps: sanitizeWin(m, ps.FewestSteps),
+		AccountID: sanitizeAccountID(ps.AccountID), OwnerHash: sanitizeHash(ps.OwnerHash),
 	}
 	// Sessions saved before leaderboards existed: a WON VM identifies its win.
 	s.BackfillWin()
@@ -182,6 +190,33 @@ func sanitizeWin(m *engine.Map, w *service.Win) *service.Win {
 	}
 	c := *w
 	return &c
+}
+
+// sanitizeAccountID drops an account link that is not a plausible account id
+// (a hand-edited file must not smuggle odd strings into later lookups).
+func sanitizeAccountID(id string) string {
+	if len(id) == 0 || len(id) > 64 {
+		return ""
+	}
+	for _, r := range id {
+		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f') {
+			return ""
+		}
+	}
+	return id
+}
+
+// sanitizeHash keeps only a 64-character lower-case hex SHA-256.
+func sanitizeHash(h string) string {
+	if len(h) != 64 {
+		return ""
+	}
+	for _, r := range h {
+		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'f') {
+			return ""
+		}
+	}
+	return h
 }
 
 // Delete removes <dir>/<id>.json. It returns ErrNotFound if there is none.

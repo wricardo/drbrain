@@ -18,6 +18,8 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/wricardo/drbrain-motor-programming/api"
+	"github.com/wricardo/drbrain-motor-programming/auth"
+	"github.com/wricardo/drbrain-motor-programming/game/account"
 	"github.com/wricardo/drbrain-motor-programming/game/config"
 	"github.com/wricardo/drbrain-motor-programming/game/service"
 	"github.com/wricardo/drbrain-motor-programming/game/session"
@@ -30,6 +32,8 @@ const (
 	defaultMaxSessions = 1000
 	// defaultMaxUserMaps caps player-created maps (MAX_USER_MAPS).
 	defaultMaxUserMaps = 200
+	// defaultMaxAccounts caps player accounts (MAX_ACCOUNTS).
+	defaultMaxAccounts = service.DefaultMaxAccounts
 	shutdownTimeout    = 10 * time.Second
 )
 
@@ -42,6 +46,7 @@ var (
 	mapsDir      = flag.String("maps-dir", "maps", "Directory containing map JSON files")
 	userMapsDir  = flag.String("user-maps-dir", "maps-user", "Directory for maps created through the API (survives deploys)")
 	sessionsDir  = flag.String("sessions-dir", "sessions", "Directory for persisted sessions")
+	accountsDir  = flag.String("accounts-dir", "accounts", "Directory for player accounts and logins (survives deploys); only used when sign-in is configured")
 	solutionsDir = flag.String("solutions-dir", "solutions", "Directory containing reference solutions (used by `make validate`; never served)")
 	debug        = flag.Bool("debug", false, "Enable debug logging")
 	publicURL    = flag.String("public-url", "", "Public base URL rendered into /llms.txt (defaults to the request host)")
@@ -90,6 +95,12 @@ func envDuration(key string, def time.Duration) time.Duration {
 	return d
 }
 
+// dirExists reports whether path is an existing directory.
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
 func main() {
 	if err := godotenv.Load(); err != nil {
 		if !os.IsNotExist(err) {
@@ -127,10 +138,44 @@ func run() error {
 		log.Printf("warning: loading persisted sessions: %v", err)
 	}
 
+	// Sign-in is optional: with no provider configured nothing below is created,
+	// no accounts/ directory is made, and the server behaves exactly as before.
+	providers, err := auth.ProvidersFromEnv(os.Getenv, *publicURL)
+	if err != nil {
+		return fmt.Errorf("sign-in configuration: %w", err)
+	}
+	var accounts *account.Store
+	if len(providers) > 0 || dirExists(*accountsDir) {
+		accounts, err = account.Open(*accountsDir, nil)
+		if err != nil {
+			return fmt.Errorf("accounts: %w", err)
+		}
+	}
+
 	hub := websocket.NewHub()
-	svc := service.New(maps, sessions, hub, service.Options{
-		SessionTTL: envDuration("SESSION_TTL", 7*24*time.Hour),
-	})
+	svcOpts := service.Options{
+		SessionTTL:  envDuration("SESSION_TTL", 7*24*time.Hour),
+		MaxAccounts: envInt("MAX_ACCOUNTS", defaultMaxAccounts),
+	}
+	if accounts != nil {
+		svcOpts.Accounts = accounts
+	}
+	svc := service.New(maps, sessions, hub, svcOpts)
+
+	var authHandler *auth.Auth
+	if len(providers) > 0 {
+		authHandler, err = auth.New(auth.Config{
+			Providers: providers, Accounts: svc, PublicURL: *publicURL, AllowedOrigins: os.Getenv("ALLOWED_ORIGINS"),
+		})
+		if err != nil {
+			return fmt.Errorf("sign-in: %w", err)
+		}
+		names := make([]string, len(providers))
+		for i, p := range providers {
+			names[i] = p.ID()
+		}
+		log.Printf("sign-in enabled: %v (accounts=%s)", names, *accountsDir)
+	}
 
 	introspection := envBool("GRAPHQL_INTROSPECTION", true)
 	playground := envBool("GRAPHQL_PLAYGROUND", true)
@@ -142,6 +187,7 @@ func run() error {
 		AllowedOrigins: os.Getenv("ALLOWED_ORIGINS"),
 		PublicURL:      *publicURL,
 		LLMSTemplate:   llmsTxtSource,
+		Auth:           authHandler,
 	})
 	if err != nil {
 		return err

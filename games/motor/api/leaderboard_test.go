@@ -19,10 +19,10 @@ import (
 
 // The frontend's leaderboard query (frontend/src/lib/queries.ts), kept here so
 // the complexity test fails when the page outgrows the cap.
-const leaderboardQ = `query Leaderboard($mapId: ID!, $order: LeaderboardOrder, $limit: Int, $sessionId: ID) { leaderboard(mapId: $mapId, order: $order, limit: $limit, sessionId: $sessionId) { mapId order total entries { rank sessionId displayName slots steps achievedAt } yours { rank sessionId displayName slots steps achievedAt } } }`
+const leaderboardQ = `query Leaderboard($mapId: ID!, $order: LeaderboardOrder, $limit: Int, $sessionId: ID) { leaderboard(mapId: $mapId, order: $order, limit: $limit, sessionId: $sessionId) { mapId order total entries { rank sessionId displayName handle mine slots steps achievedAt } yours { rank sessionId displayName handle mine slots steps achievedAt } } }`
 
 // The frontend's my-runs queries (frontend/src/lib/queries.ts).
-const playerRunsQ = `query PlayerRuns($sessionIds: [ID!], $name: String) { playerRuns(sessionIds: $sessionIds, name: $name) { mapId total entry { rank sessionId displayName slots steps achievedAt } } }`
+const playerRunsQ = `query PlayerRuns($sessionIds: [ID!], $name: String) { playerRuns(sessionIds: $sessionIds, name: $name) { mapId total entry { rank sessionId displayName handle mine slots steps achievedAt } } }`
 
 // newRealServer serves the real game service over a one-map temp directory.
 func newRealServer(t *testing.T) *httptest.Server {
