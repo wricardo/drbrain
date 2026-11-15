@@ -95,6 +95,10 @@ type GameService interface {
 	ListSessions(f SessionFilter) ([]*Session, error)
 	DeleteSession(id string) error
 	RenameSession(id, name string) (*Session, error)
+	// AuthorizeSessionChange checks that actor may delete or rename the session:
+	// always for guest sessions, only the owning account (or the owner token) for
+	// a signed-in player's. Transports call it before DeleteSession/RenameSession.
+	AuthorizeSessionChange(id string, actor SessionActor) error
 
 	// SetProgram validates and stores the program and resets the VM to start.
 	// Errors: INVALID_PROGRAM, SESSION_PLAYING.
@@ -132,6 +136,13 @@ type GameService interface {
 	// GetProfile is NOT_FOUND for unknown handles and for private profiles
 	// unless viewerAccountID is the owner.
 	GetProfile(handle, viewerAccountID string) (*Profile, error)
+	// RegisterPassword creates a username/password account (username = handle).
+	// VerifyPassword checks a login: every failure is ErrBadCredentials.
+	// ChangePassword needs the current password and ends the account's other logins.
+	// All three need AUTH_PASSWORD and fail with FORBIDDEN otherwise.
+	RegisterPassword(handle, password string) (*Account, error)
+	VerifyPassword(handle, password string) (*Account, error)
+	ChangePassword(accountID, current, next, keepToken string) error
 	// ClaimSessions attaches sessions to an account using their owner tokens.
 	ClaimSessions(accountID string, claims []SessionClaim) ([]ClaimResult, error)
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countByDifficulty, filterMaps, nextMap, sortMaps, splitMapName } from './maps';
+import { countByDifficulty, filterMaps, groupMaps, isOfficial, nextMap, sortMaps, splitMapName } from './maps';
 
 describe('sortMaps', () => {
 	it('orders easy -> medium -> hard, then by name, unknown last, without mutating', () => {
@@ -23,6 +23,46 @@ describe('sortMaps', () => {
 			{ name: 'Patterns 1 - Serpentine', difficulty: 'hard' }
 		];
 		expect(sortMaps(input).map((m) => m.name)).toEqual(['Patterns 1 - Serpentine', 'Patterns 4 - Comb', 'Patterns 10 - X']);
+	});
+});
+
+describe('official vs community maps', () => {
+	const official = (id: string, name: string, difficulty: string) => ({ id, name, difficulty, builtin: true });
+	const community = (id: string, name: string, difficulty: string) => ({ id, name, difficulty, builtin: false });
+	const mixed = [
+		community('zig', 'Claude Zigzag 7x5', 'easy'),
+		official('l5', 'Level 5 - Zigzag Path', 'medium'),
+		official('l1', 'Level 1 - Straight Line', 'easy'),
+		community('c2', 'A community hard one', 'hard'),
+		official('p1', 'Patterns 1 - Serpentine', 'hard')
+	];
+
+	it('isOfficial treats a missing flag as official and only builtin: false as community', () => {
+		expect(isOfficial({})).toBe(true);
+		expect(isOfficial({ builtin: true })).toBe(true);
+		expect(isOfficial({ builtin: false })).toBe(false);
+	});
+
+	it('sortMaps lists every official map before any community map, easy to hard inside each', () => {
+		expect(sortMaps(mixed).map((m) => m.id)).toEqual(['l1', 'l5', 'p1', 'zig', 'c2']);
+	});
+
+	it('groupMaps returns the two groups in order, each sorted, and drops an empty group', () => {
+		const groups = groupMaps(mixed);
+		expect(groups.map((g) => [g.id, g.label, g.maps.map((m) => m.id)])).toEqual([
+			['official', 'Official maps', ['l1', 'l5', 'p1']],
+			['community', 'Community maps', ['zig', 'c2']]
+		]);
+		expect(groupMaps(mixed.filter(isOfficial)).map((g) => g.id)).toEqual(['official']);
+		expect(groupMaps(mixed.filter((m) => !isOfficial(m))).map((g) => g.id)).toEqual(['community']);
+		expect(groupMaps([])).toEqual([]);
+	});
+
+	it('nextMap never leaves the group: the last official level has no next, a community map goes to the next community map', () => {
+		expect(nextMap(mixed, 'l1')?.id).toBe('l5');
+		expect(nextMap(mixed, 'p1')).toBeNull(); // does not fall into Claude Zigzag
+		expect(nextMap(mixed, 'zig')?.id).toBe('c2');
+		expect(nextMap(mixed, 'c2')).toBeNull();
 	});
 });
 

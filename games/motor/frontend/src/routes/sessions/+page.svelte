@@ -4,7 +4,7 @@
 	import { getContextClient } from '@urql/svelte';
 	import { unwrap } from '$lib/api';
 	import { describeError, type DescribedError } from '$lib/errors';
-	import { sortMaps } from '$lib/maps';
+	import { groupMaps, isOfficial, sortMaps } from '$lib/maps';
 	import { MAPS_QUERY, SESSIONS_QUERY } from '$lib/queries';
 	import {
 		SESSION_SORTS,
@@ -175,8 +175,14 @@
 			class="rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-sm"
 		>
 			<option value="">All maps</option>
-			{#each maps as m (m.id)}
-				<option value={m.id}>{m.name}</option>
+			{#each groupMaps(maps) as g (g.id)}
+				{#if maps.some((m) => !isOfficial(m))}
+					<optgroup label={g.label}>
+						{#each g.maps as m (m.id)}<option value={m.id}>{m.name}</option>{/each}
+					</optgroup>
+				{:else}
+					{#each g.maps as m (m.id)}<option value={m.id}>{m.name}</option>{/each}
+				{/if}
 			{/each}
 		</select>
 		<label class="flex items-center gap-2 text-sm text-indigo-900" for="f-sort">

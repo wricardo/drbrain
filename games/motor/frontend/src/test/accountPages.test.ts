@@ -15,7 +15,7 @@ vi.mock('$app/stores', () => ({
 }));
 
 const CLIENT_KEY = '$$_urql';
-const me: Account = { handle: 'speedy_fox', displayName: 'Speedy', profilePublic: true, createdAt: '2026-01-01T00:00:00Z', handleChangeableAt: null };
+const me: Account = { handle: 'speedy_fox', displayName: 'Speedy', profilePublic: true, createdAt: '2026-01-01T00:00:00Z', handleChangeableAt: null, hasPassword: false };
 
 const ok = (data: unknown) => ({ toPromise: () => Promise.resolve({ data }) });
 const bad = (code: string, message: string) => ({
@@ -198,9 +198,10 @@ describe('profile page', () => {
 		expect(screen.getByTestId('tally-community')).toHaveTextContent('1 solved of 1');
 		const rows = within(screen.getByTestId('profile-table')).getAllByRole('row').slice(1);
 		expect(rows).toHaveLength(2);
-		expect(rows[0]).toHaveTextContent('Community 1'); // standard map order: name within difficulty
-		expect(within(rows[1]).getByRole('link', { name: 'Watch' })).toHaveAttribute('href', '/watch/aaaaaaaaaaaaaaaa');
-		expect(within(rows[1]).getByRole('link', { name: 'Leaderboard' })).toHaveAttribute('href', '/leaderboard?map=e1');
+		expect(rows[0]).toHaveTextContent('Level 1'); // standard map order: official maps first, then community
+		expect(rows[1]).toHaveTextContent('Community 1');
+		expect(within(rows[0]).getByRole('link', { name: 'Watch' })).toHaveAttribute('href', '/watch/aaaaaaaaaaaaaaaa');
+		expect(within(rows[0]).getByRole('link', { name: 'Leaderboard' })).toHaveAttribute('href', '/leaderboard?map=e1');
 		expect(within(screen.getByTestId('profile-recent')).getAllByRole('listitem')[0]).toHaveTextContent('Community 1');
 		expect(screen.queryByTestId('profile-mine')).toBeNull();
 	});

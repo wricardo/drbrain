@@ -222,6 +222,7 @@ func toLeaderboardEntry(e service.LeaderboardEntry) *model.LeaderboardEntry {
 func (r *Resolver) toAccount(a *service.Account) *model.Account {
 	out := &model.Account{
 		Handle: a.Handle, DisplayName: a.DisplayName, ProfilePublic: a.ProfilePublic, CreatedAt: a.CreatedAt,
+		HasPassword: a.HasPassword,
 	}
 	if at := r.Service.HandleChangeableAt(a); !at.IsZero() && at.After(time.Now()) {
 		out.HandleChangeableAt = &at

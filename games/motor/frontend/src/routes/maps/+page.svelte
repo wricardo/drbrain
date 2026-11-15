@@ -6,7 +6,7 @@
 	import { unwrap } from '$lib/api';
 	import MapCard from '$lib/components/MapCard.svelte';
 	import { describeError, type DescribedError } from '$lib/errors';
-	import { DIFFICULTY_FILTERS, countByDifficulty, filterMaps, sortMaps, type DifficultyFilter } from '$lib/maps';
+	import { DIFFICULTY_FILTERS, countByDifficulty, filterMaps, groupMaps, isOfficial, sortMaps, type DifficultyFilter } from '$lib/maps';
 	import { CREATE_SESSION_MUTATION, MAPS_QUERY } from '$lib/queries';
 	import { rememberSession, savedDisplayName } from '$lib/sessions';
 	import type { GameMap, Session } from '$lib/types';
@@ -21,6 +21,9 @@
 
 	const counts = $derived(countByDifficulty(maps));
 	const shown = $derived(filterMaps(maps, { text, difficulty }));
+	// Official levels first, then maps made by players (headings only appear once a community map exists).
+	const groups = $derived(groupMaps(shown));
+	const hasCommunity = $derived(maps.some((m) => !isOfficial(m)));
 	const chipLabel: Record<DifficultyFilter, string> = { all: 'All', easy: 'Easy', medium: 'Medium', hard: 'Hard' };
 
 	onMount(async () => {
@@ -61,7 +64,7 @@
 	<div class="flex items-center justify-between gap-3">
 		<div>
 			<h1 class="text-2xl font-semibold text-indigo-950">Maps</h1>
-			<p class="mt-1 text-sm text-slate-700">Ordered from easy to hard. Press Play to start a new session.</p>
+			<p class="mt-1 text-sm text-slate-700">{hasCommunity ? 'The official levels come first, easy to hard, then maps made by players.' : 'Ordered from easy to hard.'} Press Play to start a new session.</p>
 		</div>
 		<a href="/editor" class="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700">New map</a>
 	</div>
@@ -107,10 +110,22 @@
 			<button type="button" class="ml-2 rounded-full bg-indigo-600 px-4 py-1.5 font-semibold text-white hover:bg-indigo-700" onclick={clearFilters}>Clear filters</button>
 		</p>
 	{:else}
-		<div class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-			{#each shown as map (map.id)}
-				<MapCard {map} {busy} onplay={play} editHref="/editor?map={encodeURIComponent(map.id)}" />
-			{/each}
-		</div>
+		{#each groups as group (group.id)}
+			<section class="mt-8 first:mt-6" aria-labelledby="group-{group.id}" data-testid="map-group-{group.id}">
+				{#if hasCommunity}
+					<div class="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+						<h2 id="group-{group.id}" class="text-lg font-semibold text-indigo-950">
+							{group.label} <span class="text-sm font-normal text-slate-600">({group.maps.length})</span>
+						</h2>
+						<p class="text-sm text-slate-600">{group.blurb}</p>
+					</div>
+				{/if}
+				<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+					{#each group.maps as map (map.id)}
+						<MapCard {map} {busy} onplay={play} editHref="/editor?map={encodeURIComponent(map.id)}" />
+					{/each}
+				</div>
+			</section>
+		{/each}
 	{/if}
 </div>

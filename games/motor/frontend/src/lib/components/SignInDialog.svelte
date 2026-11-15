@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { signInHref } from '$lib/account';
+	import { PASSWORD_PROVIDER, signInHref } from '$lib/account';
 	import type { AuthProvider } from '$lib/types';
+	import PasswordForm from './PasswordForm.svelte';
 
 	/**
 	 * Small chooser of the sign-in providers this server offers. Signing in is optional:
@@ -8,6 +9,9 @@
 	 * the server turns into the provider's page, then back to `next`.
 	 */
 	let { providers, next, onclose }: { providers: AuthProvider[]; next: string; onclose: () => void } = $props();
+
+	const redirectProviders = $derived(providers.filter((p) => p.id !== PASSWORD_PROVIDER));
+	const hasPassword = $derived(providers.some((p) => p.id === PASSWORD_PROVIDER));
 
 	let closeBtn: HTMLButtonElement | undefined = $state();
 	$effect(() => {
@@ -22,11 +26,11 @@
 />
 
 <div
-	class="fixed inset-0 z-50 flex items-center justify-center bg-indigo-950/40 dark:bg-black/60 p-4"
+	class="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-indigo-950/40 dark:bg-black/60 p-4"
 	role="presentation"
 	onclick={(e) => e.target === e.currentTarget && onclose()}
 >
-	<div role="dialog" aria-modal="true" aria-labelledby="signin-title" class="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl" data-testid="signin-dialog">
+	<div role="dialog" aria-modal="true" aria-labelledby="signin-title" class="my-auto w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl" data-testid="signin-dialog">
 		<div class="flex items-center justify-between">
 			<h2 id="signin-title" class="text-lg font-semibold text-indigo-950">Sign in</h2>
 			<button bind:this={closeBtn} type="button" class="rounded-full px-2 text-lg leading-none text-slate-500 hover:bg-slate-100" aria-label="Close" onclick={onclose}>×</button>
@@ -36,7 +40,7 @@
 			<strong class="text-indigo-950">You can keep playing as a guest</strong>: nothing about the game changes if you don't.
 		</p>
 		<ul class="mt-4 space-y-2" data-testid="signin-providers">
-			{#each providers as p (p.id)}
+			{#each redirectProviders as p (p.id)}
 				<li>
 					<!-- A full page navigation: the SvelteKit router must not intercept /auth routes. -->
 					<a
@@ -48,8 +52,18 @@
 				</li>
 			{/each}
 		</ul>
+		{#if hasPassword}
+			{#if redirectProviders.length > 0}
+				<p class="my-4 flex items-center gap-3 text-xs text-slate-600" aria-hidden="true">
+					<span class="h-px flex-1 bg-indigo-200"></span>or<span class="h-px flex-1 bg-indigo-200"></span>
+				</p>
+			{:else}
+				<div class="mt-4"></div>
+			{/if}
+			<PasswordForm {next} />
+		{/if}
 		<p class="mt-4 text-xs text-slate-600">
-			We keep a random handle and a display name, never your email address, your photo or anything else from your account.
+			We keep a handle and a display name, never your email address, your photo or anything else from your account.
 			Your profile is public unless you make it private in Settings.
 		</p>
 	</div>

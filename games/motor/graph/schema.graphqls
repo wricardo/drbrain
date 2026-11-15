@@ -228,6 +228,8 @@ type Account {
   createdAt: Time!
   "When the handle may be changed again; null when it can be changed now."
   handleChangeableAt: Time
+  "True for a username/password account (the only kind that can change a password)."
+  hasPassword: Boolean!
 }
 
 "A way to sign in, enabled on this server. Sign in by navigating to /auth/<id>/login."
@@ -298,8 +300,14 @@ type Query {
 
 type Mutation {
   createSession(mapID: ID!, displayName: String): Session!
-  deleteSession(id: ID!): Boolean!
-  renameSession(id: ID!, displayName: String!): Session!
+  """
+  Deletes a session. A guest session can be deleted by anyone who knows its id. A session that belongs to a
+  signed-in player can only be deleted by that player's signed-in browser, or by passing the ownerToken
+  that createSession returned (FORBIDDEN otherwise).
+  """
+  deleteSession(id: ID!, ownerToken: String): Boolean!
+  "Renames a session; the same rule as deleteSession applies."
+  renameSession(id: ID!, displayName: String!, ownerToken: String): Session!
   setProgram(sessionID: ID!, program: ProgramInput!): Session!
   run(sessionID: ID!, speedMs: Int = 500): Session!
   pause(sessionID: ID!): Session!
@@ -310,6 +318,8 @@ type Mutation {
   logout: Boolean!
   "Changes the signed-in player's handle, display name or profile visibility."
   updateAccount(input: AccountInput!): Account!
+  "Changes the password of a username/password account and signs out its other browsers. There is no email, so there is no password reset."
+  changePassword(currentPassword: String!, newPassword: String!): Boolean!
   "Permanently deletes the account and signs out. confirmHandle must equal the current handle. Its runs stay on the boards as guest entries."
   deleteAccount(confirmHandle: String!): Boolean!
   "Attaches guest sessions of this browser to the signed-in account; each needs its owner token (up to 100 per call)."
