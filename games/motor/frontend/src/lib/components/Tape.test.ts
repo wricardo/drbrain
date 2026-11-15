@@ -78,18 +78,15 @@ describe('Tape', () => {
 		expect(onchange).not.toHaveBeenCalled();
 	});
 
-	it('clears every slot on every tape after confirmation, keeping the tape shape', async () => {
+	it('clears every slot on every tape at once, without a dialog, keeping the tape shape', async () => {
 		const onchange = vi.fn();
 		let p = setSlot(setSlot(emptyProgram(cfg), -1, 0, 'MOVE_FORWARD'), 0, 1, 'TURN_LEFT');
 		render(Tape, { program: p, onchange });
 
-		const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+		const confirmSpy = vi.spyOn(window, 'confirm');
 		await fireEvent.click(screen.getByTestId('clear-program'));
-		expect(confirmSpy).toHaveBeenCalledOnce();
-		expect(onchange).not.toHaveBeenCalled();
-
-		confirmSpy.mockReturnValue(true);
-		await fireEvent.click(screen.getByTestId('clear-program'));
+		expect(confirmSpy).not.toHaveBeenCalled(); // Undo is the safety net
+		expect(onchange).toHaveBeenCalledOnce();
 		expect(onchange.mock.calls[0][0]).toEqual({
 			main: ['EMPTY', 'EMPTY', 'EMPTY'],
 			subs: [['EMPTY', 'EMPTY']]
