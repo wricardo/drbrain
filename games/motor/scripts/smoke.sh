@@ -9,7 +9,7 @@ cd "$(dirname "$0")/.."
 
 SESSIONS="$(mktemp -d)"
 go build -o "${SESSIONS}/drbrain-motor-programming" .
-"${SESSIONS}/drbrain-motor-programming" -port "${PORT}" -host 127.0.0.1 -sessions-dir "${SESSIONS}/sessions" >"${SESSIONS}/server.log" 2>&1 &
+"${SESSIONS}/drbrain-motor-programming" -port "${PORT}" -host 127.0.0.1 -sessions-dir "${SESSIONS}/sessions" -user-maps-dir "${SESSIONS}/maps-user" >"${SESSIONS}/server.log" 2>&1 &
 PID=$!
 trap 'kill "${PID}" 2>/dev/null || true; wait "${PID}" 2>/dev/null || true; rm -rf "${SESSIONS}"' EXIT
 
@@ -44,4 +44,11 @@ echo "session WON"
 
 curl -sf "${URL}/llms.txt" | grep -q "Dr Brain" || fail "/llms.txt"
 echo "llms.txt ok"
+
+# Anyone can create a map; a built-in map still needs the admin key to change.
+gql 'mutation { createMap(map:{id:"smoke_map", name:"Smoke", layout:[">..*","....","...."]}) { id } }' \
+  | jq -e '.data.createMap.id == "smoke_map"' >/dev/null || fail "open createMap"
+gql 'mutation { updateMap(map:{id:"straight_line", name:"hijack", layout:[">..*","....","...."]}) { id } }' \
+  | jq -e '.errors[0].extensions.code == "FORBIDDEN"' >/dev/null || fail "built-in map write was not gated"
+echo "map creation ok"
 echo "SMOKE OK"
