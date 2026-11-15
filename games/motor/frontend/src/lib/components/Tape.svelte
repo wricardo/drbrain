@@ -208,10 +208,9 @@
 	const historyBtn =
 		'rounded-lg border border-indigo-300 px-2.5 py-1 text-xs font-semibold text-indigo-900 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent';
 
-	/** Empties every slot on every tape (the tape lengths stay the same). */
+	/** Empties every slot on every tape (the tape lengths stay the same). No confirmation: Undo restores it. */
 	function clearAll() {
 		if (disabled) return;
-		if (!confirm('Clear every programmed slot on all tapes?')) return;
 		picker = null;
 		onchange(clearProgram(program));
 	}
