@@ -54,6 +54,36 @@ type Frame {
   pc: Int!
 }
 
+type Conveyor {
+  pos: Position!
+  "Direction the robot is carried after moving onto this tile."
+  dir: Facing!
+}
+
+type Mirror {
+  pos: Position!
+  "True for '/', false for '\\\\'."
+  slash: Boolean!
+}
+
+type KeyTile {
+  pos: Position!
+  "Lower-case key letter ('a'..'c')."
+  letter: String!
+}
+
+type DoorTile {
+  pos: Position!
+  "Upper-case door letter ('A'..'C')."
+  letter: String!
+}
+
+type Portal {
+  pos: Position!
+  "Digit shared by the two ends of the pair."
+  pair: String!
+}
+
 type Map {
   id: ID!
   name: String!
@@ -68,6 +98,16 @@ type Map {
   startFacing: Facing!
   rocks: [Position!]!
   treats: [Position!]!
+  "One-way tiles: a move onto one is carried one extra cell in Conveyor.dir."
+  conveyors: [Conveyor!]!
+  "Mirrors force a 90-degree turn on arrival: slash=true is '/', false is '\\\\'."
+  mirrors: [Mirror!]!
+  "Collectable keys ('a'..'c'); each opens every matching door."
+  keys: [KeyTile!]!
+  "Doors ('A'..'C'), impassable until their key is collected."
+  doors: [DoorTile!]!
+  "Portal pairs ('1'..'9'); arriving on one teleports to the other."
+  portals: [Portal!]!
   mainTapeLength: Int!
   subTapeLengths: [Int!]!
   maxSteps: Int!
@@ -95,6 +135,8 @@ type VMState {
   status: Status!
   lossReason: LossReason
   visited: [Position!]!
+  "Lower-case letters of the doors this run has opened."
+  openDoors: [String!]!
 }
 
 type StepEvent {
@@ -109,6 +151,16 @@ type StepEvent {
   blocked: Boolean!
   "True when a CALL_SUB_k was ignored because the map has allowRecursion: false and that sub is already on the call stack. The step is still spent."
   callBlocked: Boolean!
+  "True when the move landed on a conveyor and was carried one extra cell (same step)."
+  pushed: Boolean!
+  "True when that carry was blocked, so the robot stayed on the conveyor."
+  pushBlocked: Boolean!
+  "True when the arrival tile was a mirror and reflected the facing."
+  mirrored: Boolean!
+  "The key letter picked up on this step, or null."
+  collectedKey: String
+  "Portal destination when the arrival tile was a portal."
+  teleported: Position
   collected: Position
   callStack: [Frame!]!
   status: Status!
@@ -121,7 +173,12 @@ type Session {
   mapId: ID!
   "Snapshot of the map taken when the session was created."
   map: Map!
-  program: Program!
+  """
+  The robot's program. Only a caller who may play the session sees it: the ownerToken holder or
+  the owning account's login. Spectators — a shared /watch link, the session lists — get null, so a
+  program is never a public answer key.
+  """
+  program: Program
   vm: VMState!
   playing: Boolean!
   speedMs: Int!
@@ -294,7 +351,11 @@ type Query {
   profile(handle: String!): Profile
   maps: [Map!]!
   map(id: ID!): Map
-  session(id: ID!): Session
+  """
+  One session. The program is included only for a caller who may play it; pass the ownerToken
+  (or be signed in as the owning account) to read it.
+  """
+  session(id: ID!, ownerToken: String): Session
   """
   Whether this caller may play the session (setProgram, run, step, pause, reset): true when they
   created it — a signed-in owner by their login, anyone else by passing the ownerToken — or when the
@@ -349,7 +410,7 @@ type Mutation {
   Creates a username/password account and signs the browser in with it. The username is the public
   handle. Refused cross-site, so another site cannot create accounts through a victim's browser.
   Errors: INVALID_ARGUMENT (bad handle, weak or taken password), LIMIT_REACHED, FORBIDDEN (password
-  sign-in is off), UNAUTHENTICATED (no cookie can be set: a subscription connection).
+  sign-in is off, or no cookie can be set: a subscription connection).
   """
   registerWithPassword(handle: String!, password: String!): Account!
   """
@@ -378,6 +439,9 @@ type Mutation {
 }
 
 type Subscription {
-  "Emits the current snapshot immediately, then every change."
-  sessionUpdated(sessionID: ID!): SessionUpdate!
+  """
+  Emits the current snapshot immediately, then every change. Like the session query, the payload's
+  program is null unless the caller may play the session (ownerToken or the owning login).
+  """
+  sessionUpdated(sessionID: ID!, ownerToken: String): SessionUpdate!
 }

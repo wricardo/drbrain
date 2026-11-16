@@ -288,6 +288,15 @@ func validateVM(m *engine.Map, p *engine.Program, vm *engine.VMState) error {
 	if vm.TreatsLeft != left {
 		return fmt.Errorf("treats_left %d does not match collected (%d uncollected)", vm.TreatsLeft, left)
 	}
+	if len(vm.DoorsOpen) != len(m.DoorLetters) {
+		return fmt.Errorf("doors_open has %d entries, map has %d doors", len(vm.DoorsOpen), len(m.DoorLetters))
+	}
+	if l := m.DoorAt(vm.Pos.X, vm.Pos.Y); l != 0 {
+		i := m.DoorIndex(l)
+		if i < 0 || !vm.DoorsOpen[i] {
+			return fmt.Errorf("position (%d,%d) is a closed door", vm.Pos.X, vm.Pos.Y)
+		}
+	}
 	if vm.Steps < 0 || vm.Steps > m.MaxSteps {
 		return fmt.Errorf("steps %d out of range 0..%d", vm.Steps, m.MaxSteps)
 	}

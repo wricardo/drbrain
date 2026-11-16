@@ -82,6 +82,10 @@ func tapeOf(p *Program, t int) []Instruction {
 // NewVMState returns the initial state for m. The program is needed only to
 // settle past leading EMPTY slots, so it is taken separately via Settle.
 func NewVMState(m *Map) VMState {
+	var doors []bool
+	if n := len(m.DoorLetters); n > 0 {
+		doors = make([]bool, n)
+	}
 	return VMState{
 		Pos:        m.Start,
 		Facing:     m.StartFacing,
@@ -90,6 +94,7 @@ func NewVMState(m *Map) VMState {
 		CallStack:  append(make([]Frame, 0, 8), Frame{Tape: -1, PC: 0}),
 		Status:     StatusReady,
 		Visited:    []Position{m.Start},
+		DoorsOpen:  doors,
 	}
 }
 
@@ -152,7 +157,7 @@ func (s *VMState) step(m *Map, p *Program, evp *StepEvent) error {
 	from, facingBefore := s.Pos, s.Facing
 	blocked := false
 	callBlocked := false
-	var collected *Position
+	var eff stepEffect
 
 	switch ins {
 	case TurnLeft:
@@ -160,22 +165,7 @@ func (s *VMState) step(m *Map, p *Program, evp *StepEvent) error {
 	case TurnRight:
 		s.Facing = (s.Facing + 1) % 4
 	case MoveForward:
-		d := dirs[s.Facing]
-		nx, ny := s.Pos.X+d[0], s.Pos.Y+d[1]
-		if m.IsRock(nx, ny) {
-			blocked = true
-		} else {
-			s.Pos = Position{nx, ny}
-			s.Visited = append(s.Visited, s.Pos)
-			if ti := m.treatIdx[ny*m.Width+nx]; ti >= 0 && !s.Collected[ti] {
-				s.Collected[ti] = true
-				s.TreatsLeft--
-				if evp != nil {
-					c := s.Pos
-					collected = &c
-				}
-			}
-		}
+		blocked = s.moveForward(m, &eff)
 	default:
 		if k, ok := ins.SubIndex(); ok {
 			if !m.AllowRecursion && s.onStack(k) {
@@ -206,12 +196,101 @@ func (s *VMState) step(m *Map, p *Program, evp *StepEvent) error {
 		*evp = StepEvent{
 			Step: s.Steps, Instruction: ins, TapeIndex: tape, SlotIndex: slot,
 			From: from, To: s.Pos, FacingBefore: facingBefore, FacingAfter: s.Facing,
-			Blocked: blocked, CallBlocked: callBlocked, Collected: collected,
+			Blocked: blocked, CallBlocked: callBlocked,
+			Pushed: eff.pushed, PushBlocked: eff.pushBlocked, Mirrored: eff.mirrored,
+			CollectedKey: eff.key, Teleported: eff.teleport, Collected: eff.collected,
 			CallStack: append([]Frame(nil), s.CallStack...),
 			Status:    s.Status, LossReason: s.LossReason,
 		}
 	}
 	return nil
+}
+
+// stepEffect collects what the arrival tiles did, for the step event.
+type stepEffect struct {
+	collected   *Position
+	key         string
+	pushed      bool
+	pushBlocked bool
+	mirrored    bool
+	teleport    *Position
+}
+
+// moveForward attempts one cell in the facing direction. It reports whether
+// the move was blocked (rock, edge or a closed door).
+func (s *VMState) moveForward(m *Map, e *stepEffect) (blocked bool) {
+	d := dirs[s.Facing]
+	nx, ny := s.Pos.X+d[0], s.Pos.Y+d[1]
+	if m.wall(nx, ny) || s.closedDoor(m, nx, ny) {
+		return true
+	}
+	s.enter(m, Position{X: nx, Y: ny}, e)
+	return false
+}
+
+// closedDoor reports whether (x,y) holds a door whose key has not been
+// collected. Doors on maps without door state read as closed.
+func (s *VMState) closedDoor(m *Map, x, y int) bool {
+	letter := m.DoorAt(x, y)
+	if letter == 0 {
+		return false
+	}
+	i := m.DoorIndex(letter)
+	return i < 0 || i >= len(s.DoorsOpen) || !s.DoorsOpen[i]
+}
+
+// enter moves the robot onto p and applies the arrival rules: key collection,
+// then at most one tile effect (portal, mirror or conveyor push), with no
+// chaining. Treats and keys are collected on whatever cell the robot ends up
+// on.
+func (s *VMState) enter(m *Map, p Position, e *stepEffect) {
+	s.setPos(p)
+	s.collect(m, p, e)
+	if twin, ok := m.PortalTwin(p.X, p.Y); ok {
+		s.setPos(twin)
+		t := twin
+		e.teleport = &t
+		return
+	}
+	if slash, ok := m.MirrorAt(p.X, p.Y); ok {
+		s.Facing = reflectFacing(s.Facing, slash)
+		e.mirrored = true
+		return
+	}
+	if dir, ok := m.ConveyorAt(p.X, p.Y); ok {
+		d := dirs[dir]
+		next := Position{X: s.Pos.X + d[0], Y: s.Pos.Y + d[1]}
+		if m.wall(next.X, next.Y) || s.closedDoor(m, next.X, next.Y) {
+			e.pushBlocked = true
+			return
+		}
+		s.setPos(next)
+		e.pushed = true
+		s.collect(m, next, e)
+	}
+}
+
+// setPos moves the robot and records the visit.
+func (s *VMState) setPos(p Position) {
+	s.Pos = p
+	s.Visited = append(s.Visited, p)
+}
+
+// collect picks up a treat or key on p. Only one of the two can be there.
+func (s *VMState) collect(m *Map, p Position, e *stepEffect) {
+	if l := m.KeyAt(p.X, p.Y); l != 0 {
+		if i := m.DoorIndex(l); i >= 0 && i < len(s.DoorsOpen) && !s.DoorsOpen[i] {
+			s.DoorsOpen[i] = true
+			e.key = string(l)
+		}
+		return
+	}
+	if ti := m.treatIdx[p.Y*m.Width+p.X]; ti >= 0 && !s.Collected[ti] {
+		s.Collected[ti] = true
+		s.TreatsLeft--
+		c := p
+		e.collected = &c
+	}
 }
 
 func (s *VMState) onStack(sub int) bool {

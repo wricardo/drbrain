@@ -35,7 +35,7 @@ These decisions shape everything else. Keep them when changing the game or start
 cp .env.example .env      # optional
 just restart              # rebuild UI + binary and serve http://localhost:8000 (API + UI)
 just run                  # rebuild and serve in the foreground
-just dev                  # go run . -port 8000 -debug
+just dev                  # stop whatever holds the port, then go run . -port 8000 -host 127.0.0.1 -public-url http://localhost:8000 -debug
 ```
 
 Every recipe passes `-public-url http://localhost:<port>` (override with `PUBLIC_URL=... just restart`); sign-in is on by default and uses it for the same-origin check. Plain `go run .` works too on localhost, where the request's own `Host` is trusted instead, but a public host without `-public-url` refuses sign-in rather than trust a rebindable host.
@@ -48,15 +48,15 @@ Frontend development with hot reload, against a server running on :8000:
 cd frontend && npm run dev:local     # http://localhost:5173
 ```
 
-Server flags: `-port 8000 -host 0.0.0.0 -maps-dir maps -sessions-dir sessions -accounts-dir accounts -solutions-dir solutions -debug -public-url <url>` (`-public-url` sets the base URL written into `/llms.txt`, is the base of the OAuth callbacks, and is the origin used for the sign-in same-origin check and the `Secure` cookie; it is required once a redirect provider is configured, while password sign-in — on by default — falls back to each request's own host).
+Server flags: `-port 8000 -host 0.0.0.0 -maps-dir maps -user-maps-dir maps-user -sessions-dir sessions -accounts-dir accounts -solutions-dir solutions -debug -public-url <url>` (`-public-url` sets the base URL written into `/llms.txt`, is the base of the OAuth callbacks, and is the origin used for the sign-in same-origin check and the `Secure` cookie; it is required once a redirect provider is configured, while password sign-in — on by default — falls back to each request's own host).
 
 Routes:
 
 | Path | What it is |
 |---|---|
 | `/` | Landing page: short hero, Continue card (this browser's last unfinished session), first 3 maps, recent started sessions |
-| `/play/<session>` | Board, status line, stats, run controls, program editor, call stack, help, AI prompt card, result modal; a session this browser cannot play (someone else's, opened from a link) shows an amber read-only notice and locks the controls |
-| `/watch/<session>` | Read-only live view of any session: status line, stats, **Take over** only when this browser holds the session's owner token (otherwise a line saying the starter has to do it), tapes, AI prompt card |
+| `/play/<session>` | Board, status line, stats, run controls, program editor, help, AI prompt card, result modal. The program editor appears only for a player (this browser holds the owner token, or is signed in as the owning account); anyone else gets an amber read-only notice, the board and no program |
+| `/watch/<session>` | Live view of any session: board, status line, stats, **Take over** only when this browser holds the session's owner token (otherwise a line saying the starter has to do it), AI prompt card. The program is never shown here — a private note says so |
 | `/sessions` | All sessions: status chips, search (name/id/map), map filter, sort, Load more, select rows to watch together; auto-refreshes every 10 s |
 | `/multi?ids=a,b` | Several sessions as compact live boards (from "Watch selected" on `/sessions`) |
 | `/maps` | All maps as cards: search and difficulty chips |
@@ -64,11 +64,12 @@ Routes:
 | `/leaderboard?map=<id>&order=slots` or `steps` | Per-map ranking of winners: map picker, two boards, your entries highlighted |
 | `/u/<handle>` | Public profile: solved counts (official and community), best run per map, recent activity; a private profile is "not found" for everyone but its owner |
 | `/settings` | Signed-in player: handle, display name, public/private profile, add guest runs, delete account |
-| `/auth/<provider>/login`, `/auth/<provider>/callback` | Sign-in routes for the redirect providers (Google, GitHub, dev); only exist when that provider is configured. Username/password sign-in and signing out are GraphQL mutations (`registerWithPassword`, `logInWithPassword`, `logout`), see [Accounts and sign-in](#accounts-and-sign-in) |
+| `/auth/<provider>/login`, `/auth/<provider>/callback` | Sign-in routes for the redirect providers (Google, GitHub, dev); only exist when that provider is configured, and the dev fake additionally serves `/auth/dev/authorize`, the page where you type a name. Username/password sign-in and signing out are GraphQL mutations (`registerWithPassword`, `logInWithPassword`, `logout`), see [Accounts and sign-in](#accounts-and-sign-in) |
 | `/editor` | Map editor with server-side validation; anyone can create a map, changing a built-in one needs the admin key |
 | `/learn` | How it works: the game, instructions, rules, controls, how an AI plays, a generic AI prompt, tips |
 | `/graphql` | GraphQL over HTTP and WebSocket (`graphql-ws`); `/playground` when enabled |
 | `/llms.txt` | Guide for AI agents, rendered from `llms.txt.tmpl` |
+| `/healthz` | `{"status":"ok"}` once the server is listening; the deploy smoke test and `scripts/smoke.sh` use it |
 
 ## Architecture
 
@@ -126,7 +127,7 @@ HTTP /graphql (api) → gqlgen resolver (graph) → GameService (game/service)
 - Sessions are written on create, set program, pause, reset, win/loss, rename and graceful shutdown. Not on every tick.
 - After a restart, sessions load with `playing=false` and their program and VM state intact.
 - Each session embeds a copy of its map, so editing or deleting a map never affects existing sessions.
-- A session file also carries `account_id` and `owner_hash` when it belongs to an account or has an owner token (see [Accounts and sign-in](#accounts-and-sign-in)), and its best wins for the [leaderboard](#leaderboard) (`fewest_slots`, `fewest_steps`). Files written before leaderboards still load: a session whose VM is `WON` gets its win recovered from the program stored with it.
+- A session file also carries `account_id` and `owner_hash` when it belongs to an account or has an owner token (see [Accounts and sign-in](#accounts-and-sign-in)), its best wins for the [leaderboard](#leaderboard) (`fewest_slots`, `fewest_steps`), and the VM's opened doors (`doors_open`; a file without it reads as all doors closed). Files written before leaderboards still load: a session whose VM is `WON` gets its win recovered from the program stored with it.
 - The session and map stores share `internal/fsutil` for the two file-system steps that differ by platform: `SyncDir` (fsync the directory after a rename or remove; a no-op on Windows, which cannot open a directory for syncing) and `RenameReplace` (os.Rename on Linux; on Windows a short retry, because replacing a file fails with "Access is denied" while a reader, virus scanner or indexer has it open). Production is Linux, where both are the plain calls; the point is that the whole test suite also passes on a Windows developer machine.
 - Idle sessions older than `SESSION_TTL` are removed on startup. `MAX_SESSIONS` caps how many exist.
 
@@ -152,13 +153,25 @@ HTTP /graphql (api) → gqlgen resolver (graph) → GameService (game/service)
 Instructions: `TURN_LEFT`, `TURN_RIGHT`, `MOVE_FORWARD`, `CALL_SUB_1..10`, `EMPTY`.
 
 - `EMPTY` slots are skipped and don't count. Every other executed instruction is one **step**, including calls.
-- Moving into a rock or off the grid does nothing but still counts as a step.
+- Moving into a rock, off the grid or into a closed door does nothing but still counts as a step (reported as `blocked`).
 - Coordinates: `x` = column, `y` = row, row 0 is the top, **y grows downward**. Facing: up (y-1), right, down, left.
 - Call stack: `CallStack[0]` is main; the top frame is the running tape; `PC` is the next instruction on that tape. Depth = `len(CallStack) - 1`. No tail-call elimination. When a sub tape ends, control returns to the caller.
 - Checks after each step, in order: all treats collected → **WON** (beats the step limit on the same step); `steps >= max_steps` → **LOST/STEP_LIMIT**; depth `> max_call_depth` → **LOST/CALL_DEPTH**; main tape finished → **LOST/PROGRAM_ENDED** (reported on the step that ran the last real instruction).
-- `allow_recursion: false`: calling a sub that is already running or anywhere on the call stack does nothing (still a step). Neither self-calls nor mutual recursion are possible. Such a step is reported as `callBlocked: true` (distinct from `blocked`, which is a move into a rock or the edge) so clients can explain the spent step.
+- `allow_recursion: false`: calling a sub that is already running or anywhere on the call stack does nothing (still a step). Neither self-calls nor mutual recursion are possible. Such a step is reported as `callBlocked: true` (distinct from `blocked`, which is a move into a rock, the edge or a closed door) so clients can explain the spent step.
 
-Engine rules for code: call `vm.Settle(&program)` after `NewVMState` and after any program change. `Step` mutates in place; `Clone()` anything that leaves a lock. `Run` and the internal `step(…, nil)` allocate no events, so bulk simulation stays cheap.
+### Tiles (optional)
+
+A map may use tile glyphs; a map that does not behaves exactly as before, and every existing golden count is unchanged. Tiles are arrival effects of a successful `MOVE_FORWARD` and never cost an extra step.
+
+- **Conveyor** (`U D L R`): after landing on it, the robot is carried one more cell in that direction. If that cell is a rock, off the grid or a closed door, the robot stays on the conveyor and `pushBlocked: true`. `pushed: true` means the carry happened.
+- **Mirror** (`/` `\`): on landing the facing reflects 90°: `/` maps RIGHT→UP, UP→RIGHT, DOWN→LEFT, LEFT→DOWN; `\` maps RIGHT→DOWN, DOWN→RIGHT, UP→LEFT, LEFT→UP. `mirrored: true`.
+- **Key** (`a b c`): collected on landing, exactly like a treat but not required to win. It opens every matching door for the rest of the run (`collectedKey: "a"`; `vm.openDoors` lists the open letters).
+- **Door** (`A B C`): impassable, like a rock, until its key is collected; moving into a closed one is `blocked: true`. Doors stay open once opened, so `VMState.DoorsOpen` (persisted as `doors_open`, indexed by `Map.DoorLetters`) is the only new state.
+- **Portal** (`1`–`9`): exactly two tiles per digit. Landing on one teleports the robot to its twin, reported as `teleported: {x, y}`.
+
+Order and limits: key collection, then at most one tile effect — portal first, then mirror, then conveyor push — and effects never chain. A push never fires the tile it lands on, and a teleport does not fire the twin's tile. Treats and keys are collected on whichever cell the robot ends the step on.
+
+Engine rules for code: call `vm.Settle(&program)` after `NewVMState` and after any program change. `Step` mutates in place; `Clone()` anything that leaves a lock (it deep-copies `DoorsOpen` too). `Run` and the internal `step(…, nil)` allocate no events, so bulk simulation stays cheap.
 
 ### Sessions
 
@@ -175,13 +188,15 @@ A session is one run of one map. `setProgram` (rejected while running) resets th
 }
 ```
 
-Glyphs: `.` empty, `#` rock, `*` treat, `^ > v <` start and facing (exactly one). Grid 3–32 per side, at least one treat, main tape 1–32, 0–10 subs of 1–16 each. Defaults when omitted: main 10, subs `[10]`, max_steps 200, max_call_depth 16, recursion off. `sub_tape_lengths: []` (no subs) is different from omitting it, so the field has no `omitempty` and `[]` must never become `nil`. JSON Schema: `map-schema.json`.
+Glyphs: `.` empty, `#` rock, `*` treat, `^ > v <` start and facing (exactly one). Optional tile glyphs, all off unless used: `U D L R` conveyors, `/` `\` mirrors, `a b c` keys, `A B C` doors, `1`–`9` portals. Grid 3–32 per side, at least one treat, main tape 1–32, 0–10 subs of 1–16 each. Defaults when omitted: main 10, subs `[10]`, max_steps 200, max_call_depth 16, recursion off. `sub_tape_lengths: []` (no subs) is different from omitting it, so the field has no `omitempty` and `[]` must never become `nil`. A door letter must have a matching key letter and every portal digit must appear exactly twice, or the map is rejected (`NewMap`). JSON Schema: `map-schema.json`.
 
-Shipped maps (17), in three named series (`<Series> <n> - <Name>`, which is what the map cards print):
+Shipped maps (28), in four named series (`<Series> <n> - <Name>`, which is what the map cards print):
 
 - **Levels 1–5** (`straight_line`, `turn_challenge`, `rock_obstacle`, `symmetric_paths`, `zigzag_path`) teach the basics; in each, the counting ceiling already allows the whole route at a single nesting level, so no deep nesting is required.
-- **Patterns 1–7** (`serpentine`, `powers`, `pinwheel`, `comb`, `ladder`, `nested_doubling`, `diamond_ring`) are tight enough that the brute-force route does not fit: you have to find the repeated unit and nest subs.
+- **Patterns 1–12** (`serpentine`, `powers`, `pinwheel`, `comb`, `ladder`, `nested_doubling`, `diamond_ring`, `grand_star`, `crown`, `clover`, `zipper`, `cross`) are tight enough that the brute-force route does not fit: you have to find the repeated unit and nest subs.
 - **Recursion 1–5** (`long_corridor`, `staircase`, `bump_spiral`, `mountain_range`, `switchback`) have `allow_recursion: true`; for each of them `just validate` refuses a reference solution that also wins with recursion turned off (`CheckRecursionRequired` in `validate/validate.go`).
+- **Terrain 1–4** (`belt_run`, `mirror_hall`, `key_garden`, `portal_hop`) teach one tile each: the tape is smaller than the tile-free route (11 moves against 6 slots; 16 against 14); the other two have no plain walk at all: `key_garden`'s door is the only way to the treat (a rock blocks the way around, and the key-first route needs 9 actions), and `portal_hop`'s portal is the only way past the wall. `TestTerrainMapsNeedTheirTiles` guards the tape-vs-route bound, `TestKeyGardenDoorBlocksWithoutKey` proves the door blocks, and `TestKeyGardenDoorIsTheOnlyWayIn` proves walking around it is impossible (`minActionsWithTiles(m, false)` is -1: with keys ignored the treat is unreachable).
+- **Terrain 5–6** (`mirror_circuit`, `belt_ladder`) are the hard ones: tiles plus recursion, with exactly one sub tape, so nesting cannot stand in for recursion. `mirror_circuit` is a one-cell ring whose corners are mirrors — no turn fits and one lap needs 17 moves against a 5-action ceiling. `belt_ladder` is four belt runs steered by mirrors at both ends — 22 moves against a 12-action ceiling. `TestTerrainHardMapsForceRecursion` proves both with `minActionsWithTiles` (a BFS that applies the tile effects, since the plain `minActions` ignores them).
 
 The forcing bounds, measured with the helpers in `validate/validate_test.go` (`minActions` is the BFS minimum of TURN/MOVE actions, `maxLeafActions` the most a program with `n` nesting levels can execute). "Needed" and the ceilings are those numbers; a map is forced when the ceiling is below what the route needs:
 
@@ -196,10 +211,15 @@ The forcing bounds, measured with the helpers in `validate/validate_test.go` (`m
 | `ladder` | two alcoves per rung, then climb two rows | 42 actions needed; one nesting level runs at most 32, so two are required |
 | `diamond_ring` | one diagonal step, then one side, then a side plus a turn | 37 actions needed; one nesting level runs at most 16, so two are required |
 | `nested_doubling` | a block, doubled, doubled again | 16 actions needed; two nesting levels reach at most 8, so three are required |
+| `grand_star` | a 13-cell hub rim with eight nine-cell rays: one 11-slot ray half (out, flip, back, flip), a 6-move gap and a 3-turn-3 corner gap, so one 8-slot side unit walks all four sides from a 4-slot main | 209 actions needed (every ray is a dead end that must be entered, flipped in and walked out of, and the rim carries the robot between them); one nesting level runs at most 4 × 11 = 44, so main must call a unit that itself calls units |
+| `crown` | a 21-cell rim with eight spikes, four outward and four inward, alternating: a 12-slot spike tape and the two gaps, driven by a 4-slot outward unit (turn in, spike, turn out, straight gap) and a 4-slot inward unit (the mirrored turns, corner gap) from an 8-slot main | 162 actions needed (each spike is a dead end entered and left exactly once); one nesting level runs at most 8 × 12 = 96 |
+| `clover` | four rings in a 2 × 2 chain: a 6-move side, an 8-slot loop (side + turn, four times), a 10-move travel and the turn-plus-4 travel that drops to the next ring | 89 actions needed (a ring can only be left the way it was entered, so all four loops are walked); one nesting level runs at most 7 × 8 = 56 |
+| `zipper` | one 32-cell spine and seven teeth alternating up and down: one 12-slot tooth (out, flip, back, flip), a 4-move gap, and two 4-slot units that differ only in the turn into the tooth | 114 actions needed (every tooth is a dead end, and the spine carries the robot between them); one nesting level runs at most 8 × 12 = 96 |
+| `cross` | four 9-cell arms from one hub: a 5-move sub, the 9-move arm, an out-half that flips, and an arm made of two halves, so the 8-slot main is four calls plus a turn | 70 actions needed (each tip is 9 out and 9 back); one nesting level runs at most 8 × 5 = 40 |
 | `switchback` | a two-row loop recursed down the corridor | no counting bound proves it (36 actions needed, one nesting level allows 22 but two already allow 132); recursion is proven only by the reference solution losing without it |
 | `mountain_range` | one up-and-over step recursed across five peaks | no counting bound proves it (12 actions needed, one nesting level already allows 27); recursion is proven only by the reference solution losing without it |
 
-Only the six bounds asserted in `TestNestingMapsAreProvablyNeeded` and `TestRecursionMapsCountingBound` are regression-guarded; the rest of this table is measured once and needs re-measuring if the map changes, so prefer adding a test over trusting a row.
+Only the eleven bounds asserted in `TestNestingMapsAreProvablyNeeded` (serpentine, powers, pinwheel, bump_spiral, grand_star, crown, clover, zipper, cross) and `TestRecursionMapsCountingBound` (long_corridor, staircase) are regression-guarded; the rest of this table is measured once and needs re-measuring if the map changes, so prefer adding a test over trusting a row.
 
 ### Designing a good map
 
@@ -210,7 +230,7 @@ Only the six bounds asserted in `TestNestingMapsAreProvablyNeeded` and `TestRecu
 
 ### Reference solutions
 
-`solutions/<id>.json` (`{"main": [...], "subs": [[...]]}`, exact tape lengths). They are **not** in the public repo (`solutions/` is gitignored), never served by the API, and never put in prompts or `static/`. Without them `just validate` reports missing solutions and the solution-dependent tests skip (`requireSolutions` in `validate/validate_test.go`).
+`solutions/<id>.json` (`{"main": [...], "subs": [[...]]}`, exact tape lengths). They are **not** in the public repo (`solutions/` is gitignored), never served by the API, and never put in prompts or `static/`. Without the directory `just validate` prints `SKIP no reference solutions in solutions: map structure and treat reachability only` and exits 0 — it does not report which maps are missing. The solution-dependent tests skip too (`requireSolutions` in `validate/validate_test.go`).
 
 ### Adding a map
 
@@ -225,9 +245,10 @@ Maps can also be created by anyone in `/editor` or with the `createMap` mutation
 
 The schema lives in `graph/schema.graphqls`.
 
-- **Queries:** `maps`, `map(id)`, `session(id)`, `canPlaySession(id, ownerToken)`, `sessions(sort, limit, mapId)`, `leaderboard(mapId, order, limit, sessionId)`, `playerRuns(sessionIds, name)`, plus `me`, `authProviders` and `profile(handle)` for [accounts](#accounts-and-sign-in). `canPlaySession` is `false` for a session this caller may not play (someone else's, opened from a link) and for an unknown id, so a client can pick a read-only view instead of discovering `FORBIDDEN` on the first save.
+- **Queries:** `maps`, `map(id)`, `session(id, ownerToken)`, `canPlaySession(id, ownerToken)`, `sessions(sort, limit, mapId)`, `leaderboard(mapId, order, limit, sessionId)`, `playerRuns(sessionIds, name)`, plus `me`, `authProviders` and `profile(handle)` for [accounts](#accounts-and-sign-in). `canPlaySession` is `false` for a session this caller may not play (someone else's, opened from a link) and for an unknown id, so a client can pick a read-only view instead of discovering `FORBIDDEN` on the first save. `session` returns `program: null` unless the caller may play it (see the rule below), and the session lists never carry programs.
 - **Mutations:** `createSession` (its response also carries the secret `ownerToken`, which every play call below needs), `renameSession`, `deleteSession`, `setProgram`, `run`, `step`, `pause`, `reset` (each takes an optional `ownerToken`), plus `createMap` and `validateMap` (open) and `updateMap`/`deleteMap` (open for player maps, admin key for built-in ones). For signed-in browsers: `logout`, `updateAccount`, `changePassword`, `deleteAccount(confirmHandle)`, `claimSessions`. For players with a username and password: `registerWithPassword` and `logInWithPassword` (the only data API they need; the OAuth providers still use redirect routes).
-- **Subscription:** `sessionUpdated(sessionID)` emits the current snapshot, then every change.
+- **Subscription:** `sessionUpdated(sessionID, ownerToken)` emits the current snapshot, then every change; like the query, its payload carries `program` only for a player of that session.
+- **Tile surface:** `Map` gains `conveyors` (`pos`, `dir`), `mirrors` (`pos`, `slash`), `keys`/`doors` (`pos`, `letter`) and `portals` (`pos`, `pair`); `VMState` gains `openDoors: [String!]!`; `StepEvent` gains `pushed`, `pushBlocked`, `mirrored`, `collectedKey` and `teleported`. Older clients can ignore them; the glyphs themselves stay in `layout`.
 
 Agent support:
 
@@ -256,9 +277,9 @@ Entries that tie on both numbers share a rank (1, 2, 2, 4); the earlier win is l
 
 **Only the current rules count.** A session embeds a snapshot of its map, and player maps can be edited by anyone, so wins on an older version are not comparable with the current puzzle. `Map.Fingerprint` hashes everything that changes difficulty (layout, tape lengths, `max_steps`, `max_call_depth`, the recursion rule; not name, description or difficulty tag), and only sessions whose snapshot matches the map's current fingerprint are ranked. Editing a map's rules therefore starts a fresh board; renaming it does not. A deleted map has no board (`leaderboard` returns null).
 
-**What is exposed.** Rank, session id, display name, handle (account entries), whether it is the viewer's, slots, steps and when. Never the program, so reading a board cannot reveal a route (spectating a session already shows its program, as before; reference solutions stay private). Names go through `PublicName`: control, bidi and zero-width characters become spaces, whitespace collapses, the result is cut to `MaxDisplayName`; empty (only sessions from before guest names) means `Anonymous`. The UI escapes names like any text.
+**What is exposed.** Rank, session id, display name, handle (account entries), whether it is the viewer's, slots, steps and when. Never the program, so reading a board cannot reveal a route (a session's program is visible only to its player; reference solutions stay private). Names go through `PublicName`: control, bidi and zero-width characters become spaces, whitespace collapses, the result is cut to `MaxDisplayName`; empty (only sessions from before guest names) means `Anonymous`. The UI escapes names like any text.
 
-**API.** `leaderboard(mapId, order = SLOTS, limit = 20, sessionId)` returns `{ mapId, order, total, entries, yours }`. `limit` is clamped to 1..100 (negative is `INVALID_ARGUMENT`). `total` counts every ranked session. `yours` is the entry of `sessionId` even outside the returned rows (`null` if it has not won). An unknown map is `null`. Each call scans every session, so it has a flat complexity cost plus a per-row cost scaled by `limit` (`complexityRoot` in `api/server.go`), like `sessions`.
+**API.** `leaderboard(mapId, order = SLOTS, limit = 20, sessionId)` returns `{ mapId, order, total, entries, yours }`. `limit` of `0` means the default 20, a negative is `INVALID_ARGUMENT`, and anything above 100 is clamped to 100. `total` counts every ranked session. `yours` is the signed-in viewer's account entry when there is one, otherwise the entry of `sessionId` even outside the returned rows (`null` if neither has won). An unknown map is `null`. Each call scans every session, so it has a flat complexity cost plus a per-row cost scaled by `limit` (`complexityRoot` in `api/server.go`), like `sessions`.
 
 **Frontend.** `/leaderboard` (`routes/leaderboard`, in `spaRoutes` and the nav): map picker in the standard map order, two board chips, a ranked table, `?map=` and `?order=` kept in the URL so boards can be linked, refresh every 15 s. This browser's own sessions (`ownSessionIds` in `lib/sessions.ts`, filled by `rememberSession`, newest 200) get a "You" pill. After a win the result modal shows "Rank 2 of 14 · 6 slots · 9 steps" with a link to the board (`RankHint.svelte`, one request with `limit: 1`; silent if the lookup fails). Pure logic lives in `lib/leaderboard.ts`.
 
@@ -340,6 +361,8 @@ A session id is public (anyone watching a winner sees it), so an account can **n
 
 Session ids are public, so what an id lets you do is limited. **Guest sessions** stay open to anyone who knows the id for deleting and renaming (see below for playing), so an agent can still clean up after itself. A session that belongs to a **signed-in player's account** (created while signed in, or claimed) is protected against the two destructive actions: `deleteSession` and `renameSession` need that account's login (cookie) or the secret owner token, passed as the optional `ownerToken` argument (`AuthorizeSessionChange` in `game/service/accounts.go`, called by the resolvers before `DeleteSession`/`RenameSession`; anyone else gets `FORBIDDEN`, an unknown session is still `NOT_FOUND`). Deleting would destroy the account's leaderboard entry, and renaming would let anyone put text on a child's session in the public lists.
 
+**The program is player-only.** `Session.program` is nullable and the server fills it only for a caller who may play the session — the same `AuthorizeSessionPlay` check the play calls use — so `session(id)` without the token and `sessions(...)` always return null. A watch link therefore shows the run, never the solution; the play page renders the editor only when the program arrives.
+
 **Playing is creator-only.** `setProgram`, `run`, `step`, `pause` and `reset` all take the same optional `ownerToken` and are gated by `AuthorizeSessionPlay`: the creator proves ownership with the token `createSession` returned (the browser keeps it in `localStorage`, so a guest needs no account), or, for a session created while signed in, with the owning account's login cookie. A stranger holding only the public id gets `FORBIDDEN`, so a shared watch link is exactly that — a spectator view. Sharing the token is the supported way to let a second person or an AI agent play: the "Play with an AI" prompt card carries it, and `canPlaySession(id, ownerToken)` lets the UI choose between playing and a read-only view. The rule lives in the service, not in the resolver, so no transport can bypass it. A session **without an owner hash** (a file written before owner tokens, or the token-less `CreateSession` used by tests) has nothing to compare and stays open rather than becoming unplayable for everyone. A link to an account that no longer exists, or accounts being off, counts as a guest session.
 
 ### Leaderboard and profiles
@@ -417,14 +440,14 @@ The goal: friendly, bright and calm, like a puzzle book. There is a matching dar
 
 ### Layout
 
-- Header: logo, **Dr Brain** with **Motor Programming** next to it (hidden on small screens), pill navigation (Play, Maps, Leaderboard, Sessions, How it works, Editor; Sessions stays active on `/watch/*` and `/multi`; the pills wrap on narrow screens) the account menu (**Sign in**, or the handle with My profile, My runs, Settings, Sign out; hidden when the server has no provider) and the theme toggle. Footer: four columns — tagline · Play (Home, Maps, Leaderboard, Sessions, Editor) · Docs (How it works, `/llms.txt`, GraphQL endpoint) · Tools (GraphQL Playground), so agents and curious developers can find the API from any page.
+- Header: logo, **Dr Brain** with **Motor Programming** next to it (hidden on small screens), pill navigation (Play, Maps, Leaderboard, My runs, Sessions, How it works, Editor; Sessions stays active on `/watch/*` and `/multi`; the pills wrap on narrow screens) the account menu (**Sign in**, or the handle with My profile, My runs, Settings, Sign out; hidden when the server has no provider) and the theme toggle. Footer: four columns — tagline · Play (Home, Maps, Leaderboard, My runs, Sessions, Editor) · Docs (How it works, `/llms.txt`, GraphQL endpoint) · Tools (GraphQL Playground, which only resolves when the operator enables it), so agents and curious developers can find the API from any page.
 - Maps come in two groups (`lib/maps.ts`): **official** (`builtin: true`, the levels that ship in `maps/`) and **community** (`builtin: false`, made by players in the editor, stored in `maps-user/`). Map order everywhere is `sortMaps`: every official map first, then community maps; inside each group difficulty, then name with numeric compare, so series numbers stay in order within a difficulty. `groupMaps` returns the non-empty groups with a label and one-line blurb; the maps page shows them as two sections with headings once a community map exists (with none, the page looks as before), and the map pickers on the leaderboard and sessions pages use `<optgroup>`. **Next map never leaves its group**: after the last official level there is no next map, so finishing the campaign does not drop the player into someone's custom map; a community map's next map is the next community map. My runs counts the campaign on its own ("Solved 5 of 17 official maps · 1 of 2 community maps") and lists community maps under their own heading. Map cards show the series label ("Patterns 3") above the title, a square thumbnail, a 2-line description, tags (difficulty, size, treats, step limit, and the recursion rule — both states are labelled: "recursion" in violet or "no recursion" in slate, each with a tooltip from `lib/recursion.ts`) and a full-width Play button.
 - Times in lists are relative (`lib/time.ts`: "5m ago", "Oct 4") with the absolute time in a tooltip; bounded counters read "value / limit".
 - Content is centred at `max-w-6xl` with `px-4 sm:px-6`.
-- Play page: two columns on large screens (board left and sticky, sized to the viewport; side panel right), one column on mobile, where the board is pinned small at the top of the screen (about 22% of the viewport height, `max-lg:sticky`, filled with `--page-bg`) so it stays visible while you edit the tapes and press Run, and the map description moves under it. The site header gives the nav links their own horizontally scrolling row below the logo on phones instead of wrapping to three rows. The side panel order is fixed: status line (Ready / Running at N ms/step / Paused / Won in N steps / Lost: reason), stats row (Steps, Treats, Best, Runs), run controls, palette and tapes, call stack, Help (key list, "All rules →") and the AI prompt card. Winning or losing opens the result modal (Try again · Next map · All maps); Next map starts the next map in `sortMaps` order with the same player name.
+- Play page: two columns on large screens (board left and sticky, sized to the viewport; side panel right), one column on mobile, where the board is pinned to the top of the screen and **fills the column width** (`max-lg:max-w-[min(100%,calc(50vh*var(--ar)))]`: full width for square and wide maps, capped at 50vh of height only for a map taller than it is wide, e.g. `ladder`), `max-lg:sticky`, filled with `--page-bg`, so it stays visible while you edit the tapes and press Run, and the map description moves under it. The site header gives the nav links their own horizontally scrolling row below the logo on phones instead of wrapping to three rows. The side panel order is fixed: status line (Ready / Running at N ms/step / Paused / Won in N steps / Lost: reason), stats row (Steps, Treats, Best, Runs), run controls, palette and tapes, Help (key list, "All rules →") and the AI prompt card. Winning or losing opens the result modal (Try again · Next map · All maps); Next map starts the next map in `sortMaps` order with the same player name.
 - Keyboard (`lib/globalKeys.ts`): **R** resets and **S** steps when no program slot is focused (inside a slot R means turn right), **?** opens the shortcuts dialog. `editKeyAction` adds **Ctrl/Cmd+Z** undo, **Ctrl/Cmd+Shift+Z** or **Ctrl+Y** redo and **Ctrl/Cmd+Enter** run/pause; these also work from a focused slot (slots never use Ctrl/Cmd) but not in form fields.
 - Undo/redo (`lib/history.ts`): the play page keeps past/future stacks of whole programs (100 deep) and routes every player edit through `edit()`, which records the previous draft. A program replaced by someone else (an agent, another tab) is recorded too, so your version stays one undo away. Tapes show "n of m slots used" and flag a filled sub that nothing reachable from main calls (`unreachableSubs` in `lib/program.ts`).
-- Watch page: the same layout read-only — status line, stats, tapes, call stack, AI prompt card, and **Take over** (opens `/play/<id>`) only when this browser holds the session's owner token; otherwise a line says only the player who started the run can take it over. Watching is open to everyone; the owner token is what makes the prompt card's calls valid and the play page writable.
+- Watch page: the same layout without the program — status line, stats, an AI prompt card, and **Take over** (opens `/play/<id>`) only when this browser holds the session's owner token; otherwise a line says only the player who started the run can take it over. Watching is open to everyone; the owner token is what makes the prompt card's calls valid, the play page writable and the program readable.
 
 ### The board
 
@@ -433,8 +456,14 @@ The goal: friendly, bright and calm, like a puzzle book. There is a matching dar
 - **Robot:** an indigo arrowhead with a white outline. It glides and rotates with a 120 ms ease-out transition and always turns the short way (`nextAngle`).
 - **Treats:** chocolate-chip cookies (`Cookie.svelte`).
 - **Rocks:** rounded slate squares with a lighter highlight bar.
+- **Tiles** (only on maps that use them, drawn from the server's `conveyors`/`mirrors`/`keys`/`doors`/`portals` fields): a rotated chevron for conveyors, a diagonal for mirrors, a key (bow with the letter, blade and teeth) for keys, and a door for doors — shut doors carry the letter on a solid leaf with a padlock badge, open ones (`vm.openDoors`) become a recessed doorway with the leaf swung out to the side, so both states are legible in a still frame, not only while a step plays. Portals are a ring with the pair digit. `KeyGlyph.svelte` and `DoorGlyph.svelte` draw the two lock tiles and share `lib/tiles.ts` with the previews.
+- **Lock tones:** each key letter has one tone (`--board-lock-a`/`-b`/`-c` plus matching `-ink`, light and dark in `app.css`), and the key and every door with that letter use it, so which key opens which door is visible without reading the letters. A key whose door is already open is dimmed to 40 % (`spent`).
+- Tile colours are `--board-conveyor`/`--board-mirror`/`--board-portal` plus the lock tones above; every letter ink is picked to keep at least 4.5:1 contrast. The board's `aria-label` appends a per-kind tile count and the pairing clause from `lockPairText` ("Keys: a opens A; open: A.").
 - **Trail:** small translucent indigo dots on visited cells.
-- **Bump:** when the last step was blocked by a rock or the edge, a rose outline flashes on the robot's cell.
+- **Bump:** when the last step was blocked by a rock, the edge or a closed door, a rose outline flashes on the robot's cell.
+- **Tile notice:** after a step that carried, turned, keyed or teleported the robot, a line under the status says what happened (destination, new facing, key letter, door opened), so the extra movement never reads as a bug (`tileStepNotice` in the play page).
+- **Editor palette:** the tile tools are grouped by kind (Terrain, Conveyors, Mirrors, Keys, Doors, Portals) as labelled radiogroups, and painted cells round-trip through `parseLayout`/`formatLayout`, so a built-in tile map loads and saves unchanged.
+- **Map previews** (`MiniGrid.svelte`, in map cards and on the home page) read the same `layout` strings through `parseLayout` and paint every glyph in the board's palette, so a map's portals, conveyors, mirrors, keys and doors show up in the thumbnail: conveyors and mirrors as a glyph on a 26 % tint of their colour, keys and doors as solid blocks tinted by their lock tone (`lockColor` in `lib/tiles.ts`) with the letter in the matching ink, portals as solid `--board-portal` tokens with the pair digit in `--board-portal-ink`. Glyph size is `min(0.62 × cell, 14px)` via container query units on the grid, so a 32-wide map stays legible as colour blocks and a small map does not overflow. The preview's `aria-label` appends the same per-kind tile count as the board.
 
 ### Instructions and tapes
 
@@ -454,13 +483,13 @@ Call tiles cycle through `CALL_TONES` in `lib/instructions.ts` (violet, fuchsia,
 - Editing: click a slot (or press Enter on it) to open an instruction menu next to it (`SlotPicker.svelte`, placed by `lib/popover.ts`; shortcut keys pick, Backspace erases, Esc closes, focus moves to the next slot); arm a palette instruction to stamp it on every slot clicked (a hint under the palette says what is armed; Esc or clicking the tile again disarms it); drag between palette and slots (a slot drop swaps; hold Alt/Ctrl/Cmd to copy, Shift to reorder within a tape via `insertSlot`; drop a placed step anywhere on the palette (an Erase tile or any other tile) to clear it — the whole palette becomes a dashed rose drop zone with a "Drop here to erase" tag while a slot is dragged, `eraseTargetFor` in `lib/dnd.ts` decides what is erasable (palette-tile drags and a locked palette are no-ops), and it goes through the same `edit()` path as any other edit; `lib/dnd.ts` `dropModeFor` picks the mode and `activeDrag` shares the in-flight drag because `dragover` can't read `dataTransfer`; the drag preview is a compact tile from `lib/dragImage.ts`), or use the keyboard (letters and numbers place, Backspace clears, arrows move between slots and tapes). Only the subs a map has are offered.
 - **Clear all slots** (top right of the tape panel, shown only while a tape holds an instruction; the Undo/Redo bar beside it is always present so the first edit does not shift the slots) empties every slot on every tape immediately, keeping the tape lengths. There is no confirmation dialog: it is a draft edit like any other, so **Undo** (Ctrl+Z) restores it, and it autosaves like any other edit. `clearProgram` / `hasInstructions` live in `lib/program.ts`.
 - While running, slots show execution state (`lib/highlight.ts`): **next to run** gets a thick indigo ring, a **waiting caller** (a CALL whose sub is running) gets a violet ring with an offset, and **just executed** gets an inner yellow ring. Each state is also described in the slot's accessible label.
-- The call stack panel shows each frame and the depth against the map's limit, plus one line stating the map's recursion rule ("Recursion off: a call to a sub already on the stack is ignored, but the step is still spent" / "Recursion allowed: …"). When a step was a CALL that the rule ignored (`callBlocked`), an amber note under the panel names the sub and says the step was still spent, so the wasted step never looks like a bug.
+- There is no call-stack panel: the board and the slot rings already show what is running, and the panel cost space without adding a decision. When a step was a CALL that the map's recursion rule ignored (`callBlocked`), a one-line amber note under the status row names the sub and says the step was still spent, so the wasted step never looks like a bug (`blockedCallNotice` in `lib/recursion.ts`). The map's recursion rule itself is on its card chip ("recursion" / "no recursion").
 
 ### Feedback
 
 - Run controls (`RunControls.svelte`) follow the usual puzzle-game pattern: one large primary button that is **Run**, becomes **Pause** while running and **Try again** after a win or loss, plus **Back**, **Step** and **Reset**. **Back** (key `B`) takes the robot back one step, also after a win or loss. The server has no undo-step call, so the page resets and replays the saved program for one step fewer (`lib/stepBack.ts`; the engine is deterministic, and the replay never reaches the end of the run it came from, so it does not add a run). It costs one request per replayed step and is off while there are unsaved edits. A server-side step-back mutation would be cheaper but needs a schema change and `just generate`. The buttons never move or appear and disappear; unavailable ones are disabled (Reset until the robot has moved, Step while running or finished). Run and Step are also disabled while the Main tape is empty (a run could only lose and would cost an attempt); the status line then reads "Add an instruction to Main to start", and the `S` and Ctrl+Enter keys follow the same rule. Tooltips name the keys.
 - Speed is four presets (Slow 1000 ms, Normal 500, Fast 200, Turbo 50; `lib/speed.ts`). A speed set through the API that matches no preset is shown as a custom value. The server fixes the speed when a run starts, so choosing a preset while a run is playing pauses and re-runs at the new speed (`changeSpeed` in the play page). The chosen speed is remembered in this browser (`saveSpeed`/`savedSpeed`) and a brand-new session opens at it; a session that has been run keeps its own speed (`initialSpeed`). While a Back step is replaying, editing is locked (`rewinding`) so an edit cannot reset the robot half way through it.
-- There is no Save button. The program lives in a local draft that is **autosaved 600 ms after the last edit** (and flushed first on Run/Step) through `lib/serialRunner.ts`, which queues saves so two never race. Saving resets the robot to the start, so the board always matches the program on screen; the server, spectators and agents always see the current program. Undo/redo replaces the old Revert button.
+- There is no Save button. The program lives in a local draft that is **autosaved 600 ms after the last edit** (and flushed first on Run/Step) through `lib/serialRunner.ts`, which queues saves so two never race. Saving resets the robot to the start, so the board always matches the program on screen; the server and agents holding the owner token always see the current program, while spectators see only the board. Undo/redo replaces the old Revert button.
 - On win or loss: a centred modal ("You won!" in emerald or "Run lost" in rose, with the reason in plain words; a win also shows a one-line leaderboard rank), focus on **Reset & try again**, Escape closes it. A coloured banner stays under the board after the modal is closed.
 - Errors appear inline as rose alert boxes with a friendly title, plus the error code in small monospace.
 - A connection badge shows whether live updates are connected.
@@ -477,7 +506,7 @@ Call tiles cycle through `CALL_TONES` in `lib/instructions.ts` (violet, fuchsia,
 
 `.env` (loaded at startup; see `.env.example`):
 
-Boolean flags are case-insensitive and tolerate surrounding spaces: `true`, `1`, `yes` and `on` (in any case) all mean on, and anything else means off. An unset flag keeps its default.
+Boolean flags are read slightly differently, so trust the table below rather than a single rule. `GRAPHQL_INTROSPECTION` and `GRAPHQL_PLAYGROUND` accept `true`, `1`, `yes` or `on` in any case (surrounding spaces ignored) and treat anything else as off, with an unset flag keeping its default. `ALLOW_UNAUTHENTICATED_ADMIN` must be exactly `true`. `AUTH_DEV_FAKE` accepts `true`, `1` or `yes` in any case. `AUTH_PASSWORD` stays on unless it is `false`, `0` or `no` — so `AUTH_PASSWORD=off` does **not** turn it off.
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -495,7 +524,7 @@ Boolean flags are case-insensitive and tolerate surrounding spaces: `true`, `1`,
 | `MAX_ACCOUNTS` | `10000` | Cap on accounts |
 | `SESSION_TTL` | `168h` | Idle sessions older than this are removed on startup |
 
-Frontend build-time variables: `PUBLIC_GRAPHQL_URL`, `PUBLIC_WS_URL`. When unset, the UI uses the page's own host and picks `ws`/`wss` from the page protocol.
+Frontend build-time variables: `PUBLIC_GRAPHQL_URL`, `PUBLIC_WS_URL` (Vite, not read by the Go binary and not in `.env.example`; set them in the shell that runs `just build-ui`). When unset, the UI uses the page's own host and picks `ws`/`wss` from the page protocol.
 
 ## Deployment and hosting
 
@@ -517,7 +546,7 @@ Production runs at https://motor-programming.wricardo.net on a small ARM64 Ubunt
 ### Common changes
 
 - **Schema change:** edit `graph/schema.graphqls` → `just generate` → update `graph/convert.go` and resolvers → mirror in `frontend/src/lib/{queries,types}.ts` → update `llms.txt.tmpl` and `prompt.ts` if agents are affected → update the query copies in `api/hardening_test.go`.
-- **Engine change:** update the golden step counts in `game/engine/engine_test.go` and `validate/validate_test.go` (7, 17, 19, 46, 23, 30, 44, 80, 32, 48, 83, 65, 77, 57, 40, 30, 42 for the shipped solutions) on purpose, never just to make a failure go away.
+- **Engine change:** update the golden step counts in `validate/validate_test.go` (7, 17, 19, 46, 23, 30, 44, 80, 32, 48, 83, 65, 77, 57, 40, 30, 42, 257, 199, 140, 151, 103, 6, 14, 9, 8 for the shipped solutions) and the five inline fixtures in `game/engine/engine_test.go` (7, 46, 23, 30, 44) on purpose, never just to make a failure go away.
 - **UI change:** `cd frontend && npm run check && npm test && npm run build:static` (or `just build-ui`), then commit `static/`. If you skip the build, production keeps the old UI.
 - **New page:** add the route under `frontend/src/routes/`, add it to `spaRoutes` in `api/server.go`, and to the nav in `+layout.svelte` if needed.
 - **Dependencies:** don't run `go mod tidy` casually. `gqlgen generate` rewrites `go.mod`; re-`go get` anything it drops.

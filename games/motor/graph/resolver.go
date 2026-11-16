@@ -111,6 +111,14 @@ func sessionActor(ctx context.Context, ownerToken *string) service.SessionActor 
 	return a
 }
 
+// mayPlay reports whether the caller may play a session (and so may read its
+// program): the owner token holder, or the owning account's login. It reuses the
+// same service rule the play mutations enforce, so a read can never be more
+// permissive than a write.
+func (r *Resolver) mayPlay(ctx context.Context, id string, ownerToken *string) bool {
+	return r.Service.AuthorizeSessionPlay(id, sessionActor(ctx, ownerToken)) == nil
+}
+
 // requireSignIn returns the request's sign-in hooks or a FORBIDDEN error when
 // the cookie cannot be set (a subscription over websocket, or sign-in off).
 func requireSignIn(ctx context.Context) (*SignIn, error) {

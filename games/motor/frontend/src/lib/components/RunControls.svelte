@@ -41,17 +41,19 @@
 	const preset = $derived(presetFor(speedMs));
 	const emptyTitle = 'Put an instruction in Main first';
 
+	// Narrower padding on phones keeps Run/Back/Step/Reset on one row at 360px.
 	const base =
-		'inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50';
+		'inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition-colors sm:px-4 disabled:cursor-not-allowed disabled:opacity-50';
 	const secondary = `${base} border border-indigo-300 text-indigo-900 hover:bg-indigo-50 disabled:hover:bg-transparent`;
 </script>
 
 {#snippet icon(path: string)}
-	<svg viewBox="0 0 24 24" class="h-4 w-4 fill-current" aria-hidden="true"><path d={path} /></svg>
+	<!-- Labels carry the meaning on phones, where four icon+text buttons do not fit one row. -->
+	<svg viewBox="0 0 24 24" class="h-4 w-4 fill-current max-sm:hidden" aria-hidden="true"><path d={path} /></svg>
 {/snippet}
 
 <div class="space-y-3" data-testid="run-controls">
-	<div class="flex gap-2" role="group" aria-label="Run controls">
+	<div class="flex flex-wrap gap-2" role="group" aria-label="Run controls">
 		{#if playing}
 			<button
 				type="button"

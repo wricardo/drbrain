@@ -4,12 +4,11 @@
 	import { page } from '$app/stores';
 	import { getContextClient } from '@urql/svelte';
 	import AiPromptCard from '$lib/components/AiPromptCard.svelte';
-	import CallStack from '$lib/components/CallStack.svelte';
 	import ConnectionBadge from '$lib/components/ConnectionBadge.svelte';
 	import Grid from '$lib/components/Grid.svelte';
 	import Stats from '$lib/components/Stats.svelte';
-	import Tape from '$lib/components/Tape.svelte';
 	import { buildSessionPrompt } from '$lib/prompt';
+	import { blockedCallNotice } from '$lib/recursion';
 	import { ownerTokenFor, statusLine } from '$lib/sessions';
 	import { createSessionStore } from '$lib/stores/session';
 	import { createSessionSource } from '$lib/stores/source';
@@ -25,6 +24,7 @@
 	const origin = typeof window !== 'undefined' ? window.location.origin : '';
 	const session = $derived($store.session);
 	const status = $derived(session?.vm.status ?? 'READY');
+	const callNotice = $derived(session ? blockedCallNotice(session.lastEvent) : null);
 </script>
 
 <svelte:head><title>{pageTitle(session ? `Watching ${session.map.name}` : 'Watch')}</title></svelte:head>
@@ -71,6 +71,11 @@
 					{statusLine(session)}
 				</p>
 				<Stats {session} />
+				{#if callNotice}
+					<p class="rounded-lg bg-amber-50 px-2 py-1.5 text-xs text-amber-900" role="status" data-testid="blocked-call">
+						{callNotice}
+					</p>
+				{/if}
 				<div class="flex flex-wrap items-center gap-3">
 					{#if ownerToken}
 						<a href="/play/{session.id}" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700" data-testid="take-over">Take over</a>
@@ -79,16 +84,15 @@
 					{/if}
 					<a href="/" class="text-sm text-indigo-700 underline">Pick your own map</a>
 				</div>
-				<div class="rounded-xl border border-indigo-200 bg-white p-3">
-					<Tape
-						program={session.program}
-						disabled
-						callStack={session.vm.callStack}
-						lastEvent={session.lastEvent}
-						{status}
-					/>
+				<div class="rounded-xl border border-indigo-200 bg-white p-3 space-y-1">
+					<p class="text-sm font-semibold text-indigo-950" data-testid="program-hidden">The program is private</p>
+					<p class="text-sm text-slate-600">
+						It is visible only to the player who started this run, so a watch link never gives away a solution.
+						{#if ownerToken}
+							<a href="/play/{session.id}" class="underline">Take it over</a> to open and run it.
+						{/if}
+					</p>
 				</div>
-				<CallStack callStack={session.vm.callStack} map={session.map} lastEvent={session.lastEvent} />
 				<AiPromptCard
 					prompt={buildSessionPrompt(origin, { ...session, ownerToken })}
 					blurb="Copy this prompt into an AI chat and it will program the robot to win this session."

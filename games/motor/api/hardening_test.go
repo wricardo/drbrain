@@ -54,9 +54,9 @@ func TestCreateMapSubTapeLengthsOverHTTP(t *testing.T) {
 // frontend adds heavier queries.
 const (
 	posSel     = `x y`
-	mapSel     = `id name description difficulty builtin width height layout start { x y } startFacing rocks { x y } treats { x y } mainTapeLength subTapeLengths maxSteps maxCallDepth allowRecursion`
-	eventSel   = `step instruction tapeIndex slotIndex from { x y } to { x y } facingBefore facingAfter blocked callBlocked collected { x y } callStack { tape pc } status lossReason`
-	sessionSel = `id displayName mapId map { ` + mapSel + ` } program { main subs } vm { pos { x y } facing treatsRemaining { x y } callStack { tape pc } steps status lossReason visited { x y } } playing speedMs seq createdAt lastActionAt attempts bestSteps lastEvent { ` + eventSel + ` }`
+	mapSel     = `id name description difficulty builtin width height layout start { x y } startFacing rocks { x y } treats { x y } conveyors { pos { x y } dir } mirrors { pos { x y } slash } keys { pos { x y } letter } doors { pos { x y } letter } portals { pos { x y } pair } mainTapeLength subTapeLengths maxSteps maxCallDepth allowRecursion`
+	eventSel   = `step instruction tapeIndex slotIndex from { x y } to { x y } facingBefore facingAfter blocked callBlocked pushed pushBlocked mirrored collectedKey teleported { x y } collected { x y } callStack { tape pc } status lossReason`
+	sessionSel = `id displayName mapId map { ` + mapSel + ` } program { main subs } vm { pos { x y } facing treatsRemaining { x y } callStack { tape pc } steps status lossReason visited { x y } openDoors } playing speedMs seq createdAt lastActionAt attempts bestSteps lastEvent { ` + eventSel + ` }`
 	// The frontend's account and profile queries (frontend/src/lib/queries.ts).
 	accountQ  = `query Account { me { handle displayName profilePublic createdAt handleChangeableAt hasPassword } authProviders { id name } }`
 	profileQ  = `query Profile($handle: String!) { profile(handle: $handle) { handle displayName createdAt isMine runs { mapId total entry { rank sessionId displayName handle mine slots steps achievedAt } } } }`

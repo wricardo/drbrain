@@ -52,9 +52,9 @@ export function runText(run: PlayerRun): string {
 }
 
 /**
- * "Solved 5 of 17 maps". Once community maps exist the official campaign is counted on
+ * "Solved 5 of 18 maps". Once community maps exist the official campaign is counted on
  * its own, so the headline number does not move when a player makes a map:
- * "Solved 5 of 17 official maps · 1 of 2 community maps".
+ * "Solved 5 of 18 official maps · 1 of 2 community maps".
  */
 export function solvedSummary(rows: RunRow[]): string {
 	const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;

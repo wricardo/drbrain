@@ -38,11 +38,29 @@ type AuthProvider struct {
 	Name string `json:"name"`
 }
 
+type Conveyor struct {
+	Pos *Position `json:"pos"`
+	// Direction the robot is carried after moving onto this tile.
+	Dir Facing `json:"dir"`
+}
+
+type DoorTile struct {
+	Pos *Position `json:"pos"`
+	// Upper-case door letter ('A'..'C').
+	Letter string `json:"letter"`
+}
+
 type Frame struct {
 	// Tape index; -1 is the main tape.
 	Tape int `json:"tape"`
 	// Index of the next instruction to run on that tape.
 	Pc int `json:"pc"`
+}
+
+type KeyTile struct {
+	Pos *Position `json:"pos"`
+	// Lower-case key letter ('a'..'c').
+	Letter string `json:"letter"`
 }
 
 // The ranking of one map. A guest session appears at most once, with its best result under the
@@ -84,19 +102,29 @@ type Map struct {
 	Description string `json:"description"`
 	Difficulty  string `json:"difficulty"`
 	// True for a map shipped with the game: only an admin may change or delete it.
-	Builtin        bool        `json:"builtin"`
-	Width          int         `json:"width"`
-	Height         int         `json:"height"`
-	Layout         []string    `json:"layout"`
-	Start          *Position   `json:"start"`
-	StartFacing    Facing      `json:"startFacing"`
-	Rocks          []*Position `json:"rocks"`
-	Treats         []*Position `json:"treats"`
-	MainTapeLength int         `json:"mainTapeLength"`
-	SubTapeLengths []int       `json:"subTapeLengths"`
-	MaxSteps       int         `json:"maxSteps"`
-	MaxCallDepth   int         `json:"maxCallDepth"`
-	AllowRecursion bool        `json:"allowRecursion"`
+	Builtin     bool        `json:"builtin"`
+	Width       int         `json:"width"`
+	Height      int         `json:"height"`
+	Layout      []string    `json:"layout"`
+	Start       *Position   `json:"start"`
+	StartFacing Facing      `json:"startFacing"`
+	Rocks       []*Position `json:"rocks"`
+	Treats      []*Position `json:"treats"`
+	// One-way tiles: a move onto one is carried one extra cell in Conveyor.dir.
+	Conveyors []*Conveyor `json:"conveyors"`
+	// Mirrors force a 90-degree turn on arrival: slash=true is '/', false is '\\'.
+	Mirrors []*Mirror `json:"mirrors"`
+	// Collectable keys ('a'..'c'); each opens every matching door.
+	Keys []*KeyTile `json:"keys"`
+	// Doors ('A'..'C'), impassable until their key is collected.
+	Doors []*DoorTile `json:"doors"`
+	// Portal pairs ('1'..'9'); arriving on one teleports to the other.
+	Portals        []*Portal `json:"portals"`
+	MainTapeLength int       `json:"mainTapeLength"`
+	SubTapeLengths []int     `json:"subTapeLengths"`
+	MaxSteps       int       `json:"maxSteps"`
+	MaxCallDepth   int       `json:"maxCallDepth"`
+	AllowRecursion bool      `json:"allowRecursion"`
 }
 
 type MapInput struct {
@@ -123,6 +151,12 @@ type MapValidationResult struct {
 	UnreachableTreats []*Position `json:"unreachableTreats"`
 }
 
+type Mirror struct {
+	Pos *Position `json:"pos"`
+	// True for '/', false for '\\'.
+	Slash bool `json:"slash"`
+}
+
 type Mutation struct {
 }
 
@@ -134,6 +168,12 @@ type PlayerRun struct {
 	Total int `json:"total"`
 	// The winning session's row; entry.rank is its current rank.
 	Entry *LeaderboardEntry `json:"entry"`
+}
+
+type Portal struct {
+	Pos *Position `json:"pos"`
+	// Digit shared by the two ends of the pair.
+	Pair string `json:"pair"`
 }
 
 type Position struct {
@@ -170,8 +210,11 @@ type Session struct {
 	DisplayName string `json:"displayName"`
 	MapID       string `json:"mapId"`
 	// Snapshot of the map taken when the session was created.
-	Map     *Map     `json:"map"`
-	Program *Program `json:"program"`
+	Map *Map `json:"map"`
+	// The robot's program. Only a caller who may play the session sees it: the ownerToken holder or
+	// the owning account's login. Spectators — a shared /watch link, the session lists — get null, so a
+	// program is never a public answer key.
+	Program *Program `json:"program,omitempty"`
 	VM      *VMState `json:"vm"`
 	Playing bool     `json:"playing"`
 	SpeedMs int      `json:"speedMs"`
@@ -218,11 +261,21 @@ type StepEvent struct {
 	FacingAfter  Facing      `json:"facingAfter"`
 	Blocked      bool        `json:"blocked"`
 	// True when a CALL_SUB_k was ignored because the map has allowRecursion: false and that sub is already on the call stack. The step is still spent.
-	CallBlocked bool        `json:"callBlocked"`
-	Collected   *Position   `json:"collected,omitempty"`
-	CallStack   []*Frame    `json:"callStack"`
-	Status      Status      `json:"status"`
-	LossReason  *LossReason `json:"lossReason,omitempty"`
+	CallBlocked bool `json:"callBlocked"`
+	// True when the move landed on a conveyor and was carried one extra cell (same step).
+	Pushed bool `json:"pushed"`
+	// True when that carry was blocked, so the robot stayed on the conveyor.
+	PushBlocked bool `json:"pushBlocked"`
+	// True when the arrival tile was a mirror and reflected the facing.
+	Mirrored bool `json:"mirrored"`
+	// The key letter picked up on this step, or null.
+	CollectedKey *string `json:"collectedKey,omitempty"`
+	// Portal destination when the arrival tile was a portal.
+	Teleported *Position   `json:"teleported,omitempty"`
+	Collected  *Position   `json:"collected,omitempty"`
+	CallStack  []*Frame    `json:"callStack"`
+	Status     Status      `json:"status"`
+	LossReason *LossReason `json:"lossReason,omitempty"`
 }
 
 type Subscription struct {
@@ -238,6 +291,8 @@ type VMState struct {
 	Status     Status      `json:"status"`
 	LossReason *LossReason `json:"lossReason,omitempty"`
 	Visited    []*Position `json:"visited"`
+	// Lower-case letters of the doors this run has opened.
+	OpenDoors []string `json:"openDoors"`
 }
 
 type ClaimStatus string

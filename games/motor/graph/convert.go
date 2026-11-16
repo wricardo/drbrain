@@ -58,6 +58,46 @@ func toInstructions(in []engine.Instruction) []model.Instruction {
 	return out
 }
 
+func toConveyors(cs []engine.Conveyor) []*model.Conveyor {
+	out := make([]*model.Conveyor, len(cs))
+	for i, c := range cs {
+		out[i] = &model.Conveyor{Pos: toPosition(c.Pos), Dir: toFacing(c.Dir)}
+	}
+	return out
+}
+
+func toMirrors(ms []engine.Mirror) []*model.Mirror {
+	out := make([]*model.Mirror, len(ms))
+	for i, m := range ms {
+		out[i] = &model.Mirror{Pos: toPosition(m.Pos), Slash: m.Slash}
+	}
+	return out
+}
+
+func toKeyTiles(ks []engine.KeyTile) []*model.KeyTile {
+	out := make([]*model.KeyTile, len(ks))
+	for i, k := range ks {
+		out[i] = &model.KeyTile{Pos: toPosition(k.Pos), Letter: k.Letter}
+	}
+	return out
+}
+
+func toDoorTiles(ds []engine.DoorTile) []*model.DoorTile {
+	out := make([]*model.DoorTile, len(ds))
+	for i, d := range ds {
+		out[i] = &model.DoorTile{Pos: toPosition(d.Pos), Letter: d.Letter}
+	}
+	return out
+}
+
+func toPortals(ps []engine.Portal) []*model.Portal {
+	out := make([]*model.Portal, len(ps))
+	for i, p := range ps {
+		out[i] = &model.Portal{Pos: toPosition(p.Pos), Pair: p.Pair}
+	}
+	return out
+}
+
 func toMap(m *engine.Map) *model.Map {
 	if m == nil {
 		return nil
@@ -70,6 +110,11 @@ func toMap(m *engine.Map) *model.Map {
 		StartFacing:    toFacing(m.StartFacing),
 		Rocks:          toPositions(m.Rocks),
 		Treats:         toPositions(m.Treats),
+		Conveyors:      toConveyors(m.Conveyors),
+		Mirrors:        toMirrors(m.Mirrors),
+		Keys:           toKeyTiles(m.Keys),
+		Doors:          toDoorTiles(m.Doors),
+		Portals:        toPortals(m.Portals),
 		MainTapeLength: m.MainTapeLength,
 		SubTapeLengths: append([]int{}, m.SubTapeLengths...),
 		MaxSteps:       m.MaxSteps,
@@ -147,8 +192,12 @@ func fromMapInput(in model.MapInput) engine.MapConfig {
 // collected bitmap so clients never see it.
 func toVMState(vm *engine.VMState, m *engine.Map) *model.VMState {
 	remaining := []engine.Position{}
+	openDoors := []string{}
 	if m != nil && len(vm.Collected) == len(m.Treats) {
 		remaining = vm.TreatsRemaining(m)
+	}
+	if m != nil {
+		openDoors = m.OpenDoorLetters(vm.DoorsOpen)
 	}
 	return &model.VMState{
 		Pos:             toPosition(vm.Pos),
@@ -159,6 +208,7 @@ func toVMState(vm *engine.VMState, m *engine.Map) *model.VMState {
 		Status:          model.Status(vm.Status),
 		LossReason:      toLossReason(vm.LossReason),
 		Visited:         toPositions(vm.Visited),
+		OpenDoors:       openDoors,
 	}
 }
 
@@ -173,6 +223,9 @@ func toStepEvent(e *engine.StepEvent) *model.StepEvent {
 		FacingBefore: toFacing(e.FacingBefore), FacingAfter: toFacing(e.FacingAfter),
 		Blocked:     e.Blocked,
 		CallBlocked: e.CallBlocked,
+		Pushed:      e.Pushed,
+		PushBlocked: e.PushBlocked,
+		Mirrored:    e.Mirrored,
 		CallStack:   toFrames(e.CallStack),
 		Status:      model.Status(e.Status),
 		LossReason:  toLossReason(e.LossReason),
@@ -180,24 +233,35 @@ func toStepEvent(e *engine.StepEvent) *model.StepEvent {
 	if e.Collected != nil {
 		ev.Collected = toPosition(*e.Collected)
 	}
+	if e.CollectedKey != "" {
+		k := e.CollectedKey
+		ev.CollectedKey = &k
+	}
+	if e.Teleported != nil {
+		ev.Teleported = toPosition(*e.Teleported)
+	}
 	return ev
 }
 
-// toSession converts an immutable session snapshot (a Clone).
-func toSession(s *service.Session) *model.Session {
+// toSession converts an immutable session snapshot (a Clone). The program is
+// included only for a caller who may play the session: everyone else gets null,
+// so a shared watch link is not an answer key.
+func toSession(s *service.Session, withProgram bool) *model.Session {
 	if s == nil {
 		return nil
 	}
 	out := &model.Session{
 		ID: s.ID, DisplayName: s.DisplayName, MapID: s.MapID,
 		Map:     toMap(s.Map),
-		Program: toProgram(s.Program),
 		VM:      toVMState(&s.VM, s.Map),
 		Playing: s.Playing, SpeedMs: s.SpeedMs,
 		Seq:       int(s.Seq),
 		CreatedAt: s.CreatedAt, LastActionAt: s.LastActionAt,
 		Attempts:  s.Attempts,
 		LastEvent: toStepEvent(s.LastEvent),
+	}
+	if withProgram {
+		out.Program = toProgram(s.Program)
 	}
 	if s.BestSteps > 0 {
 		b := s.BestSteps
@@ -247,6 +311,6 @@ func toLeaderboard(lb *service.Leaderboard) *model.Leaderboard {
 	return out
 }
 
-func toSessionUpdate(s *service.Session) *model.SessionUpdate {
-	return &model.SessionUpdate{Seq: int(s.Seq), Session: toSession(s), Event: toStepEvent(s.LastEvent)}
+func toSessionUpdate(s *service.Session, withProgram bool) *model.SessionUpdate {
+	return &model.SessionUpdate{Seq: int(s.Seq), Session: toSession(s, withProgram), Event: toStepEvent(s.LastEvent)}
 }

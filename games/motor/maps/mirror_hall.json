@@ -1,0 +1,18 @@
+{
+  "id": "mirror_hall",
+  "name": "Terrain 2 - Mirror Hall",
+  "description": "Two mirrors do the turning for you. Every slot goes to MOVEs, and the corners cost nothing.",
+  "difficulty": "medium",
+  "layout": [
+    ">....\\",
+    "......",
+    "......",
+    "......",
+    "*..../"
+  ],
+  "main_tape_length": 14,
+  "sub_tape_lengths": [],
+  "max_steps": 120,
+  "max_call_depth": 16,
+  "allow_recursion": false
+}

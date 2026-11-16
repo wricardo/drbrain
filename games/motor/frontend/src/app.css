@@ -21,6 +21,24 @@
   --board-robot: #4338ca;
   --board-robot-outline: #fff;
   --board-bump: #e11d48;
+  /* Tile effects: conveyor carry, mirror reflection, keys/doors and portal pairs. */
+  --board-conveyor: #0d9488;
+  --board-mirror: #c2410c;
+  --board-portal: #7c3aed;
+  /* One tone per key letter: a key and the door it opens share it (lib/tiles.ts). */
+  --board-lock-a: #0369a1;
+  --board-lock-a-ink: #fff;
+  --board-lock-b: #6d28d9;
+  --board-lock-b-ink: #fff;
+  --board-lock-c: #047857;
+  --board-lock-c-ink: #fff;
+  --board-door-frame: #334155;
+  --board-door-recess: #b8c2d9;
+  --board-door-recess-lip: #99a6c4;
+  --board-lock-body: #1e293b;
+  --board-lock-shackle: #cbd5e1;
+  /* Ink for the remaining tile letters, chosen to keep >= 4.5:1 contrast. */
+  --board-portal-ink: #fff;
 }
 
 body {
@@ -105,6 +123,21 @@ body {
   --board-robot: #6366f1;
   --board-robot-outline: #fff;
   --board-bump: #fb7185;
+  --board-conveyor: #2dd4bf;
+  --board-mirror: #fdba74;
+  --board-portal: #c4b5fd;
+  --board-lock-a: #38bdf8;
+  --board-lock-a-ink: #0b1020;
+  --board-lock-b: #a78bfa;
+  --board-lock-b-ink: #0b1020;
+  --board-lock-c: #34d399;
+  --board-lock-c-ink: #0b1020;
+  --board-door-frame: #94a3b8;
+  --board-door-recess: #12152f;
+  --board-door-recess-lip: #1c2046;
+  --board-lock-body: #0f172a;
+  --board-lock-shackle: #94a3b8;
+  --board-portal-ink: #171936;
 }
 
 .dark body {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildGenericPrompt, buildSessionPrompt, layoutBlock } from './prompt';
+import { GLYPH_LEGEND, buildGenericPrompt, buildSessionPrompt, layoutBlock, layoutHasTiles, tileRules } from './prompt';
 import type { GameMap } from './types';
 
 function map(over: Partial<GameMap> = {}): GameMap {
@@ -16,6 +16,11 @@ function map(over: Partial<GameMap> = {}): GameMap {
 		startFacing: 'RIGHT',
 		rocks: [],
 		treats: [{ x: 4, y: 0 }],
+		conveyors: [],
+		mirrors: [],
+		keys: [],
+		doors: [],
+		portals: [],
 		mainTapeLength: 3,
 		subTapeLengths: [2, 4],
 		maxSteps: 50,
@@ -109,5 +114,43 @@ describe('buildGenericPrompt', () => {
 		expect(g).toContain('http://h:1/llms.txt');
 		expect(g).toContain('createSession');
 		expect(g).toContain('http://h:1/watch/SESSION_ID');
+	});
+});
+
+describe('tile rules in prompts', () => {
+	it('always prints the glyph legend', () => {
+		const p = buildSessionPrompt('http://h:1', { id: 'abc123', map: map() });
+		expect(p).toContain(GLYPH_LEGEND);
+		expect(buildGenericPrompt('http://h:1')).toContain(GLYPH_LEGEND);
+	});
+
+	it('stays quiet on a map with no special tiles', () => {
+		expect(layoutHasTiles(['>...*', '.###.', '.....'])).toBe(false);
+		expect(tileRules(map())).toBeNull();
+		expect(buildSessionPrompt('http://h:1', { id: 'a', map: map() })).not.toContain('Tiles on this map');
+	});
+
+	it('detects tiles from the layout when the field lists are empty', () => {
+		const tiled = map({ layout: ['>U..*', './/..', '..aA1'] });
+		expect(layoutHasTiles(tiled.layout)).toBe(true);
+		const p = buildSessionPrompt('http://h:1', { id: 'a', map: tiled });
+		expect(p).toContain('## Tiles on this map');
+		expect(p).toContain('pushed: true');
+		expect(p).toContain('pushBlocked: true');
+		expect(p).toContain('mirrored: true');
+		expect(p).toContain('collectedKey');
+		expect(p).toContain('teleported');
+	});
+
+	it('detects tiles from the map fields even without glyphs in the layout', () => {
+		const fields = map({ conveyors: [{ pos: { x: 1, y: 0 }, dir: 'UP' }] });
+		expect(tileRules(fields)).toContain('Conveyor');
+	});
+
+	it('names only the tile kinds the map uses', () => {
+		const portalOnly = tileRules(map({ portals: [] , layout: ['>..1*', '....1', '.....'] }));
+		expect(portalOnly).toContain('Portal');
+		expect(portalOnly).not.toContain('Mirror');
+		expect(portalOnly).not.toContain('Key (a b c)');
 	});
 });

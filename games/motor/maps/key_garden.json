@@ -1,0 +1,16 @@
+{
+  "id": "key_garden",
+  "name": "Terrain 3 - Key Garden",
+  "description": "The rock behind the door leaves no way around: collect the key first, then walk through. Order is the whole puzzle.",
+  "difficulty": "medium",
+  "layout": [
+    ">.A*",
+    ".a.#",
+    "...."
+  ],
+  "main_tape_length": 9,
+  "sub_tape_lengths": [],
+  "max_steps": 120,
+  "max_call_depth": 16,
+  "allow_recursion": false
+}

@@ -233,7 +233,7 @@
 			{/if}
 		</p>
 	{:else if shown.length > 0}
-		<div class="overflow-x-auto rounded-xl border border-indigo-200 bg-white">
+		<div class="relative overflow-x-auto rounded-xl border border-indigo-200 bg-white">
 			<table class="w-full text-left text-sm">
 				<caption class="sr-only">Sessions</caption>
 				<thead class="bg-indigo-50 text-xs uppercase tracking-wide text-indigo-900">
