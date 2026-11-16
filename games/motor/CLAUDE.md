@@ -13,11 +13,11 @@ Robot-programming puzzle game for humans and AI agents. Go server (pure rules en
 ```sh
 just --list                                # every recipe
 just restart                               # rebuild UI + binary, restart on :8000 (the usual loop)
-just dev                                   # go run . -port 8000 -debug (API + UI)
+just dev                                   # stop the port holder, then go run . -port 8000 -host 0.0.0.0 -public-url http://localhost:8000 -debug
 just test                                  # go test -race ./...
 go test -race -run TestName ./game/engine  # single Go test
 just validate                              # maps + reference solutions (needs local solutions/)
-just verify                                # gofmt, vet, lint (golangci-lint 2.15+), test
+just verify                                # gofmt, vet, lint (golangci-lint 2.15+), Go tests, UI check (skips without frontend/node_modules)
 just generate                              # gqlgen after editing graph/schema.graphqls
 just build-ui                              # build UI into static/ (committed)
 cd frontend && npm run check && npm test
@@ -36,7 +36,7 @@ scripts/smoke.sh 9191                      # end-to-end HTTP smoke (starts its o
 - **Map snapshot**: sessions embed their own map copy; map edits/deletes never touch sessions. Map creation is atomic via `MapStore.Create`, never check-then-save.
 - **Security**: map ids `^[a-z0-9_-]{1,64}$` (filenames); session ids 16 lowercase hex, validated before disk; admin mutations need `X-Admin-Key` (constant-time) unless `ALLOW_UNAUTHENTICATED_ADMIN=true` with no key set; `max_steps ≤ 10000`, `max_call_depth ≤ 64`.
 - **Session ownership**: `AuthorizeSessionPlay` gates `setProgram`/`run`/`step`/`pause`/`reset` (owner token or owning account's login; a session with no `OwnerHash` stays open) and `AuthorizeSessionChange` gates rename/delete. Both live in `game/service` and are called by the resolvers, so no transport can bypass them. `canPlaySession` answers the same question for the UI.
-- **Recursion off**: calling a sub already on the call stack is a no-op (still a step).
+- **Recursion is per map**: with `allow_recursion: false` (the default) a call to a sub already anywhere on the call stack is a no-op (still a step, reported as `callBlocked`); with `true` it recurses, bounded by `max_call_depth` (`depth > max_call_depth` → LOST/CALL_DEPTH).
 - **Tiles**: an arrival tile fires at most one effect per step (portal, then mirror, then conveyor push), never chains, and never costs an extra step; a closed door blocks like a rock; the only tile state is `VMState.DoorsOpen` and it must be cloned, persisted and broadcast.
 - **Zero subs**: `sub_tape_lengths: []` ≠ omitted. No `omitempty`; never turn `[]` into `nil` (incl. `graph/convert.go`).
 

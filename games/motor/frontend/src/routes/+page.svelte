@@ -10,7 +10,7 @@
 	import { describeError, type DescribedError } from '$lib/errors';
 	import { nameSyncMessage, renameOwnSessions } from '$lib/nameSync';
 	import { CREATE_SESSION_MUTATION, MAPS_QUERY, RENAME_SESSION_MUTATION, SESSION_QUERY, SESSIONS_QUERY } from '$lib/queries';
-	import { forgetSession, isFinished, lastSessionId, ownSessionIds, ownsSession, progressText, recentStarted, rememberSession, saveDisplayName, savedDisplayName, statusText } from '$lib/sessions';
+	import { forgetSession, isFinished, lastSessionId, newSessionName, ownSessionIds, ownsSession, progressText, recentStarted, rememberSession, saveDisplayName, savedDisplayName, statusText } from '$lib/sessions';
 	import { account } from '$lib/stores/account';
 	import { absoluteTime, relativeTime } from '$lib/time';
 	import type { GameMap, Session, SessionSummary } from '$lib/types';
@@ -28,12 +28,6 @@
 	/** Home shows only the first few maps; the rest live on /maps. */
 	const HOME_MAPS = 3;
 	let displayName = $state(savedDisplayName());
-	// A signed-in player's sessions are named after their account: the server
-	// defaults to it, so show it here instead of an empty "random guest name" box.
-	$effect(() => {
-		const me = $account.me;
-		if (me && !displayName.trim()) displayName = me.displayName || me.handle;
-	});
 
 	onMount(async () => {
 		try {
@@ -88,10 +82,11 @@
 		creating = true;
 		error = null;
 		try {
-			const name = displayName.trim();
-			saveDisplayName(name);
+			// Signed in, the run belongs to the account: send no name so the server
+			// names it after the account instead of a guest alias this browser kept.
+			if (!$account.me) saveDisplayName(displayName.trim());
 			const data = await unwrap<{ createSession: Session }>(
-				client.mutation(CREATE_SESSION_MUTATION, { mapID: map.id, displayName: name || null })
+				client.mutation(CREATE_SESSION_MUTATION, { mapID: map.id, displayName: newSessionName(!!$account.me) })
 			);
 			rememberSession(data.createSession.id, data.createSession.displayName, data.createSession.ownerToken);
 			await goto(`/play/${data.createSession.id}`);
@@ -185,19 +180,27 @@
 		</div>
 		<p class="mt-1 text-sm text-slate-700">Start with the easiest maps. New here? Read <a href="/learn" class="underline text-indigo-700">how it works</a>.</p>
 		<div class="mt-4 max-w-sm">
-			<label for="display-name" class="block text-sm font-medium text-indigo-900">Your name (optional)</label>
-			<input
-				id="display-name"
-				type="text"
-				maxlength="40"
-				bind:value={displayName}
-				onchange={(e) => commitName(e.currentTarget.value)}
-				placeholder="A random guest name"
-				class="mt-1 w-full rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm"
-			/>
-			<p class="mt-1 text-xs text-slate-600" role="status" aria-live="polite" data-testid="name-note">
-				{nameNote || 'Changing it renames your earlier runs on the leaderboard too.'}
-			</p>
+			{#if $account.me}
+				<p class="text-sm text-slate-700" data-testid="playing-as">
+					Playing as <strong class="text-indigo-950">{$account.me.displayName || $account.me.handle}</strong>
+					<span class="text-slate-500">@{ $account.me.handle }</span>. Your runs are saved to your profile and appear
+					under your handle; change the name in <a href="/settings" class="text-indigo-700 underline">Settings</a>.
+				</p>
+			{:else}
+				<label for="display-name" class="block text-sm font-medium text-indigo-900">Your name (optional)</label>
+				<input
+					id="display-name"
+					type="text"
+					maxlength="40"
+					bind:value={displayName}
+					onchange={(e) => commitName(e.currentTarget.value)}
+					placeholder="A random guest name"
+					class="mt-1 w-full rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm"
+				/>
+				<p class="mt-1 text-xs text-slate-600" role="status" aria-live="polite" data-testid="name-note">
+					{nameNote || 'Changing it renames your earlier runs on the leaderboard too.'}
+				</p>
+			{/if}
 		</div>
 
 		{#if error}

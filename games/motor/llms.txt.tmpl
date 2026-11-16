@@ -146,7 +146,8 @@ The subscription emits the current snapshot immediately, then every change. Ever
 full snapshot; ignore updates whose `seq` is not greater than the last one you saw.
 
 `displayName` is optional (max 40 characters). Without one the session gets a random guest name
-like `BraveOtter`, which is what the leaderboard shows.
+like `BraveOtter`, which is what the leaderboard shows; a signed-in browser that passes none gets
+its account's display name instead. `renameSession(id, displayName)` changes it later.
 
 You play as a guest: no sign-in, no key. The one thing you must keep is the `ownerToken` that
 `createSession` returns (`createSession(...) { id ownerToken }`). It is the credential that lets you
@@ -212,7 +213,8 @@ query { leaderboard(mapId: "MAP_ID", order: SLOTS, limit: 20, sessionId: "SESSIO
   resets after a win do not remove the entry. A signed-in human's sessions are collapsed into one
   entry for the account (its best), shown with its display name and `handle` (or "Private player"
   and no handle when their profile is private); agents are always guest entries.
-- `limit` defaults to 20 (max 100); `total` is the number of ranked sessions. `yours` is the
+- `limit` defaults to 20 (max 100); `total` is the number of ranked entries on the board (one per
+  account per map, plus one per winning guest session), not the number of winning sessions. `yours` is the
   signed-in viewer's account entry when there is one, otherwise the entry of `sessionId`, even
   when it is outside the returned rows; null if neither has won.
 - Names are cleaned for display (control characters removed, whitespace collapsed); sessions
@@ -232,7 +234,8 @@ query { playerRuns(name: "BraveOtter") { mapId total entry { rank slots steps } 
 ```
 
 - Give exactly one of `sessionIds` (up to 200, exact) or `name` (case-insensitive; matches every
-  session with that display name, so it can mix different people who picked the same name). A
+  guest session with that display name, so it can mix different people who picked the same name;
+  sessions that belong to an account never match, because the board shows the account's name). A
   signed-in browser may give neither and get its own account's runs.
 - You get one row per map the player has won (maps never won are absent), ordered by map id: their
   best session on the SLOTS board, with its current `rank` and the board's `total`.

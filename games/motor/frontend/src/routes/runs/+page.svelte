@@ -20,7 +20,7 @@
 		solvedSummary,
 		type RunFilter
 	} from '$lib/runs';
-	import { ownSessionIds, rememberSession, savedDisplayName } from '$lib/sessions';
+	import { newSessionName, ownSessionIds, rememberSession, savedDisplayName } from '$lib/sessions';
 	import { account } from '$lib/stores/account';
 	import { absoluteTime, relativeTime } from '$lib/time';
 	import type { GameMap, PlayerRun, Session } from '$lib/types';
@@ -102,7 +102,7 @@
 		error = null;
 		try {
 			const data = await unwrap<{ createSession: Session }>(
-				client.mutation(CREATE_SESSION_MUTATION, { mapID: map.id, displayName: savedDisplayName().trim() || null })
+				client.mutation(CREATE_SESSION_MUTATION, { mapID: map.id, displayName: newSessionName(!!$account.me) })
 			);
 			rememberSession(data.createSession.id, data.createSession.displayName, data.createSession.ownerToken);
 			await goto(`/play/${data.createSession.id}`);
