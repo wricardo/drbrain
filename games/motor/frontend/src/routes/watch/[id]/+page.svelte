@@ -9,7 +9,7 @@
 	import Stats from '$lib/components/Stats.svelte';
 	import { buildSessionPrompt } from '$lib/prompt';
 	import { blockedCallNotice } from '$lib/recursion';
-	import { ownerTokenFor, statusLine } from '$lib/sessions';
+	import { ownerTokenFor, runTitle, statusLine } from '$lib/sessions';
 	import { createSessionStore } from '$lib/stores/session';
 	import { createSessionSource } from '$lib/stores/source';
 
@@ -27,7 +27,7 @@
 	const callNotice = $derived(session ? blockedCallNotice(session.lastEvent) : null);
 </script>
 
-<svelte:head><title>{pageTitle(session ? `Watching ${session.map.name}` : 'Watch')}</title></svelte:head>
+<svelte:head><title>{pageTitle(session ? runTitle(`Watching ${session.map.name}`, { playing: session.playing, status }) : 'Watch')}</title></svelte:head>
 
 <div class="mx-auto max-w-6xl px-4 sm:px-6 py-6">
 	{#if $store.loading}

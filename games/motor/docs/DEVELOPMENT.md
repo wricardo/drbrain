@@ -491,6 +491,7 @@ Call tiles cycle through `CALL_TONES` in `lib/instructions.ts` (violet, fuchsia,
 - Speed is four presets (Slow 1000 ms, Normal 500, Fast 200, Turbo 50; `lib/speed.ts`). A speed set through the API that matches no preset is shown as a custom value. Speed is locked while running because the server fixes it at Run.
 - There is no Save button. The program lives in a local draft that is **autosaved 600 ms after the last edit** (and flushed first on Run/Step) through `lib/serialRunner.ts`, which queues saves so two never race. Saving resets the robot to the start, so the board always matches the program on screen; the server and agents holding the owner token always see the current program, while spectators see only the board. Undo/redo replaces the old Revert button.
 - On win or loss: a centred modal ("You won!" in emerald or "Run lost" in rose, with the reason in plain words; a win also shows a one-line leaderboard rank), focus on **Reset & try again**, Escape closes it. A coloured banner stays under the board after the modal is closed.
+- The tab title follows the run (`runTitle` in `lib/sessions.ts`, used by the play and watch pages): "▶ Map" while it plays, "✓ Won · Map" or "✗ Lost · Map" when it ends, so a slow run on a background tab can be followed from the tab strip.
 - Errors appear inline as rose alert boxes with a friendly title, plus the error code in small monospace.
 - A connection badge shows whether live updates are connected.
 

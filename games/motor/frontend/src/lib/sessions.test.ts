@@ -13,6 +13,7 @@ import {
 	savedDisplayName,
 	sortSessions,
 	statusGroup,
+	runTitle,
 	statusLine,
 	statusText
 } from './sessions';
@@ -106,6 +107,22 @@ describe('statusLine', () => {
 		expect(statusLine({ playing: false, vm: vm('RUNNING') })).toBe('Paused');
 		expect(statusLine({ playing: false, vm: vm('WON', 46) })).toBe('Won in 46 steps');
 		expect(statusLine({ playing: false, vm: { status: 'LOST', steps: 3, lossReason: 'STEP_LIMIT' } })).toMatch(/^Lost: .*steps/);
+	});
+});
+
+describe('runTitle', () => {
+	it('marks a running, won or lost session in the tab title and leaves the rest plain', () => {
+		expect(runTitle('Belt Run', { playing: true, status: 'RUNNING' })).toBe('▶ Belt Run');
+		expect(runTitle('Belt Run', { playing: false, status: 'WON' })).toBe('✓ Won · Belt Run');
+		expect(runTitle('Belt Run', { playing: false, status: 'LOST' })).toBe('✗ Lost · Belt Run');
+		expect(runTitle('Belt Run', { playing: false, status: 'READY' })).toBe('Belt Run');
+		expect(runTitle('Belt Run', { playing: false, status: 'RUNNING' })).toBe('Belt Run');
+	});
+
+	it('a finished run beats playing, and no session gives the plain name', () => {
+		expect(runTitle('Belt Run', { playing: true, status: 'WON' })).toBe('✓ Won · Belt Run');
+		expect(runTitle('Belt Run', null)).toBe('Belt Run');
+		expect(runTitle(undefined, { playing: true, status: 'RUNNING' })).toBeUndefined();
 	});
 });
 

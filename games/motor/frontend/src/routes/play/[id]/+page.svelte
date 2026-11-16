@@ -28,7 +28,7 @@
 		SET_PROGRAM_MUTATION,
 		STEP_MUTATION
 	} from '$lib/queries';
-	import { newSessionName, ownerTokenFor, rememberSession, statusLine } from '$lib/sessions';
+	import { newSessionName, ownerTokenFor, rememberSession, runTitle, statusLine } from '$lib/sessions';
 	import { serialRunner } from '$lib/serialRunner';
 	import { account } from '$lib/stores/account';
 	import { replayTo, stepBackTarget } from '$lib/stepBack';
@@ -326,7 +326,7 @@
 
 </script>
 
-<svelte:head><title>{pageTitle(session?.map.name)}</title></svelte:head>
+<svelte:head><title>{pageTitle(runTitle(session?.map.name, session && { playing, status }))}</title></svelte:head>
 <svelte:window onkeydown={onWindowKey} />
 
 <div class="mx-auto max-w-6xl px-4 sm:px-6 py-6">

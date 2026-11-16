@@ -96,6 +96,18 @@ export function statusLine(s: {
 	return 'Paused';
 }
 
+/**
+ * The browser tab title for a session page, so a run on another tab can be followed from the tab strip:
+ * "▶ Map" while it plays, "✓ Map" once won, "✗ Map" once lost, the plain name otherwise.
+ */
+export function runTitle(mapName: string | undefined, s: { playing: boolean; status: Status } | null): string | undefined {
+	if (!mapName || !s) return mapName;
+	if (s.status === 'WON') return `✓ Won · ${mapName}`;
+	if (s.status === 'LOST') return `✗ Lost · ${mapName}`;
+	if (s.playing) return `▶ ${mapName}`;
+	return mapName;
+}
+
 const LAST_SESSION_KEY = 'drbrain-motor-programming.lastSession';
 
 const OWN_SESSIONS_KEY = 'drbrain-motor-programming.ownSessions';
