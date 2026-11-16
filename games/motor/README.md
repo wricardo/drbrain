@@ -35,10 +35,11 @@ Most of the game is spotting the pattern in the map and folding it into as few i
 
 ## Maps
 
-There are 17 maps, ordered from easy to hard:
+There are 28 maps, ordered from easy to hard:
 
 - **Levels 1–5** teach the basics: moving, turning, dodging rocks and your first subroutines.
 - **The harder maps** are designed so the brute-force route doesn't fit. You have to find the trick: nested subroutines, subroutines that triple each other, or a subroutine that calls itself.
+- **The Terrain maps** add tiles to the board: belts that carry you an extra square, mirrors that turn you, keys that open doors and portals that jump across walls. The first four are short puzzles that each teach one tile; the last two are hard, steering a whole route with mirrors and belts while a subroutine loops.
 
 Every map can be solved. Each one has been checked against a known solution.
 
@@ -46,7 +47,7 @@ Every map can be solved. Each one has been checked against a known solution.
 
 - **No sign-up needed.** If you don't type a name you play as a random guest like `BraveOtter`, remembered in your browser. [My runs](https://motor-programming.wricardo.net/runs) shows your best run on every map and how it ranks, and has a link you can share.
 - **Climb the leaderboard.** Every map ranks its winners by how few slots their program uses, then by how few steps it takes. Winning is only the start: can you do it in fewer?
-- **Watch** anyone's game live from the sessions page, and see how other people solved a map.
+- **Watch** anyone's game live from the sessions page. The program itself stays private to its player, so a watch link never gives a solution away.
 - **Build your own map** in the [map editor](https://motor-programming.wricardo.net/editor): paint rocks and treats, set the tape sizes, validate it and play it. No account needed.
 - **Learn** more on the in-game [how it works](https://motor-programming.wricardo.net/learn) page: rules, strategies and tips.
 
@@ -67,8 +68,9 @@ mutation { setProgram(sessionID: "…", ownerToken: "…", program: { main: [MOV
 mutation { run(sessionID: "…", ownerToken: "…") { playing vm { status } } }      # 4. press Run
 ```
 
-Playing is creator-only: `setProgram`, `run`, `step`, `pause` and `reset` need the `ownerToken` that
-`createSession` returns. That is also how you share a game with someone else — hand them the token.
+Playing needs the session's secret: the `ownerToken` that `createSession` returns (or, for a session
+you created while signed in, your login). `setProgram`, `run`, `step`, `pause` and `reset` all check
+it. That is also how you share a game with someone else — hand them the token.
 
 Then read the session (or subscribe to it) until the status is `WON` or `LOST`. If it lost, fix the program and try again, just like a human player.
 

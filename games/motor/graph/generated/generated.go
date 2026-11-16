@@ -64,9 +64,24 @@ type ComplexityRoot struct {
 		Name func(childComplexity int) int
 	}
 
+	Conveyor struct {
+		Dir func(childComplexity int) int
+		Pos func(childComplexity int) int
+	}
+
+	DoorTile struct {
+		Letter func(childComplexity int) int
+		Pos    func(childComplexity int) int
+	}
+
 	Frame struct {
 		Pc   func(childComplexity int) int
 		Tape func(childComplexity int) int
+	}
+
+	KeyTile struct {
+		Letter func(childComplexity int) int
+		Pos    func(childComplexity int) int
 	}
 
 	Leaderboard struct {
@@ -91,15 +106,20 @@ type ComplexityRoot struct {
 	Map struct {
 		AllowRecursion func(childComplexity int) int
 		Builtin        func(childComplexity int) int
+		Conveyors      func(childComplexity int) int
 		Description    func(childComplexity int) int
 		Difficulty     func(childComplexity int) int
+		Doors          func(childComplexity int) int
 		Height         func(childComplexity int) int
 		ID             func(childComplexity int) int
+		Keys           func(childComplexity int) int
 		Layout         func(childComplexity int) int
 		MainTapeLength func(childComplexity int) int
 		MaxCallDepth   func(childComplexity int) int
 		MaxSteps       func(childComplexity int) int
+		Mirrors        func(childComplexity int) int
 		Name           func(childComplexity int) int
+		Portals        func(childComplexity int) int
 		Rocks          func(childComplexity int) int
 		Start          func(childComplexity int) int
 		StartFacing    func(childComplexity int) int
@@ -116,6 +136,11 @@ type ComplexityRoot struct {
 		Issues            func(childComplexity int) int
 		UnreachableTreats func(childComplexity int) int
 		Valid             func(childComplexity int) int
+	}
+
+	Mirror struct {
+		Pos   func(childComplexity int) int
+		Slash func(childComplexity int) int
 	}
 
 	Mutation struct {
@@ -146,6 +171,11 @@ type ComplexityRoot struct {
 		Total func(childComplexity int) int
 	}
 
+	Portal struct {
+		Pair func(childComplexity int) int
+		Pos  func(childComplexity int) int
+	}
+
 	Position struct {
 		X func(childComplexity int) int
 		Y func(childComplexity int) int
@@ -173,7 +203,7 @@ type ComplexityRoot struct {
 		Me             func(childComplexity int) int
 		PlayerRuns     func(childComplexity int, sessionIds []string, name *string) int
 		Profile        func(childComplexity int, handle string) int
-		Session        func(childComplexity int, id string) int
+		Session        func(childComplexity int, id string, ownerToken *string) int
 		Sessions       func(childComplexity int, sort *model.SessionSort, limit *int, mapID *string) int
 	}
 
@@ -211,26 +241,32 @@ type ComplexityRoot struct {
 		CallBlocked  func(childComplexity int) int
 		CallStack    func(childComplexity int) int
 		Collected    func(childComplexity int) int
+		CollectedKey func(childComplexity int) int
 		FacingAfter  func(childComplexity int) int
 		FacingBefore func(childComplexity int) int
 		From         func(childComplexity int) int
 		Instruction  func(childComplexity int) int
 		LossReason   func(childComplexity int) int
+		Mirrored     func(childComplexity int) int
+		PushBlocked  func(childComplexity int) int
+		Pushed       func(childComplexity int) int
 		SlotIndex    func(childComplexity int) int
 		Status       func(childComplexity int) int
 		Step         func(childComplexity int) int
 		TapeIndex    func(childComplexity int) int
+		Teleported   func(childComplexity int) int
 		To           func(childComplexity int) int
 	}
 
 	Subscription struct {
-		SessionUpdated func(childComplexity int, sessionID string) int
+		SessionUpdated func(childComplexity int, sessionID string, ownerToken *string) int
 	}
 
 	VMState struct {
 		CallStack       func(childComplexity int) int
 		Facing          func(childComplexity int) int
 		LossReason      func(childComplexity int) int
+		OpenDoors       func(childComplexity int) int
 		Pos             func(childComplexity int) int
 		Status          func(childComplexity int) int
 		Steps           func(childComplexity int) int
@@ -269,14 +305,14 @@ type QueryResolver interface {
 	Profile(ctx context.Context, handle string) (*model.Profile, error)
 	Maps(ctx context.Context) ([]*model.Map, error)
 	Map(ctx context.Context, id string) (*model.Map, error)
-	Session(ctx context.Context, id string) (*model.Session, error)
+	Session(ctx context.Context, id string, ownerToken *string) (*model.Session, error)
 	CanPlaySession(ctx context.Context, id string, ownerToken *string) (bool, error)
 	Sessions(ctx context.Context, sort *model.SessionSort, limit *int, mapID *string) ([]*model.Session, error)
 	Leaderboard(ctx context.Context, mapID string, order *model.LeaderboardOrder, limit *int, sessionID *string) (*model.Leaderboard, error)
 	PlayerRuns(ctx context.Context, sessionIds []string, name *string) ([]*model.PlayerRun, error)
 }
 type SubscriptionResolver interface {
-	SessionUpdated(ctx context.Context, sessionID string) (<-chan *model.SessionUpdate, error)
+	SessionUpdated(ctx context.Context, sessionID string, ownerToken *string) (<-chan *model.SessionUpdate, error)
 }
 
 type executableSchema struct {
@@ -354,6 +390,34 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.AuthProvider.Name(childComplexity), true
 
+	case "Conveyor.dir":
+		if e.complexity.Conveyor.Dir == nil {
+			break
+		}
+
+		return e.complexity.Conveyor.Dir(childComplexity), true
+
+	case "Conveyor.pos":
+		if e.complexity.Conveyor.Pos == nil {
+			break
+		}
+
+		return e.complexity.Conveyor.Pos(childComplexity), true
+
+	case "DoorTile.letter":
+		if e.complexity.DoorTile.Letter == nil {
+			break
+		}
+
+		return e.complexity.DoorTile.Letter(childComplexity), true
+
+	case "DoorTile.pos":
+		if e.complexity.DoorTile.Pos == nil {
+			break
+		}
+
+		return e.complexity.DoorTile.Pos(childComplexity), true
+
 	case "Frame.pc":
 		if e.complexity.Frame.Pc == nil {
 			break
@@ -367,6 +431,20 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Frame.Tape(childComplexity), true
+
+	case "KeyTile.letter":
+		if e.complexity.KeyTile.Letter == nil {
+			break
+		}
+
+		return e.complexity.KeyTile.Letter(childComplexity), true
+
+	case "KeyTile.pos":
+		if e.complexity.KeyTile.Pos == nil {
+			break
+		}
+
+		return e.complexity.KeyTile.Pos(childComplexity), true
 
 	case "Leaderboard.entries":
 		if e.complexity.Leaderboard.Entries == nil {
@@ -473,6 +551,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Map.Builtin(childComplexity), true
 
+	case "Map.conveyors":
+		if e.complexity.Map.Conveyors == nil {
+			break
+		}
+
+		return e.complexity.Map.Conveyors(childComplexity), true
+
 	case "Map.description":
 		if e.complexity.Map.Description == nil {
 			break
@@ -487,6 +572,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Map.Difficulty(childComplexity), true
 
+	case "Map.doors":
+		if e.complexity.Map.Doors == nil {
+			break
+		}
+
+		return e.complexity.Map.Doors(childComplexity), true
+
 	case "Map.height":
 		if e.complexity.Map.Height == nil {
 			break
@@ -500,6 +592,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Map.ID(childComplexity), true
+
+	case "Map.keys":
+		if e.complexity.Map.Keys == nil {
+			break
+		}
+
+		return e.complexity.Map.Keys(childComplexity), true
 
 	case "Map.layout":
 		if e.complexity.Map.Layout == nil {
@@ -529,12 +628,26 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Map.MaxSteps(childComplexity), true
 
+	case "Map.mirrors":
+		if e.complexity.Map.Mirrors == nil {
+			break
+		}
+
+		return e.complexity.Map.Mirrors(childComplexity), true
+
 	case "Map.name":
 		if e.complexity.Map.Name == nil {
 			break
 		}
 
 		return e.complexity.Map.Name(childComplexity), true
+
+	case "Map.portals":
+		if e.complexity.Map.Portals == nil {
+			break
+		}
+
+		return e.complexity.Map.Portals(childComplexity), true
 
 	case "Map.rocks":
 		if e.complexity.Map.Rocks == nil {
@@ -605,6 +718,20 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.MapValidationResult.Valid(childComplexity), true
+
+	case "Mirror.pos":
+		if e.complexity.Mirror.Pos == nil {
+			break
+		}
+
+		return e.complexity.Mirror.Pos(childComplexity), true
+
+	case "Mirror.slash":
+		if e.complexity.Mirror.Slash == nil {
+			break
+		}
+
+		return e.complexity.Mirror.Slash(childComplexity), true
 
 	case "Mutation.changePassword":
 		if e.complexity.Mutation.ChangePassword == nil {
@@ -850,6 +977,20 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.PlayerRun.Total(childComplexity), true
 
+	case "Portal.pair":
+		if e.complexity.Portal.Pair == nil {
+			break
+		}
+
+		return e.complexity.Portal.Pair(childComplexity), true
+
+	case "Portal.pos":
+		if e.complexity.Portal.Pos == nil {
+			break
+		}
+
+		return e.complexity.Portal.Pos(childComplexity), true
+
 	case "Position.x":
 		if e.complexity.Position.X == nil {
 			break
@@ -1004,7 +1145,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Query.Session(childComplexity, args["id"].(string)), true
+		return e.complexity.Query.Session(childComplexity, args["id"].(string), args["ownerToken"].(*string)), true
 
 	case "Query.sessions":
 		if e.complexity.Query.Sessions == nil {
@@ -1186,6 +1327,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.StepEvent.Collected(childComplexity), true
 
+	case "StepEvent.collectedKey":
+		if e.complexity.StepEvent.CollectedKey == nil {
+			break
+		}
+
+		return e.complexity.StepEvent.CollectedKey(childComplexity), true
+
 	case "StepEvent.facingAfter":
 		if e.complexity.StepEvent.FacingAfter == nil {
 			break
@@ -1221,6 +1369,27 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.StepEvent.LossReason(childComplexity), true
 
+	case "StepEvent.mirrored":
+		if e.complexity.StepEvent.Mirrored == nil {
+			break
+		}
+
+		return e.complexity.StepEvent.Mirrored(childComplexity), true
+
+	case "StepEvent.pushBlocked":
+		if e.complexity.StepEvent.PushBlocked == nil {
+			break
+		}
+
+		return e.complexity.StepEvent.PushBlocked(childComplexity), true
+
+	case "StepEvent.pushed":
+		if e.complexity.StepEvent.Pushed == nil {
+			break
+		}
+
+		return e.complexity.StepEvent.Pushed(childComplexity), true
+
 	case "StepEvent.slotIndex":
 		if e.complexity.StepEvent.SlotIndex == nil {
 			break
@@ -1249,6 +1418,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.StepEvent.TapeIndex(childComplexity), true
 
+	case "StepEvent.teleported":
+		if e.complexity.StepEvent.Teleported == nil {
+			break
+		}
+
+		return e.complexity.StepEvent.Teleported(childComplexity), true
+
 	case "StepEvent.to":
 		if e.complexity.StepEvent.To == nil {
 			break
@@ -1266,7 +1442,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Subscription.SessionUpdated(childComplexity, args["sessionID"].(string)), true
+		return e.complexity.Subscription.SessionUpdated(childComplexity, args["sessionID"].(string), args["ownerToken"].(*string)), true
 
 	case "VMState.callStack":
 		if e.complexity.VMState.CallStack == nil {
@@ -1288,6 +1464,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.VMState.LossReason(childComplexity), true
+
+	case "VMState.openDoors":
+		if e.complexity.VMState.OpenDoors == nil {
+			break
+		}
+
+		return e.complexity.VMState.OpenDoors(childComplexity), true
 
 	case "VMState.pos":
 		if e.complexity.VMState.Pos == nil {
@@ -1506,6 +1689,36 @@ type Frame {
   pc: Int!
 }
 
+type Conveyor {
+  pos: Position!
+  "Direction the robot is carried after moving onto this tile."
+  dir: Facing!
+}
+
+type Mirror {
+  pos: Position!
+  "True for '/', false for '\\\\'."
+  slash: Boolean!
+}
+
+type KeyTile {
+  pos: Position!
+  "Lower-case key letter ('a'..'c')."
+  letter: String!
+}
+
+type DoorTile {
+  pos: Position!
+  "Upper-case door letter ('A'..'C')."
+  letter: String!
+}
+
+type Portal {
+  pos: Position!
+  "Digit shared by the two ends of the pair."
+  pair: String!
+}
+
 type Map {
   id: ID!
   name: String!
@@ -1520,6 +1733,16 @@ type Map {
   startFacing: Facing!
   rocks: [Position!]!
   treats: [Position!]!
+  "One-way tiles: a move onto one is carried one extra cell in Conveyor.dir."
+  conveyors: [Conveyor!]!
+  "Mirrors force a 90-degree turn on arrival: slash=true is '/', false is '\\\\'."
+  mirrors: [Mirror!]!
+  "Collectable keys ('a'..'c'); each opens every matching door."
+  keys: [KeyTile!]!
+  "Doors ('A'..'C'), impassable until their key is collected."
+  doors: [DoorTile!]!
+  "Portal pairs ('1'..'9'); arriving on one teleports to the other."
+  portals: [Portal!]!
   mainTapeLength: Int!
   subTapeLengths: [Int!]!
   maxSteps: Int!
@@ -1547,6 +1770,8 @@ type VMState {
   status: Status!
   lossReason: LossReason
   visited: [Position!]!
+  "Lower-case letters of the doors this run has opened."
+  openDoors: [String!]!
 }
 
 type StepEvent {
@@ -1561,6 +1786,16 @@ type StepEvent {
   blocked: Boolean!
   "True when a CALL_SUB_k was ignored because the map has allowRecursion: false and that sub is already on the call stack. The step is still spent."
   callBlocked: Boolean!
+  "True when the move landed on a conveyor and was carried one extra cell (same step)."
+  pushed: Boolean!
+  "True when that carry was blocked, so the robot stayed on the conveyor."
+  pushBlocked: Boolean!
+  "True when the arrival tile was a mirror and reflected the facing."
+  mirrored: Boolean!
+  "The key letter picked up on this step, or null."
+  collectedKey: String
+  "Portal destination when the arrival tile was a portal."
+  teleported: Position
   collected: Position
   callStack: [Frame!]!
   status: Status!
@@ -1573,7 +1808,12 @@ type Session {
   mapId: ID!
   "Snapshot of the map taken when the session was created."
   map: Map!
-  program: Program!
+  """
+  The robot's program. Only a caller who may play the session sees it: the ownerToken holder or
+  the owning account's login. Spectators — a shared /watch link, the session lists — get null, so a
+  program is never a public answer key.
+  """
+  program: Program
   vm: VMState!
   playing: Boolean!
   speedMs: Int!
@@ -1746,7 +1986,11 @@ type Query {
   profile(handle: String!): Profile
   maps: [Map!]!
   map(id: ID!): Map
-  session(id: ID!): Session
+  """
+  One session. The program is included only for a caller who may play it; pass the ownerToken
+  (or be signed in as the owning account) to read it.
+  """
+  session(id: ID!, ownerToken: String): Session
   """
   Whether this caller may play the session (setProgram, run, step, pause, reset): true when they
   created it — a signed-in owner by their login, anyone else by passing the ownerToken — or when the
@@ -1801,7 +2045,7 @@ type Mutation {
   Creates a username/password account and signs the browser in with it. The username is the public
   handle. Refused cross-site, so another site cannot create accounts through a victim's browser.
   Errors: INVALID_ARGUMENT (bad handle, weak or taken password), LIMIT_REACHED, FORBIDDEN (password
-  sign-in is off), UNAUTHENTICATED (no cookie can be set: a subscription connection).
+  sign-in is off, or no cookie can be set: a subscription connection).
   """
   registerWithPassword(handle: String!, password: String!): Account!
   """
@@ -1830,8 +2074,11 @@ type Mutation {
 }
 
 type Subscription {
-  "Emits the current snapshot immediately, then every change."
-  sessionUpdated(sessionID: ID!): SessionUpdate!
+  """
+  Emits the current snapshot immediately, then every change. Like the session query, the payload's
+  program is null unless the caller may play the session (ownerToken or the owning login).
+  """
+  sessionUpdated(sessionID: ID!, ownerToken: String): SessionUpdate!
 }
 `, BuiltIn: false},
 }
@@ -2958,6 +3205,11 @@ func (ec *executionContext) field_Query_session_args(ctx context.Context, rawArg
 		return nil, err
 	}
 	args["id"] = arg0
+	arg1, err := ec.field_Query_session_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg1
 	return args, nil
 }
 func (ec *executionContext) field_Query_session_argsID(
@@ -2975,6 +3227,24 @@ func (ec *executionContext) field_Query_session_argsID(
 	}
 
 	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_session_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
 	return zeroVal, nil
 }
 
@@ -3060,6 +3330,11 @@ func (ec *executionContext) field_Subscription_sessionUpdated_args(ctx context.C
 		return nil, err
 	}
 	args["sessionID"] = arg0
+	arg1, err := ec.field_Subscription_sessionUpdated_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg1
 	return args, nil
 }
 func (ec *executionContext) field_Subscription_sessionUpdated_argsSessionID(
@@ -3077,6 +3352,24 @@ func (ec *executionContext) field_Subscription_sessionUpdated_argsSessionID(
 	}
 
 	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Subscription_sessionUpdated_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
 	return zeroVal, nil
 }
 
@@ -3549,6 +3842,194 @@ func (ec *executionContext) fieldContext_AuthProvider_name(_ context.Context, fi
 	return fc, nil
 }
 
+func (ec *executionContext) _Conveyor_pos(ctx context.Context, field graphql.CollectedField, obj *model.Conveyor) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Conveyor_pos(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Pos, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.Position)
+	fc.Result = res
+	return ec.marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Conveyor_pos(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Conveyor",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "x":
+				return ec.fieldContext_Position_x(ctx, field)
+			case "y":
+				return ec.fieldContext_Position_y(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Position", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Conveyor_dir(ctx context.Context, field graphql.CollectedField, obj *model.Conveyor) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Conveyor_dir(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Dir, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(model.Facing)
+	fc.Result = res
+	return ec.marshalNFacing2githubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐFacing(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Conveyor_dir(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Conveyor",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Facing does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _DoorTile_pos(ctx context.Context, field graphql.CollectedField, obj *model.DoorTile) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_DoorTile_pos(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Pos, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.Position)
+	fc.Result = res
+	return ec.marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_DoorTile_pos(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "DoorTile",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "x":
+				return ec.fieldContext_Position_x(ctx, field)
+			case "y":
+				return ec.fieldContext_Position_y(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Position", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _DoorTile_letter(ctx context.Context, field graphql.CollectedField, obj *model.DoorTile) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_DoorTile_letter(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Letter, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_DoorTile_letter(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "DoorTile",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Frame_tape(ctx context.Context, field graphql.CollectedField, obj *model.Frame) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Frame_tape(ctx, field)
 	if err != nil {
@@ -3632,6 +4113,100 @@ func (ec *executionContext) fieldContext_Frame_pc(_ context.Context, field graph
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _KeyTile_pos(ctx context.Context, field graphql.CollectedField, obj *model.KeyTile) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_KeyTile_pos(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Pos, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.Position)
+	fc.Result = res
+	return ec.marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_KeyTile_pos(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "KeyTile",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "x":
+				return ec.fieldContext_Position_x(ctx, field)
+			case "y":
+				return ec.fieldContext_Position_y(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Position", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _KeyTile_letter(ctx context.Context, field graphql.CollectedField, obj *model.KeyTile) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_KeyTile_letter(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Letter, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_KeyTile_letter(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "KeyTile",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
 		},
 	}
 	return fc, nil
@@ -4785,6 +5360,256 @@ func (ec *executionContext) fieldContext_Map_treats(_ context.Context, field gra
 	return fc, nil
 }
 
+func (ec *executionContext) _Map_conveyors(ctx context.Context, field graphql.CollectedField, obj *model.Map) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Map_conveyors(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Conveyors, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model.Conveyor)
+	fc.Result = res
+	return ec.marshalNConveyor2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐConveyorᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Map_conveyors(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Map",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "pos":
+				return ec.fieldContext_Conveyor_pos(ctx, field)
+			case "dir":
+				return ec.fieldContext_Conveyor_dir(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Conveyor", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Map_mirrors(ctx context.Context, field graphql.CollectedField, obj *model.Map) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Map_mirrors(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Mirrors, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model.Mirror)
+	fc.Result = res
+	return ec.marshalNMirror2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐMirrorᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Map_mirrors(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Map",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "pos":
+				return ec.fieldContext_Mirror_pos(ctx, field)
+			case "slash":
+				return ec.fieldContext_Mirror_slash(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Mirror", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Map_keys(ctx context.Context, field graphql.CollectedField, obj *model.Map) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Map_keys(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Keys, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model.KeyTile)
+	fc.Result = res
+	return ec.marshalNKeyTile2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐKeyTileᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Map_keys(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Map",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "pos":
+				return ec.fieldContext_KeyTile_pos(ctx, field)
+			case "letter":
+				return ec.fieldContext_KeyTile_letter(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type KeyTile", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Map_doors(ctx context.Context, field graphql.CollectedField, obj *model.Map) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Map_doors(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Doors, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model.DoorTile)
+	fc.Result = res
+	return ec.marshalNDoorTile2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐDoorTileᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Map_doors(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Map",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "pos":
+				return ec.fieldContext_DoorTile_pos(ctx, field)
+			case "letter":
+				return ec.fieldContext_DoorTile_letter(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type DoorTile", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Map_portals(ctx context.Context, field graphql.CollectedField, obj *model.Map) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Map_portals(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Portals, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model.Portal)
+	fc.Result = res
+	return ec.marshalNPortal2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐPortalᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Map_portals(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Map",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "pos":
+				return ec.fieldContext_Portal_pos(ctx, field)
+			case "pair":
+				return ec.fieldContext_Portal_pair(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Portal", field.Name)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Map_mainTapeLength(ctx context.Context, field graphql.CollectedField, obj *model.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Map_mainTapeLength(ctx, field)
 	if err != nil {
@@ -5186,6 +6011,100 @@ func (ec *executionContext) fieldContext_MapValidationResult_unreachableTreats(_
 				return ec.fieldContext_Position_y(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Position", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mirror_pos(ctx context.Context, field graphql.CollectedField, obj *model.Mirror) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mirror_pos(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Pos, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.Position)
+	fc.Result = res
+	return ec.marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mirror_pos(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mirror",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "x":
+				return ec.fieldContext_Position_x(ctx, field)
+			case "y":
+				return ec.fieldContext_Position_y(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Position", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mirror_slash(ctx context.Context, field graphql.CollectedField, obj *model.Mirror) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mirror_slash(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Slash, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mirror_slash(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mirror",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
 		},
 	}
 	return fc, nil
@@ -6340,6 +7259,16 @@ func (ec *executionContext) fieldContext_Mutation_createMap(ctx context.Context,
 				return ec.fieldContext_Map_rocks(ctx, field)
 			case "treats":
 				return ec.fieldContext_Map_treats(ctx, field)
+			case "conveyors":
+				return ec.fieldContext_Map_conveyors(ctx, field)
+			case "mirrors":
+				return ec.fieldContext_Map_mirrors(ctx, field)
+			case "keys":
+				return ec.fieldContext_Map_keys(ctx, field)
+			case "doors":
+				return ec.fieldContext_Map_doors(ctx, field)
+			case "portals":
+				return ec.fieldContext_Map_portals(ctx, field)
 			case "mainTapeLength":
 				return ec.fieldContext_Map_mainTapeLength(ctx, field)
 			case "subTapeLengths":
@@ -6494,6 +7423,16 @@ func (ec *executionContext) fieldContext_Mutation_updateMap(ctx context.Context,
 				return ec.fieldContext_Map_rocks(ctx, field)
 			case "treats":
 				return ec.fieldContext_Map_treats(ctx, field)
+			case "conveyors":
+				return ec.fieldContext_Map_conveyors(ctx, field)
+			case "mirrors":
+				return ec.fieldContext_Map_mirrors(ctx, field)
+			case "keys":
+				return ec.fieldContext_Map_keys(ctx, field)
+			case "doors":
+				return ec.fieldContext_Map_doors(ctx, field)
+			case "portals":
+				return ec.fieldContext_Map_portals(ctx, field)
 			case "mainTapeLength":
 				return ec.fieldContext_Map_mainTapeLength(ctx, field)
 			case "subTapeLengths":
@@ -6722,6 +7661,100 @@ func (ec *executionContext) fieldContext_PlayerRun_entry(_ context.Context, fiel
 				return ec.fieldContext_LeaderboardEntry_achievedAt(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type LeaderboardEntry", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Portal_pos(ctx context.Context, field graphql.CollectedField, obj *model.Portal) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Portal_pos(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Pos, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.Position)
+	fc.Result = res
+	return ec.marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Portal_pos(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Portal",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "x":
+				return ec.fieldContext_Position_x(ctx, field)
+			case "y":
+				return ec.fieldContext_Position_y(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Position", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Portal_pair(ctx context.Context, field graphql.CollectedField, obj *model.Portal) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Portal_pair(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Pair, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Portal_pair(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Portal",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
 		},
 	}
 	return fc, nil
@@ -7363,6 +8396,16 @@ func (ec *executionContext) fieldContext_Query_maps(_ context.Context, field gra
 				return ec.fieldContext_Map_rocks(ctx, field)
 			case "treats":
 				return ec.fieldContext_Map_treats(ctx, field)
+			case "conveyors":
+				return ec.fieldContext_Map_conveyors(ctx, field)
+			case "mirrors":
+				return ec.fieldContext_Map_mirrors(ctx, field)
+			case "keys":
+				return ec.fieldContext_Map_keys(ctx, field)
+			case "doors":
+				return ec.fieldContext_Map_doors(ctx, field)
+			case "portals":
+				return ec.fieldContext_Map_portals(ctx, field)
 			case "mainTapeLength":
 				return ec.fieldContext_Map_mainTapeLength(ctx, field)
 			case "subTapeLengths":
@@ -7440,6 +8483,16 @@ func (ec *executionContext) fieldContext_Query_map(ctx context.Context, field gr
 				return ec.fieldContext_Map_rocks(ctx, field)
 			case "treats":
 				return ec.fieldContext_Map_treats(ctx, field)
+			case "conveyors":
+				return ec.fieldContext_Map_conveyors(ctx, field)
+			case "mirrors":
+				return ec.fieldContext_Map_mirrors(ctx, field)
+			case "keys":
+				return ec.fieldContext_Map_keys(ctx, field)
+			case "doors":
+				return ec.fieldContext_Map_doors(ctx, field)
+			case "portals":
+				return ec.fieldContext_Map_portals(ctx, field)
 			case "mainTapeLength":
 				return ec.fieldContext_Map_mainTapeLength(ctx, field)
 			case "subTapeLengths":
@@ -7482,7 +8535,7 @@ func (ec *executionContext) _Query_session(ctx context.Context, field graphql.Co
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Query().Session(rctx, fc.Args["id"].(string))
+		return ec.resolvers.Query().Session(rctx, fc.Args["id"].(string), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -8147,6 +9200,16 @@ func (ec *executionContext) fieldContext_Session_map(_ context.Context, field gr
 				return ec.fieldContext_Map_rocks(ctx, field)
 			case "treats":
 				return ec.fieldContext_Map_treats(ctx, field)
+			case "conveyors":
+				return ec.fieldContext_Map_conveyors(ctx, field)
+			case "mirrors":
+				return ec.fieldContext_Map_mirrors(ctx, field)
+			case "keys":
+				return ec.fieldContext_Map_keys(ctx, field)
+			case "doors":
+				return ec.fieldContext_Map_doors(ctx, field)
+			case "portals":
+				return ec.fieldContext_Map_portals(ctx, field)
 			case "mainTapeLength":
 				return ec.fieldContext_Map_mainTapeLength(ctx, field)
 			case "subTapeLengths":
@@ -8185,14 +9248,11 @@ func (ec *executionContext) _Session_program(ctx context.Context, field graphql.
 		return graphql.Null
 	}
 	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
 		return graphql.Null
 	}
 	res := resTmp.(*model.Program)
 	fc.Result = res
-	return ec.marshalNProgram2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐProgram(ctx, field.Selections, res)
+	return ec.marshalOProgram2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐProgram(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Session_program(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -8269,6 +9329,8 @@ func (ec *executionContext) fieldContext_Session_vm(_ context.Context, field gra
 				return ec.fieldContext_VMState_lossReason(ctx, field)
 			case "visited":
 				return ec.fieldContext_VMState_visited(ctx, field)
+			case "openDoors":
+				return ec.fieldContext_VMState_openDoors(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type VMState", field.Name)
 		},
@@ -8637,6 +9699,16 @@ func (ec *executionContext) fieldContext_Session_lastEvent(_ context.Context, fi
 				return ec.fieldContext_StepEvent_blocked(ctx, field)
 			case "callBlocked":
 				return ec.fieldContext_StepEvent_callBlocked(ctx, field)
+			case "pushed":
+				return ec.fieldContext_StepEvent_pushed(ctx, field)
+			case "pushBlocked":
+				return ec.fieldContext_StepEvent_pushBlocked(ctx, field)
+			case "mirrored":
+				return ec.fieldContext_StepEvent_mirrored(ctx, field)
+			case "collectedKey":
+				return ec.fieldContext_StepEvent_collectedKey(ctx, field)
+			case "teleported":
+				return ec.fieldContext_StepEvent_teleported(ctx, field)
 			case "collected":
 				return ec.fieldContext_StepEvent_collected(ctx, field)
 			case "callStack":
@@ -8957,6 +10029,16 @@ func (ec *executionContext) fieldContext_SessionUpdate_event(_ context.Context, 
 				return ec.fieldContext_StepEvent_blocked(ctx, field)
 			case "callBlocked":
 				return ec.fieldContext_StepEvent_callBlocked(ctx, field)
+			case "pushed":
+				return ec.fieldContext_StepEvent_pushed(ctx, field)
+			case "pushBlocked":
+				return ec.fieldContext_StepEvent_pushBlocked(ctx, field)
+			case "mirrored":
+				return ec.fieldContext_StepEvent_mirrored(ctx, field)
+			case "collectedKey":
+				return ec.fieldContext_StepEvent_collectedKey(ctx, field)
+			case "teleported":
+				return ec.fieldContext_StepEvent_teleported(ctx, field)
 			case "collected":
 				return ec.fieldContext_StepEvent_collected(ctx, field)
 			case "callStack":
@@ -9424,6 +10506,226 @@ func (ec *executionContext) fieldContext_StepEvent_callBlocked(_ context.Context
 	return fc, nil
 }
 
+func (ec *executionContext) _StepEvent_pushed(ctx context.Context, field graphql.CollectedField, obj *model.StepEvent) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_StepEvent_pushed(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Pushed, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_StepEvent_pushed(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "StepEvent",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _StepEvent_pushBlocked(ctx context.Context, field graphql.CollectedField, obj *model.StepEvent) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_StepEvent_pushBlocked(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.PushBlocked, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_StepEvent_pushBlocked(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "StepEvent",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _StepEvent_mirrored(ctx context.Context, field graphql.CollectedField, obj *model.StepEvent) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_StepEvent_mirrored(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Mirrored, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_StepEvent_mirrored(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "StepEvent",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _StepEvent_collectedKey(ctx context.Context, field graphql.CollectedField, obj *model.StepEvent) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_StepEvent_collectedKey(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.CollectedKey, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_StepEvent_collectedKey(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "StepEvent",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _StepEvent_teleported(ctx context.Context, field graphql.CollectedField, obj *model.StepEvent) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_StepEvent_teleported(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Teleported, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*model.Position)
+	fc.Result = res
+	return ec.marshalOPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_StepEvent_teleported(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "StepEvent",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "x":
+				return ec.fieldContext_Position_x(ctx, field)
+			case "y":
+				return ec.fieldContext_Position_y(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Position", field.Name)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _StepEvent_collected(ctx context.Context, field graphql.CollectedField, obj *model.StepEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_StepEvent_collected(ctx, field)
 	if err != nil {
@@ -9620,7 +10922,7 @@ func (ec *executionContext) _Subscription_sessionUpdated(ctx context.Context, fi
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Subscription().SessionUpdated(rctx, fc.Args["sessionID"].(string))
+		return ec.resolvers.Subscription().SessionUpdated(rctx, fc.Args["sessionID"].(string), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -10051,6 +11353,50 @@ func (ec *executionContext) fieldContext_VMState_visited(_ context.Context, fiel
 				return ec.fieldContext_Position_y(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Position", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _VMState_openDoors(ctx context.Context, field graphql.CollectedField, obj *model.VMState) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_VMState_openDoors(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.OpenDoors, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]string)
+	fc.Result = res
+	return ec.marshalNString2ᚕstringᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_VMState_openDoors(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "VMState",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
 		},
 	}
 	return fc, nil
@@ -12319,6 +13665,94 @@ func (ec *executionContext) _AuthProvider(ctx context.Context, sel ast.Selection
 	return out
 }
 
+var conveyorImplementors = []string{"Conveyor"}
+
+func (ec *executionContext) _Conveyor(ctx context.Context, sel ast.SelectionSet, obj *model.Conveyor) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, conveyorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Conveyor")
+		case "pos":
+			out.Values[i] = ec._Conveyor_pos(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "dir":
+			out.Values[i] = ec._Conveyor_dir(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var doorTileImplementors = []string{"DoorTile"}
+
+func (ec *executionContext) _DoorTile(ctx context.Context, sel ast.SelectionSet, obj *model.DoorTile) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, doorTileImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("DoorTile")
+		case "pos":
+			out.Values[i] = ec._DoorTile_pos(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "letter":
+			out.Values[i] = ec._DoorTile_letter(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var frameImplementors = []string{"Frame"}
 
 func (ec *executionContext) _Frame(ctx context.Context, sel ast.SelectionSet, obj *model.Frame) graphql.Marshaler {
@@ -12337,6 +13771,50 @@ func (ec *executionContext) _Frame(ctx context.Context, sel ast.SelectionSet, ob
 			}
 		case "pc":
 			out.Values[i] = ec._Frame_pc(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var keyTileImplementors = []string{"KeyTile"}
+
+func (ec *executionContext) _KeyTile(ctx context.Context, sel ast.SelectionSet, obj *model.KeyTile) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, keyTileImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("KeyTile")
+		case "pos":
+			out.Values[i] = ec._KeyTile_pos(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "letter":
+			out.Values[i] = ec._KeyTile_letter(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -12592,6 +14070,31 @@ func (ec *executionContext) _Map(ctx context.Context, sel ast.SelectionSet, obj 
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&out.Invalids, 1)
 			}
+		case "conveyors":
+			out.Values[i] = ec._Map_conveyors(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "mirrors":
+			out.Values[i] = ec._Map_mirrors(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "keys":
+			out.Values[i] = ec._Map_keys(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "doors":
+			out.Values[i] = ec._Map_doors(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "portals":
+			out.Values[i] = ec._Map_portals(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
 		case "mainTapeLength":
 			out.Values[i] = ec._Map_mainTapeLength(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -12702,6 +14205,50 @@ func (ec *executionContext) _MapValidationResult(ctx context.Context, sel ast.Se
 			}
 		case "unreachableTreats":
 			out.Values[i] = ec._MapValidationResult_unreachableTreats(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var mirrorImplementors = []string{"Mirror"}
+
+func (ec *executionContext) _Mirror(ctx context.Context, sel ast.SelectionSet, obj *model.Mirror) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, mirrorImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Mirror")
+		case "pos":
+			out.Values[i] = ec._Mirror_pos(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "slash":
+			out.Values[i] = ec._Mirror_slash(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -12926,6 +14473,50 @@ func (ec *executionContext) _PlayerRun(ctx context.Context, sel ast.SelectionSet
 			}
 		case "entry":
 			out.Values[i] = ec._PlayerRun_entry(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var portalImplementors = []string{"Portal"}
+
+func (ec *executionContext) _Portal(ctx context.Context, sel ast.SelectionSet, obj *model.Portal) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, portalImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Portal")
+		case "pos":
+			out.Values[i] = ec._Portal_pos(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "pair":
+			out.Values[i] = ec._Portal_pair(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -13387,9 +14978,6 @@ func (ec *executionContext) _Session(ctx context.Context, sel ast.SelectionSet, 
 			}
 		case "program":
 			out.Values[i] = ec._Session_program(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
 		case "vm":
 			out.Values[i] = ec._Session_vm(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -13605,6 +15193,25 @@ func (ec *executionContext) _StepEvent(ctx context.Context, sel ast.SelectionSet
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "pushed":
+			out.Values[i] = ec._StepEvent_pushed(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "pushBlocked":
+			out.Values[i] = ec._StepEvent_pushBlocked(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "mirrored":
+			out.Values[i] = ec._StepEvent_mirrored(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "collectedKey":
+			out.Values[i] = ec._StepEvent_collectedKey(ctx, field, obj)
+		case "teleported":
+			out.Values[i] = ec._StepEvent_teleported(ctx, field, obj)
 		case "collected":
 			out.Values[i] = ec._StepEvent_collected(ctx, field, obj)
 		case "callStack":
@@ -13707,6 +15314,11 @@ func (ec *executionContext) _VMState(ctx context.Context, sel ast.SelectionSet, 
 			out.Values[i] = ec._VMState_lossReason(ctx, field, obj)
 		case "visited":
 			out.Values[i] = ec._VMState_visited(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "openDoors":
+			out.Values[i] = ec._VMState_openDoors(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -14167,6 +15779,114 @@ func (ec *executionContext) marshalNClaimStatus2githubᚗcomᚋwricardoᚋdrbrai
 	return v
 }
 
+func (ec *executionContext) marshalNConveyor2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐConveyorᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Conveyor) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNConveyor2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐConveyor(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNConveyor2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐConveyor(ctx context.Context, sel ast.SelectionSet, v *model.Conveyor) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Conveyor(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNDoorTile2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐDoorTileᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.DoorTile) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNDoorTile2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐDoorTile(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNDoorTile2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐDoorTile(ctx context.Context, sel ast.SelectionSet, v *model.DoorTile) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._DoorTile(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalNFacing2githubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐFacing(ctx context.Context, v any) (model.Facing, error) {
 	var res model.Facing
 	err := res.UnmarshalGQL(v)
@@ -14421,6 +16141,60 @@ func (ec *executionContext) marshalNInt2ᚕintᚄ(ctx context.Context, sel ast.S
 	return ret
 }
 
+func (ec *executionContext) marshalNKeyTile2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐKeyTileᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.KeyTile) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNKeyTile2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐKeyTile(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNKeyTile2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐKeyTile(ctx context.Context, sel ast.SelectionSet, v *model.KeyTile) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._KeyTile(ctx, sel, v)
+}
+
 func (ec *executionContext) marshalNLeaderboardEntry2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐLeaderboardEntryᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.LeaderboardEntry) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
@@ -14616,6 +16390,60 @@ func (ec *executionContext) marshalNMapValidationResult2ᚖgithubᚗcomᚋwricar
 	return ec._MapValidationResult(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNMirror2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐMirrorᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Mirror) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNMirror2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐMirror(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNMirror2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐMirror(ctx context.Context, sel ast.SelectionSet, v *model.Mirror) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Mirror(ctx, sel, v)
+}
+
 func (ec *executionContext) marshalNPlayerRun2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐPlayerRunᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.PlayerRun) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
@@ -14670,6 +16498,60 @@ func (ec *executionContext) marshalNPlayerRun2ᚖgithubᚗcomᚋwricardoᚋdrbra
 	return ec._PlayerRun(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNPortal2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐPortalᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Portal) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNPortal2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐPortal(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNPortal2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐPortal(ctx context.Context, sel ast.SelectionSet, v *model.Portal) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Portal(ctx, sel, v)
+}
+
 func (ec *executionContext) marshalNPosition2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐPositionᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Position) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
@@ -14722,16 +16604,6 @@ func (ec *executionContext) marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrai
 		return graphql.Null
 	}
 	return ec._Position(ctx, sel, v)
-}
-
-func (ec *executionContext) marshalNProgram2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐProgram(ctx context.Context, sel ast.SelectionSet, v *model.Program) graphql.Marshaler {
-	if v == nil {
-		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
-			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
-		}
-		return graphql.Null
-	}
-	return ec._Program(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNProgramInput2githubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐProgramInput(ctx context.Context, v any) (model.ProgramInput, error) {
@@ -15430,6 +17302,13 @@ func (ec *executionContext) marshalOProfile2ᚖgithubᚗcomᚋwricardoᚋdrbrain
 		return graphql.Null
 	}
 	return ec._Profile(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOProgram2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐProgram(ctx context.Context, sel ast.SelectionSet, v *model.Program) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._Program(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalOSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐSession(ctx context.Context, sel ast.SelectionSet, v *model.Session) graphql.Marshaler {

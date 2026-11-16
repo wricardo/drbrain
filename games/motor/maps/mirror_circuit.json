@@ -1,0 +1,20 @@
+{
+  "id": "mirror_circuit",
+  "name": "Terrain 5 - Mirror Circuit",
+  "description": "A one-cell ring with a mirror at every corner. No turn fits in the tape, and one lap is far longer than any straight-line program, so the only way round is a sub that calls itself.",
+  "difficulty": "hard",
+  "layout": [
+    "/>.*..\\",
+    ".#####.",
+    "*#####*",
+    ".#####.",
+    "\\..*../"
+  ],
+  "main_tape_length": 1,
+  "sub_tape_lengths": [
+    5
+  ],
+  "max_steps": 200,
+  "max_call_depth": 16,
+  "allow_recursion": true
+}

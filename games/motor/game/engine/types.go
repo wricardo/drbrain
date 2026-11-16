@@ -164,24 +164,38 @@ type MapConfig struct {
 
 // Map is a parsed, validated map.
 type Map struct {
-	ID             string
-	Name           string
-	Description    string
-	Difficulty     string
-	Layout         []string
-	Width, Height  int
-	Start          Position
-	StartFacing    Facing
-	Rocks          []Position
-	Treats         []Position
+	ID            string
+	Name          string
+	Description   string
+	Difficulty    string
+	Layout        []string
+	Width, Height int
+	Start         Position
+	StartFacing   Facing
+	Rocks         []Position
+	Treats        []Position
+	Conveyors     []Conveyor
+	Mirrors       []Mirror
+	Keys          []KeyTile
+	Doors         []DoorTile
+	Portals       []Portal
+	// DoorLetters lists the door letters used by the map, in sorted order.
+	// VMState.DoorsOpen is indexed by position in this slice.
+	DoorLetters    []byte
 	MainTapeLength int
 	SubTapeLengths []int
 	MaxSteps       int
 	MaxCallDepth   int
 	AllowRecursion bool
 
-	rock     []bool // Width*Height
-	treatIdx []int  // Width*Height -> index in Treats or -1
+	rock       []bool // Width*Height
+	treatIdx   []int  // Width*Height -> index in Treats or -1
+	conveyorAt []int8 // Width*Height -> facing+1, 0 = none
+	mirrorAt   []int8 // Width*Height -> 1 '/', -1 '\', 0 = none
+	keyAt      []byte // Width*Height -> key letter, 0 = none
+	doorAt     []byte // Width*Height -> door letter, 0 = none
+	portalAt   []byte // Width*Height -> portal digit, 0 = none
+	portalTwin []int  // Width*Height -> index in Portals, -1 = none
 }
 
 // Config returns the JSON form of the map (all fields explicit).
@@ -279,9 +293,17 @@ func NewMap(cfg MapConfig) (*Map, error) {
 	if m.Height >= MinSide && m.Height <= MaxSide && m.Width >= MinSide && m.Width <= MaxSide {
 		m.rock = make([]bool, m.Width*m.Height)
 		m.treatIdx = make([]int, m.Width*m.Height)
+		m.conveyorAt = make([]int8, m.Width*m.Height)
+		m.mirrorAt = make([]int8, m.Width*m.Height)
+		m.keyAt = make([]byte, m.Width*m.Height)
+		m.doorAt = make([]byte, m.Width*m.Height)
+		m.portalAt = make([]byte, m.Width*m.Height)
+		m.portalTwin = make([]int, m.Width*m.Height)
 		for i := range m.treatIdx {
 			m.treatIdx[i] = -1
+			m.portalTwin[i] = -1
 		}
+		portalCells := map[byte][]Position{}
 		for y, row := range m.Layout {
 			if w := utf8.RuneCountInString(row); w != m.Width {
 				add("layout row %d has width %d, want %d", y, w, m.Width)
@@ -289,21 +311,74 @@ func NewMap(cfg MapConfig) (*Map, error) {
 			}
 			rs := []rune(row)
 			for x, c := range rs {
+				i := y*m.Width + x
 				switch c {
 				case '.':
 				case '#':
-					m.rock[y*m.Width+x] = true
+					m.rock[i] = true
 					m.Rocks = append(m.Rocks, Position{x, y})
 				case '*':
-					m.treatIdx[y*m.Width+x] = len(m.Treats)
+					m.treatIdx[i] = len(m.Treats)
 					m.Treats = append(m.Treats, Position{x, y})
 				case '^', '>', 'v', '<':
 					starts++
 					m.Start = Position{x, y}
 					m.StartFacing = Facing(strings.IndexRune("^>v<", c))
+				case 'U', 'D', 'L', 'R':
+					f := Facing(strings.IndexRune("URDL", c))
+					m.conveyorAt[i] = int8(f) + 1
+					m.Conveyors = append(m.Conveyors, Conveyor{Pos: Position{x, y}, Dir: f})
+				case '/':
+					m.mirrorAt[i] = 1
+					m.Mirrors = append(m.Mirrors, Mirror{Pos: Position{x, y}, Slash: true})
+				case '\\':
+					m.mirrorAt[i] = -1
+					m.Mirrors = append(m.Mirrors, Mirror{Pos: Position{x, y}, Slash: false})
+				case 'a', 'b', 'c':
+					m.keyAt[i] = byte(c)
+					m.Keys = append(m.Keys, KeyTile{Pos: Position{x, y}, Letter: string(c)})
+				case 'A', 'B', 'C':
+					m.doorAt[i] = byte(c - 'A' + 'a')
+					m.Doors = append(m.Doors, DoorTile{Pos: Position{x, y}, Letter: string(c)})
+				case '1', '2', '3', '4', '5', '6', '7', '8', '9':
+					m.portalAt[i] = byte(c)
+					m.Portals = append(m.Portals, Portal{Pos: Position{x, y}, Pair: string(c)})
+					portalCells[byte(c)] = append(portalCells[byte(c)], Position{x, y})
 				default:
 					add("layout (%d,%d): unknown glyph %q", x, y, c)
 				}
+			}
+		}
+		for digit, cells := range portalCells {
+			if len(cells) != 2 {
+				add("portal %q appears %d times, want exactly 2", string(digit), len(cells))
+				continue
+			}
+			a := cells[0].Y*m.Width + cells[0].X
+			b := cells[1].Y*m.Width + cells[1].X
+			m.portalTwin[a] = b
+			m.portalTwin[b] = a
+		}
+		keyLetters := map[byte]bool{}
+		for _, k := range m.Keys {
+			keyLetters[k.Letter[0]] = true
+		}
+		doorLetters := map[byte]bool{}
+		for _, d := range m.Doors {
+			lower := d.Letter[0] - 'A' + 'a'
+			doorLetters[lower] = true
+			if !keyLetters[lower] {
+				add("door %q has no matching key %q, so it can never open", d.Letter, string(lower))
+			}
+		}
+		for _, k := range m.Keys {
+			if !doorLetters[k.Letter[0]] {
+				add("key %q has no matching door %q", k.Letter, string(k.Letter[0]-'a'+'A'))
+			}
+		}
+		for l := byte('a'); l <= 'c'; l++ {
+			if doorLetters[l] {
+				m.DoorLetters = append(m.DoorLetters, l)
 			}
 		}
 	}
@@ -335,6 +410,10 @@ type VMState struct {
 	Status     Status     `json:"status"`
 	LossReason LossReason `json:"loss_reason,omitempty"`
 	Visited    []Position `json:"visited"`
+	// DoorsOpen is indexed by Map.DoorLetters: true once that door's key has
+	// been collected. Older session files omit it; a missing entry reads as
+	// closed.
+	DoorsOpen []bool `json:"doors_open,omitempty"`
 }
 
 // Clone deep-copies the state.
@@ -342,6 +421,7 @@ func (s VMState) Clone() VMState {
 	s.Collected = append([]bool(nil), s.Collected...)
 	s.CallStack = append([]Frame(nil), s.CallStack...)
 	s.Visited = append([]Position(nil), s.Visited...)
+	s.DoorsOpen = append([]bool(nil), s.DoorsOpen...)
 	return s
 }
 
@@ -369,11 +449,22 @@ type StepEvent struct {
 	Blocked      bool        `json:"blocked"`
 	// CallBlocked is true when the step was a CALL that recursion rules
 	// ignored: it still spent a step but pushed no frame.
-	CallBlocked bool       `json:"call_blocked"`
-	Collected   *Position  `json:"collected,omitempty"`
-	CallStack   []Frame    `json:"call_stack"`
-	Status      Status     `json:"status"`
-	LossReason  LossReason `json:"loss_reason,omitempty"`
+	CallBlocked bool `json:"call_blocked"`
+	// Pushed is true when the robot moved onto a conveyor and was carried one
+	// extra cell; PushBlocked is true when that carry was blocked, so the robot
+	// stayed on the conveyor.
+	Pushed      bool `json:"pushed"`
+	PushBlocked bool `json:"push_blocked"`
+	// Mirrored is true when the arrival tile reflected the robot's facing.
+	Mirrored bool `json:"mirrored"`
+	// CollectedKey is the letter of a key picked up on this step, or "".
+	CollectedKey string `json:"collected_key,omitempty"`
+	// Teleported is the portal destination when a portal fired.
+	Teleported *Position  `json:"teleported,omitempty"`
+	Collected  *Position  `json:"collected,omitempty"`
+	CallStack  []Frame    `json:"call_stack"`
+	Status     Status     `json:"status"`
+	LossReason LossReason `json:"loss_reason,omitempty"`
 }
 
 // SlotsUsed counts the non-EMPTY slots across the main tape and every sub

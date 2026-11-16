@@ -1,0 +1,19 @@
+{
+  "id": "portal_hop",
+  "name": "Terrain 4 - Portal Hop",
+  "description": "The wall has no gap, but one portal pair bridges it. A short tape only fits the jump.",
+  "difficulty": "medium",
+  "layout": [
+    ">..#..1..*",
+    "...#......",
+    "...#......",
+    "1..#......",
+    "..........",
+    ".........."
+  ],
+  "main_tape_length": 8,
+  "sub_tape_lengths": [],
+  "max_steps": 120,
+  "max_call_depth": 16,
+  "allow_recursion": false
+}

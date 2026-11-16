@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_MAP_ID, blankCells, copyId, formatLayout, localLayoutIssues, parseLayout, resizeCells } from './layout';
+import {
+	MAX_MAP_ID,
+	blankCells,
+	copyId,
+	formatLayout,
+	localLayoutIssues,
+	parseLayout,
+	resizeCells
+} from './layout';
 
 describe('layout', () => {
 	const layout = ['.*.', '#.<', '...'];
@@ -33,6 +41,50 @@ describe('layout', () => {
 			['.', '*'],
 			['#', '.']
 		]);
+	});
+
+	it('preserves every tile glyph instead of flattening it to empty', () => {
+		const tiles = ['>UDLR*', '.abc..', '/\\AB1.'];
+		const p = parseLayout(tiles);
+		expect(p.cells[0].slice(1, 5)).toEqual(['U', 'D', 'L', 'R']);
+		expect(p.cells[1].slice(1, 4)).toEqual(['a', 'b', 'c']);
+		expect(p.cells[2]).toEqual(['/', '\\', 'A', 'B', '1', '.']);
+		expect(p.keyLetters).toEqual(['a', 'b', 'c']);
+		expect(p.doorLetters).toEqual(['A', 'B']);
+		expect(p.portalDigits).toEqual(['1']);
+	});
+
+	it('round-trips the new glyphs through format', () => {
+		const tiles = ['>UDLR*', '.abc..', '/\\AB1.'];
+		const p = parseLayout(tiles);
+		expect(formatLayout(p.cells, p.start)).toEqual(tiles);
+	});
+
+	it('still reads the start arrows and turns unknown glyphs into empty', () => {
+		const p = parseLayout(['>?v<', '....', '.*..']);
+		expect(p.start).toEqual({ x: 0, y: 0, facing: 'RIGHT' });
+		expect(p.startCount).toBe(3);
+		expect(p.cells[0]).toEqual(['.', '.', '.', '.']);
+	});
+
+	it('flags a door without its key and a key without its door', () => {
+		expect(localLayoutIssues(parseLayout(['>..*', '..A.', '....']))).toContain(
+			"Door 'A' has no key 'a' on this map."
+		);
+		expect(localLayoutIssues(parseLayout(['>..*', '..a.', '....']))).toContain(
+			"Key 'a' has no door 'A' on this map."
+		);
+		expect(localLayoutIssues(parseLayout(['>..*', '..aA', '....']))).toEqual([]);
+	});
+
+	it('flags a portal digit that does not appear exactly twice', () => {
+		expect(localLayoutIssues(parseLayout(['>1.*', '..1.', '....']))).toEqual([]);
+		expect(localLayoutIssues(parseLayout(['>1.*', '....', '....']))).toContain(
+			"Portal '1' must appear exactly twice (found 1)."
+		);
+		expect(localLayoutIssues(parseLayout(['>1.*', '.11.', '....']))).toContain(
+			"Portal '1' must appear exactly twice (found 3)."
+		);
 	});
 
 	it('reports local issues: start count, treats, size', () => {

@@ -22,7 +22,8 @@ type Result struct {
 }
 
 // Check validates cfg structurally (engine.NewMap) and verifies every treat
-// is reachable from the start ignoring facing (a necessary condition).
+// is reachable from the start under the map's tiles and doors (a necessary
+// condition: turning is assumed free, as before).
 func Check(cfg engine.MapConfig) Result {
 	res := Result{Issues: []string{}, UnreachableTreats: []engine.Position{}}
 	m, err := engine.NewMap(cfg)
@@ -43,31 +44,88 @@ func Check(cfg engine.MapConfig) Result {
 	return res
 }
 
-// UnreachableTreats returns the treats not reachable from the start by
-// 4-neighbour moves through non-rock cells.
+// UnreachableTreats returns the treats not reachable from the start. Turning
+// in place is free and never limited by the map, so only the cell and the set
+// of opened doors matter; arrival effects are applied exactly as Step does
+// them (portal, then mirror, then conveyor push, no chaining).
 func UnreachableTreats(m *engine.Map) []engine.Position {
-	seen := make([]bool, m.Width*m.Height)
-	queue := []engine.Position{m.Start}
-	seen[m.Start.Y*m.Width+m.Start.X] = true
+	doors := 1 << len(m.DoorLetters)
+	seen := make([]bool, m.Width*m.Height*doors)
+	startMask := 0
+	queue := []state{{m.Start, startMask}}
+	seen[(m.Start.Y*m.Width+m.Start.X)*doors+startMask] = true
+	treatAt := make(map[engine.Position]bool, len(m.Treats))
+	for _, t := range m.Treats {
+		treatAt[t] = true
+	}
+	reached := make(map[engine.Position]bool, len(m.Treats))
 	for len(queue) > 0 {
-		p := queue[0]
+		cur := queue[0]
 		queue = queue[1:]
+		if treatAt[cur.pos] {
+			reached[cur.pos] = true
+		}
 		for _, d := range [4][2]int{{0, -1}, {1, 0}, {0, 1}, {-1, 0}} {
-			x, y := p.X+d[0], p.Y+d[1]
-			if m.IsRock(x, y) || seen[y*m.Width+x] {
+			pos, mask, ok := travel(m, cur.pos, cur.mask, d)
+			if !ok {
 				continue
 			}
-			seen[y*m.Width+x] = true
-			queue = append(queue, engine.Position{X: x, Y: y})
+			i := (pos.Y*m.Width+pos.X)*doors + mask
+			if seen[i] {
+				continue
+			}
+			seen[i] = true
+			queue = append(queue, state{pos, mask})
 		}
 	}
 	out := []engine.Position{}
 	for _, t := range m.Treats {
-		if !seen[t.Y*m.Width+t.X] {
+		if !reached[t] {
 			out = append(out, t)
 		}
 	}
 	return out
+}
+
+type state struct {
+	pos  engine.Position
+	mask int
+}
+
+// travel applies one attempted move in direction d from pos with the doors in
+// mask opened. ok is false when the move is blocked.
+func travel(m *engine.Map, pos engine.Position, mask int, d [2]int) (engine.Position, int, bool) {
+	nx, ny := pos.X+d[0], pos.Y+d[1]
+	if m.IsRock(nx, ny) || doorClosed(m, mask, nx, ny) {
+		return pos, mask, false
+	}
+	at := engine.Position{X: nx, Y: ny}
+	if twin, ok := m.PortalTwin(nx, ny); ok {
+		return twin, mask, true
+	}
+	if dir, ok := m.ConveyorAt(nx, ny); ok {
+		dd := [4][2]int{{0, -1}, {1, 0}, {0, 1}, {-1, 0}}[dir]
+		tx, ty := nx+dd[0], ny+dd[1]
+		if !m.IsRock(tx, ty) && !doorClosed(m, mask, tx, ty) {
+			at = engine.Position{X: tx, Y: ty}
+		}
+	}
+	if l := m.KeyAt(at.X, at.Y); l != 0 {
+		if i := m.DoorIndex(l); i >= 0 {
+			mask |= 1 << i
+		}
+	}
+	return at, mask, true
+}
+
+// doorClosed reports whether (x,y) is a door that is still closed with mask.
+func doorClosed(m *engine.Map, mask, x, y int) bool {
+	l := m.DoorAt(x, y)
+	if l == 0 {
+		return false
+	}
+	i := m.DoorIndex(l)
+	return i < 0 || mask&(1<<i) == 0
 }
 
 // CheckSolution verifies p is a valid program for m and simulates to WON

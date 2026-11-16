@@ -5,7 +5,6 @@
 	import { getContextClient } from '@urql/svelte';
 	import { unwrap } from '$lib/api';
 	import AiPromptCard from '$lib/components/AiPromptCard.svelte';
-	import CallStack from '$lib/components/CallStack.svelte';
 	import ConnectionBadge from '$lib/components/ConnectionBadge.svelte';
 	import Grid from '$lib/components/Grid.svelte';
 	import Palette from '$lib/components/Palette.svelte';
@@ -32,19 +31,23 @@
 	import { ownerTokenFor, rememberSession, statusLine } from '$lib/sessions';
 	import { serialRunner } from '$lib/serialRunner';
 	import { replayTo, stepBackTarget } from '$lib/stepBack';
+	import { blockedCallNotice } from '$lib/recursion';
 	import { clampSpeed } from '$lib/speed';
 	import { cloneProgram, programsEqual, setSlot } from '$lib/program';
 	import { buildSessionPrompt } from '$lib/prompt';
 	import { createSessionStore } from '$lib/stores/session';
 	import { createSessionSource } from '$lib/stores/source';
-	import type { GameMap, Instruction, Program, Session } from '$lib/types';
+	import type { GameMap, Instruction, Program, Session, StepEvent } from '$lib/types';
 
 	/** Quiet period after the last edit before the draft is saved to the server. */
 	const AUTOSAVE_MS = 600;
 
 	const sessionId = $page.params.id ?? '';
+	// The owner token this browser was given when it created the session. It is the
+	// credential for every play call and for reading the program back.
+	const ownerToken = ownerTokenFor(sessionId);
 	const client = getContextClient();
-	const store = createSessionStore(createSessionSource(client), sessionId);
+	const store = createSessionStore(createSessionSource(client, ownerToken), sessionId);
 	onDestroy(() => store.destroy());
 
 	const origin = typeof window !== 'undefined' ? window.location.origin : '';
@@ -107,15 +110,12 @@
 	const callKeys = $derived(
 		!draft?.subs.length ? '' : draft.subs.length === 1 ? '1 calls the subroutine,' : `1–${draft.subs.length} call subroutines,`
 	);
-	const dirty = $derived(!!draft && !!session && !programsEqual(draft, session.program));
+	const dirty = $derived(!!draft && !!session?.program && !programsEqual(draft, session.program));
 	const status = $derived(session?.vm.status ?? 'READY');
 	// Running an empty Main tape only costs an attempt, so Run and Step wait for an instruction.
 	const emptyMain = $derived(!!draft && !draft.main.some((i) => i !== 'EMPTY'));
 	const terminal = $derived(status === 'WON' || status === 'LOST');
 	const playing = $derived(session?.playing ?? false);
-	// The owner token this browser was given when it created the session. It is the
-	// credential for every play call; a signed-in owner needs none (their cookie).
-	const ownerToken = ownerTokenFor(sessionId);
 	// Whether this browser may play at all: a session created elsewhere and opened
 	// from a shared link is readable but not playable.
 	let canPlay = $state(true);
@@ -129,6 +129,28 @@
 				? `You won in ${session.vm.steps} steps.`
 				: `Run lost. ${lossReasonText(session.vm.lossReason)}`
 	);
+
+	/**
+	 * Explains a step that a tile moved for the robot, so a carry, a mirror turn,
+	 * a key pickup or a teleport never looks like a bug. Null for an ordinary step.
+	 */
+	function tileStepNotice(e: StepEvent | null): string | null {
+		if (!e) return null;
+		const parts: string[] = [];
+		if (e.pushed) parts.push(`A conveyor carried the robot one extra cell to (${e.to.x},${e.to.y}).`);
+		if (e.pushBlocked)
+			parts.push('The conveyor could not carry the robot any further (rock, edge or closed door), so it stayed on the conveyor.');
+		if (e.mirrored) parts.push(`A mirror turned the robot to face ${e.facingAfter.toLowerCase()}.`);
+		if (e.collectedKey)
+			parts.push(`Picked up key "${e.collectedKey}": every ${e.collectedKey.toUpperCase()} door is now open.`);
+		if (e.teleported) parts.push(`A portal teleported the robot to (${e.teleported.x},${e.teleported.y}).`);
+		return parts.length ? parts.join(' ') : null;
+	}
+
+	const tileNotice = $derived(tileStepNotice(session?.lastEvent ?? null));
+	// The call-stack panel is gone, but a CALL that the map's recursion rule ignored
+	// must still explain itself: the step was spent for nothing.
+	const callNotice = $derived(dirty || !session ? null : blockedCallNotice(session.lastEvent));
 
 	async function act(fn: () => Promise<Session | void>) {
 		if (!canPlay) return;
@@ -151,7 +173,7 @@
 
 	/** Saves the draft when it differs from the server program and applies the result to the store. */
 	async function saveIfDirty(): Promise<void> {
-		if (!draft || !session || programsEqual(draft, session.program)) return;
+		if (!draft || !session?.program || programsEqual(draft, session.program)) return;
 		const data = await unwrap<{ setProgram: Session }>(
 			client.mutation(SET_PROGRAM_MUTATION, { sessionID: sessionId, program: draft, ownerToken })
 		);
@@ -338,33 +360,44 @@
 		{/if}
 
 		<div class="mt-4 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,28rem)]">
-			<!-- On phones the board is pinned small at the top so it stays visible while you edit and run; on wide screens it sits in its own sticky column. -->
+			<!-- On phones the board is pinned at the top so it stays visible while you edit and run: it fills the column width, and only a very tall map is capped (50vh) so the program panel keeps room. On wide screens it sits in its own sticky column. -->
 			<section
 				aria-label="Board"
-				class="space-y-3 max-lg:sticky max-lg:top-0 max-lg:z-30 max-lg:-mx-4 max-lg:border-b max-lg:border-indigo-200 max-lg:px-4 max-lg:py-2 max-lg:bg-[var(--page-bg)] sm:max-lg:-mx-6 sm:max-lg:px-6 lg:sticky lg:top-4 lg:self-start"
+				class="min-w-0 space-y-3 max-lg:sticky max-lg:top-0 max-lg:z-30 max-lg:-mx-4 max-lg:border-b max-lg:border-indigo-200 max-lg:px-4 max-lg:py-1 max-lg:bg-[var(--page-bg)] sm:max-lg:-mx-6 sm:max-lg:px-6 lg:sticky lg:top-4 lg:self-start"
 			>
-				<div class="mx-auto max-lg:max-w-[min(100%,calc(22vh*var(--ar)))]" style="--ar: {session.map.width / session.map.height}">
+				<div class="mx-auto max-lg:max-w-[min(100%,calc(50vh*var(--ar)))]" style="--ar: {session.map.width / session.map.height}">
 					<Grid map={session.map} vm={session.vm} lastEvent={session.lastEvent} />
 				</div>
 				<p class="text-sm text-slate-600 max-lg:hidden">{session.map.description}</p>
 				<p class="sr-only" role="status" aria-live="polite" data-testid="result-live">{resultText}</p>
 			</section>
 
-			<section aria-label="Program" class="space-y-4">
-				<p class="text-sm text-slate-600 lg:hidden">{session.map.description}</p>
-				<p
-					class="rounded-lg px-3 py-2 text-sm font-semibold {status === 'WON'
-						? 'bg-emerald-50 text-emerald-900'
-						: status === 'LOST'
-							? 'bg-rose-50 text-rose-900'
-							: playing
-								? 'bg-indigo-600 text-white'
-								: 'bg-indigo-50 text-indigo-900'}"
-					data-testid="status-line"
-				>
-					{statusLine({ playing, speedMs: session.speedMs, vm: session.vm, emptyMain })}
-				</p>
-				<Stats {session} />
+			<section aria-label="Program" class="min-w-0 space-y-3 sm:space-y-4">
+				<!-- On phones the status pill and the stats share one wrapped line: the four stat cards cost ~90px of height there. -->
+				<div class="flex flex-wrap items-center gap-x-3 gap-y-1 sm:block sm:space-y-4">
+					<p
+						class="rounded-lg px-3 py-2 text-sm font-semibold max-sm:rounded-md max-sm:px-2 max-sm:py-1 max-sm:text-xs {status === 'WON'
+							? 'bg-emerald-50 text-emerald-900'
+							: status === 'LOST'
+								? 'bg-rose-50 text-rose-900'
+								: playing
+									? 'bg-indigo-600 text-white'
+									: 'bg-indigo-50 text-indigo-900'}"
+						data-testid="status-line"
+					>
+						{statusLine({ playing, speedMs: session.speedMs, vm: session.vm, emptyMain })}
+					</p>
+				{#if tileNotice}
+					<p class="rounded-lg bg-indigo-50 px-3 py-1.5 text-xs text-indigo-900" data-testid="tile-notice">{tileNotice}</p>
+				{/if}
+					<Stats {session} />
+				</div>
+
+				{#if callNotice}
+					<p class="rounded-lg bg-amber-50 px-2 py-1.5 text-xs text-amber-900" role="status" data-testid="blocked-call">
+						{callNotice}
+					</p>
+				{/if}
 
 				<div class="rounded-xl border border-indigo-200 bg-white p-3 space-y-3">
 					<RunControls
@@ -410,17 +443,22 @@
 					</div>
 				{/if}
 
-				<CallStack callStack={session.vm.callStack} map={session.map} lastEvent={session.lastEvent} />
-
 				<div class="rounded-xl border border-indigo-200 bg-white p-4" data-testid="help">
 					<h2 class="text-xs font-semibold uppercase tracking-widest text-indigo-900">Help</h2>
+					<p class="mt-1 text-sm text-slate-700 lg:hidden">{session.map.description}</p>
 					<ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
 						<li>Click a slot to pick an instruction, or arm one in the palette and click slots to stamp it.</li>
 						<li>Drag an instruction onto a slot to place it. Drag a slot to swap it with another, hold <kbd>Shift</kbd> to reorder a tape, <kbd>Alt</kbd> to copy, or drop it on the palette to clear it.</li>
-						<li>With a slot focused: <kbd>F</kbd> forward, <kbd>L</kbd>/<kbd>R</kbd> turn, {callKeys} <kbd>Backspace</kbd> clear, arrows move.</li>
-						<li><kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes a program edit, <kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs or pauses.</li>
-						<li><kbd>S</kbd> steps once, <kbd>B</kbd> goes back a step and <kbd>R</kbd> resets the robot when no slot is focused.</li>
-						<li>Press <kbd>?</kbd> for shortcuts.</li>
+						<li class="max-sm:hidden">With a slot focused: <kbd>F</kbd> forward, <kbd>L</kbd>/<kbd>R</kbd> turn, {callKeys} <kbd>Backspace</kbd> clear, arrows move.</li>
+						<li class="max-sm:hidden"><kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes a program edit, <kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs or pauses.</li>
+						<li class="max-sm:hidden"><kbd>S</kbd> steps once, <kbd>B</kbd> goes back a step and <kbd>R</kbd> resets the robot when no slot is focused.</li>
+						<li>
+							Some maps have tiles that move the robot for you: a <strong>conveyor</strong> carries it one extra cell
+							(<code>pushed</code>), a <strong>mirror</strong> turns it (<code>mirrored</code>), a <strong>portal</strong> hops it to its
+							twin (<code>teleported</code>), and a <strong>key</strong> opens every matching door (<code>collectedKey</code>). A blocked
+							carry (<code>pushBlocked</code>) just means the robot stayed on the conveyor. Each is still one step.
+						</li>
+						<li class="max-sm:hidden">Press <kbd>?</kbd> for shortcuts.</li>
 					</ul>
 					<a href="/learn" class="mt-2 inline-block text-sm font-medium text-indigo-700 underline">All rules →</a>
 				</div>

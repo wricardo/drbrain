@@ -37,7 +37,7 @@ func (r *mutationResolver) CreateSession(ctx context.Context, mapID string, disp
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	out := toSession(s)
+	out := toSession(s, true)
 	out.OwnerToken = &token
 	return out, nil
 }
@@ -62,7 +62,7 @@ func (r *mutationResolver) RenameSession(ctx context.Context, id string, display
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	return toSession(s), nil
+	return toSession(s, true), nil
 }
 
 // SetProgram is the resolver for the setProgram field.
@@ -74,7 +74,7 @@ func (r *mutationResolver) SetProgram(ctx context.Context, sessionID string, pro
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	return toSession(s), nil
+	return toSession(s, true), nil
 }
 
 // Run is the resolver for the run field.
@@ -90,7 +90,7 @@ func (r *mutationResolver) Run(ctx context.Context, sessionID string, speedMs *i
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	return toSession(s), nil
+	return toSession(s, true), nil
 }
 
 // Pause is the resolver for the pause field.
@@ -102,7 +102,7 @@ func (r *mutationResolver) Pause(ctx context.Context, sessionID string, ownerTok
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	return toSession(s), nil
+	return toSession(s, true), nil
 }
 
 // Step is the resolver for the step field.
@@ -114,7 +114,7 @@ func (r *mutationResolver) Step(ctx context.Context, sessionID string, ownerToke
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	return toSession(s), nil
+	return toSession(s, true), nil
 }
 
 // Reset is the resolver for the reset field.
@@ -126,7 +126,7 @@ func (r *mutationResolver) Reset(ctx context.Context, sessionID string, ownerTok
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	return toSession(s), nil
+	return toSession(s, true), nil
 }
 
 // Logout is the resolver for the logout field. It is safe to call when signed
@@ -343,7 +343,7 @@ func (r *queryResolver) Map(ctx context.Context, id string) (*model.Map, error) 
 }
 
 // Session is the resolver for the session field.
-func (r *queryResolver) Session(ctx context.Context, id string) (*model.Session, error) {
+func (r *queryResolver) Session(ctx context.Context, id string, ownerToken *string) (*model.Session, error) {
 	s, err := r.Service.GetSession(id)
 	if err != nil {
 		if isNotFound(err) {
@@ -351,7 +351,7 @@ func (r *queryResolver) Session(ctx context.Context, id string) (*model.Session,
 		}
 		return nil, toGQLError(err)
 	}
-	return toSession(s), nil
+	return toSession(s, r.mayPlay(ctx, id, ownerToken)), nil
 }
 
 // CanPlaySession is the resolver for the canPlaySession field. It answers
@@ -389,7 +389,7 @@ func (r *queryResolver) Sessions(ctx context.Context, sort *model.SessionSort, l
 	}
 	out := make([]*model.Session, len(list))
 	for i, s := range list {
-		out[i] = toSession(s)
+		out[i] = toSession(s, false)
 	}
 	return out, nil
 }
@@ -438,13 +438,13 @@ func (r *queryResolver) PlayerRuns(ctx context.Context, sessionIds []string, nam
 // SessionUpdated is the resolver for the sessionUpdated field. It subscribes
 // before reading the snapshot so no update is lost between the two, emits the
 // snapshot immediately, then forwards hub updates.
-func (r *subscriptionResolver) SessionUpdated(ctx context.Context, sessionID string) (<-chan *model.SessionUpdate, error) {
+func (r *subscriptionResolver) SessionUpdated(ctx context.Context, sessionID string, ownerToken *string) (<-chan *model.SessionUpdate, error) {
 	updates := r.Hub.SubscribeSession(ctx, sessionID)
 	s, err := r.Service.GetSession(sessionID)
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	return forwardSessionUpdates(ctx, s, updates, subscriptionBuffer), nil
+	return forwardSessionUpdates(ctx, s, updates, subscriptionBuffer, r.mayPlay(ctx, sessionID, ownerToken)), nil
 }
 
 // Map returns generated.MapResolver implementation.

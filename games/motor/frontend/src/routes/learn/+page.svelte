@@ -14,12 +14,27 @@
 		{ ins: 'EMPTY', text: 'Does nothing and costs nothing: empty slots are skipped instantly.' }
 	];
 
+	/** Every layout glyph a map can use, in player language. */
+	const tileLegend: [string, string, string][] = [
+		['.', 'Floor', 'Plain cell: nothing happens beyond the move itself.'],
+		['#', 'Rock', 'Cannot be entered. The board edge is a wall too.'],
+		['*', 'Treat', 'Collect it by moving onto it. Collect every treat to win.'],
+		['^ > v <', 'Start', 'Where the robot starts, and which way it faces.'],
+		['U D L R', 'Conveyor', 'After you move onto it, you are carried one extra cell in that direction — up, down, left or right — in the same step. If that extra cell is a rock, the board edge or a closed door you stay put.'],
+		['/', 'Slash mirror', 'Arriving turns you 90°: right becomes up, up becomes right, down becomes left, left becomes down.'],
+		['\\', 'Backslash mirror', 'Arriving turns you 90° the other way: right becomes down, down becomes right, up becomes left, left becomes up.'],
+		['a b c', 'Key', 'Walk over it to pick it up. It opens every matching door for the rest of the run. A key is not needed to win.'],
+		['A B C', 'Door', 'Solid like a rock until its key (the same letter, lower case) has been collected.'],
+		['1 … 9', 'Portal', 'Each digit appears on exactly two cells. Arriving on one teleports you to its twin in the same step.']
+	];
+
 	const origin = typeof window !== 'undefined' ? window.location.origin : '';
 	const genericPrompt = $derived(buildGenericPrompt(origin));
 
 	const toc: [string, string][] = [
 		['#game', 'The game'],
 		['#instructions', 'Instructions'],
+		['#tiles', 'Board tiles'],
 		['#rules', 'Rules'],
 		['#controls', 'Controls'],
 		['#ai', 'How an AI plays'],
@@ -54,8 +69,10 @@
 		['Ctrl+Z / Ctrl+Shift+Z', 'Undo / redo a program edit'],
 		['Ctrl+Enter', 'Run, or pause while running'],
 		['S (no slot focused)', 'Step once'],
+		['B (no slot focused)', 'Go back one step'],
 		['R (no slot focused)', 'Reset the robot to the start'],
-		['?', 'Show the keyboard shortcuts']
+		['?', 'Show the keyboard shortcuts'],
+		['Esc', 'Close a menu or dialog']
 	];
 </script>
 
@@ -111,6 +128,21 @@
 		</ul>
 	</section>
 
+	<section id="tiles" class="scroll-mt-6" aria-labelledby="tiles-h">
+		<h2 id="tiles-h" class="text-xl font-semibold text-indigo-950">Board tiles</h2>
+		<p class="mt-3 text-slate-800">
+			Most cells are plain floor, but maps can add tiles that move the robot for you. At most <strong>one</strong> tile effect happens per step:
+			a carry, a mirror turn or a teleport — never two in a row. Treats and keys are collected on the cell you finish the step on.
+			These effects are part of the map, not a bug, so a step that carries, turns or teleports the robot still costs only one step.
+		</p>
+		<dl class="mt-3 grid grid-cols-[max-content_1fr] gap-x-4 gap-y-2 text-sm">
+			{#each tileLegend as [glyph, name, text]}
+				<dt class="font-mono font-semibold text-indigo-900"><code>{glyph}</code></dt>
+				<dd><span class="font-semibold text-indigo-950">{name}.</span> <span class="text-slate-700">{text}</span></dd>
+			{/each}
+		</dl>
+	</section>
+
 	<section id="rules" class="scroll-mt-6" aria-labelledby="rules-h">
 		<h2 id="rules-h" class="text-xl font-semibold text-indigo-950">Rules</h2>
 		<h3 id="tape-h" class="mt-3 font-semibold text-indigo-950">Tapes, steps and limits</h3>
@@ -123,13 +155,14 @@
 				(<code>CALL_DEPTH</code>).
 			</li>
 			<li>Changing the program resets the robot to the start. While a run is playing the tapes are locked; pause first.</li>
-			<li>You can <strong>Step</strong> one instruction at a time. The highlighted slot is the next instruction; a dashed ring marks a call that is waiting for its subroutine to return; a yellow inner ring shows what just ran.</li>
+			<li>You can <strong>Step</strong> one instruction at a time, or <strong>Back</strong> one step (key <kbd>B</kbd>) to replay backwards. The slot with the solid indigo ring is the next instruction; a violet ring marks a call that is waiting for its subroutine to return; a yellow inner ring shows what just ran.</li>
 		</ul>
 		<h3 id="rec-h" class="mt-5 font-semibold text-indigo-950">Subroutines and recursion</h3>
 		<div class="mt-3 space-y-3 text-slate-800">
 			<p>
 				A <code>CALL_SUB_k</code> pushes a frame on the <strong>call stack</strong> and runs sub <em>k</em> from its first slot. When the sub reaches its end,
-				its frame is popped and the caller continues. The call-stack panel shows the stack and the current depth against the map's limit.
+				its frame is popped and the caller continues. There is no separate call-stack panel: the slot rings on the tapes show which
+				tape is running and which calls are waiting.
 			</p>
 			<p>
 				On most maps recursion is <strong>not allowed</strong>: a call to the subroutine that is currently running, or to any subroutine already waiting on the stack, is a

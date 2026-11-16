@@ -37,6 +37,7 @@ scripts/smoke.sh 9191                      # end-to-end HTTP smoke (starts its o
 - **Security**: map ids `^[a-z0-9_-]{1,64}$` (filenames); session ids 16 lowercase hex, validated before disk; admin mutations need `X-Admin-Key` (constant-time) unless `ALLOW_UNAUTHENTICATED_ADMIN=true` with no key set; `max_steps ≤ 10000`, `max_call_depth ≤ 64`.
 - **Session ownership**: `AuthorizeSessionPlay` gates `setProgram`/`run`/`step`/`pause`/`reset` (owner token or owning account's login; a session with no `OwnerHash` stays open) and `AuthorizeSessionChange` gates rename/delete. Both live in `game/service` and are called by the resolvers, so no transport can bypass them. `canPlaySession` answers the same question for the UI.
 - **Recursion off**: calling a sub already on the call stack is a no-op (still a step).
+- **Tiles**: an arrival tile fires at most one effect per step (portal, then mirror, then conveyor push), never chains, and never costs an extra step; a closed door blocks like a rock; the only tile state is `VMState.DoorsOpen` and it must be cloned, persisted and broadcast.
 - **Zero subs**: `sub_tape_lengths: []` ≠ omitted. No `omitempty`; never turn `[]` into `nil` (incl. `graph/convert.go`).
 
 ## Repo rules
@@ -49,7 +50,7 @@ scripts/smoke.sh 9191                      # end-to-end HTTP smoke (starts its o
 ## Change checklists
 
 - **Schema**: `graph/schema.graphqls` → `just generate` → `graph/convert.go` + resolvers → `frontend/src/lib/{queries,types}.ts` → `llms.txt.tmpl` / `lib/prompt.ts` if agents are affected → query copies in `api/hardening_test.go`.
-- **Engine**: update golden step counts in `game/engine/engine_test.go` and `validate/validate_test.go` (7, 17, 19, 46, 23, 30, 44, 80, 32, 48, 83, 65, 77, 57, 40, 30, 42) deliberately, never to hide a failure.
+- **Engine**: update golden step counts in `validate/validate_test.go` (7, 17, 19, 46, 23, 30, 44, 80, 32, 48, 83, 65, 77, 57, 40, 30, 42, 257, 199, 140, 151, 103, 6, 14, 9, 8, 22, 27) and the five inline fixtures in `game/engine/engine_test.go` (7, 46, 23, 30, 44) deliberately, never to hide a failure.
 - **New map**: `maps/<id>.json` + local `solutions/<id>.json` → `just validate` → golden step count in `validate/validate_test.go`.
 - **New page**: route under `frontend/src/routes/` + `spaRoutes` in `api/server.go` (+ nav in `+layout.svelte`).
 - **UI**: Svelte 5 runes only; follow "UI look and feel" in `docs/DEVELOPMENT.md` (instruction colors/glyphs/keys live in `lib/instructions.ts`, brand names in `lib/brand.ts`). Gotcha: explicit `onchange`/`oninput` run before `bind:value` updates — read `event.currentTarget.value`.

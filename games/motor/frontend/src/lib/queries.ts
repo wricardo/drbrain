@@ -14,6 +14,11 @@ const STEP_EVENT_FIELDS = `
   facingAfter
   blocked
   callBlocked
+  pushed
+  pushBlocked
+  mirrored
+  collectedKey
+  teleported { ${POSITION} }
   collected { ${POSITION} }
   callStack { ${FRAME} }
   status
@@ -33,6 +38,11 @@ const MAP_FIELDS = `
   startFacing
   rocks { ${POSITION} }
   treats { ${POSITION} }
+  conveyors { pos { ${POSITION} } dir }
+  mirrors { pos { ${POSITION} } slash }
+  keys { pos { ${POSITION} } letter }
+  doors { pos { ${POSITION} } letter }
+  portals { pos { ${POSITION} } pair }
   mainTapeLength
   subTapeLengths
   maxSteps
@@ -56,6 +66,7 @@ export const SESSION_FIELDS = `
     status
     lossReason
     visited { ${POSITION} }
+    openDoors
   }
   playing
   speedMs
@@ -80,8 +91,8 @@ export const MAP_QUERY = `
 `;
 
 export const SESSION_QUERY = `
-  query Session($id: ID!) {
-    session(id: $id) { ${SESSION_FIELDS} }
+  query Session($id: ID!, $ownerToken: String) {
+    session(id: $id, ownerToken: $ownerToken) { ${SESSION_FIELDS} }
   }
 `;
 
@@ -156,8 +167,8 @@ export const CAN_PLAY_SESSION_QUERY = `
 `;
 
 export const SESSION_UPDATED_SUBSCRIPTION = `
-  subscription SessionUpdated($sessionID: ID!) {
-    sessionUpdated(sessionID: $sessionID) {
+  subscription SessionUpdated($sessionID: ID!, $ownerToken: String) {
+    sessionUpdated(sessionID: $sessionID, ownerToken: $ownerToken) {
       seq
       session { ${SESSION_FIELDS} }
       event { ${STEP_EVENT_FIELDS} }

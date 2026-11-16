@@ -325,7 +325,7 @@ func TestSetProgramPropagatesCode(t *testing.T) {
 
 func TestQueryNotFoundIsNull(t *testing.T) {
 	q := &queryResolver{&Resolver{Service: &fakeService{}}}
-	if s, err := q.Session(context.Background(), "nope"); s != nil || err != nil {
+	if s, err := q.Session(context.Background(), "nope", nil); s != nil || err != nil {
 		t.Fatalf("session = %v, %v; want nil,nil", s, err)
 	}
 	if m, err := q.Map(context.Background(), "nope"); m != nil || err != nil {
@@ -337,7 +337,7 @@ func TestSessionConversionDerivesTreatsRemaining(t *testing.T) {
 	m := mustMap(t, "m")
 	vm := engine.NewVMState(m)
 	s := &service.Session{ID: "s", MapID: "m", Map: m, VM: vm, Seq: 3, BestSteps: 0}
-	got := toSession(s)
+	got := toSession(s, true)
 	if len(got.VM.TreatsRemaining) != 1 || got.VM.TreatsRemaining[0].X != 2 || got.VM.TreatsRemaining[0].Y != 1 {
 		t.Fatalf("treatsRemaining = %+v", got.VM.TreatsRemaining)
 	}
@@ -375,7 +375,7 @@ func TestForwardInitialThenUpdatesAndSeqFilter(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	updates := make(chan *service.Session, 4)
-	out := forwardSessionUpdates(ctx, liveSession(t, 5), updates, 4)
+	out := forwardSessionUpdates(ctx, liveSession(t, 5), updates, 4, true)
 
 	recv := func() *model.SessionUpdate {
 		t.Helper()
@@ -418,7 +418,7 @@ func TestForwardEndsOnCancelWithoutReader(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	updates := make(chan *service.Session)
 	// Buffer 1 and nobody reading: the initial send fits, the next blocks.
-	out := forwardSessionUpdates(ctx, liveSession(t, 1), updates, 1)
+	out := forwardSessionUpdates(ctx, liveSession(t, 1), updates, 1, true)
 	go func() { updates <- liveSession(t, 2) }()
 	time.Sleep(50 * time.Millisecond)
 	cancel()
@@ -434,7 +434,7 @@ func TestSubscriptionResolverEmitsSnapshotAndStopsOnCancel(t *testing.T) {
 
 	base := runtime.NumGoroutine()
 	ctx, cancel := context.WithCancel(context.Background())
-	ch, err := sub.SessionUpdated(ctx, "s1")
+	ch, err := sub.SessionUpdated(ctx, "s1", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -461,7 +461,7 @@ func TestSubscriptionResolverEmitsSnapshotAndStopsOnCancel(t *testing.T) {
 	}
 	goroutinesSettle(t, base)
 
-	if _, err := sub.SessionUpdated(context.Background(), "missing"); codeOf(t, err) != service.CodeNotFound {
+	if _, err := sub.SessionUpdated(context.Background(), "missing", nil); codeOf(t, err) != service.CodeNotFound {
 		t.Fatalf("missing session err = %v", err)
 	}
 }

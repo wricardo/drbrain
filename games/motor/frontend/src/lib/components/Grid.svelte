@@ -1,8 +1,11 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
-	import type { GameMap, StepEvent, VMState } from '$lib/types';
+	import type { Facing, GameMap, StepEvent, VMState } from '$lib/types';
 	import { nextAngle } from '$lib/grid';
+	import { isUnlocked, lockPairText, lockPairs } from '$lib/tiles';
 	import Cookie from './Cookie.svelte';
+	import DoorGlyph from './DoorGlyph.svelte';
+	import KeyGlyph from './KeyGlyph.svelte';
 
 	let {
 		map,
@@ -27,9 +30,36 @@
 
 	const cx = $derived(pos.x * CELL + CELL / 2);
 	const cy = $derived(pos.y * CELL + CELL / 2);
-	const label = $derived(
-		`Board ${map.width} by ${map.height}. Robot at column ${pos.x}, row ${pos.y} facing ${facing.toLowerCase()}. ${treats.length} treats left.`
+	// Named tiles present, so a screen reader hears about a push or a portal before it moves the robot.
+	const tileSummary = $derived(
+		(
+			[
+				[map.conveyors.length, 'conveyor'],
+				[map.mirrors.length, 'mirror'],
+				[map.keys.length, 'key'],
+				[map.doors.length, 'door'],
+				[map.portals.length, 'portal']
+			] as [number, string][]
+		)
+			.filter(([n]) => n > 0)
+			.map(([n, name]) => `${n} ${name}${n === 1 ? '' : 's'}`)
+			.join(', ')
 	);
+	/** Doors this run has opened, as their letters: those doors are drawn open. */
+	const openDoors = $derived(vm?.openDoors ?? []);
+	/** Key/door pairings, so the label says which key opens which door and which are open. */
+	const locks = $derived(lockPairs(map.keys, map.doors, openDoors));
+	const lockLabel = $derived(
+		locks.length === 0
+			? ''
+			: ` Keys: ${lockPairText(locks)}${locks.some((l) => l.open) ? `; open: ${locks.filter((l) => l.open).map((l) => l.door).join(', ')}` : ''}.`
+	);
+	const label = $derived(
+		`Board ${map.width} by ${map.height}. Robot at column ${pos.x}, row ${pos.y} facing ${facing.toLowerCase()}. ${treats.length} treats left.${tileSummary ? ` Tiles: ${tileSummary}.` : ''}${lockLabel}`
+	);
+
+	/** Rotation (degrees, clockwise) that points a conveyor chevron in its carry direction. */
+	const CONVEYOR_ANGLE: Record<Facing, number> = { UP: 0, RIGHT: 90, DOWN: 180, LEFT: 270 };
 </script>
 
 <svg
@@ -56,6 +86,50 @@
 
 	{#each trail as p, i (i)}
 		<circle cx={p.x * CELL + CELL / 2} cy={p.y * CELL + CELL / 2} r="5" fill="var(--board-trail)" opacity="var(--board-trail-opacity)" />
+	{/each}
+
+	{#each map.conveyors as c (`c${c.pos.x},${c.pos.y}`)}
+		<g aria-hidden="true">
+			<rect x={c.pos.x * CELL + 4} y={c.pos.y * CELL + 4} width={CELL - 8} height={CELL - 8} rx="6" fill="var(--board-conveyor)" opacity="0.35" />
+			<g transform="translate({c.pos.x * CELL + CELL / 2}, {c.pos.y * CELL + CELL / 2}) rotate({CONVEYOR_ANGLE[c.dir]})">
+				<polygon points="0,-10 9,4 -9,4" fill="var(--board-conveyor)" />
+			</g>
+		</g>
+	{/each}
+
+	{#each map.mirrors as m (`m${m.pos.x},${m.pos.y}`)}
+		<line
+			x1={m.pos.x * CELL + (m.slash ? 5 : CELL - 5)}
+			y1={m.pos.y * CELL + CELL - 5}
+			x2={m.pos.x * CELL + (m.slash ? CELL - 5 : 5)}
+			y2={m.pos.y * CELL + 5}
+			stroke="var(--board-mirror)"
+			stroke-width="4"
+			stroke-linecap="round"
+		/>
+	{/each}
+
+	{#each map.keys as k (`k${k.pos.x},${k.pos.y}`)}
+		<KeyGlyph x={k.pos.x} y={k.pos.y} letter={k.letter} spent={isUnlocked(openDoors, k.letter)} cell={CELL} />
+	{/each}
+
+	{#each map.doors as d (`d${d.pos.x},${d.pos.y}`)}
+		<DoorGlyph x={d.pos.x} y={d.pos.y} letter={d.letter} open={isUnlocked(openDoors, d.letter)} cell={CELL} />
+	{/each}
+
+	{#each map.portals as p (`p${p.pos.x},${p.pos.y}`)}
+		<g aria-hidden="true">
+			<circle cx={p.pos.x * CELL + CELL / 2} cy={p.pos.y * CELL + CELL / 2} r="13" fill="none" stroke="var(--board-portal)" stroke-width="3" />
+			<!-- The pair digit stays inside the cell: drawn above it, a top-row digit is clipped by the viewBox. -->
+			<text
+				x={p.pos.x * CELL + CELL / 2}
+				y={p.pos.y * CELL + CELL / 2 + 4}
+				text-anchor="middle"
+				font-size="12"
+				font-weight="700"
+				fill="var(--board-portal)">{p.pair}</text
+			>
+		</g>
 	{/each}
 
 	{#each map.rocks as r (`${r.x},${r.y}`)}

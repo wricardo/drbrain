@@ -1,0 +1,22 @@
+{
+  "id": "belt_ladder",
+  "name": "Terrain 6 - Belt Ladder",
+  "description": "Four belt runs and no turns: the belts carry the robot along each rung and the mirrors at both ends aim it into the next one. Twenty-two moves will not fit, so one short sub has to repeat itself.",
+  "difficulty": "hard",
+  "layout": [
+    ">RRRRRR\\",
+    "#######.",
+    "/LLLLLL/",
+    ".#######",
+    "\\RRRRRR\\",
+    "#######.",
+    "*LLLLLL/"
+  ],
+  "main_tape_length": 2,
+  "sub_tape_lengths": [
+    6
+  ],
+  "max_steps": 200,
+  "max_call_depth": 16,
+  "allow_recursion": true
+}

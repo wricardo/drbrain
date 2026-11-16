@@ -91,7 +91,7 @@
 		<button
 			type="button"
 			data-testid={erase ? 'palette-erase' : undefined}
-			class="min-w-16 rounded-lg border-2 px-3 py-2 text-sm font-semibold transition-all duration-100 {meta.classes} {selected === ins
+			class="min-w-14 rounded-lg border-2 px-2 py-1.5 text-sm font-semibold transition-all duration-100 sm:min-w-16 sm:px-3 sm:py-2 {meta.classes} {selected === ins
 				? 'ring-4 ring-indigo-500'
 				: ''} {disabled ? 'opacity-50 cursor-not-allowed' : 'hover:brightness-95 cursor-pointer'} {erase && slotDragActive
 				? 'outline-2 outline-dashed outline-rose-500'
@@ -106,7 +106,7 @@
 		>
 			<span class="pointer-events-none block text-lg leading-none" aria-hidden="true">{erase ? '⌫' : meta.glyph}</span>
 			<span class="pointer-events-none block text-[11px] mt-1">{erase ? 'Erase' : meta.label}</span>
-			{#if meta.key}<kbd class="pointer-events-none block text-[10px] opacity-70">{meta.key}</kbd>{/if}
+			{#if meta.key}<kbd class="pointer-events-none block text-[10px] opacity-70 max-sm:hidden">{meta.key}</kbd>{/if}
 		</button>
 	{/each}
 	{#if slotDragActive}

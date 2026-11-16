@@ -8,8 +8,13 @@
 	import { getAdminKey, setAdminKey } from '$lib/admin';
 	import { describeError, type DescribedError } from '$lib/errors';
 	import {
+		CONVEYOR_GLYPHS,
+		DOOR_GLYPHS,
+		KEY_GLYPHS,
 		MAX_SIDE,
 		MIN_SIDE,
+		MIRROR_GLYPHS,
+		PORTAL_GLYPHS,
 		START_GLYPHS,
 		blankCells,
 		copyId,
@@ -31,7 +36,11 @@
 	import { MAX_SUBS } from '$lib/instructions';
 	import Cookie from '$lib/components/Cookie.svelte';
 
-	type Tool = 'empty' | 'rock' | 'treat' | 'start';
+	/**
+	 * What a click paints: the start cell, plain empty, or any layout glyph. Every
+	 * tile glyph is paintable and round-trips through formatLayout unchanged.
+	 */
+	type Tool = 'start' | 'empty' | Tile;
 
 	const client = getContextClient();
 
@@ -49,7 +58,7 @@
 	let maxCallDepth = $state(16);
 	let allowRecursion = $state(false);
 
-	let tool = $state<Tool>('rock');
+	let tool = $state<Tool>('#');
 	let facing = $state<Facing>('RIGHT');
 	let painting = $state(false);
 	let existing = $state(false);
@@ -66,12 +75,111 @@
 	const localIssues = $derived(localLayoutIssues(parsed));
 	const unreachable = $derived(new Set((validation?.unreachableTreats ?? []).map((p) => `${p.x},${p.y}`)));
 
-	const tools: { id: Tool; label: string }[] = [
-		{ id: 'empty', label: 'Empty (.)' },
-		{ id: 'rock', label: 'Rock (#)' },
-		{ id: 'treat', label: 'Treat (*)' },
-		{ id: 'start', label: 'Start' }
+	interface ToolGroup {
+		label: string;
+		tools: { id: Tool; label: string }[];
+	}
+
+	/** Carry direction each conveyor glyph stands for, shown on its paint button. */
+	const CONVEYOR_CARRY: Record<string, string> = { U: '↑ up', D: '↓ down', L: '← left', R: '→ right' };
+
+	/**
+	 * Grouped so the palette reads as terrain, then the tile effects. Glyphs in
+	 * the label always match the character that lands in the layout.
+	 */
+	const toolGroups: ToolGroup[] = [
+		{
+			label: 'Terrain',
+			tools: [
+				{ id: 'empty', label: 'Empty (.)' },
+				{ id: '#', label: 'Rock (#)' },
+				{ id: '*', label: 'Treat (*)' },
+				{ id: 'start', label: 'Start' }
+			]
+		},
+		{
+			label: 'Conveyors (carry one cell)',
+			tools: CONVEYOR_GLYPHS.map((g) => ({
+				id: g as Tool,
+				label: `${CONVEYOR_CARRY[g]} ${g}`
+			}))
+		},
+		{
+			label: 'Mirrors (turn on arrival)',
+			tools: MIRROR_GLYPHS.map((g) => ({ id: g as Tool, label: g === '/' ? 'Slash (/)' : 'Backslash (\\)' }))
+		},
+		{
+			label: 'Keys (open every matching door)',
+			tools: KEY_GLYPHS.map((g) => ({ id: g as Tool, label: `Key ${g}` }))
+		},
+		{
+			label: 'Doors (need their key)',
+			tools: DOOR_GLYPHS.map((g) => ({ id: g as Tool, label: `Door ${g}` }))
+		},
+		{
+			label: 'Portals (pairs)',
+			tools: PORTAL_GLYPHS.map((g) => ({ id: g as Tool, label: g }))
+		}
 	];
+
+	/** Human name of a cell for its aria-label. */
+	const TILE_NAME: Record<string, string> = {
+		'.': 'empty',
+		'#': 'rock',
+		'*': 'treat',
+		U: 'conveyor pushing up',
+		D: 'conveyor pushing down',
+		L: 'conveyor pushing left',
+		R: 'conveyor pushing right',
+		'/': 'slash mirror',
+		'\\': 'backslash mirror',
+		a: 'key a',
+		b: 'key b',
+		c: 'key c',
+		A: 'door A',
+		B: 'door B',
+		C: 'door C',
+		'1': 'portal 1',
+		'2': 'portal 2',
+		'3': 'portal 3',
+		'4': 'portal 4',
+		'5': 'portal 5',
+		'6': 'portal 6',
+		'7': 'portal 7',
+		'8': 'portal 8',
+		'9': 'portal 9'
+	};
+
+	/** What a painted cell shows: arrows for conveyors, the glyph itself otherwise. */
+	const TILE_GLYPH_DISPLAY: Record<string, string> = { U: '↑', D: '↓', L: '←', R: '→' };
+
+	/** Cell tint per tile in the editor grid; theme-token classes, no raw colours. */
+	const TILE_CLASS: Record<string, string> = {
+		U: 'bg-sky-100',
+		D: 'bg-sky-100',
+		L: 'bg-sky-100',
+		R: 'bg-sky-100',
+		'/': 'bg-slate-200',
+		'\\': 'bg-slate-200',
+		a: 'bg-amber-100',
+		b: 'bg-amber-100',
+		c: 'bg-amber-100',
+		A: 'bg-amber-300 dark:text-white',
+		B: 'bg-amber-300 dark:text-white',
+		C: 'bg-amber-300 dark:text-white',
+		1: 'bg-violet-100',
+		2: 'bg-violet-100',
+		3: 'bg-violet-100',
+		4: 'bg-violet-100',
+		5: 'bg-violet-100',
+		6: 'bg-violet-100',
+		7: 'bg-violet-100',
+		8: 'bg-violet-100',
+		9: 'bg-violet-100'
+	};
+
+	const tileName = (tile: Tile): string => TILE_NAME[tile] ?? 'empty';
+	const tileDisplay = (tile: Tile): string => TILE_GLYPH_DISPLAY[tile] ?? tile;
 	const facings: Facing[] = ['UP', 'RIGHT', 'DOWN', 'LEFT'];
 	const arrows: Record<Facing, string> = { UP: '▲', RIGHT: '▶', DOWN: '▼', LEFT: '◀' };
 
@@ -124,7 +232,7 @@
 			return;
 		}
 		if (start && start.x === x && start.y === y) start = null;
-		cells[y][x] = tool === 'rock' ? '#' : tool === 'treat' ? '*' : '.';
+		cells[y][x] = tool === 'empty' ? '.' : tool;
 	}
 
 	function setFacing(f: Facing) {
@@ -253,29 +361,41 @@
 
 	<div class="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
 		<section aria-label="Board painter" class="space-y-3">
-			<div class="flex flex-wrap items-center gap-2" role="radiogroup" aria-label="Paint tool">
-				{#each tools as t (t.id)}
-					<button
-						type="button"
-						role="radio"
-						aria-checked={tool === t.id}
-						class="rounded-lg border-2 px-3 py-1.5 text-sm {tool === t.id ? 'border-indigo-600 bg-indigo-100 font-semibold' : 'border-indigo-200 bg-white'}"
-						onclick={() => (tool = t.id)}>{t.label}</button
-					>
+			<div class="space-y-2">
+				{#each toolGroups as group (group.label)}
+					<div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+						<span class="w-full text-xs font-semibold uppercase tracking-wide text-slate-600 sm:w-44 sm:shrink-0">{group.label}</span>
+						<div class="flex flex-wrap items-center gap-2" role="radiogroup" aria-label={group.label}>
+							{#each group.tools as t (t.id)}
+								<button
+									type="button"
+									role="radio"
+									aria-checked={tool === t.id}
+									aria-label={t.label}
+									class="rounded-lg border-2 px-3 py-1.5 text-sm {tool === t.id
+										? 'border-indigo-600 bg-indigo-100 font-semibold'
+										: 'border-indigo-200 bg-white'}"
+									onclick={() => (tool = t.id)}>{t.label}</button
+								>
+							{/each}
+						</div>
+					</div>
 				{/each}
-				<span class="mx-1 text-slate-400" aria-hidden="true">|</span>
-				<span class="text-xs text-slate-700" id="facing-label">Start facing</span>
-				<div class="flex gap-1" role="radiogroup" aria-labelledby="facing-label">
-					{#each facings as f (f)}
-						<button
-							type="button"
-							role="radio"
-							aria-checked={facing === f}
-							aria-label={f.toLowerCase()}
-							class="h-8 w-8 rounded-lg border-2 text-sm {facing === f ? 'border-indigo-600 bg-indigo-100' : 'border-indigo-200 bg-white'}"
-							onclick={() => setFacing(f)}>{arrows[f]}</button
-						>
-					{/each}
+				<div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-indigo-100 pt-2">
+					<span class="text-xs text-slate-700" id="facing-label">Start facing</span>
+					<div class="flex gap-1" role="radiogroup" aria-labelledby="facing-label">
+						{#each facings as f (f)}
+							<button
+								type="button"
+								role="radio"
+								aria-checked={facing === f}
+								aria-label={f.toLowerCase()}
+								class="h-8 w-8 rounded-lg border-2 text-sm {facing === f ? 'border-indigo-600 bg-indigo-100' : 'border-indigo-200 bg-white'}"
+								onclick={() => setFacing(f)}>{arrows[f]}</button
+							>
+						{/each}
+					</div>
+					<span class="text-xs text-slate-600">Start facing applies to the Start tool and to the current start cell.</span>
 				</div>
 			</div>
 
@@ -293,11 +413,11 @@
 							<button
 								type="button"
 								class="flex aspect-square w-full items-center justify-center text-sm {tile === '#'
-									? 'bg-slate-500'
+									? 'bg-slate-500 text-white'
 									: isStart
 										? 'bg-indigo-600 text-white'
-										: 'bg-indigo-50 hover:bg-indigo-100'} {bad ? 'ring-2 ring-inset ring-rose-600' : ''}"
-								aria-label="Column {x}, row {y}: {isStart ? `start facing ${start?.facing.toLowerCase()}` : tile === '#' ? 'rock' : tile === '*' ? 'treat' : 'empty'}{bad ? ', unreachable treat' : ''}"
+										: TILE_CLASS[tile] ?? 'bg-indigo-50 hover:bg-indigo-100'} {bad ? 'ring-2 ring-inset ring-rose-600' : ''}"
+								aria-label="Column {x}, row {y}: {isStart ? `start facing ${start?.facing.toLowerCase()}` : tileName(tile)}{bad ? ', unreachable treat' : ''}"
 								onpointerdown={() => {
 									painting = true;
 									paint(x, y);
@@ -314,6 +434,8 @@
 									<span aria-hidden="true">{arrows[start.facing]}</span>
 								{:else if tile === '*'}
 									<svg viewBox="-16 -16 32 32" class="h-3/4 w-3/4" aria-hidden="true"><Cookie cx={0} cy={0} /></svg>
+								{:else if tile !== '.'}
+									<span aria-hidden="true" class="font-semibold">{tileDisplay(tile)}</span>
 								{/if}
 							</button>
 						{/each}
@@ -329,7 +451,9 @@
 					<input type="number" min={MIN_SIDE} max={MAX_SIDE} bind:value={height} onchange={(e) => resize(width, e.currentTarget.valueAsNumber)} class="mt-1 block w-20 rounded-lg border border-indigo-300 px-2 py-1" />
 				</label>
 				<button type="button" class="{btn} border border-indigo-300 text-indigo-900" onclick={clearAll}>Clear grid</button>
-				<span class="text-xs text-slate-600">{parsed.treatCount} treats · glyphs: <code>. # * {Object.values(START_GLYPHS).join(' ')}</code>; y grows downward</span>
+				<span class="text-xs text-slate-600">
+					{parsed.treatCount} treats · glyphs: <code>. # * {Object.values(START_GLYPHS).join(' ')} {CONVEYOR_GLYPHS.join(' ')} {MIRROR_GLYPHS.join(' ')} {KEY_GLYPHS.join(' ')} {DOOR_GLYPHS.join(' ')} {PORTAL_GLYPHS.join(' ')}</code>; y grows downward
+				</span>
 			</div>
 
 			{#if localIssues.length}

@@ -1,13 +1,6 @@
 import { callTarget, tapeLabel } from './instructions';
 import type { GameMap, StepEvent } from './types';
 
-/** The two recursion rules a map can have. */
-export type RecursionMode = 'allowed' | 'strict';
-
-export function recursionMode(map: Pick<GameMap, 'allowRecursion'>): RecursionMode {
-	return map.allowRecursion ? 'allowed' : 'strict';
-}
-
 /**
  * Map-card chip. Both states are labelled: "no recursion" is the rule on most
  * maps, and leaving it unmarked made players discover it by wasting steps.
@@ -30,13 +23,6 @@ export function recursionChip(map: Pick<GameMap, 'allowRecursion' | 'maxCallDept
 			'A call to the sub that is running, or to any sub already on the call stack, does nothing — and the step is still spent.',
 		classes: 'bg-slate-200 text-slate-700'
 	};
-}
-
-/** One-line rule reminder shown next to the call stack on the play and watch pages. */
-export function recursionRule(map: Pick<GameMap, 'allowRecursion' | 'maxCallDepth'>): string {
-	return map.allowRecursion
-		? `Recursion allowed: a sub may call itself. Call depth is capped at ${map.maxCallDepth}.`
-		: `Recursion off: a call to a sub already on the stack is ignored, but the step is still spent. Call depth is capped at ${map.maxCallDepth}.`;
 }
 
 /**

@@ -59,7 +59,10 @@ func TestEveryMapSolutionWinsWithGoldenSteps(t *testing.T) {
 		"zigzag_path": 23, "long_corridor": 30, "staircase": 44, "serpentine": 80,
 		"powers": 32, "pinwheel": 48, "bump_spiral": 83,
 		"comb": 65, "diamond_ring": 77, "ladder": 57, "mountain_range": 40,
-		"nested_doubling": 30, "switchback": 42,
+		"nested_doubling": 30, "switchback": 42, "grand_star": 257,
+		"crown": 199, "clover": 140, "zipper": 151, "cross": 103,
+		"belt_run": 6, "mirror_hall": 14, "key_garden": 9, "portal_hop": 8,
+		"mirror_circuit": 22, "belt_ladder": 27,
 	}
 	files, _ := filepath.Glob(filepath.Join(mapsDir, "*.json"))
 	if len(files) != len(golden) {
@@ -250,6 +253,11 @@ func TestNestingMapsAreProvablyNeeded(t *testing.T) {
 		{"powers", 19, 2, 18},
 		{"pinwheel", 35, 1, 20},
 		{"bump_spiral", 56, 1, 30}, // single sub: no-recursion nesting is at most one level
+		{"grand_star", 209, 1, 44}, // main is 4 slots: one nesting level runs at most 4 x 11 actions
+		{"crown", 162, 1, 96},      // spike dead ends: one nesting level runs at most 8 x 12
+		{"clover", 89, 1, 56},      // four loops: one nesting level runs at most 7 x 8
+		{"zipper", 114, 1, 96},     // seven teeth: one nesting level runs at most 8 x 12
+		{"cross", 70, 1, 40},       // four arms: one nesting level runs at most 8 x 5
 	}
 	for _, c := range cases {
 		t.Run(c.id, func(t *testing.T) {
