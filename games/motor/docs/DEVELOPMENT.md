@@ -25,7 +25,7 @@ These decisions shape everything else. Keep them when changing the game or start
 2. **The server is the source of truth.** Programs run on the server, one step per tick. Clients only display snapshots. Two browsers, or a browser and an agent, can play or watch the same session and always agree.
 3. **Pure rules engine.** All game rules live in one package with no I/O, no clock and no dependencies. It can be tested exhaustively and reused by the validator and the live runner.
 4. **Full snapshots, ordered by sequence number.** Every update carries the whole session state and a `seq` that only goes up. Clients never patch state; they replace it and drop anything older. Dropped or reordered messages can't corrupt the view.
-5. **Files, not a database.** Maps are JSON files in `maps/` (shipped) and `maps-user/` (player-created); each session is one JSON file in `sessions/`; accounts are files in `accounts/`. Writes are atomic (temp file + fsync + rename). One binary plus a few folders is the whole deployment.
+5. **Shipped maps are files; everything players create is PostgreSQL or files.** Shipped maps are JSON in `maps/` (git-tracked, replaced on every deploy, read-only for players). Sessions, accounts, logins and player-created maps live in **PostgreSQL** when `DATABASE_URL` is set, and otherwise stay JSON files (`sessions/`, `accounts/`, `maps-user/`; writes are atomic: temp file + fsync + rename). The database is a *store*, not the source of truth: live sessions stay in memory and are written through, exactly as the files were. See [Storage](#storage).
 6. **Agent-readable by design.** `/llms.txt` explains the rules and every API call for an AI. Each game page can copy a ready-made prompt. Answers are never exposed: reference solutions are not in the API, the prompts or the public repo.
 7. **Puzzles are verified, not hoped for.** Every map has a reference solution that must win, and the harder maps come with a proof that the intended trick is required.
 
@@ -48,7 +48,7 @@ Frontend development with hot reload, against a server running on :8000:
 cd frontend && npm run dev:local     # http://localhost:5173
 ```
 
-Server flags: `-port 8000 -host 0.0.0.0 -maps-dir maps -user-maps-dir maps-user -sessions-dir sessions -accounts-dir accounts -solutions-dir solutions -debug -public-url <url>` (`-public-url` sets the base URL written into `/llms.txt`, is the base of the OAuth callbacks, and is the origin used for the sign-in same-origin check and the `Secure` cookie; it is required once a redirect provider is configured, while password sign-in — on by default — falls back to each request's own host).
+Server flags: `-port 8000 -host 0.0.0.0 -maps-dir maps -user-maps-dir maps-user -sessions-dir sessions -accounts-dir accounts -database-url <url> -solutions-dir solutions -debug -public-url <url>` (`-database-url`, default `$DATABASE_URL`, switches sessions, accounts and player maps to PostgreSQL; the three directory flags then only matter to `cmd/import-json`) (`-public-url` sets the base URL written into `/llms.txt`, is the base of the OAuth callbacks, and is the origin used for the sign-in same-origin check and the `Secure` cookie; it is required once a redirect provider is configured, while password sign-in — on by default — falls back to each request's own host).
 
 Routes:
 
@@ -78,12 +78,12 @@ game/engine          pure rules, no deps/IO: MapConfig/NewMap, Program, VMState 
 game/service         Session type, GameService facade + impl + Runner (ticker goroutine per playing session);
                      interfaces MapStore, SessionStore, Broadcaster, AccountStore; coded errors; leaderboard (recorded wins + ranking);
                      accounts, handles, logins, claims
-game/account         AccountStore impl: accounts/accounts/<id>.json + accounts/logins/<sha256>.json, in-memory indexes
+game/account         AccountStore impls: files (accounts/accounts/<id>.json + accounts/logins/<sha256>.json, in-memory indexes) and PostgreSQL (postgres.go)
 auth                 Sign-in: username/password (on by default), providers (Google OIDC, GitHub OAuth2, dev fake), /auth routes,
                      login cookie, same-origin check, per-IP rate limiter
-game/config          MapStore impl: maps/*.json (shipped, admin-only writes) + maps-user/*.json
+game/config          MapStore impl: maps/*.json (shipped, admin-only writes) + player maps in maps-user/*.json or, with a database, the `maps` table (`UserStore`)
                      (player-created), RWMutex, atomic writes
-game/session         SessionStore impl: in-memory Manager + FilePersistence (sessions/<id>.json)
+game/session         SessionStore impl: in-memory Manager + FilePersistence (sessions/<id>.json) or PostgresPersistence
 transport/websocket  Hub: per-session fan-out, latest-wins delivery
 validate             map checks, reachability, reference-solution checks (+ cmd/validate CLI)
 graph                gqlgen schema, resolvers, converters, subscription forwarder, admin gate
@@ -105,7 +105,7 @@ HTTP /graphql (api) → gqlgen resolver (graph) → GameService (game/service)
 
 ### Composition and dependencies
 
-- `main.go` is the composition root. It builds the map store (`game/config`), the session store and file persistence (`game/session`), the broadcaster (`transport/websocket`) and, only when a sign-in provider is configured (or `accounts/` already exists), the account store (`game/account`) and `auth.Auth`, passes them to `service.New(...)`, then starts `api.NewServer`. On shutdown it stops HTTP first, then the runners, persisting every session.
+- `main.go` is the composition root. It opens PostgreSQL first when `DATABASE_URL` is set (and exits with a clear error if it cannot, never falling back to files), then builds the map store (`game/config`), the session store and its persistence (`game/session`), the broadcaster (`transport/websocket`) and, when password or OAuth sign-in is on (or, without a database, `accounts/` already exists), the account store (`game/account`) and `auth.Auth`, passes them to `service.New(...)`, then starts `api.NewServer`. On shutdown it stops HTTP first, then the runners, persisting every session, and only then closes the database pool.
 - `game/service` defines the `MapStore`, `SessionStore`, `Broadcaster` and `AccountStore` interfaces it needs. Implementations import `service` and assert the interfaces at compile time; `service` never imports them. This keeps the core testable with fakes.
 - `graph/` is a thin adapter: resolvers call `GameService` and convert results in `graph/convert.go`. `graph/generated` and `graph/model` are gqlgen output (committed, never hand-edited).
 
@@ -129,7 +129,42 @@ HTTP /graphql (api) → gqlgen resolver (graph) → GameService (game/service)
 - Each session embeds a copy of its map, so editing or deleting a map never affects existing sessions.
 - A session file also carries `account_id` and `owner_hash` when it belongs to an account or has an owner token (see [Accounts and sign-in](#accounts-and-sign-in)), its best wins for the [leaderboard](#leaderboard) (`fewest_slots`, `fewest_steps`), and the VM's opened doors (`doors_open`; a file without it reads as all doors closed). Files written before leaderboards still load: a session whose VM is `WON` gets its win recovered from the program stored with it.
 - The session and map stores share `internal/fsutil` for the two file-system steps that differ by platform: `SyncDir` (fsync the directory after a rename or remove; a no-op on Windows, which cannot open a directory for syncing) and `RenameReplace` (os.Rename on Linux; on Windows a short retry, because replacing a file fails with "Access is denied" while a reader, virus scanner or indexer has it open). Production is Linux, where both are the plain calls; the point is that the whole test suite also passes on a Windows developer machine.
-- Idle sessions older than `SESSION_TTL` are removed on startup. `MAX_SESSIONS` caps how many exist.
+- Idle sessions older than `SESSION_TTL` are removed on startup and then every `SESSION_SWEEP_INTERVAL` (default 1 h), through `DeleteSession`, so a running server does not keep idle sessions forever. `MAX_SESSIONS` caps how many exist.
+
+### Storage
+
+Where the runtime state lives depends on one setting, `DATABASE_URL` (or `-database-url`):
+
+| State | With `DATABASE_URL` | Without it |
+|---|---|---|
+| Shipped maps | `maps/*.json` (always files: git-tracked, replaced on deploy) | same |
+| Player-created maps | `maps` table | `maps-user/<id>.json` |
+| Sessions | `sessions` table | `sessions/<id>.json` |
+| Accounts | `accounts` table | `accounts/accounts/<id>.json` |
+| Logins (one per signed-in browser, keyed by the SHA-256 of the cookie token) | `logins` table | `accounts/logins/<sha256>.json` |
+| Leaderboards | derived by scanning live sessions | same |
+| `solutions/` | not server state: a local input to `just validate` | same |
+
+**The database is a store, not the source of truth.** Live sessions stay shared pointers with a mutex in `session.Manager`; the runner still ticks in memory; the hub still broadcasts clones. PostgreSQL replaces only the bottom layer: `session.PostgresPersistence` implements `SessionPersistence`, `account.PostgresStore` implements `service.AccountStore` and `config.PostgresUserMaps` implements `config.UserStore` (the seam that lets `config.Manager` keep shipped maps in files). The file implementations stay, so unsetting `DATABASE_URL` is the rollback. Persistence keeps its contract: it is write-through, a failed save is logged and never fails a tick, and nothing is persisted or waited on while a session lock is held.
+
+- **Schema** is plain SQL in `internal/pgdb/migrations/` (embedded in the binary), applied at startup by `pgdb.Migrate` inside one transaction per file, under an advisory lock, and recorded in `schema_migrations`. To change the schema add the next numbered file; never edit one that has shipped. `just db-migrate` applies them without starting the server.
+- **The database enforces what Go used to.** Handles are unique ignoring case (`UNIQUE` index on `lower(handle)`) and a provider identity is unique, so two concurrent sign-ups cannot both win; the violated index name is mapped back to `ErrHandleTaken` / `ErrIdentityExists`. `PutLogin` takes the account's row lock and evicts the oldest logins past `MaxLoginsPerAccount` in the same transaction. Deleting an account cascades to its logins and sets `sessions.account_id` to NULL, so its sessions become guest rows; `Save` also stores a link to a missing account as NULL, so a late persist of such a session cannot fail. `Update` locks the row for its read-modify-write.
+- **Session rows** keep the file format's JSON as `jsonb` (`map`, `program`, `vm`, `fewest_slots`, `fewest_steps`) next to scalar columns, plus `map_fingerprint`. A row goes through the same validation as a file (`restoreSession`), so one corrupt row is logged and skipped at startup and never stops the server. `sub_tape_lengths: []` stays distinct from absent. Times are stored as `timestamptz` (microseconds) and returned as UTC. Claiming a session stays atomic because it happens on the live session under its lock; only the result is written.
+- **Owner tokens are never stored**, only their SHA-256 (`owner_hash`), and logins only by token hash.
+- **Startup** fails with a message naming `DATABASE_URL` (never its password) when the database is unreachable; it does not fall back to files. Open the pool before anything else and close it after `svc.Shutdown`, which persists every session.
+- **Sweeping**: besides idle sessions, a database-backed store also deletes expired logins on each sweep.
+- **Not covered:** an admin editing a *shipped* map still writes `maps/<id>.json` (that path is for local use; the deploy replaces `maps/`). `MAX_SESSIONS` still bounds the live registry; sessions are loaded into memory at startup, so history beyond the live registry is not kept.
+
+**Local database.** `docker-compose.yaml` runs PostgreSQL 17 with a healthcheck and a named volume; the app stays on the host. `just db-up` / `just db-down` start and stop it, `just dev-db` is `just dev` against it, and `just test-db` runs the Go tests including the database ones. Set `POSTGRES_PORT` when 5432 is taken. A local `.env` line is enough: `DATABASE_URL=postgres://drbrain:drbrain_dev@localhost:5432/drbrain?sslmode=disable`.
+
+**Tests.** Database tests call `pgtest.Pool(t)` (`internal/pgdb/pgtest`): it skips unless `TEST_DATABASE_URL` is set and otherwise gives each test its own freshly migrated schema, dropped afterwards, so tests and packages never see each other's rows. `go test ./...` therefore needs no database; CI runs them against a PostgreSQL service container.
+
+**Moving data.** `cmd/import-json` (also `just db-import`, `just db-export`) copies between the files and the database:
+
+- `import-json` inserts player maps, accounts, logins and sessions that the database does not have yet (maps, then accounts, then sessions, which reference accounts). It never overwrites a row, so it is safe to run again, e.g. once more right before cutover. `-dry-run` only counts. Sessions linked to an account that is not in the files are imported as guest rows. Reading the account files drops expired or orphaned logins, as a server start would.
+- `import-json -export` writes the database back out as files, into directories that hold no `.json` yet (it refuses to overwrite). That is the pre-migration/rollback copy.
+
+**Cutover** (production, one-time): back up `sessions/`, `accounts/` and `maps-user/`; provision PostgreSQL on the host and put `DATABASE_URL` in `/opt/drbrain-motor-programming/.env` (the systemd unit should start after PostgreSQL, or restart on failure); stop the service; run `import-json` with the host's directories; start it. The old folders are then read-only backups and are no longer written. Merging this change deploys nothing new until `DATABASE_URL` is set on the host. Back up the PostgreSQL volume (or `pg_dump`) from then on instead of the folders.
 
 ### Errors
 
@@ -140,7 +175,7 @@ HTTP /graphql (api) → gqlgen resolver (graph) → GameService (game/service)
 - Map ids match `^[a-z0-9_-]{1,64}$` because they are file names. Session ids are 16 lowercase hex characters and are validated before touching disk.
 - `createMap` and `validateMap` are open to everyone: creating a map is how players add content, and an existing id is `INVALID_ARGUMENT`, so nothing can be overwritten that way.
 - `updateMap` and `deleteMap` are open for player-created maps and require `X-Admin-Key` equal to `ADMIN_API_KEY` for built-in ones (shipped in `maps/`), compared through SHA-256 digests in constant time. `ALLOW_UNAUTHENTICATED_ADMIN=true` is honoured only when no key is set (local development). Provenance is `Map.builtin`, resolved from the map store so it also answers for session snapshots.
-- New maps are stored in `maps-user/` (survives deploys); `maps/` is only written by an admin editing a built-in map. `MAX_USER_MAPS` caps how many player maps may exist.
+- New maps are stored in the `maps` table (or `maps-user/` without a database); `maps/` is only written by an admin editing a built-in map. `MAX_USER_MAPS` caps how many player maps may exist. A stored map whose id belongs to a shipped map is ignored on load, as a file would be.
 - A corrupt player map file is logged and skipped at startup; a corrupt or misnamed built-in map is fatal.
 - `max_steps ≤ 10000` and `max_call_depth ≤ 64` bound the cost of a run.
 - Request body capped at 1 MiB; query complexity capped at 1000 with weighted costs (`sessions` by `limit`). `api/hardening_test.go` keeps a copy of the frontend queries to make sure they stay under the cap.
@@ -295,7 +330,7 @@ Entries that tie on both numbers share a rank (1, 2, 2, 4); the earlier win is l
 
 **Username and password accounts are on by default**: anyone can create an account on the live site with a handle and a password, with nothing to register anywhere (`AUTH_PASSWORD=false` turns it off). Google and GitHub are each their own switch and stay off until credentials are in the environment. Guest play, the public API and the agent guide work exactly as before; a player who signs in keeps their runs on a profile, appears on the leaderboard under their own handle and gets a public page at `/u/<handle>`. With every way of signing in turned off nothing in this section is active: no `/auth` routes, no cookies, no `accounts/` directory is created, `me` is `null` and `authProviders` is empty.
 
-Because password sign-in is on by default, `accounts/` exists on any deployment (it is created at startup). It is the one new thing to back up; see [Owner setup](#owner-setup).
+Because password sign-in is on by default, accounts exist on any deployment: in the `accounts` and `logins` tables, or in `accounts/` without a database. That is the one thing to back up (the PostgreSQL volume, or the directory); see [Storage](#storage) and [Owner setup](#owner-setup).
 
 ### What is stored
 
@@ -303,8 +338,8 @@ Only the minimum, because the game may be played by children:
 
 | Where | What |
 |---|---|
-| `accounts/accounts/<id>.json` | random id, provider name + the provider's opaque user id (only used to recognise the player at the next sign-in, never exposed), handle, display name, `profilePublic`, `createdAt`, `handleChangedAt`, and for [username/password accounts](#username-and-password-on-by-default) the argon2id `password_hash` |
-| `accounts/logins/<sha256>.json` | account id and expiry of one signed-in browser, named by the SHA-256 of its cookie token |
+| `accounts` table, or `accounts/accounts/<id>.json` | random id, provider name + the provider's opaque user id (only used to recognise the player at the next sign-in, never exposed), handle, display name, `profilePublic`, `createdAt`, `handleChangedAt`, and for [username/password accounts](#username-and-password-on-by-default) the argon2id `password_hash` |
+| `logins` table, or `accounts/logins/<sha256>.json` | account id and expiry of one signed-in browser, named by the SHA-256 of its cookie token |
 | session file | `account_id` and `owner_hash` (SHA-256 of the owner token), only when set |
 
 No email address, no avatar, no provider profile data is requested or stored (a password account stores only a salted hash of its password) (Google is asked for the `openid` scope only, GitHub for no scope: the one call made reads the numeric user id). Deleting an account removes its file and logins. The handle and provider indexes are in memory, rebuilt from the files at startup (`game/account`); writes are atomic like session files, ids and hashes are validated before they touch disk.
@@ -399,7 +434,7 @@ Password sign-in needs no setup at all: it is on by default, so the live site of
    ```
 
 4. **Flags.** The systemd `ExecStart` must carry `-public-url https://motor-programming.wricardo.net` (it already does) and should add `-accounts-dir accounts`. Make sure `ALLOWED_ORIGINS` contains the site's origins (it already does in production). nginx needs nothing new: `/auth/` goes through the same proxy block; keep `X-Forwarded-Proto` and `X-Forwarded-For` set (`proxy_set_header X-Forwarded-Proto $scheme; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`).
-5. **Persistence.** `accounts/` lives next to `sessions/` and `maps-user/` in `/opt/drbrain-motor-programming` and **must survive deploys**. The deploy workflow only replaces `maps/` and `static/`, so it does; never `rm -rf` the directory, and include it in backups. Password accounts are on by default, so this directory is created on first start even without any OAuth app; losing it loses every account. Never set `AUTH_PASSWORD=false` "temporarily" on a live site and back: the accounts stay on disk, so that only hides sign-in until it is turned back on.
+5. **Persistence.** With a database (`DATABASE_URL`), accounts are in PostgreSQL: back up that database (see [Storage](#storage)). Without one, `accounts/` lives next to `sessions/` and `maps-user/` in `/opt/drbrain-motor-programming` and **must survive deploys**. The deploy workflow only replaces `maps/` and `static/`, so it does; never `rm -rf` the directory, and include it in backups. Password accounts are on by default, so the directory is created on first start even without any OAuth app; losing it loses every account. Never set `AUTH_PASSWORD=false` "temporarily" on a live site and back: the accounts stay on disk, so that only hides sign-in until it is turned back on.
 6. Password sign-in needs no step of its own: it is on unless `AUTH_PASSWORD=false`. It stores no email, so a forgotten password cannot be reset (a player starts a new account). Read [Username and password](#username-and-password-on-by-default) before enabling OAuth apps, since that section also explains the trade-offs of public handles.
 7. Restart the service. The log shows `sign-in enabled: providers=[google github] password=true (accounts=accounts)`; the header then shows "Sign in" and the dialog offers the username/password form.
 
@@ -514,7 +549,8 @@ Boolean flags are read slightly differently, so trust the table below rather tha
 | `GRAPHQL_PLAYGROUND` | `true` | Serve `/playground` (off in production) |
 | `ADMIN_API_KEY` | empty | Key for changing or deleting a built-in map |
 | `ALLOW_UNAUTHENTICATED_ADMIN` | `false` | Local only: built-in map writes without a key, when none is set |
-| `MAX_USER_MAPS` | `200` | Cap on player-created maps in `maps-user/` |
+| `DATABASE_URL` | empty | PostgreSQL connection string. Set: sessions, accounts, logins and player maps are stored there (and an unreachable database stops the server at startup). Unset: they are JSON files. No default and no password in the repo; `.env` is git-ignored |
+| `MAX_USER_MAPS` | `200` | Cap on player-created maps (the `maps` table, or `maps-user/`) |
 | `ALLOWED_ORIGINS` | empty (all) | Comma-separated origins for WebSocket upgrades and CORS |
 | `MAX_SESSIONS` | `1000` | Cap on live sessions |
 | `AUTH_GOOGLE_CLIENT_ID`, `AUTH_GOOGLE_CLIENT_SECRET` | empty | Enable Google sign-in (both required; needs `-public-url`) |
@@ -522,7 +558,8 @@ Boolean flags are read slightly differently, so trust the table below rather tha
 | `AUTH_PASSWORD` | `true` | Username/password sign-up and sign-in; `false` turns it off (needs no external registration, and no `-public-url` on localhost) |
 | `AUTH_DEV_FAKE` | `false` | Local only: a fake provider for trying sign-in; the server refuses to start unless `-public-url` is a localhost URL |
 | `MAX_ACCOUNTS` | `10000` | Cap on accounts |
-| `SESSION_TTL` | `168h` | Idle sessions older than this are removed on startup |
+| `SESSION_TTL` | `168h` | Idle sessions older than this are removed, at startup and every `SESSION_SWEEP_INTERVAL` |
+| `SESSION_SWEEP_INTERVAL` | `1h` | How often idle sessions (and, with a database, expired logins) are swept while the server runs; `0` sweeps only at startup |
 
 Frontend build-time variables: `PUBLIC_GRAPHQL_URL`, `PUBLIC_WS_URL` (Vite, not read by the Go binary and not in `.env.example`; set them in the shell that runs `just build-ui`). When unset, the UI uses the page's own host and picks `ws`/`wss` from the page protocol.
 
@@ -530,7 +567,7 @@ Frontend build-time variables: `PUBLIC_GRAPHQL_URL`, `PUBLIC_WS_URL` (Vite, not 
 
 Production runs at https://motor-programming.wricardo.net on a small ARM64 Ubuntu EC2 host shared with other apps.
 
-**Continuous deployment.** Every push to `main` runs `.github/workflows/deploy.yml`: vet and test, build a static `linux/arm64` binary, upload it with `maps/` and `static/`, unpack into `/opt/drbrain-motor-programming` (keeping `sessions/`, `maps-user/`, `accounts/` and `.env`), restart the service and smoke-test GraphQL on the host. Repository secrets: `EC2_HOST`, `EC2_SSH_KEY` (a deploy-only key), `EC2_KNOWN_HOSTS`.
+**Continuous deployment.** Every push to `main` runs `.github/workflows/deploy.yml`: vet and test, build a static `linux/arm64` binary, upload it with `maps/` and `static/`, unpack into `/opt/drbrain-motor-programming` (keeping `sessions/`, `maps-user/`, `accounts/` and `.env`), restart the service and smoke-test GraphQL on the host. The Go tests there run against a PostgreSQL service container (`TEST_DATABASE_URL`); `.github/workflows/ci.yml` runs the tests and the smoke script (JSON files and PostgreSQL) on every pull request. Repository secrets: `EC2_HOST`, `EC2_SSH_KEY` (a deploy-only key), `EC2_KNOWN_HOSTS`.
 
 **One-time host setup** (not in the repo; repeat on a new host):
 

@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # End-to-end smoke test: starts the server, drives a session to WON over
-# GraphQL, checks /llms.txt and password sign-in, then shuts down.
+# GraphQL, checks /llms.txt and password sign-in, restarts the server to check
+# that the session, the account and the player map survive, then shuts down.
+#
+# Storage is JSON files in a temp directory by default. Set SMOKE_DATABASE_URL to
+# an EMPTY PostgreSQL database to run the same flow against PostgreSQL (see
+# `just smoke-db`); a DATABASE_URL from the environment or .env is never used.
 # Usage: scripts/smoke.sh [port]
 set -euo pipefail
 
@@ -10,14 +15,19 @@ cd "$(dirname "$0")/.."
 
 SESSIONS="$(mktemp -d)"
 go build -o "${SESSIONS}/drbrain-motor-programming" .
-"${SESSIONS}/drbrain-motor-programming" -port "${PORT}" -host 127.0.0.1 -sessions-dir "${SESSIONS}/sessions" -user-maps-dir "${SESSIONS}/maps-user" -accounts-dir "${SESSIONS}/accounts" >"${SESSIONS}/server.log" 2>&1 &
-PID=$!
+start_server() { # starts the server in the background and waits for /healthz
+  DATABASE_URL="${SMOKE_DATABASE_URL:-}" "${SESSIONS}/drbrain-motor-programming" -port "${PORT}" -host 127.0.0.1 -sessions-dir "${SESSIONS}/sessions" -user-maps-dir "${SESSIONS}/maps-user" -accounts-dir "${SESSIONS}/accounts" >>"${SESSIONS}/server.log" 2>&1 &
+  PID=$!
+  for _ in $(seq 1 100); do
+    curl -sf "${URL}/healthz" >/dev/null && return 0
+    sleep 0.1
+  done
+  echo "FAIL: server did not come up" >&2
+  cat "${SESSIONS}/server.log" >&2
+  exit 1
+}
+start_server
 trap 'kill "${PID}" 2>/dev/null || true; wait "${PID}" 2>/dev/null || true; rm -rf "${SESSIONS}" "${JAR:-/nonexistent}"' EXIT
-
-for _ in $(seq 1 50); do
-  curl -sf "${URL}/healthz" >/dev/null && break
-  sleep 0.1
-done
 
 JAR="$(mktemp)"
 gql() { # gql '<query>' — one browser: cookies persist between calls (-c/-b).
@@ -83,4 +93,15 @@ gql 'mutation { createMap(map:{id:"smoke_map", name:"Smoke", layout:[">..*","...
 gql 'mutation { updateMap(map:{id:"straight_line", name:"hijack", layout:[">..*","....","...."]}) { id } }' \
   | jq -e '.errors[0].extensions.code == "FORBIDDEN"' >/dev/null || fail "built-in map write was not gated"
 echo "map creation ok"
+
+# Restart: a stopped server comes back with everything the players made.
+kill "${PID}"
+wait "${PID}" 2>/dev/null || true
+start_server
+gql "{ session(id:\"${SID}\") { vm { status steps } } }" \
+  | jq -e '.data.session.vm.status == "WON" and .data.session.vm.steps == 7' >/dev/null || fail "the session did not survive a restart"
+gql '{ map(id:"smoke_map") { id } }' | jq -e '.data.map.id == "smoke_map"' >/dev/null || fail "the player map did not survive a restart"
+gql 'mutation { logInWithPassword(handle: "smoke_player", password: "tangerine-ladder-42") { handle } }' \
+  | jq -e '.data.logInWithPassword.handle == "smoke_player"' >/dev/null || fail "the account did not survive a restart"
+echo "restart ok"
 echo "SMOKE OK"

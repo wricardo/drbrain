@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Dr Brain - Motor Programming
 
-Robot-programming puzzle game for humans and AI agents. Go server (pure rules engine → `GameService` → gqlgen GraphQL with subscriptions) serving a SvelteKit SPA. Repo, Go module (`github.com/wricardo/drbrain-motor-programming`) and binary share the name `drbrain-motor-programming`.
+Robot-programming puzzle game for humans and AI agents. Go server (pure rules engine → `GameService` → gqlgen GraphQL with subscriptions) serving a SvelteKit SPA. Sessions, accounts and player maps live in PostgreSQL when `DATABASE_URL` is set, else in JSON files; shipped maps are always files. Repo, Go module (`github.com/wricardo/drbrain-motor-programming`) and binary share the name `drbrain-motor-programming`.
 
 **Full reference: [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)** — architecture, rules and engine semantics, map format and design, API, frontend, UI look and feel, configuration, deployment, maintenance workflows. Read the relevant section before non-trivial changes and keep it up to date when behavior changes. `README.md` is player-facing only.
 
@@ -15,6 +15,8 @@ just --list                                # every recipe
 just restart                               # rebuild UI + binary, restart on :8000 (the usual loop)
 just dev                                   # stop the port holder, then go run . -port 8000 -host 0.0.0.0 -public-url http://localhost:8000 -debug
 just test                                  # go test -race ./...
+just db-up / just test-db                  # PostgreSQL in Docker / Go tests incl. the database ones (TEST_DATABASE_URL)
+just dev-db                                # just dev against the compose PostgreSQL
 go test -race -run TestName ./game/engine  # single Go test
 just validate                              # maps + reference solutions (needs local solutions/)
 just verify                                # gofmt, vet, lint (golangci-lint 2.15+), Go tests, UI check (skips without frontend/node_modules)
@@ -38,6 +40,7 @@ scripts/smoke.sh 9191                      # end-to-end HTTP smoke (starts its o
 - **Session ownership**: `AuthorizeSessionPlay` gates `setProgram`/`run`/`step`/`pause`/`reset` (owner token or owning account's login; a session with no `OwnerHash` stays open) and `AuthorizeSessionChange` gates rename/delete. Both live in `game/service` and are called by the resolvers, so no transport can bypass them. `canPlaySession` answers the same question for the UI.
 - **Recursion is per map**: with `allow_recursion: false` (the default) a call to a sub already anywhere on the call stack is a no-op (still a step, reported as `callBlocked`); with `true` it recurses, bounded by `max_call_depth` (`depth > max_call_depth` → LOST/CALL_DEPTH).
 - **Tiles**: an arrival tile fires at most one effect per step (portal, then mirror, then conveyor push), never chains, and never costs an extra step; a closed door blocks like a rock; the only tile state is `VMState.DoorsOpen` and it must be cloned, persisted and broadcast.
+- **Storage**: PostgreSQL stores replace only the persistence layer; live sessions stay in memory. A failed save is logged, never fatal; an unreachable `DATABASE_URL` stops startup (no silent fallback to files). Uniqueness (handle ignoring case, provider identity) and login eviction are enforced by the database, not Go mutexes. `go test ./...` must pass with no database: database tests skip unless `TEST_DATABASE_URL` is set.
 - **Zero subs**: `sub_tape_lengths: []` ≠ omitted. No `omitempty`; never turn `[]` into `nil` (incl. `graph/convert.go`).
 
 ## Repo rules
@@ -50,6 +53,7 @@ scripts/smoke.sh 9191                      # end-to-end HTTP smoke (starts its o
 ## Change checklists
 
 - **Schema**: `graph/schema.graphqls` → `just generate` → `graph/convert.go` + resolvers → `frontend/src/lib/{queries,types}.ts` → `llms.txt.tmpl` / `lib/prompt.ts` if agents are affected → query copies in `api/hardening_test.go`.
+- **Database schema**: add the next numbered `internal/pgdb/migrations/NNN_name.sql` (never edit a shipped one), keep the file stores working (they are the rollback path), and cover it in the `*_test.go` that use `pgtest.Pool`.
 - **Engine**: update golden step counts in `validate/validate_test.go` (7, 17, 19, 46, 23, 30, 44, 80, 32, 48, 83, 65, 77, 57, 40, 30, 42, 257, 199, 140, 151, 103, 6, 14, 9, 8, 22, 27) and the five inline fixtures in `game/engine/engine_test.go` (7, 46, 23, 30, 44) deliberately, never to hide a failure.
 - **New map**: `maps/<id>.json` + local `solutions/<id>.json` → `just validate` → golden step count in `validate/validate_test.go`.
 - **New page**: route under `frontend/src/routes/` + `spaRoutes` in `api/server.go` (+ nav in `+layout.svelte`).
