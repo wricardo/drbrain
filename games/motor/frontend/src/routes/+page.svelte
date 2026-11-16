@@ -8,8 +8,9 @@
 	import MiniGrid from '$lib/components/MiniGrid.svelte';
 	import { sortMaps } from '$lib/maps';
 	import { describeError, type DescribedError } from '$lib/errors';
-	import { CREATE_SESSION_MUTATION, MAPS_QUERY, SESSION_QUERY, SESSIONS_QUERY } from '$lib/queries';
-	import { forgetSession, isFinished, lastSessionId, progressText, recentStarted, rememberSession, saveDisplayName, savedDisplayName, statusText } from '$lib/sessions';
+	import { nameSyncMessage, renameOwnSessions } from '$lib/nameSync';
+	import { CREATE_SESSION_MUTATION, MAPS_QUERY, RENAME_SESSION_MUTATION, SESSION_QUERY, SESSIONS_QUERY } from '$lib/queries';
+	import { forgetSession, isFinished, lastSessionId, ownSessionIds, progressText, recentStarted, rememberSession, saveDisplayName, savedDisplayName, statusText } from '$lib/sessions';
 	import { absoluteTime, relativeTime } from '$lib/time';
 	import type { GameMap, Session, SessionSummary } from '$lib/types';
 
@@ -54,6 +55,26 @@
 		} catch {
 			// not found or offline: no Continue card
 		}
+	}
+
+	let nameNote = $state('');
+
+	/**
+	 * Saves the name when the field loses focus (or Enter is pressed) and renames this browser's earlier
+	 * sessions to match, so the leaderboard shows the new name instead of starting a second player.
+	 */
+	async function commitName(value: string) {
+		const name = value.trim();
+		saveDisplayName(name);
+		nameNote = '';
+		if (!name) return;
+		const result = await renameOwnSessions(name, {
+			ids: ownSessionIds(),
+			current: async () => (await unwrap<{ sessions: SessionSummary[] }>(client.query(SESSIONS_QUERY, { limit: 500 }, { requestPolicy: 'network-only' }))).sessions,
+			rename: (id, displayName) => unwrap(client.mutation(RENAME_SESSION_MUTATION, { id, displayName }))
+		});
+		// A newer edit may have started meanwhile; only report for the name that is still showing.
+		if (displayName.trim() === name) nameNote = nameSyncMessage(name, result);
 	}
 
 	async function play(map: GameMap) {
@@ -163,9 +184,13 @@
 				type="text"
 				maxlength="40"
 				bind:value={displayName}
+				onchange={(e) => commitName(e.currentTarget.value)}
 				placeholder="A random guest name"
 				class="mt-1 w-full rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm"
 			/>
+			<p class="mt-1 text-xs text-slate-600" role="status" aria-live="polite" data-testid="name-note">
+				{nameNote || 'Changing it renames your earlier runs on the leaderboard too.'}
+			</p>
 		</div>
 
 		{#if error}
