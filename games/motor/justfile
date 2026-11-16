@@ -212,7 +212,7 @@ check-ui:
 smoke p="9191":
     scripts/smoke.sh {{p}}
 
-# gofmt check, vet, lint and test — run before pushing.
+# gofmt check, vet, lint, test and UI check — run before pushing.
 verify:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -225,3 +225,12 @@ verify:
     just vet
     just lint
     just test
+    # The UI has its own 337 unit tests and a type check, and for a long time
+    # nothing ran them before a push: they were correct but unenforced. A missing
+    # node_modules is not a code failure, so say so loudly and continue; a real
+    # test or type failure stops the gate.
+    if [[ -d frontend/node_modules ]]; then
+        just check-ui
+    else
+        echo "SKIP UI check: frontend/node_modules is absent (run 'cd frontend && npm ci')" >&2
+    fi

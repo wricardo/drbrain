@@ -477,6 +477,8 @@ Call tiles cycle through `CALL_TONES` in `lib/instructions.ts` (violet, fuchsia,
 
 `.env` (loaded at startup; see `.env.example`):
 
+Boolean flags are case-insensitive and tolerate surrounding spaces: `true`, `1`, `yes` and `on` (in any case) all mean on, and anything else means off. An unset flag keeps its default.
+
 | Variable | Default | Purpose |
 |---|---|---|
 | `GRAPHQL_INTROSPECTION` | `true` | Allow schema introspection (keep on for agents) |
@@ -542,6 +544,8 @@ scripts/smoke.sh 9191                            # the same, on an explicit port
 ### Before you push
 
 `just verify && just validate`, then `scripts/smoke.sh 9191` (it builds and starts its own server, so leave the port free). For UI changes, open `/play/<id>` and `/watch/<id>` in a browser and run a program to the end. Pushing to `main` deploys.
+
+`just verify` covers the UI as well: type check plus the Vitest suite (`just check-ui`). It needs `frontend/node_modules`, so run `cd frontend && npm ci` once; without it the UI step prints `SKIP UI check` rather than failing, which keeps a fresh clone usable but means CI and a bare checkout do not exercise the 337 UI tests. Do not read that skip as a pass.
 
 ### Public repo rules
 
