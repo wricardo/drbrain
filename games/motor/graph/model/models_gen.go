@@ -367,6 +367,13 @@ const (
 	InstructionCallSub1    Instruction = "CALL_SUB_1"
 	InstructionCallSub2    Instruction = "CALL_SUB_2"
 	InstructionCallSub3    Instruction = "CALL_SUB_3"
+	InstructionCallSub4    Instruction = "CALL_SUB_4"
+	InstructionCallSub5    Instruction = "CALL_SUB_5"
+	InstructionCallSub6    Instruction = "CALL_SUB_6"
+	InstructionCallSub7    Instruction = "CALL_SUB_7"
+	InstructionCallSub8    Instruction = "CALL_SUB_8"
+	InstructionCallSub9    Instruction = "CALL_SUB_9"
+	InstructionCallSub10   Instruction = "CALL_SUB_10"
 )
 
 var AllInstruction = []Instruction{
@@ -377,11 +384,18 @@ var AllInstruction = []Instruction{
 	InstructionCallSub1,
 	InstructionCallSub2,
 	InstructionCallSub3,
+	InstructionCallSub4,
+	InstructionCallSub5,
+	InstructionCallSub6,
+	InstructionCallSub7,
+	InstructionCallSub8,
+	InstructionCallSub9,
+	InstructionCallSub10,
 }
 
 func (e Instruction) IsValid() bool {
 	switch e {
-	case InstructionEmpty, InstructionTurnLeft, InstructionTurnRight, InstructionMoveForward, InstructionCallSub1, InstructionCallSub2, InstructionCallSub3:
+	case InstructionEmpty, InstructionTurnLeft, InstructionTurnRight, InstructionMoveForward, InstructionCallSub1, InstructionCallSub2, InstructionCallSub3, InstructionCallSub4, InstructionCallSub5, InstructionCallSub6, InstructionCallSub7, InstructionCallSub8, InstructionCallSub9, InstructionCallSub10:
 		return true
 	}
 	return false

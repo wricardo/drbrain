@@ -14,11 +14,14 @@ frontend/node_modules/
 frontend/build/
 frontend/.svelte-kit/
 
+# local run state (justfile: pid + server log)
+/.run/
+
 # coverage / OS
 *.out
 .DS_Store
 
-# reference solutions (private; kept locally for make validate)
+# reference solutions (private; kept locally for just validate)
 solutions/
 
 # production admin key (local only)

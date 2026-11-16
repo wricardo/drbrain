@@ -28,6 +28,7 @@
 		VALIDATE_MAP_MUTATION
 	} from '$lib/queries';
 	import type { Facing, GameMap, MapInput, MapValidationResult } from '$lib/types';
+	import { MAX_SUBS } from '$lib/instructions';
 	import Cookie from '$lib/components/Cookie.svelte';
 
 	type Tool = 'empty' | 'rock' | 'treat' | 'start';
@@ -155,6 +156,9 @@
 		subTapeLengths = next;
 		invalidate();
 	}
+
+	/** Options for the "Subroutines" select: 0..MAX_SUBS. */
+	const subCountOptions = Array.from({ length: MAX_SUBS + 1 }, (_, n) => n);
 
 	function toInput(): MapInput {
 		return {
@@ -354,9 +358,9 @@
 				<label class="block text-sm">Main tape length (1–32)
 					<input type="number" min="1" max="32" class={field} bind:value={mainTapeLength} oninput={invalidate} />
 				</label>
-				<label class="block text-sm">Subroutines (0–3)
+				<label class="block text-sm">Subroutines (0–{MAX_SUBS})
 					<select class={field} value={subTapeLengths.length} onchange={(e) => setSubCount(Number(e.currentTarget.value))}>
-						{#each [0, 1, 2, 3] as n}<option value={n}>{n}</option>{/each}
+						{#each subCountOptions as n}<option value={n}>{n}</option>{/each}
 					</select>
 				</label>
 				<div class="grid gap-2">

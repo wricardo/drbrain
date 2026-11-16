@@ -46,8 +46,8 @@ var (
 	mapsDir      = flag.String("maps-dir", "maps", "Directory containing map JSON files")
 	userMapsDir  = flag.String("user-maps-dir", "maps-user", "Directory for maps created through the API (survives deploys)")
 	sessionsDir  = flag.String("sessions-dir", "sessions", "Directory for persisted sessions")
-	accountsDir  = flag.String("accounts-dir", "accounts", "Directory for player accounts and logins (survives deploys); only used when sign-in is configured")
-	solutionsDir = flag.String("solutions-dir", "solutions", "Directory containing reference solutions (used by `make validate`; never served)")
+	accountsDir  = flag.String("accounts-dir", "accounts", "Directory for player accounts and logins (survives deploys); used unless AUTH_PASSWORD=false and no OAuth provider is configured")
+	solutionsDir = flag.String("solutions-dir", "solutions", "Directory containing reference solutions (used by `just validate`; never served)")
 	debug        = flag.Bool("debug", false, "Enable debug logging")
 	publicURL    = flag.String("public-url", "", "Public base URL rendered into /llms.txt (defaults to the request host)")
 )
@@ -138,8 +138,11 @@ func run() error {
 		log.Printf("warning: loading persisted sessions: %v", err)
 	}
 
-	// Sign-in is optional: with no provider configured nothing below is created,
-	// no accounts/ directory is made, and the server behaves exactly as before.
+	// Sign-in: username/password accounts are on by default (they need nothing
+	// registered anywhere; AUTH_PASSWORD=false turns them off) and the OAuth
+	// providers are each on when both their id and secret are set. With neither,
+	// nothing below is created, no accounts/ directory is made, and the server
+	// behaves exactly as before.
 	providers, err := auth.ProvidersFromEnv(os.Getenv, *publicURL)
 	if err != nil {
 		return fmt.Errorf("sign-in configuration: %w", err)
@@ -177,7 +180,10 @@ func run() error {
 		for i, p := range providers {
 			names[i] = p.ID()
 		}
-		log.Printf("sign-in enabled: %v password=%t (accounts=%s)", names, passwordSignIn, *accountsDir)
+		log.Printf("sign-in enabled: providers=%v password=%t (accounts=%s)", names, passwordSignIn, *accountsDir)
+		if passwordSignIn && *publicURL == "" {
+			log.Printf("warning: no -public-url: sign-in requests are only accepted on localhost hosts or origins listed in ALLOWED_ORIGINS. Set -public-url to the site's base URL in production.")
+		}
 	}
 
 	introspection := envBool("GRAPHQL_INTROSPECTION", true)

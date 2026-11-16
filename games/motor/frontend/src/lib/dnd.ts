@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
 import type { Instruction } from './types';
+import { ALL_INSTRUCTIONS } from './instructions';
 import type { DragSource, DropMode, SlotRef } from './program';
 
 /** Custom MIME type carrying a DragSource as JSON. */
@@ -10,15 +11,7 @@ export function encodeDrag(source: DragSource): string {
 	return JSON.stringify(source);
 }
 
-const INSTRUCTIONS: readonly string[] = [
-	'EMPTY',
-	'TURN_LEFT',
-	'TURN_RIGHT',
-	'MOVE_FORWARD',
-	'CALL_SUB_1',
-	'CALL_SUB_2',
-	'CALL_SUB_3'
-];
+const INSTRUCTIONS: readonly string[] = ALL_INSTRUCTIONS;
 
 /** Parses dataTransfer text back into a DragSource; returns null for anything malformed. */
 export function decodeDrag(raw: string): DragSource | null {

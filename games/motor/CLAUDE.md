@@ -11,13 +11,15 @@ Robot-programming puzzle game for humans and AI agents. Go server (pure rules en
 ## Commands
 
 ```sh
-make dev                                   # go run . -port 8000 -debug (API + UI)
-make test                                  # go test -race ./...
+just --list                                # every recipe
+just restart                               # rebuild UI + binary, restart on :8000 (the usual loop)
+just dev                                   # go run . -port 8000 -debug (API + UI)
+just test                                  # go test -race ./...
 go test -race -run TestName ./game/engine  # single Go test
-make validate                              # maps + reference solutions (needs local solutions/)
-make verify                                # gofmt, vet, lint (golangci-lint), test
-make generate                              # gqlgen after editing graph/schema.graphqls
-make build-frontend                        # build UI into static/ (committed)
+just validate                              # maps + reference solutions (needs local solutions/)
+just verify                                # gofmt, vet, lint (golangci-lint 2.15+), test
+just generate                              # gqlgen after editing graph/schema.graphqls
+just build-ui                              # build UI into static/ (committed)
 cd frontend && npm run check && npm test
 cd frontend && npx vitest run src/lib/grid.test.ts   # single frontend test
 cd frontend && npm run dev:local           # Vite UI against a local server on :8000
@@ -45,9 +47,9 @@ scripts/smoke.sh 9191                      # end-to-end HTTP smoke (starts its o
 
 ## Change checklists
 
-- **Schema**: `graph/schema.graphqls` → `make generate` → `graph/convert.go` + resolvers → `frontend/src/lib/{queries,types}.ts` → `llms.txt.tmpl` / `lib/prompt.ts` if agents are affected → query copies in `api/hardening_test.go`.
+- **Schema**: `graph/schema.graphqls` → `just generate` → `graph/convert.go` + resolvers → `frontend/src/lib/{queries,types}.ts` → `llms.txt.tmpl` / `lib/prompt.ts` if agents are affected → query copies in `api/hardening_test.go`.
 - **Engine**: update golden step counts in `game/engine/engine_test.go` and `validate/validate_test.go` (7, 17, 19, 46, 23, 30, 44, 80, 32, 48, 83, 65, 77, 57, 40, 30, 42) deliberately, never to hide a failure.
-- **New map**: `maps/<id>.json` + local `solutions/<id>.json` → `make validate` → golden step count in `validate/validate_test.go`.
+- **New map**: `maps/<id>.json` + local `solutions/<id>.json` → `just validate` → golden step count in `validate/validate_test.go`.
 - **New page**: route under `frontend/src/routes/` + `spaRoutes` in `api/server.go` (+ nav in `+layout.svelte`).
 - **UI**: Svelte 5 runes only; follow "UI look and feel" in `docs/DEVELOPMENT.md` (instruction colors/glyphs/keys live in `lib/instructions.ts`, brand names in `lib/brand.ts`). Gotcha: explicit `onchange`/`oninput` run before `bind:value` updates — read `event.currentTarget.value`.
 
@@ -55,4 +57,4 @@ scripts/smoke.sh 9191                      # end-to-end HTTP smoke (starts its o
 
 Go: table tests + `t.Run`, no `t.Parallel()` (uses `t.Setenv`), always `-race`; service tests use `newEnv` (`game/service/helpers_test.go`) and `waitFor`, never fixed sleeps. Frontend: Vitest + jsdom + Testing Library; logic lives in tested `lib/*.ts` modules.
 
-**Before pushing**: `make verify && make validate`, `scripts/smoke.sh 9191` (starts its own server; port must be free); for UI changes open `/play/<id>` and `/watch/<id>` and run a program to the end.
+**Before pushing**: `just verify && just validate`, `scripts/smoke.sh 9191` (starts its own server; port must be free); for UI changes open `/play/<id>` and `/watch/<id>` and run a program to the end.

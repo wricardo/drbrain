@@ -38,6 +38,13 @@ const (
 	CallSub1    Instruction = "CALL_SUB_1"
 	CallSub2    Instruction = "CALL_SUB_2"
 	CallSub3    Instruction = "CALL_SUB_3"
+	CallSub4    Instruction = "CALL_SUB_4"
+	CallSub5    Instruction = "CALL_SUB_5"
+	CallSub6    Instruction = "CALL_SUB_6"
+	CallSub7    Instruction = "CALL_SUB_7"
+	CallSub8    Instruction = "CALL_SUB_8"
+	CallSub9    Instruction = "CALL_SUB_9"
+	CallSub10   Instruction = "CALL_SUB_10"
 )
 
 // SubIndex returns the 0-based sub index for CALL_SUB_k instructions.
@@ -48,12 +55,22 @@ func (i Instruction) SubIndex() (int, bool) {
 		return 0, false
 	}
 	rest := s[len(prefix):]
-	// Canonical form only: a single digit 1..MaxSubs (no leading zeros, no
-	// overflow-wrapped values).
-	if len(rest) != 1 || rest[0] < '1' || rest[0] > '0'+MaxSubs {
+	// Canonical form only: decimal 1..MaxSubs (no leading zeros, no signs, no
+	// digits beyond what MaxSubs needs).
+	if len(rest) == 0 || len(rest) > 2 || rest[0] == '0' {
 		return 0, false
 	}
-	return int(rest[0] - '1'), true
+	n := 0
+	for _, c := range rest {
+		if c < '0' || c > '9' {
+			return 0, false
+		}
+		n = n*10 + int(c-'0')
+	}
+	if n < 1 || n > MaxSubs {
+		return 0, false
+	}
+	return n - 1, true
 }
 
 // Valid reports whether i is a known instruction.
@@ -114,10 +131,10 @@ func (s Status) Terminal() bool { return s == StatusWon || s == StatusLost }
 // Limits and defaults.
 const (
 	MinSide             = 3
-	MaxSide             = 20
+	MaxSide             = 32
 	MaxMainTapeLength   = 32
 	MaxSubTapeLength    = 16
-	MaxSubs             = 3
+	MaxSubs             = 10
 	MaxMaxSteps         = 10000
 	MaxMaxCallDepth     = 64
 	DefaultMainTape     = 10

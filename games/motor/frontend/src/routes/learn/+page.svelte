@@ -10,7 +10,7 @@
 		{ ins: 'MOVE_FORWARD', text: 'Move one cell in the direction the robot faces. Walls (the edge of the board) and rocks block the move silently — the step is still spent. Landing on a treat collects it.' },
 		{ ins: 'TURN_LEFT', text: 'Rotate 90° counter-clockwise without moving.' },
 		{ ins: 'TURN_RIGHT', text: 'Rotate 90° clockwise without moving.' },
-		{ ins: 'CALL_SUB_1', text: 'Jump into subroutine 1. When it finishes, execution resumes right after this call. CALL_SUB_2 and CALL_SUB_3 work the same way on maps that provide them.' },
+		{ ins: 'CALL_SUB_1', text: 'Jump into subroutine 1. When it finishes, execution resumes right after this call. CALL_SUB_2 through CALL_SUB_10 work the same way on maps that provide them.' },
 		{ ins: 'EMPTY', text: 'Does nothing and costs nothing: empty slots are skipped instantly.' }
 	];
 
@@ -48,7 +48,7 @@
 	const keys: [string, string][] = [
 		['F', 'Move forward'],
 		['L / R', 'Turn left / right'],
-		['1 2 3', 'Call subroutine 1 / 2 / 3'],
+		['1 2 3 4 5 6 7 8 9 0', 'Call subroutine 1 / 2 / 3 / 4 / 5 / 6 / 7 / 8 / 9 / 10'],
 		['Backspace', 'Clear the slot'],
 		['Arrow keys', 'Move between slots'],
 		['Ctrl+Z / Ctrl+Shift+Z', 'Undo / redo a program edit'],
@@ -115,7 +115,7 @@
 		<h2 id="rules-h" class="text-xl font-semibold text-indigo-950">Rules</h2>
 		<h3 id="tape-h" class="mt-3 font-semibold text-indigo-950">Tapes, steps and limits</h3>
 		<ul class="mt-3 list-disc space-y-1 pl-5 text-slate-800">
-			<li>The <strong>main tape</strong> runs left to right. Each map also gives you 0–3 <strong>subroutine tapes</strong>; slot counts differ per map.</li>
+			<li>The <strong>main tape</strong> runs left to right. Each map also gives you 0–10 <strong>subroutine tapes</strong>; slot counts differ per map.</li>
 			<li>Every executed instruction (including a blocked move or a call) is one <strong>step</strong>. Empty slots are free.</li>
 			<li>
 				You <strong>win</strong> when no treats remain — even on the very last allowed step. You <strong>lose</strong> if the step limit is hit

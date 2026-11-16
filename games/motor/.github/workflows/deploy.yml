@@ -84,6 +84,12 @@ jobs:
               if curl -fsS http://127.0.0.1:8086/graphql \
                 -H "content-type: application/json" \
                 --data "{\"query\":\"query { maps { id } }\"}" | grep -q "\"maps\""; then
+                # Sign-in (username/password) is on by default; it silently refuses
+                # requests when the host has no -public-url, so check it is offered.
+                curl -fsS http://127.0.0.1:8086/graphql \
+                  -H "content-type: application/json" \
+                  --data "{\"query\":\"query { authProviders { id } }\"}" | grep -q "\"password\"" \
+                  || { echo "password sign-in is not offered" >&2; exit 1; }
                 exit 0
               fi
               sleep 5

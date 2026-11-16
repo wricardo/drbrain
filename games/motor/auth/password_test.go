@@ -304,6 +304,57 @@ func TestPasswordIsListedAsAProviderAndAloneIsEnough(t *testing.T) {
 	}
 }
 
+// Password sign-in has no registered callback URL, so it must work without
+// -public-url: the same-origin check then trusts the request's own Host.
+func TestPasswordSignInWithoutPublicURL(t *testing.T) {
+	h := pwHarness(t, func(c *Config) { c.PublicURL = "" })
+
+	resp, out := h.postJSON("/auth/password/register", goodPw)
+	if resp.StatusCode != http.StatusOK || out["handle"] != "speedy_fox" {
+		t.Fatalf("register without -public-url = %d %v", resp.StatusCode, out)
+	}
+	c := setCookieHeader(resp, SessionCookie)
+	if c == "" {
+		t.Fatal("no login cookie")
+	}
+	// The request came in over plain http, so the cookie must not be Secure.
+	if strings.Contains(c, "Secure") {
+		t.Errorf("cookie %q is Secure on plain http", c)
+	}
+
+	// A cross-site Origin is still refused, with no -public-url to compare to.
+	if resp, _ := h.postJSON("/auth/password/login", goodPw, "Origin", "https://evil.example"); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("cross-site login = %d, want 403", resp.StatusCode)
+	}
+	// And a same-origin login still works.
+	if resp, out := h.postJSON("/auth/password/login", goodPw); resp.StatusCode != http.StatusOK {
+		t.Fatalf("login without -public-url = %d %v", resp.StatusCode, out)
+	}
+}
+
+// Without -public-url the request's Host is only trusted on local hosts. On a
+// public host that resolves here (DNS rebinding), the page's own origin would
+// otherwise match, so sign-in must be refused until -public-url is set.
+func TestPasswordSignInWithoutPublicURLRefusesPublicHosts(t *testing.T) {
+	h := pwHarness(t, func(c *Config) { c.PublicURL = "" })
+
+	req, _ := http.NewRequest(http.MethodPost, h.ts.URL+"/auth/password/register", strings.NewReader(goodPw))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://rebind.evil.example")
+	req.Host = "rebind.evil.example"
+	resp, err := h.client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("register from a rebound public host = %d, want 403", resp.StatusCode)
+	}
+	if len(resp.Header.Values("Set-Cookie")) != 0 {
+		t.Fatal("a refused sign-in still set a cookie")
+	}
+}
+
 func TestProvidersFromEnvPassword(t *testing.T) {
 	env := func(kv ...string) func(string) string {
 		m := map[string]string{}
@@ -312,20 +363,27 @@ func TestProvidersFromEnvPassword(t *testing.T) {
 		}
 		return func(k string) string { return m[k] }
 	}
-	if PasswordFromEnv(env()) || PasswordFromEnv(env("AUTH_PASSWORD", "false")) || PasswordFromEnv(env("AUTH_PASSWORD", "")) {
-		t.Fatal("password sign-in is on by default")
+	if !PasswordFromEnv(env()) || !PasswordFromEnv(env("AUTH_PASSWORD", "")) || !PasswordFromEnv(env("AUTH_PASSWORD", "true")) {
+		t.Fatal("password sign-in is not on by default")
 	}
-	for _, v := range []string{"true", "1", "yes", "TRUE"} {
-		if !PasswordFromEnv(env("AUTH_PASSWORD", v)) {
-			t.Errorf("AUTH_PASSWORD=%s not honoured", v)
+	for _, v := range []string{"false", "0", "no", "FALSE"} {
+		if PasswordFromEnv(env("AUTH_PASSWORD", v)) {
+			t.Errorf("AUTH_PASSWORD=%s did not turn password sign-in off", v)
 		}
 	}
-	// It needs the public URL like every other way of signing in.
-	if _, err := ProvidersFromEnv(env("AUTH_PASSWORD", "true"), ""); err == nil || !strings.Contains(err.Error(), "-public-url") {
+	// A redirect provider still needs the public URL (its callback is registered).
+	if _, err := ProvidersFromEnv(env("AUTH_GOOGLE_CLIENT_ID", "a", "AUTH_GOOGLE_CLIENT_SECRET", "b"), ""); err == nil || !strings.Contains(err.Error(), "-public-url") {
 		t.Fatalf("err = %v", err)
 	}
-	if _, err := ProvidersFromEnv(env("AUTH_PASSWORD", "true"), "https://x.example"); err != nil {
+	// Password sign-in alone needs no callback URL, so it starts without one.
+	if _, err := ProvidersFromEnv(env(), ""); err != nil {
+		t.Fatalf("password-only sign-in needs -public-url: %v", err)
+	}
+	if _, err := ProvidersFromEnv(env("AUTH_GOOGLE_CLIENT_ID", "a", "AUTH_GOOGLE_CLIENT_SECRET", "b"), "https://x.example"); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := ProvidersFromEnv(env("AUTH_PASSWORD", "false", "AUTH_GOOGLE_CLIENT_ID", "a", "AUTH_GOOGLE_CLIENT_SECRET", "b"), ""); err == nil || !strings.Contains(err.Error(), "-public-url") {
+		t.Fatalf("err = %v", err)
 	}
 }
 

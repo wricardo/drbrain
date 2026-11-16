@@ -90,14 +90,20 @@ type pendingFlow struct {
 	expires  time.Time
 }
 
-// New validates cfg and builds Auth. At least one provider is required.
+// New validates cfg and builds Auth. At least one provider, or password
+// sign-in, is required. -public-url is required by the redirect providers (their
+// callbacks must be exact); password sign-in works without it, in which case the
+// site's own origin comes from each request.
 func New(cfg Config) (*Auth, error) {
 	if (len(cfg.Providers) == 0 && !cfg.Password) || cfg.Accounts == nil {
 		return nil, errors.New("auth: no providers configured")
 	}
 	base, err := ParseBaseURL(cfg.PublicURL)
 	if err != nil {
-		return nil, err
+		if cfg.PublicURL != "" || len(cfg.Providers) > 0 {
+			return nil, err
+		}
+		base = nil
 	}
 	a := &Auth{
 		cfg: cfg, base: base, providers: make(map[string]Provider), allowed: make(map[string]bool),
@@ -183,7 +189,7 @@ func randomString(n int) (string, error) {
 // secure reports whether cookies get the Secure attribute: always for an https
 // public URL, otherwise when the request itself came in over https.
 func (a *Auth) secure(r *http.Request) bool {
-	return a.base.Scheme == "https" || (r != nil && (r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"))
+	return (a.base != nil && a.base.Scheme == "https") || (r != nil && (r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"))
 }
 
 // SetSession stores the login token in an HttpOnly, SameSite=Lax cookie that
@@ -220,9 +226,24 @@ func (a *Auth) clearFlow(w http.ResponseWriter, r *http.Request) {
 // ---- same-origin check -------------------------------------------------------
 
 // originOf is the origin of the request's own site: PublicURL's, or, when the
-// request carries a Host, scheme://host as the proxy reported it.
+// request carries a Host, scheme://host as the proxy reported it. The request's
+// own origin is trusted when ALLOWED_ORIGINS is unset. With no PublicURL to
+// compare against (password sign-in runs without -public-url) that fallback is
+// limited to local hosts: otherwise a DNS-rebinding page, whose origin *is* the
+// hostname it made resolve here, would match its own Origin. On a public host
+// without -public-url or ALLOWED_ORIGINS the origin cannot be established, so
+// state-changing requests are refused rather than trusted.
 func (a *Auth) ownOrigins(r *http.Request) []string {
-	out := []string{a.base.Scheme + "://" + a.base.Host}
+	var out []string
+	if a.base != nil {
+		out = append(out, a.base.Scheme+"://"+a.base.Host)
+	}
+	if r == nil {
+		return out
+	}
+	if a.base == nil && !IsLocalHost(r.Host) {
+		return out
+	}
 	if len(a.allowed) == 0 {
 		scheme := "http"
 		if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
@@ -482,10 +503,9 @@ func (a *Auth) handlePassword(register bool) http.HandlerFunc {
 			acct, err = a.cfg.Accounts.VerifyPassword(req.Handle, req.Password)
 		}
 		if err != nil {
-			status, code := http.StatusBadRequest, service.CodeInvalidArgument
+			status := http.StatusBadRequest
 			var se *service.Error
 			if errors.As(err, &se) {
-				code = se.Code
 				switch se.Code {
 				case service.CodeUnauthenticated:
 					status = http.StatusUnauthorized
@@ -496,7 +516,7 @@ func (a *Auth) handlePassword(register bool) http.HandlerFunc {
 				case service.CodeLimit:
 					status = http.StatusTooManyRequests
 				}
-				jsonError(w, status, code, se.Msg)
+				jsonError(w, status, se.Code, se.Msg)
 				return
 			}
 			log.Printf("auth: password %s: %v", map[bool]string{true: "register", false: "login"}[register], err)

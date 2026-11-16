@@ -114,7 +114,7 @@
 	tabindex="-1"
 	aria-label={title}
 	data-testid="slot-picker"
-	class="fixed z-50 w-52 rounded-xl border border-indigo-200 bg-white p-1.5 shadow-lg {placed ? '' : 'invisible'}"
+	class="fixed z-50 max-h-[min(70vh,26rem)] w-52 overflow-y-auto rounded-xl border border-indigo-200 bg-white p-1.5 shadow-lg {placed ? '' : 'invisible'}"
 	style="left: {pos.left}px; top: {pos.top}px"
 	onkeydown={onKeyDown}
 >

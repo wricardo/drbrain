@@ -50,8 +50,8 @@ type Options struct {
 	HandleCooldown time.Duration
 	// MaxAccounts caps the number of accounts (default DefaultMaxAccounts).
 	MaxAccounts int
-	// PasswordSignIn enables username/password accounts (AUTH_PASSWORD=true).
-	// Off by default; it needs Accounts.
+	// PasswordSignIn enables username/password accounts (AUTH_PASSWORD, on
+	// unless false). It needs Accounts.
 	PasswordSignIn bool
 	// Now overrides the clock used by account logic (tests).
 	Now func() time.Time

@@ -51,7 +51,7 @@ query { leaderboard(mapId: "${t.map.id}", sessionId: "${t.id}") { total yours { 
 
 Other mutations: pause, reset, renameSession, deleteSession. Do not try to guess other sessions' ids and do not delete this one.`}function k(e){return`Play ${b}, a robot programming puzzle, through its GraphQL API and win it.
 
-You write the robot a program (a main tape plus up to 3 subroutine tapes); the server runs it one instruction per step; you win when every treat has been collected. Tapes are tiny, so the trick is spotting repeated patterns and reusing them with subroutines.
+You write the robot a program (a main tape plus up to 10 subroutine tapes); the server runs it one instruction per step; you win when every treat has been collected. Tapes are tiny, so the trick is spotting repeated patterns and reusing them with subroutines.
 
 1. Read ${e}/llms.txt first: it has the complete rules, the coordinate convention (row 0 is the top, y grows downward) and working examples for every step.
 2. GraphQL endpoint: ${e}/graphql (Playground: ${e}/playground).

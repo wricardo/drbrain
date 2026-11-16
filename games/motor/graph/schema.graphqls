@@ -8,6 +8,13 @@ enum Instruction {
   CALL_SUB_1
   CALL_SUB_2
   CALL_SUB_3
+  CALL_SUB_4
+  CALL_SUB_5
+  CALL_SUB_6
+  CALL_SUB_7
+  CALL_SUB_8
+  CALL_SUB_9
+  CALL_SUB_10
 }
 
 enum Facing {

@@ -6,7 +6,7 @@ export const START_GLYPHS: Record<Facing, string> = { UP: '^', RIGHT: '>', DOWN:
 const FACING_BY_GLYPH: Record<string, Facing> = { '^': 'UP', '>': 'RIGHT', v: 'DOWN', '<': 'LEFT' };
 
 export const MIN_SIDE = 3;
-export const MAX_SIDE = 20;
+export const MAX_SIDE = 32;
 
 export interface StartCell {
 	x: number;

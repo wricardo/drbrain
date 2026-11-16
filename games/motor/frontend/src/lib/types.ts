@@ -7,7 +7,14 @@ export type Instruction =
 	| 'MOVE_FORWARD'
 	| 'CALL_SUB_1'
 	| 'CALL_SUB_2'
-	| 'CALL_SUB_3';
+	| 'CALL_SUB_3'
+	| 'CALL_SUB_4'
+	| 'CALL_SUB_5'
+	| 'CALL_SUB_6'
+	| 'CALL_SUB_7'
+	| 'CALL_SUB_8'
+	| 'CALL_SUB_9'
+	| 'CALL_SUB_10';
 
 export type Facing = 'UP' | 'RIGHT' | 'DOWN' | 'LEFT';
 export type Status = 'READY' | 'RUNNING' | 'WON' | 'LOST';

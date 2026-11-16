@@ -1,10 +1,12 @@
 // Package auth implements optional player sign-in: OAuth2 / OpenID Connect
-// login with Google and GitHub through a small Provider interface, the HTTP
-// routes under /auth, the login cookie, same-origin (CSRF) checks and a
-// per-IP rate limiter. Accounts and logins themselves live in game/service.
+// login with Google and GitHub through a small Provider interface, username and
+// password accounts, the HTTP routes under /auth, the login cookie, same-origin
+// (CSRF) checks and a per-IP rate limiter. Accounts and logins themselves live
+// in game/service.
 //
-// Sign-in is off unless at least one provider has credentials in the
-// environment; nothing in this package is mounted otherwise.
+// Username/password sign-in is on by default (AUTH_PASSWORD=false turns it off)
+// because it needs nothing registered anywhere; the OAuth providers are each
+// enabled only when their credentials are in the environment.
 package auth
 
 import (
@@ -293,9 +295,10 @@ func IsLocalHost(hostport string) bool {
 
 // ProvidersFromEnv builds the enabled providers. A provider is enabled when both
 // its client id and secret are set; one without the other is an error. publicURL
-// (the -public-url flag) is required as soon as any provider is enabled, since
-// OAuth callbacks must be exact, registered URLs. AUTH_DEV_FAKE=true adds the
-// dev provider and is refused unless publicURL is a localhost URL.
+// (the -public-url flag) is required as soon as sign-in is on at all, since OAuth
+// callbacks must be exact, registered URLs and the login cookie and same-origin
+// check key off the site's own origin. AUTH_DEV_FAKE=true adds the dev provider
+// and is refused unless publicURL is a localhost URL.
 func ProvidersFromEnv(getenv func(string) string, publicURL string) ([]Provider, error) {
 	if getenv == nil {
 		getenv = os.Getenv
@@ -328,7 +331,7 @@ func ProvidersFromEnv(getenv func(string) string, publicURL string) ([]Provider,
 		}
 		out = append(out, NewDev(u.String()))
 	}
-	if len(out) > 0 || PasswordFromEnv(getenv) {
+	if len(out) > 0 {
 		if _, err := ParseBaseURL(publicURL); err != nil {
 			return nil, fmt.Errorf("sign-in needs -public-url (the site's base URL, used for OAuth callbacks and same-origin checks): %w", err)
 		}
@@ -337,15 +340,17 @@ func ProvidersFromEnv(getenv func(string) string, publicURL string) ([]Provider,
 }
 
 // PasswordFromEnv reports whether AUTH_PASSWORD enables username/password accounts.
+// It is on by default (unset or empty), because it needs nothing registered
+// anywhere; AUTH_PASSWORD=false (or 0/no) turns it off.
 func PasswordFromEnv(getenv func(string) string) bool {
 	if getenv == nil {
 		getenv = os.Getenv
 	}
 	switch strings.ToLower(strings.TrimSpace(getenv("AUTH_PASSWORD"))) {
-	case "true", "1", "yes":
-		return true
+	case "false", "0", "no":
+		return false
 	}
-	return false
+	return true
 }
 
 // ParseBaseURL parses an absolute http(s) base URL without path, query or user info.

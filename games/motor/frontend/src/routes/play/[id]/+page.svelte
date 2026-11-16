@@ -18,6 +18,7 @@
 		import { editKeyAction, globalKeyAction } from '$lib/globalKeys';
 	import { canRedo, canUndo, emptyHistory, recordEdit, redo, undo, type EditHistory } from '$lib/history';
 	import { nextMap } from '$lib/maps';
+	import { subCallKeys } from '$lib/instructions';
 	import {
 		CREATE_SESSION_MUTATION,
 		MAPS_QUERY,
@@ -210,7 +211,7 @@
 		['Tab', 'Focus a program slot'],
 		['F', 'Slot: move forward'],
 		['L / R', 'Slot: turn left / right'],
-		...(draft?.subs.length ? [[draft.subs.length === 1 ? '1' : `1–${draft.subs.length}`, 'Slot: call a subroutine'] as [string, string]] : []),
+		...(draft?.subs.length ? [[subCallKeys(draft.subs.length), 'Slot: call a subroutine'] as [string, string]] : []),
 		['Backspace', 'Slot: clear'],
 		['Arrows', 'Slot: move between slots'],
 		['Enter', 'Slot: open the instruction menu']

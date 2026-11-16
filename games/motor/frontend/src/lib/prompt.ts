@@ -97,7 +97,7 @@ Other mutations: pause, reset, renameSession, deleteSession. Do not try to guess
 export function buildGenericPrompt(origin: string): string {
 	return `Play ${TITLE}, a robot programming puzzle, through its GraphQL API and win it.
 
-You write the robot a program (a main tape plus up to 3 subroutine tapes); the server runs it one instruction per step; you win when every treat has been collected. Tapes are tiny, so the trick is spotting repeated patterns and reusing them with subroutines.
+You write the robot a program (a main tape plus up to 10 subroutine tapes); the server runs it one instruction per step; you win when every treat has been collected. Tapes are tiny, so the trick is spotting repeated patterns and reusing them with subroutines.
 
 1. Read ${origin}/llms.txt first: it has the complete rules, the coordinate convention (row 0 is the top, y grows downward) and working examples for every step.
 2. GraphQL endpoint: ${origin}/graphql (Playground: ${origin}/playground).

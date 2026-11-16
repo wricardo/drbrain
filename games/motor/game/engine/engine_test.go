@@ -2,6 +2,7 @@ package engine
 
 import (
 	"errors"
+	"fmt"
 	"runtime"
 	"strings"
 	"testing"
@@ -36,6 +37,20 @@ func prog(m *Map, main string, subs ...string) Program {
 				out[i] = CallSub2
 			case '3':
 				out[i] = CallSub3
+			case '4':
+				out[i] = CallSub4
+			case '5':
+				out[i] = CallSub5
+			case '6':
+				out[i] = CallSub6
+			case '7':
+				out[i] = CallSub7
+			case '8':
+				out[i] = CallSub8
+			case '9':
+				out[i] = CallSub9
+			case '0': // the keyboard key for sub 10, as in the UI
+				out[i] = CallSub10
 			case '_':
 			}
 		}
@@ -300,7 +315,7 @@ func TestNewMapValidation(t *testing.T) {
 		"bad glyph":   {ID: "a", Name: "n", Layout: []string{">x.", "...", ".*."}},
 		"too small":   {ID: "a", Name: "n", Layout: []string{">*", ".."}},
 		"steps cap":   {ID: "a", Name: "n", MaxSteps: MaxMaxSteps + 1, Layout: straight.Layout},
-		"four subs":   {ID: "a", Name: "n", SubTapeLengths: []int{1, 1, 1, 1}, Layout: straight.Layout},
+		"eleven subs": {ID: "a", Name: "n", SubTapeLengths: []int{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}, Layout: straight.Layout},
 		"zero length": {ID: "a", Name: "n", SubTapeLengths: []int{0}, Layout: straight.Layout},
 	}
 	for name, c := range cases {
@@ -346,13 +361,100 @@ func TestNewMapHugeRaggedRowRejectedWithoutAllocating(t *testing.T) {
 	}
 }
 
+func TestTenSubsAndDeepNesting(t *testing.T) {
+	// Ten subs, each first slot calling the next, so main -> sub1 -> ... -> sub10.
+	lengths := make([]int, MaxSubs)
+	for i := range lengths {
+		lengths[i] = 2
+	}
+	cfg := MapConfig{ID: "ten_subs", Name: "t", MainTapeLength: 1, SubTapeLengths: lengths,
+		Layout: []string{"...", ">*.", "..."}}
+	m := mustMap(t, cfg)
+	if len(m.SubTapeLengths) != MaxSubs {
+		t.Fatalf("subs = %d, want %d", len(m.SubTapeLengths), MaxSubs)
+	}
+
+	p := EmptyProgram(m)
+	p.Main[0] = CallSub1
+	for i := 0; i < MaxSubs-1; i++ {
+		p.Subs[i][0] = Instruction(fmt.Sprintf("CALL_SUB_%d", i+2))
+	}
+	p.Subs[MaxSubs-1][0] = MoveForward // sub10 steps onto the treat
+	if err := ValidateProgram(m, p); err != nil {
+		t.Fatal(err)
+	}
+	st := Run(m, p)
+	if st.Status != StatusWon {
+		t.Fatalf("status %s/%s steps %d", st.Status, st.LossReason, st.Steps)
+	}
+	// Nine main/sub calls plus the call into sub10, plus the move.
+	if want := MaxSubs + 1; st.Steps != want {
+		t.Fatalf("steps = %d, want %d", st.Steps, want)
+	}
+
+	// Eleven subs is too many for a map...
+	if _, err := NewMap(MapConfig{ID: "eleven", Name: "t", Layout: cfg.Layout,
+		SubTapeLengths: append(append([]int{}, lengths...), 1)}); err == nil {
+		t.Fatal("a map with 11 subs must be rejected")
+	}
+	// ...and CALL_SUB_11 is not an instruction at all.
+	p.Subs[MaxSubs-1][0] = "CALL_SUB_11"
+	if err := ValidateProgram(m, p); err == nil {
+		t.Fatal("CALL_SUB_11 must be rejected")
+	}
+}
+
+func TestMaxSideGrid(t *testing.T) {
+	// A full MaxSide x MaxSide board: start top-left facing right, treat top-right.
+	top := ">" + strings.Repeat(".", MaxSide-2) + "*"
+	rows := make([]string, MaxSide)
+	rows[0] = top
+	for i := 1; i < MaxSide; i++ {
+		rows[i] = strings.Repeat(".", MaxSide)
+	}
+	m := mustMap(t, MapConfig{ID: "big", Name: "b", Layout: rows, MainTapeLength: MaxMainTapeLength})
+	if m.Width != MaxSide || m.Height != MaxSide {
+		t.Fatalf("size %dx%d, want %dx%d", m.Width, m.Height, MaxSide, MaxSide)
+	}
+
+	// MaxSide-1 forward moves fit in the main tape (MaxMainTapeLength >= MaxSide-1).
+	p := EmptyProgram(m)
+	for i := 0; i < MaxSide-1; i++ {
+		p.Main[i] = MoveForward
+	}
+	if err := ValidateProgram(m, p); err != nil {
+		t.Fatal(err)
+	}
+	if st := Run(m, p); st.Status != StatusWon {
+		t.Fatalf("status %s/%s pos %v", st.Status, st.LossReason, st.Pos)
+	}
+
+	// One cell over the limit is rejected, in either direction.
+	tooWide := make([]string, MaxSide)
+	for i := range tooWide {
+		tooWide[i] = strings.Repeat(".", MaxSide+1)
+	}
+	tooWide[0], tooWide[1] = ">"+strings.Repeat(".", MaxSide), "*"+strings.Repeat(".", MaxSide)
+	if _, err := NewMap(MapConfig{ID: "too_wide", Name: "b", Layout: tooWide}); err == nil {
+		t.Fatal("a grid wider than MaxSide must be rejected")
+	}
+	tooHigh := make([]string, MaxSide+1)
+	for i := range tooHigh {
+		tooHigh[i] = strings.Repeat(".", MaxSide)
+	}
+	tooHigh[0], tooHigh[1] = ">"+strings.Repeat(".", MaxSide-1), "*"+strings.Repeat(".", MaxSide-1)
+	if _, err := NewMap(MapConfig{ID: "too_high", Name: "b", Layout: tooHigh}); err == nil {
+		t.Fatal("a grid taller than MaxSide must be rejected")
+	}
+}
+
 func TestSubIndexCanonicalOnly(t *testing.T) {
-	for in, want := range map[Instruction]int{"CALL_SUB_1": 0, "CALL_SUB_2": 1, "CALL_SUB_3": 2} {
+	for in, want := range map[Instruction]int{"CALL_SUB_1": 0, "CALL_SUB_2": 1, "CALL_SUB_3": 2, "CALL_SUB_9": 8, "CALL_SUB_10": 9} {
 		if k, ok := in.SubIndex(); !ok || k != want {
 			t.Errorf("%s: got (%d,%v), want (%d,true)", in, k, ok, want)
 		}
 	}
-	for _, in := range []Instruction{"CALL_SUB_01", "CALL_SUB_001", "CALL_SUB_0", "CALL_SUB_4", "CALL_SUB_10", "CALL_SUB_", "CALL_SUB_-1", "CALL_SUB_ 1", "CALL_SUB_18446744073709551617"} {
+	for _, in := range []Instruction{"CALL_SUB_01", "CALL_SUB_001", "CALL_SUB_0", "CALL_SUB_11", "CALL_SUB_010", "CALL_SUB_100", "CALL_SUB_", "CALL_SUB_-1", "CALL_SUB_ 1", "CALL_SUB_+1", "CALL_SUB_18446744073709551617"} {
 		if _, ok := in.SubIndex(); ok {
 			t.Errorf("%q must not be a sub call", in)
 		}

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # End-to-end smoke test: starts the server, drives a session to WON over
-# GraphQL, checks /llms.txt, then shuts down. Usage: scripts/smoke.sh [port]
+# GraphQL, checks /llms.txt and password sign-in, then shuts down.
+# Usage: scripts/smoke.sh [port]
 set -euo pipefail
 
 PORT="${1:-9191}"
@@ -9,7 +10,7 @@ cd "$(dirname "$0")/.."
 
 SESSIONS="$(mktemp -d)"
 go build -o "${SESSIONS}/drbrain-motor-programming" .
-"${SESSIONS}/drbrain-motor-programming" -port "${PORT}" -host 127.0.0.1 -sessions-dir "${SESSIONS}/sessions" -user-maps-dir "${SESSIONS}/maps-user" >"${SESSIONS}/server.log" 2>&1 &
+"${SESSIONS}/drbrain-motor-programming" -port "${PORT}" -host 127.0.0.1 -sessions-dir "${SESSIONS}/sessions" -user-maps-dir "${SESSIONS}/maps-user" -accounts-dir "${SESSIONS}/accounts" >"${SESSIONS}/server.log" 2>&1 &
 PID=$!
 trap 'kill "${PID}" 2>/dev/null || true; wait "${PID}" 2>/dev/null || true; rm -rf "${SESSIONS}"' EXIT
 
@@ -49,6 +50,13 @@ echo "leaderboard ok"
 
 curl -sf "${URL}/llms.txt" | grep -q "Dr Brain" || fail "/llms.txt"
 echo "llms.txt ok"
+
+# Sign-in is on by default: the password form is offered and its routes exist.
+gql '{ authProviders { id } }' | jq -e '.data.authProviders | map(.id) | index("password")' >/dev/null || fail "password sign-in not offered"
+CODE=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "Origin: ${URL}" \
+  -d '{"handle":"smoke_player","password":"tangerine-ladder-42"}' "${URL}/auth/password/register")
+[ "${CODE}" = "200" ] || fail "password register = ${CODE}"
+echo "password sign-in ok"
 
 # Anyone can create a map; a built-in map still needs the admin key to change.
 gql 'mutation { createMap(map:{id:"smoke_map", name:"Smoke", layout:[">..*","....","...."]}) { id } }' \

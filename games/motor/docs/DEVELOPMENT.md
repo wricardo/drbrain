@@ -25,7 +25,7 @@ These decisions shape everything else. Keep them when changing the game or start
 2. **The server is the source of truth.** Programs run on the server, one step per tick. Clients only display snapshots. Two browsers, or a browser and an agent, can play or watch the same session and always agree.
 3. **Pure rules engine.** All game rules live in one package with no I/O, no clock and no dependencies. It can be tested exhaustively and reused by the validator and the live runner.
 4. **Full snapshots, ordered by sequence number.** Every update carries the whole session state and a `seq` that only goes up. Clients never patch state; they replace it and drop anything older. Dropped or reordered messages can't corrupt the view.
-5. **Files, not a database.** Maps are JSON files in `maps/` (shipped) and `maps-user/` (player-created); each session is one JSON file in `sessions/`; accounts (only when sign-in is configured) are files in `accounts/`. Writes are atomic (temp file + fsync + rename). One binary plus a few folders is the whole deployment.
+5. **Files, not a database.** Maps are JSON files in `maps/` (shipped) and `maps-user/` (player-created); each session is one JSON file in `sessions/`; accounts are files in `accounts/`. Writes are atomic (temp file + fsync + rename). One binary plus a few folders is the whole deployment.
 6. **Agent-readable by design.** `/llms.txt` explains the rules and every API call for an AI. Each game page can copy a ready-made prompt. Answers are never exposed: reference solutions are not in the API, the prompts or the public repo.
 7. **Puzzles are verified, not hoped for.** Every map has a reference solution that must win, and the harder maps come with a proof that the intended trick is required.
 
@@ -33,9 +33,14 @@ These decisions shape everything else. Keep them when changing the game or start
 
 ```sh
 cp .env.example .env      # optional
-make run                  # builds and serves http://localhost:8000 (API + UI)
-make dev                  # go run . -port 8000 -debug
+just restart              # rebuild UI + binary and serve http://localhost:8000 (API + UI)
+just run                  # rebuild and serve in the foreground
+just dev                  # go run . -port 8000 -debug
 ```
+
+Every recipe passes `-public-url http://localhost:<port>` (override with `PUBLIC_URL=... just restart`); sign-in is on by default and uses it for the same-origin check. Plain `go run .` works too on localhost, where the request's own `Host` is trusted instead, but a public host without `-public-url` refuses sign-in rather than trust a rebindable host.
+
+Tooling lives in the `justfile` ([`just`](https://github.com/casey/just) is required): `just --list` shows every recipe. `just restart` is the everyday loop — it rebuilds the UI into `static/` and the binary, stops whatever holds the port (`lsof`, plus the pid it recorded in `.run/drbrain-<port>.pid`), and starts the server in the background with its log at `.run/drbrain-<port>.log`. `just stop`, `just status` and `just logs` act on that process, and `PORT=9000 just restart` (or `just port=9000 restart`) moves to another port. The UI build is reproducible: `svelte.config.js` pins the app version to the git commit, so rebuilding unchanged sources leaves `static/` untouched.
 
 Frontend development with hot reload, against a server running on :8000:
 
@@ -43,7 +48,7 @@ Frontend development with hot reload, against a server running on :8000:
 cd frontend && npm run dev:local     # http://localhost:5173
 ```
 
-Server flags: `-port 8000 -host 0.0.0.0 -maps-dir maps -sessions-dir sessions -accounts-dir accounts -solutions-dir solutions -debug -public-url <url>` (`-public-url` sets the base URL written into `/llms.txt` and is the base of the OAuth callbacks, so it is required once a sign-in provider is configured; it defaults to the request host otherwise).
+Server flags: `-port 8000 -host 0.0.0.0 -maps-dir maps -sessions-dir sessions -accounts-dir accounts -solutions-dir solutions -debug -public-url <url>` (`-public-url` sets the base URL written into `/llms.txt`, is the base of the OAuth callbacks, and is the origin used for the sign-in same-origin check and the `Secure` cookie; it is required once a redirect provider is configured, while password sign-in — on by default — falls back to each request's own host).
 
 Routes:
 
@@ -73,8 +78,8 @@ game/service         Session type, GameService facade + impl + Runner (ticker go
                      interfaces MapStore, SessionStore, Broadcaster, AccountStore; coded errors; leaderboard (recorded wins + ranking);
                      accounts, handles, logins, claims
 game/account         AccountStore impl: accounts/accounts/<id>.json + accounts/logins/<sha256>.json, in-memory indexes
-auth                 Optional sign-in: providers (Google OIDC, GitHub OAuth2, dev fake), /auth routes, login cookie,
-                     same-origin check, per-IP rate limiter
+auth                 Sign-in: username/password (on by default), providers (Google OIDC, GitHub OAuth2, dev fake), /auth routes,
+                     login cookie, same-origin check, per-IP rate limiter
 game/config          MapStore impl: maps/*.json (shipped, admin-only writes) + maps-user/*.json
                      (player-created), RWMutex, atomic writes
 game/session         SessionStore impl: in-memory Manager + FilePersistence (sessions/<id>.json)
@@ -144,7 +149,7 @@ HTTP /graphql (api) → gqlgen resolver (graph) → GameService (game/service)
 
 ## Game rules and engine semantics
 
-Instructions: `TURN_LEFT`, `TURN_RIGHT`, `MOVE_FORWARD`, `CALL_SUB_1..3`, `EMPTY`.
+Instructions: `TURN_LEFT`, `TURN_RIGHT`, `MOVE_FORWARD`, `CALL_SUB_1..10`, `EMPTY`.
 
 - `EMPTY` slots are skipped and don't count. Every other executed instruction is one **step**, including calls.
 - Moving into a rock or off the grid does nothing but still counts as a step.
@@ -170,7 +175,7 @@ A session is one run of one map. `setProgram` (rejected while running) resets th
 }
 ```
 
-Glyphs: `.` empty, `#` rock, `*` treat, `^ > v <` start and facing (exactly one). Grid 3–20 per side, at least one treat, main tape 1–32, 0–3 subs of 1–16 each. Defaults when omitted: main 10, subs `[10]`, max_steps 200, max_call_depth 16, recursion off. `sub_tape_lengths: []` (no subs) is different from omitting it, so the field has no `omitempty` and `[]` must never become `nil`. JSON Schema: `map-schema.json`.
+Glyphs: `.` empty, `#` rock, `*` treat, `^ > v <` start and facing (exactly one). Grid 3–32 per side, at least one treat, main tape 1–32, 0–10 subs of 1–16 each. Defaults when omitted: main 10, subs `[10]`, max_steps 200, max_call_depth 16, recursion off. `sub_tape_lengths: []` (no subs) is different from omitting it, so the field has no `omitempty` and `[]` must never become `nil`. JSON Schema: `map-schema.json`.
 
 Shipped maps (11): five introductory levels (`straight_line`, `turn_challenge`, `rock_obstacle`, `symmetric_paths`, `zigzag_path`), plus puzzles whose tapes are tight enough that the intended solution is *provably* required:
 
@@ -186,18 +191,18 @@ Shipped maps (11): five introductory levels (`straight_line`, `turn_challenge`, 
 
 - Start from the trick you want to teach (repetition, nesting, recursion), then size the tapes so the brute-force route doesn't fit.
 - Prove it: count the actions the route needs and the most a program without the trick can execute (as in the table). Add that bound to `validate/validate_test.go`.
-- For recursion maps, the reference solution must lose when recursion is turned off; `make validate` checks this.
+- For recursion maps, the reference solution must lose when recursion is turned off; `just validate` checks this.
 - Give the map a short `description`. It appears under the board.
 
 ### Reference solutions
 
-`solutions/<id>.json` (`{"main": [...], "subs": [[...]]}`, exact tape lengths). They are **not** in the public repo (`solutions/` is gitignored), never served by the API, and never put in prompts or `static/`. Without them `make validate` reports missing solutions and the solution-dependent tests skip (`requireSolutions` in `validate/validate_test.go`).
+`solutions/<id>.json` (`{"main": [...], "subs": [[...]]}`, exact tape lengths). They are **not** in the public repo (`solutions/` is gitignored), never served by the API, and never put in prompts or `static/`. Without them `just validate` reports missing solutions and the solution-dependent tests skip (`requireSolutions` in `validate/validate_test.go`).
 
 ### Adding a map
 
 1. Add `maps/<id>.json` (id = file name).
 2. Add `solutions/<id>.json` locally.
-3. Run `make validate`: it checks structure, that every treat is reachable, and that the reference solution wins.
+3. Run `just validate`: it checks structure, that every treat is reachable, and that the reference solution wins.
 4. Add its golden step count to the table in `validate/validate_test.go`.
 
 Maps can also be created by anyone in `/editor` or with the `createMap` mutation. Built-in maps (`maps/*.json`) can only be changed or deleted with the admin key; a new map lands in `maps-user/<id>.json` and is playable immediately.
@@ -253,7 +258,9 @@ Entries that tie on both numbers share a rank (1, 2, 2, 4); the earlier win is l
 
 ## Accounts and sign-in
 
-Sign-in is **optional and off by default** (Google, GitHub and username/password are each their own switch). Guest play, the public API and the agent guide work exactly as before; a player who signs in keeps their runs on a profile, appears on the leaderboard under their own handle and gets a public page at `/u/<handle>`. With no provider configured nothing in this section is active: no `/auth` routes, no cookies, no `accounts/` directory is created, `me` is `null` and `authProviders` is empty.
+**Username and password accounts are on by default**: anyone can create an account on the live site with a handle and a password, with nothing to register anywhere (`AUTH_PASSWORD=false` turns it off). Google and GitHub are each their own switch and stay off until credentials are in the environment. Guest play, the public API and the agent guide work exactly as before; a player who signs in keeps their runs on a profile, appears on the leaderboard under their own handle and gets a public page at `/u/<handle>`. With every way of signing in turned off nothing in this section is active: no `/auth` routes, no cookies, no `accounts/` directory is created, `me` is `null` and `authProviders` is empty.
+
+Because password sign-in is on by default, `accounts/` exists on any deployment (it is created at startup). It is the one new thing to back up; see [Owner setup](#owner-setup).
 
 ### What is stored
 
@@ -261,7 +268,7 @@ Only the minimum, because the game may be played by children:
 
 | Where | What |
 |---|---|
-| `accounts/accounts/<id>.json` | random id, provider name + the provider's opaque user id (only used to recognise the player at the next sign-in, never exposed), handle, display name, `profilePublic`, `createdAt`, `handleChangedAt`, and for [username/password accounts](#username-and-password-optional) the argon2id `password_hash` |
+| `accounts/accounts/<id>.json` | random id, provider name + the provider's opaque user id (only used to recognise the player at the next sign-in, never exposed), handle, display name, `profilePublic`, `createdAt`, `handleChangedAt`, and for [username/password accounts](#username-and-password-on-by-default) the argon2id `password_hash` |
 | `accounts/logins/<sha256>.json` | account id and expiry of one signed-in browser, named by the SHA-256 of its cookie token |
 | session file | `account_id` and `owner_hash` (SHA-256 of the owner token), only when set |
 
@@ -281,9 +288,11 @@ Plain HTTP routes outside GraphQL (`auth/auth.go`):
 
 Pending sign-ins live in memory (bounded to 5000); a restart only cancels sign-ins in progress. A failed or cancelled sign-in returns to the site with `?signin=failed` or `?signin=cancelled`, which the layout shows as a dismissible notice. `next` must be a same-site relative path (`SafeNext`: no scheme or host, no `//`, no backslashes or control characters, never `/auth/...`). All `/auth` routes are rate limited per client IP (30 requests a minute, in memory; behind the nginx proxy the last `X-Forwarded-For` entry is used, only when the peer is loopback) and sent with `Cache-Control: no-store`.
 
-### Username and password (optional)
+### Username and password (on by default)
 
-For players who do not want Google or GitHub. It is its own switch, **off by default**: `AUTH_PASSWORD=true` (it also needs `-public-url`, like every sign-in, for the same-origin check and the `Secure` cookie). It can run next to the OAuth providers or alone; nothing external has to be registered.
+For players who do not want Google or GitHub, and the only way to sign in that needs nothing registered anywhere — which is why it is **on by default**: `AUTH_PASSWORD=false` turns it off. It runs next to the OAuth providers or alone.
+
+Unlike a redirect provider it has no callback URL to register, so it does not require `-public-url`: without it the same-origin check compares the request's `Origin` against the request's own `Host` (with `X-Forwarded-Proto`), but **only on a local host** — otherwise a DNS-rebinding page, whose origin is the hostname it made resolve here, would match itself. So a public deployment without `-public-url` and without `ALLOWED_ORIGINS` refuses sign-in attempts rather than trusting them; the server logs a warning at startup. Production already passes `-public-url`, which is also what makes cookies `Secure` even for a request that arrives without `X-Forwarded-Proto`. `ALLOWED_ORIGINS` listing the site's own origins is an alternative, but `-public-url` is the intended one.
 
 - **Username = the public handle** (`^[a-z0-9_]{3,20}$`, same reserved list, blocklist and case-insensitive uniqueness). Changing the handle in Settings changes the login name too. A password account is an ordinary account (profile, leaderboard, claiming guest runs, delete); its `Provider` is `password`.
 - **No email, no recovery.** Nothing is stored that could reset a password, so a forgotten password means the account cannot be recovered (the player can start a new account). The UI says so before an account is created and in Settings. This was a deliberate choice for child privacy; adding recovery later would need either an email address or one-time recovery codes.
@@ -296,7 +305,7 @@ For players who do not want Google or GitHub. It is its own switch, **off by def
 ### Login state, cookies and CSRF
 
 - A login is 32 random bytes (base64url) in the `dbmp_session` cookie: `HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` whenever the public URL is https or the request came in over https (plain-http localhost is the only case without it). Only the SHA-256 is stored. Logins last 30 days from sign-in (fixed, not sliding), at most 10 per account. Every sign-in creates a fresh token and ends the one the browser arrived with, so there is no session fixation.
-- The cookie is honoured by `/graphql` only for **same-origin JSON POSTs** (`Auth.Viewer`): `Origin` must be this site's own origin (from `-public-url`, or the request host when `ALLOWED_ORIGINS` is empty) or listed in `ALLOWED_ORIGINS`; without `Origin`, `Sec-Fetch-Site` must not say cross-site; the content type must be `application/json`. Any other request is simply anonymous, so another site can never act as the player. Subscriptions stay public and never read the cookie.
+- The cookie is honoured by `/graphql` only for **same-origin JSON POSTs** (`Auth.Viewer`): `Origin` must be this site's own origin (from `-public-url`, or the request host when `ALLOWED_ORIGINS` is empty or `-public-url` is unset) or listed in `ALLOWED_ORIGINS`; without `Origin`, `Sec-Fetch-Site` must not say cross-site; the content type must be `application/json`. Any other request is simply anonymous, so another site can never act as the player. Subscriptions stay public and never read the cookie.
 - CORS never sends `Access-Control-Allow-Credentials`, whatever `ALLOWED_ORIGINS` says, so a cross-origin page cannot send the cookie either.
 - Local development against the Vite server (`npm run dev:local`, origin `http://localhost:5173`) needs `ALLOWED_ORIGINS=http://localhost:5173` for the cookie to be accepted; the built UI served by the Go server needs nothing.
 
@@ -338,7 +347,7 @@ AUTH_DEV_FAKE=true go run . -port 8000 -host 127.0.0.1 -public-url http://localh
 
 ### Owner setup
 
-Sign-in appears on the live site only after the owner (the repository owner, who controls the host) does the following; until then the site behaves as before.
+Password sign-in needs no setup at all: it is on by default, so the live site offers "Sign in" with a username and password as soon as this is deployed. The steps below are only for the Google and GitHub buttons, which appear on the live site only after the owner (the repository owner, who controls the host) does them; until then those buttons are absent and the rest of the site behaves as before.
 
 1. **Google.** In the Google Cloud console create (or pick) a project, configure the OAuth consent screen (external, publish it; no sensitive scopes are used), then *Credentials → Create credentials → OAuth client ID → Web application*. Add the authorized redirect URI `<public-url>/auth/google/callback`, for production `https://motor-programming.wricardo.net/auth/google/callback`. Copy the client id and secret.
 2. **GitHub.** *Settings → Developer settings → OAuth Apps → New OAuth App*: homepage `https://motor-programming.wricardo.net`, authorization callback URL `https://motor-programming.wricardo.net/auth/github/callback`. Generate a client secret.
@@ -352,9 +361,9 @@ Sign-in appears on the live site only after the owner (the repository owner, who
    ```
 
 4. **Flags.** The systemd `ExecStart` must carry `-public-url https://motor-programming.wricardo.net` (it already does) and should add `-accounts-dir accounts`. Make sure `ALLOWED_ORIGINS` contains the site's origins (it already does in production). nginx needs nothing new: `/auth/` goes through the same proxy block; keep `X-Forwarded-Proto` and `X-Forwarded-For` set (`proxy_set_header X-Forwarded-Proto $scheme; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`).
-5. **Persistence.** `accounts/` lives next to `sessions/` and `maps-user/` in `/opt/drbrain-motor-programming` and **must survive deploys**. The deploy workflow only replaces `maps/` and `static/`, so it does; never `rm -rf` the directory, and include it in backups.
-6. Optional: add `AUTH_PASSWORD=true` to `.env` to let players use a username and password instead (no registration needed). Read [Username and password](#username-and-password-optional) first: there is no email, so no password reset.
-7. Restart the service. The log shows `sign-in enabled: [google github] password=true`; the header then shows "Sign in".
+5. **Persistence.** `accounts/` lives next to `sessions/` and `maps-user/` in `/opt/drbrain-motor-programming` and **must survive deploys**. The deploy workflow only replaces `maps/` and `static/`, so it does; never `rm -rf` the directory, and include it in backups. Password accounts are on by default, so this directory is created on first start even without any OAuth app; losing it loses every account. Never set `AUTH_PASSWORD=false` "temporarily" on a live site and back: the accounts stay on disk, so that only hides sign-in until it is turned back on.
+6. Password sign-in needs no step of its own: it is on unless `AUTH_PASSWORD=false`. It stores no email, so a forgotten password cannot be reset (a player starts a new account). Read [Username and password](#username-and-password-on-by-default) before enabling OAuth apps, since that section also explains the trade-offs of public handles.
+7. Restart the service. The log shows `sign-in enabled: providers=[google github] password=true (accounts=accounts)`; the header then shows "Sign in" and the dialog offers the username/password form.
 
 ## Frontend architecture
 
@@ -421,8 +430,10 @@ Each instruction has a fixed colour, glyph and key, defined once in `lib/instruc
 | Move forward | ↑ | F | emerald |
 | Turn left | ↺ | L | sky |
 | Turn right | ↻ | R | amber |
-| Call sub 1 / 2 / 3 | S1 / S2 / S3 | 1 / 2 / 3 | violet / fuchsia / rose |
+| Call sub 1 … 10 | S1 … S10 | 1 … 9, 0 | one tone per sub, see below |
 | Empty | (blank) | Backspace | white with slate border |
+
+Call tiles cycle through `CALL_TONES` in `lib/instructions.ts` (violet, fuchsia, rose, orange, amber, emerald, sky, indigo, slate, then violet again for sub 10), so a map may declare up to `MAX_SUBS` = 10 subs without hand-picking colours; the `S<k>` glyph is the identity and keeps sub 10 distinct from sub 1. Keys are `1`–`9` and `0` for sub 10.
 
 - Tapes are rows of slots labelled **Main**, **Sub 1**, etc. Each slot shows its index in small faded text.
 - Editing: click a slot (or press Enter on it) to open an instruction menu next to it (`SlotPicker.svelte`, placed by `lib/popover.ts`; shortcut keys pick, Backspace erases, Esc closes, focus moves to the next slot); arm a palette instruction to stamp it on every slot clicked (a hint under the palette says what is armed; Esc or clicking the tile again disarms it); drag between palette and slots (a slot drop swaps; hold Alt/Ctrl/Cmd to copy, Shift to reorder within a tape via `insertSlot`; drop a placed step anywhere on the palette (an Erase tile or any other tile) to clear it — the whole palette becomes a dashed rose drop zone with a "Drop here to erase" tag while a slot is dragged, `eraseTargetFor` in `lib/dnd.ts` decides what is erasable (palette-tile drags and a locked palette are no-ops), and it goes through the same `edit()` path as any other edit; `lib/dnd.ts` `dropModeFor` picks the mode and `activeDrag` shares the in-flight drag because `dragover` can't read `dataTransfer`; the drag preview is a compact tile from `lib/dragImage.ts`), or use the keyboard (letters and numbers place, Backspace clears, arrows move between slots and tapes). Only the subs a map has are offered.
@@ -432,7 +443,7 @@ Each instruction has a fixed colour, glyph and key, defined once in `lib/instruc
 
 ### Feedback
 
-- Run controls (`RunControls.svelte`) follow the usual puzzle-game pattern: one large primary button that is **Run**, becomes **Pause** while running and **Try again** after a win or loss, plus **Back**, **Step** and **Reset**. **Back** (key `B`) takes the robot back one step, also after a win or loss. The server has no undo-step call, so the page resets and replays the saved program for one step fewer (`lib/stepBack.ts`; the engine is deterministic, and the replay never reaches the end of the run it came from, so it does not add a run). It costs one request per replayed step and is off while there are unsaved edits. A server-side step-back mutation would be cheaper but needs a schema change and `make generate`. The buttons never move or appear and disappear; unavailable ones are disabled (Reset until the robot has moved, Step while running or finished). Run and Step are also disabled while the Main tape is empty (a run could only lose and would cost an attempt); the status line then reads "Add an instruction to Main to start", and the `S` and Ctrl+Enter keys follow the same rule. Tooltips name the keys.
+- Run controls (`RunControls.svelte`) follow the usual puzzle-game pattern: one large primary button that is **Run**, becomes **Pause** while running and **Try again** after a win or loss, plus **Back**, **Step** and **Reset**. **Back** (key `B`) takes the robot back one step, also after a win or loss. The server has no undo-step call, so the page resets and replays the saved program for one step fewer (`lib/stepBack.ts`; the engine is deterministic, and the replay never reaches the end of the run it came from, so it does not add a run). It costs one request per replayed step and is off while there are unsaved edits. A server-side step-back mutation would be cheaper but needs a schema change and `just generate`. The buttons never move or appear and disappear; unavailable ones are disabled (Reset until the robot has moved, Step while running or finished). Run and Step are also disabled while the Main tape is empty (a run could only lose and would cost an attempt); the status line then reads "Add an instruction to Main to start", and the `S` and Ctrl+Enter keys follow the same rule. Tooltips name the keys.
 - Speed is four presets (Slow 1000 ms, Normal 500, Fast 200, Turbo 50; `lib/speed.ts`). A speed set through the API that matches no preset is shown as a custom value. Speed is locked while running because the server fixes it at Run.
 - There is no Save button. The program lives in a local draft that is **autosaved 600 ms after the last edit** (and flushed first on Run/Step) through `lib/serialRunner.ts`, which queues saves so two never race. Saving resets the robot to the start, so the board always matches the program on screen; the server, spectators and agents always see the current program. Undo/redo replaces the old Revert button.
 - On win or loss: a centred modal ("You won!" in emerald or "Run lost" in rose, with the reason in plain words; a win also shows a one-line leaderboard rank), focus on **Reset & try again**, Escape closes it. A coloured banner stays under the board after the modal is closed.
@@ -462,7 +473,7 @@ Each instruction has a fixed colour, glyph and key, defined once in `lib/instruc
 | `MAX_SESSIONS` | `1000` | Cap on live sessions |
 | `AUTH_GOOGLE_CLIENT_ID`, `AUTH_GOOGLE_CLIENT_SECRET` | empty | Enable Google sign-in (both required; needs `-public-url`) |
 | `AUTH_GITHUB_CLIENT_ID`, `AUTH_GITHUB_CLIENT_SECRET` | empty | Enable GitHub sign-in (both required; needs `-public-url`) |
-| `AUTH_PASSWORD` | `false` | Enable username/password sign-up and sign-in (needs `-public-url`; no external registration) |
+| `AUTH_PASSWORD` | `true` | Username/password sign-up and sign-in; `false` turns it off (needs no external registration, and no `-public-url` on localhost) |
 | `AUTH_DEV_FAKE` | `false` | Local only: a fake provider for trying sign-in; the server refuses to start unless `-public-url` is a localhost URL |
 | `MAX_ACCOUNTS` | `10000` | Cap on accounts |
 | `SESSION_TTL` | `168h` | Idle sessions older than this are removed on startup |
@@ -482,15 +493,15 @@ Production runs at https://motor-programming.wricardo.net on a small ARM64 Ubunt
 3. Add an nginx `server` block for the domain that proxies to `127.0.0.1:8086` with WebSocket upgrade headers and a long `proxy_read_timeout`.
 4. Point DNS at the host and run `sudo certbot --nginx -d motor-programming.wricardo.net --redirect`. `certbot.timer` renews the certificate.
 5. To enable sign-in follow [Owner setup](#owner-setup): register the OAuth apps, add the `AUTH_*` variables to `.env`, restart.
-6. Add the deploy key's public half to `~/.ssh/authorized_keys` and set the three repository secrets.
+6. Add the deploy key's public half to `~/.ssh/authorized_keys` and set the three repository secrets. The systemd `ExecStart` already carries `-public-url https://motor-programming.wricardo.net`; keep it, because password sign-in (on by default) uses it for the same-origin check and the `Secure` cookie.
 
 ## Maintaining the project
 
 ### Common changes
 
-- **Schema change:** edit `graph/schema.graphqls` → `make generate` → update `graph/convert.go` and resolvers → mirror in `frontend/src/lib/{queries,types}.ts` → update `llms.txt.tmpl` and `prompt.ts` if agents are affected → update the query copies in `api/hardening_test.go`.
+- **Schema change:** edit `graph/schema.graphqls` → `just generate` → update `graph/convert.go` and resolvers → mirror in `frontend/src/lib/{queries,types}.ts` → update `llms.txt.tmpl` and `prompt.ts` if agents are affected → update the query copies in `api/hardening_test.go`.
 - **Engine change:** update the golden step counts in `game/engine/engine_test.go` and `validate/validate_test.go` (7, 17, 19, 46, 23, 30, 44, 80, 32, 48, 83, 65, 77, 57, 40, 30, 42 for the shipped solutions) on purpose, never just to make a failure go away.
-- **UI change:** `cd frontend && npm run check && npm test && npm run build:static` (or `make build-frontend`), then commit `static/`. If you skip the build, production keeps the old UI.
+- **UI change:** `cd frontend && npm run check && npm test && npm run build:static` (or `just build-ui`), then commit `static/`. If you skip the build, production keeps the old UI.
 - **New page:** add the route under `frontend/src/routes/`, add it to `spaRoutes` in `api/server.go`, and to the nav in `+layout.svelte` if needed.
 - **Dependencies:** don't run `go mod tidy` casually. `gqlgen generate` rewrites `go.mod`; re-`go get` anything it drops.
 
@@ -499,22 +510,23 @@ Production runs at https://motor-programming.wricardo.net on a small ARM64 Ubunt
 - Go: standard `testing`, table tests with `t.Run`, `t.Helper`/`t.TempDir`/`t.Cleanup`. No `t.Parallel()` (tests use `t.Setenv`). Always run with `-race`.
 - Service tests use `newEnv` in `game/service/helpers_test.go` (fake map store, spy persistence, recording broadcaster). Wait with `waitFor`, never fixed sleeps.
 - API tests use `httptest.Server`.
-- Frontend: Vitest + jsdom + Testing Library.
+- Frontend: Vitest + jsdom + Testing Library. `src/test/setup.ts` restores jsdom's `localStorage`/`sessionStorage`, because Node 22+ defines a `localStorage` global that stays `undefined` without `--localstorage-file` and vitest lets it shadow jsdom's.
 
 ```sh
-make test                                        # go test -race ./...
+just test                                        # go test -race ./...
 go test -race -run TestName ./game/engine        # one Go test
-make validate                                    # maps + reference solutions
-make lint                                        # golangci-lint
-make verify                                      # gofmt, vet, lint, test
+just validate                                    # maps + reference solutions
+just lint                                        # golangci-lint (needs 2.15+, matching the Go toolchain)
+just verify                                      # gofmt, vet, lint, test
 cd frontend && npm run check && npm test
 cd frontend && npx vitest run src/lib/grid.test.ts   # one frontend test file
-scripts/smoke.sh 9191                            # end-to-end HTTP smoke (starts its own server)
+just smoke                                        # end-to-end HTTP smoke on :9191 (starts its own server)
+scripts/smoke.sh 9191                            # the same, on an explicit port
 ```
 
 ### Before you push
 
-`make verify && make validate`, then `scripts/smoke.sh 9191` (it builds and starts its own server, so leave the port free). For UI changes, open `/play/<id>` and `/watch/<id>` in a browser and run a program to the end. Pushing to `main` deploys.
+`just verify && just validate`, then `scripts/smoke.sh 9191` (it builds and starts its own server, so leave the port free). For UI changes, open `/play/<id>` and `/watch/<id>` in a browser and run a program to the end. Pushing to `main` deploys.
 
 ### Public repo rules
 
