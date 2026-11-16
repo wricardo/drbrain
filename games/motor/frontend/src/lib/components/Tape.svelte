@@ -217,7 +217,8 @@
 </script>
 
 <div bind:this={root} class="space-y-3" role="group" aria-label="Program tapes">
-	{#if !disabled && (hasInstructions(program) || canUndo || canRedo)}
+	<!-- Always present while editable: appearing with the first edit pushed the slots down mid-drag. -->
+	{#if !disabled}
 		<div class="flex items-center justify-between gap-2">
 			<div class="flex gap-1.5">
 				<button

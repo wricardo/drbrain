@@ -6,6 +6,7 @@
 		finished,
 		busy = false,
 		canReset,
+		empty = false,
 		speedMs = $bindable(500),
 		onrun,
 		onpause,
@@ -19,6 +20,8 @@
 		busy?: boolean;
 		/** The robot has moved or a run is under way, so Reset has something to undo. */
 		canReset: boolean;
+		/** The Main tape has no instruction, so running would only waste an attempt. */
+		empty?: boolean;
 		/** Milliseconds per step; changed from the presets, locked while running. */
 		speedMs?: number;
 		onrun: () => void;
@@ -28,6 +31,7 @@
 	} = $props();
 
 	const preset = $derived(presetFor(speedMs));
+	const emptyTitle = 'Put an instruction in Main first';
 
 	const base =
 		'inline-flex items-center justify-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50';
@@ -67,8 +71,8 @@
 				type="button"
 				data-testid="run"
 				class="{base} flex-1 bg-indigo-600 text-white hover:bg-indigo-700"
-				disabled={busy}
-				title="Run the program (Ctrl+Enter)"
+				disabled={busy || empty}
+				title={empty ? emptyTitle : 'Run the program (Ctrl+Enter)'}
 				onclick={onrun}
 			>
 				{@render icon('M8 5v14l11-7z')}Run
@@ -78,8 +82,8 @@
 			type="button"
 			data-testid="step"
 			class={secondary}
-			disabled={busy || playing || finished}
-			title="Run one step (S)"
+			disabled={busy || playing || finished || empty}
+			title={empty ? emptyTitle : 'Run one step (S)'}
 			onclick={onstep}
 		>
 			{@render icon('M6 5v14l9-7zM17 5h2v14h-2z')}Step

@@ -67,3 +67,13 @@ describe('Palette drag and drop', () => {
 		expect(onerase).not.toHaveBeenCalled();
 	});
 });
+
+describe('Palette stamping hint', () => {
+	it('explains how to stop stamping and Escape disarms the tile', async () => {
+		render(Palette, { subCount: 0, selected: 'MOVE_FORWARD' });
+		expect(screen.getByTestId('palette-hint').textContent).toContain('Stamping Move forward');
+		await fireEvent.keyDown(window, { key: 'Escape' });
+		expect(screen.getByTestId('palette-hint').textContent).not.toContain('Stamping');
+		expect(screen.getByRole('button', { name: /Move forward/ }).getAttribute('aria-pressed')).toBe('false');
+	});
+});

@@ -99,6 +99,8 @@ describe('statusLine', () => {
 	const vm = (status: string, steps = 0) => ({ status: status as 'READY', steps, lossReason: null });
 	it('describes each state, with the run speed while running', () => {
 		expect(statusLine({ playing: false, vm: vm('READY') })).toBe('Ready');
+		expect(statusLine({ playing: false, vm: vm('READY'), emptyMain: true })).toBe('Add an instruction to Main to start');
+		expect(statusLine({ playing: false, vm: vm('RUNNING'), emptyMain: true })).toBe('Paused');
 		expect(statusLine({ playing: true, speedMs: 100, vm: vm('RUNNING') })).toBe('Running at 100 ms/step');
 		expect(statusLine({ playing: false, vm: vm('RUNNING') })).toBe('Paused');
 		expect(statusLine({ playing: false, vm: vm('WON', 46) })).toBe('Won in 46 steps');

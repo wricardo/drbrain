@@ -99,6 +99,8 @@
 	);
 	const dirty = $derived(!!draft && !!session && !programsEqual(draft, session.program));
 	const status = $derived(session?.vm.status ?? 'READY');
+	// Running an empty Main tape only costs an attempt, so Run and Step wait for an instruction.
+	const emptyMain = $derived(!!draft && !draft.main.some((i) => i !== 'EMPTY'));
 	const terminal = $derived(status === 'WON' || status === 'LOST');
 	const playing = $derived(session?.playing ?? false);
 	// Reset only does something once the robot has moved or a run is under way.
@@ -210,7 +212,7 @@
 		e.preventDefault();
 		if (action === 'shortcuts') showShortcuts = true;
 		else if (action === 'step') {
-			if (!busy && !playing && !terminal) stepOnce();
+			if (!busy && !playing && !terminal && !emptyMain) stepOnce();
 		} else if (!busy) reset();
 	}
 
@@ -242,7 +244,7 @@
 		if (busy) return;
 		if (playing) pause();
 		else if (terminal) reset();
-		else run();
+		else if (!emptyMain) run();
 	}
 
 </script>
@@ -296,7 +298,7 @@
 								: 'bg-indigo-50 text-indigo-900'}"
 					data-testid="status-line"
 				>
-					{statusLine({ playing, speedMs: session.speedMs, vm: session.vm })}
+					{statusLine({ playing, speedMs: session.speedMs, vm: session.vm, emptyMain })}
 				</p>
 				<Stats {session} />
 
@@ -306,6 +308,7 @@
 						finished={terminal}
 						{busy}
 						{canReset}
+						empty={emptyMain}
 						bind:speedMs
 						onrun={run}
 						onpause={pause}
