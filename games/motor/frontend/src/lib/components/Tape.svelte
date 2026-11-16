@@ -115,11 +115,11 @@
 		picker = same ? null : { tape, slot, anchor: e.currentTarget as HTMLElement };
 	}
 
-	function closePicker() {
+	function closePicker(restoreFocus = true) {
 		if (!picker) return;
 		const { tape, slot } = picker;
 		picker = null;
-		focusSlot(tape, slot);
+		if (restoreFocus) focusSlot(tape, slot);
 	}
 
 	function pick(ins: Instruction) {

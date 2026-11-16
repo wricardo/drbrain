@@ -19,7 +19,8 @@
 		current: Instruction;
 		subCount: number;
 		onpick: (ins: Instruction) => void;
-		onclose: () => void;
+		/** `restoreFocus` is false when the menu closed because the pointer went down elsewhere. */
+		onclose: (restoreFocus?: boolean) => void;
 	} = $props();
 
 	let menu: HTMLElement | undefined = $state();
@@ -47,7 +48,9 @@
 
 		const onPointerDown = (e: PointerEvent) => {
 			const t = e.target as Node;
-			if (!menu?.contains(t) && !anchor.contains(t)) onclose();
+			// Don't hand focus back to the slot here: moving focus in the middle of a press stops the browser
+			// from starting a drag, so a palette tile could not be dragged while the menu was open.
+			if (!menu?.contains(t) && !anchor.contains(t)) onclose(false);
 		};
 		// Follow the slot through scrolls, resizes and layout shifts (e.g. the
 		// unsaved-changes note appearing above the tapes).
