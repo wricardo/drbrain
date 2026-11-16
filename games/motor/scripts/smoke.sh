@@ -77,9 +77,13 @@ gql 'mutation { logout }' | jq -e '.data.logout == true' >/dev/null || fail "log
 gql '{ me { handle } }' | jq -e '.data.me == null' >/dev/null || fail "still signed in after logout"
 echo "password sign-in ok"
 
-# Anyone can create a map; a built-in map still needs the admin key to change.
+# Creating a map needs a signed-in player; a built-in map still needs the admin key to change.
 gql 'mutation { createMap(map:{id:"smoke_map", name:"Smoke", layout:[">..*","....","...."]}) { id } }' \
-  | jq -e '.data.createMap.id == "smoke_map"' >/dev/null || fail "open createMap"
+  | jq -e '.errors[0].extensions.code == "UNAUTHENTICATED"' >/dev/null || fail "guest createMap was allowed"
+gql 'mutation { logInWithPassword(handle: "smoke_player", password: "tangerine-ladder-42") { handle } }' \
+  | jq -e '.data.logInWithPassword.handle == "smoke_player"' >/dev/null || fail "sign in to create a map"
+gql 'mutation { createMap(map:{id:"smoke_map", name:"Smoke", layout:[">..*","....","...."]}) { id } }' \
+  | jq -e '.data.createMap.id == "smoke_map"' >/dev/null || fail "createMap"
 gql 'mutation { updateMap(map:{id:"straight_line", name:"hijack", layout:[">..*","....","...."]}) { id } }' \
   | jq -e '.errors[0].extensions.code == "FORBIDDEN"' >/dev/null || fail "built-in map write was not gated"
 echo "map creation ok"

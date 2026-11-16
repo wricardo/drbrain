@@ -65,7 +65,7 @@ Routes:
 | `/u/<handle>` | Public profile: solved counts (official and community), best run per map, recent activity; a private profile is "not found" for everyone but its owner |
 | `/settings` | Signed-in player: handle, display name, public/private profile, add guest runs, delete account |
 | `/auth/<provider>/login`, `/auth/<provider>/callback` | Sign-in routes for the redirect providers (Google, GitHub, dev); only exist when that provider is configured, and the dev fake additionally serves `/auth/dev/authorize`, the page where you type a name. Username/password sign-in and signing out are GraphQL mutations (`registerWithPassword`, `logInWithPassword`, `logout`), see [Accounts and sign-in](#accounts-and-sign-in) |
-| `/editor` | Map editor with server-side validation; anyone can create a map, changing a built-in one needs the admin key |
+| `/editor` | Map editor with server-side validation; creating a map needs a signed-in player, changing a built-in one needs the admin key |
 | `/learn` | How it works: the game, instructions, rules, controls, how an AI plays, a generic AI prompt, tips |
 | `/graphql` | GraphQL over HTTP and WebSocket (`graphql-ws`); `/playground` when enabled |
 | `/llms.txt` | Guide for AI agents, rendered from `llms.txt.tmpl` |
@@ -138,7 +138,7 @@ HTTP /graphql (api) → gqlgen resolver (graph) → GameService (game/service)
 ### Security and hardening
 
 - Map ids match `^[a-z0-9_-]{1,64}$` because they are file names. Session ids are 16 lowercase hex characters and are validated before touching disk.
-- `createMap` and `validateMap` are open to everyone: creating a map is how players add content, and an existing id is `INVALID_ARGUMENT`, so nothing can be overwritten that way.
+- `createMap` needs a signed-in player (`UNAUTHENTICATED` otherwise, checked in the resolver before the store is touched) and `validateMap` is open to everyone: checking a draft stores nothing, so guests can still design maps. An existing id is `INVALID_ARGUMENT`, so nothing can be overwritten that way.
 - `updateMap` and `deleteMap` are open for player-created maps and require `X-Admin-Key` equal to `ADMIN_API_KEY` for built-in ones (shipped in `maps/`), compared through SHA-256 digests in constant time. `ALLOW_UNAUTHENTICATED_ADMIN=true` is honoured only when no key is set (local development). Provenance is `Map.builtin`, resolved from the map store so it also answers for session snapshots.
 - New maps are stored in `maps-user/` (survives deploys); `maps/` is only written by an admin editing a built-in map. `MAX_USER_MAPS` caps how many player maps may exist.
 - A corrupt player map file is logged and skipped at startup; a corrupt or misnamed built-in map is fatal.
@@ -239,14 +239,14 @@ Only the eleven bounds asserted in `TestNestingMapsAreProvablyNeeded` (serpentin
 3. Run `just validate`: it checks structure, that every treat is reachable, and that the reference solution wins.
 4. Add its golden step count to the table in `validate/validate_test.go`.
 
-Maps can also be created by anyone in `/editor` or with the `createMap` mutation. Built-in maps (`maps/*.json`) can only be changed or deleted with the admin key; a new map lands in `maps-user/<id>.json` and is playable immediately.
+Maps can also be created in `/editor` or with the `createMap` mutation by a signed-in player. Built-in maps (`maps/*.json`) can only be changed or deleted with the admin key; a new map lands in `maps-user/<id>.json` and is playable immediately.
 
 ## API for humans and AI agents
 
 The schema lives in `graph/schema.graphqls`.
 
 - **Queries:** `maps`, `map(id)`, `session(id, ownerToken)`, `canPlaySession(id, ownerToken)`, `sessions(sort, limit, mapId)`, `leaderboard(mapId, order, limit, sessionId)`, `playerRuns(sessionIds, name)`, plus `me`, `authProviders` and `profile(handle)` for [accounts](#accounts-and-sign-in). `canPlaySession` is `false` for a session this caller may not play (someone else's, opened from a link) and for an unknown id, so a client can pick a read-only view instead of discovering `FORBIDDEN` on the first save. `session` returns `program: null` unless the caller may play it (see the rule below), and the session lists never carry programs.
-- **Mutations:** `createSession` (its response also carries the secret `ownerToken`, which every play call below needs), `renameSession`, `deleteSession`, `setProgram`, `run`, `step`, `pause`, `reset` (each takes an optional `ownerToken`), plus `createMap` and `validateMap` (open) and `updateMap`/`deleteMap` (open for player maps, admin key for built-in ones). For signed-in browsers: `logout`, `updateAccount`, `changePassword`, `deleteAccount(confirmHandle)`, `claimSessions`. For players with a username and password: `registerWithPassword` and `logInWithPassword` (the only data API they need; the OAuth providers still use redirect routes).
+- **Mutations:** `createSession` (its response also carries the secret `ownerToken`, which every play call below needs), `renameSession`, `deleteSession`, `setProgram`, `run`, `step`, `pause`, `reset` (each takes an optional `ownerToken`), plus `createMap` (signed-in players only), `validateMap` (open) and `updateMap`/`deleteMap` (open for player maps, admin key for built-in ones). For signed-in browsers: `logout`, `updateAccount`, `changePassword`, `deleteAccount(confirmHandle)`, `claimSessions`. For players with a username and password: `registerWithPassword` and `logInWithPassword` (the only data API they need; the OAuth providers still use redirect routes).
 - **Subscription:** `sessionUpdated(sessionID, ownerToken)` emits the current snapshot, then every change; like the query, its payload carries `program` only for a player of that session.
 - **Tile surface:** `Map` gains `conveyors` (`pos`, `dir`), `mirrors` (`pos`, `slash`), `keys`/`doors` (`pos`, `letter`) and `portals` (`pos`, `pair`); `VMState` gains `openDoors: [String!]!`; `StepEvent` gains `pushed`, `pushBlocked`, `mirrored`, `collectedKey` and `teleported`. Older clients can ignore them; the glyphs themselves stay in `layout`.
 

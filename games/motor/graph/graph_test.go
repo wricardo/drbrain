@@ -116,6 +116,11 @@ func codeOf(t *testing.T, err error) string {
 	return code
 }
 
+// withViewer marks the context as a request from a signed-in player.
+func withViewer(ctx context.Context) context.Context {
+	return context.WithValue(ctx, ViewerKey{}, &Viewer{Account: &service.Account{ID: "acct1", Handle: "player"}})
+}
+
 func ctxWithKey(key string) context.Context {
 	r, _ := http.NewRequest(http.MethodPost, "/graphql", nil)
 	if key != "" {
@@ -168,8 +173,8 @@ func TestAdminGate(t *testing.T) {
 					t.Fatalf("%s: code = %q, want %q", op, got, tc.wantCode)
 				}
 			}
-			// Creating and validating need no key at all.
-			_, err := m.CreateMap(tc.ctx, input)
+			// Creating needs a signed-in player but no key; validating needs neither.
+			_, err := m.CreateMap(withViewer(tc.ctx), input)
 			if err != nil {
 				t.Fatalf("createMap: unexpected error %v", err)
 			}
@@ -208,24 +213,33 @@ func TestAdminGate(t *testing.T) {
 	}
 }
 
-// Anyone may create a map; an existing id (including a shipped one) is a
-// conflict, so creation cannot overwrite anything.
-func TestCreateMapIsOpen(t *testing.T) {
+// Creating a map needs a signed-in player: a guest is refused and nothing is
+// stored. An existing id (including a shipped one) is a conflict, so creation
+// cannot overwrite anything.
+func TestCreateMapNeedsSignIn(t *testing.T) {
 	t.Setenv("ADMIN_API_KEY", "secret")
 	t.Setenv("ALLOW_UNAUTHENTICATED_ADMIN", "")
 	layout := testMapConfig("x").Layout
 	fs := &fakeService{maps: map[string]*engine.Map{"shipped": mustMap(t, "shipped")}, builtin: map[string]bool{"shipped": true}}
 	m := &mutationResolver{&Resolver{Service: fs}}
+	guest := context.Background()
+	signedIn := withViewer(guest)
 
-	if _, err := m.CreateMap(context.Background(), model.MapInput{ID: "shipped", Name: "n", Layout: layout}); codeOf(t, err) != service.CodeInvalidArgument {
+	if _, err := m.CreateMap(guest, model.MapInput{ID: "player_map", Name: "n", Layout: layout}); codeOf(t, err) != service.CodeUnauthenticated {
+		t.Fatalf("guest create: err = %v", err)
+	}
+	if len(fs.saved) != 0 {
+		t.Fatalf("guest create reached the store: %v", fs.saved)
+	}
+	if _, err := m.CreateMap(signedIn, model.MapInput{ID: "shipped", Name: "n", Layout: layout}); codeOf(t, err) != service.CodeInvalidArgument {
 		t.Fatalf("create over shipped map: err = %v", err)
 	}
-	got, err := m.CreateMap(context.Background(), model.MapInput{ID: "player_map", Name: "n", Layout: layout})
+	got, err := m.CreateMap(signedIn, model.MapInput{ID: "player_map", Name: "n", Layout: layout})
 	if err != nil || got.ID != "player_map" {
-		t.Fatalf("open create = %+v, %v", got, err)
+		t.Fatalf("signed-in create = %+v, %v", got, err)
 	}
-	// Validation stores nothing and needs no key either.
-	if _, err := m.ValidateMap(context.Background(), model.MapInput{ID: "player_map", Name: "n", Layout: layout}); err != nil {
+	// Validation stores nothing and needs no account.
+	if _, err := m.ValidateMap(guest, model.MapInput{ID: "player_map", Name: "n", Layout: layout}); err != nil {
 		t.Fatalf("validateMap: %v", err)
 	}
 }
@@ -234,7 +248,7 @@ func TestCreateUpdateMapSemantics(t *testing.T) {
 	t.Setenv("ADMIN_API_KEY", "secret")
 	fs := &fakeService{maps: map[string]*engine.Map{"existing": mustMap(t, "existing")}}
 	m := &mutationResolver{&Resolver{Service: fs}}
-	ctx := context.Background()
+	ctx := withViewer(context.Background())
 	layout := testMapConfig("x").Layout
 
 	if _, err := m.CreateMap(ctx, model.MapInput{ID: "existing", Name: "n", Layout: layout}); codeOf(t, err) != service.CodeInvalidArgument {
@@ -269,7 +283,7 @@ func TestCreateMapSubTapeLengthsEmptyVsOmitted(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			m := &mutationResolver{&Resolver{Service: &fakeService{}}}
-			got, err := m.CreateMap(context.Background(), model.MapInput{ID: "fresh", Name: "n", Layout: layout, SubTapeLengths: tc.in})
+			got, err := m.CreateMap(withViewer(context.Background()), model.MapInput{ID: "fresh", Name: "n", Layout: layout, SubTapeLengths: tc.in})
 			if err != nil {
 				t.Fatal(err)
 			}

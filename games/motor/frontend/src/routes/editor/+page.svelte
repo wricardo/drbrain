@@ -34,7 +34,9 @@
 	} from '$lib/queries';
 	import type { Facing, GameMap, MapInput, MapValidationResult } from '$lib/types';
 	import { MAX_SUBS } from '$lib/instructions';
+	import { account } from '$lib/stores/account';
 	import Cookie from '$lib/components/Cookie.svelte';
+	import SignInDialog from '$lib/components/SignInDialog.svelte';
 
 	/**
 	 * What a click paints: the start cell, plain empty, or any layout glyph. Every
@@ -69,6 +71,11 @@
 	let error = $state<DescribedError | null>(null);
 	let notice = $state('');
 	let validation = $state<MapValidationResult | null>(null);
+	/** The sign-in dialog, opened from the hint shown to guests: creating a map needs an account. */
+	let signIn = $state(false);
+	/** Only a signed-in player may create a map; guests can still paint, validate and update their own. */
+	const canCreate = $derived($account.me !== null);
+	const next = $derived($page.url.pathname + $page.url.search);
 
 	const layout = $derived(formatLayout(cells, start));
 	const parsed = $derived(parseLayout(layout));
@@ -346,8 +353,17 @@
 <div class="mx-auto max-w-6xl px-4 sm:px-6 py-6">
 	<h1 class="text-2xl font-semibold text-indigo-950">Map editor</h1>
 	<p class="mt-1 text-sm text-slate-700">
-		Paint the board, set the start cell and tape sizes, validate, then save. Anyone can create a map and edit their own; changing a built-in map needs the admin key.
+		Paint the board, set the start cell and tape sizes, validate, then save. Creating a new map needs a signed-in account; changing a built-in map needs the admin key.
 	</p>
+
+	{#if $account.loaded && !$account.me}
+		<p class="mt-3 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-900" data-testid="editor-signin-hint">
+			You are not signed in, so you can paint, validate and update a map you already have, but not create a new one.
+			{#if $account.providers.length}
+				<button type="button" class="font-semibold underline" onclick={() => (signIn = true)}>Sign in</button>
+			{/if}
+		</p>
+	{/if}
 
 	{#if error}
 		<p role="alert" class="mt-3 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm text-rose-900" data-testid="editor-error">
@@ -525,7 +541,7 @@
 				{/if}
 				<div class="flex flex-wrap gap-2">
 					<button type="button" class="{btn} border border-indigo-300 text-indigo-900 hover:bg-indigo-50" disabled={busy} onclick={validate}>Validate</button>
-					<button type="button" class="{btn} bg-indigo-600 text-white hover:bg-indigo-700" disabled={busy || localIssues.length > 0 || !id.trim() || !name.trim()} onclick={save}>
+					<button type="button" class="{btn} bg-indigo-600 text-white hover:bg-indigo-700" disabled={busy || localIssues.length > 0 || !id.trim() || !name.trim() || (!existing && !canCreate)} onclick={save}>
 						{existing ? 'Update map' : 'Create map'}
 					</button>
 					{#if existing}
@@ -535,7 +551,7 @@
 						<button
 							type="button"
 							class="{btn} border border-indigo-300 text-indigo-900 hover:bg-indigo-50"
-							disabled={busy}
+							disabled={busy || !canCreate}
 							onclick={duplicate}
 							data-testid="duplicate-map">Duplicate as my own map</button
 						>
@@ -563,3 +579,7 @@
 		</section>
 	</div>
 </div>
+
+{#if signIn}
+	<SignInDialog providers={$account.providers} {next} onclose={() => (signIn = false)} />
+{/if}
