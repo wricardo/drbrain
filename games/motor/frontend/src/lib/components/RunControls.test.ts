@@ -73,3 +73,19 @@ describe('RunControls', () => {
 		expect((screen.getByTestId('speed-fast') as HTMLButtonElement).disabled).toBe(true);
 	});
 });
+
+describe('RunControls with an empty Main tape', () => {
+	it('keeps Run and Step off so an attempt is not wasted', () => {
+		setup({ empty: true });
+		expect(disabled('run')).toBe(true);
+		expect(disabled('step')).toBe(true);
+	});
+
+	it('still offers Pause while running and Try again after a finished run', () => {
+		setup({ empty: true, playing: true });
+		expect(disabled('pause')).toBe(false);
+		cleanup();
+		setup({ empty: true, finished: true });
+		expect(disabled('retry')).toBe(false);
+	});
+});

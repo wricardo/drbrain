@@ -130,6 +130,12 @@ describe('Tape', () => {
 	describe('undo and redo buttons', () => {
 		const filled = () => setSlot(emptyProgram(cfg), -1, 0, 'MOVE_FORWARD');
 
+		it('are present on an empty program so the first edit does not shift the slots', () => {
+			render(Tape, { program: emptyProgram(cfg), onchange: () => {} });
+			expect((screen.getByTestId('undo') as HTMLButtonElement).disabled).toBe(true);
+			expect((screen.getByTestId('redo') as HTMLButtonElement).disabled).toBe(true);
+		});
+
 		it('are disabled until there is something to step through, then call the handlers', async () => {
 			const onundo = vi.fn();
 			const onredo = vi.fn();

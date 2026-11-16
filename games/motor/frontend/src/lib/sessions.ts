@@ -86,11 +86,14 @@ export function statusLine(s: {
 	playing: boolean;
 	speedMs?: number;
 	vm: { status: Status; steps: number; lossReason: LossReason | null };
+	/** The Main tape is empty: a ready robot has nothing to run yet. */
+	emptyMain?: boolean;
 }): string {
 	if (s.vm.status === 'WON') return `Won in ${s.vm.steps} steps`;
 	if (s.vm.status === 'LOST') return `Lost: ${lossReasonText(s.vm.lossReason)}`;
 	if (s.playing) return s.speedMs ? `Running at ${s.speedMs} ms/step` : 'Running';
-	return s.vm.status === 'READY' ? 'Ready' : 'Paused';
+	if (s.vm.status === 'READY') return s.emptyMain ? 'Add an instruction to Main to start' : 'Ready';
+	return 'Paused';
 }
 
 const LAST_SESSION_KEY = 'drbrain-motor-programming.lastSession';

@@ -70,6 +70,8 @@
 	}
 </script>
 
+<svelte:window onkeydown={(e) => e.key === 'Escape' && selected !== null && (selected = null)} />
+
 <div role="group" aria-label="Instruction palette" class="flex flex-wrap gap-2">
 	{#each items as ins (ins)}
 		{@const meta = instructionMeta(ins)}
@@ -99,3 +101,10 @@
 		</button>
 	{/each}
 </div>
+<p class="min-h-8 text-xs text-slate-600" role="status" data-testid="palette-hint">
+	{#if selected !== null}
+		Stamping <strong>{selected === 'EMPTY' ? 'Erase' : instructionMeta(selected).label}</strong>: click slots to place it. Press Esc or click the tile again to stop.
+	{:else}
+		Click a slot to choose, drag a tile onto a slot, or click a tile to stamp it into several slots.
+	{/if}
+</p>
