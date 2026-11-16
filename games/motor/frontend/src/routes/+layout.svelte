@@ -63,14 +63,17 @@
 		class="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:bg-white focus:px-3 focus:py-2 focus:rounded"
 		>Skip to content</a
 	>
-	<header class="border-b border-indigo-200 bg-white px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-2">
-		<a href="/" class="flex items-center gap-2 no-underline">
+	<header class="border-b border-indigo-200 bg-white px-4 sm:px-6 py-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+		<a href="/" class="mr-auto flex items-center gap-2 no-underline sm:mr-0">
 			<img src={favicon} alt="" class="h-7 w-7" />
 			<span class="text-lg font-semibold tracking-wide text-indigo-900">{SITE}</span>
 			<span class="hidden sm:inline border-l border-indigo-200 pl-2 text-sm text-indigo-600">{GAME}</span>
 		</a>
-		<div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-			<nav class="flex flex-wrap items-center gap-1 text-sm" aria-label="Main">
+		<!-- On phones the links get their own scrolling row under the logo (three wrapped rows pushed the page down); from sm up they sit on the right as before. -->
+		<nav
+			class="order-last -mx-4 flex w-[calc(100%+2rem)] items-center gap-1 overflow-x-auto px-4 pb-0.5 text-sm whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:order-none sm:mx-0 sm:ml-auto sm:w-auto sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0"
+			aria-label="Main"
+		>
 				{#each navItems as item}
 					{@const active = isActive(item.href, $page.url.pathname)}
 					<a
@@ -81,7 +84,8 @@
 							: 'text-indigo-900 hover:bg-indigo-100'}">{item.label}</a
 					>
 				{/each}
-			</nav>
+		</nav>
+		<div class="flex items-center gap-x-3">
 			<AccountMenu />
 			<ThemeToggle />
 		</div>

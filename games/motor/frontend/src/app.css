@@ -112,6 +112,14 @@ body {
   color: #e0e7ff;
 }
 
+/* Same fill as the page, for elements that pin over scrolling content (the board on phones): bg-(--page-bg). */
+:root {
+  --page-bg: #f5f6ff;
+}
+.dark {
+  --page-bg: #0e0f24;
+}
+
 /* White surfaces (cards, header, modals) become the card colour; text-white stays white. */
 .dark .bg-white,
 .dark .focus\:bg-white:focus {
