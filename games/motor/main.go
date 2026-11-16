@@ -9,10 +9,12 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -52,15 +54,16 @@ var (
 	publicURL    = flag.String("public-url", "", "Public base URL rendered into /llms.txt (defaults to the request host)")
 )
 
-// envBool reads a boolean env var; unset returns def. "true", "1", "yes" are
-// true, anything else is false.
+// envBool reads a boolean env var. Unset returns def. It is deliberately as
+// forgiving as the auth flags (which lowercase and trim before comparing), so
+// GRAPHQL_INTROSPECTION=TRUE cannot silently mean false: an operator who
+// capitalises a flag must not turn a feature off by accident. Recognised true
+// values are true/1/yes/on; unset returns the default, anything else is false.
 func envBool(key string, def bool) bool {
-	v := os.Getenv(key)
-	if v == "" {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(key))) {
+	case "":
 		return def
-	}
-	switch v {
-	case "true", "1", "yes":
+	case "true", "1", "yes", "on":
 		return true
 	}
 	return false
@@ -202,7 +205,9 @@ func run() error {
 		return err
 	}
 
-	addr := fmt.Sprintf("%s:%d", *host, *port)
+	// net.JoinHostPort brackets an IPv6 literal: -host ::1 must become [::1]:8000,
+	// not the unparseable ::1:8000 that Sprintf would produce.
+	addr := net.JoinHostPort(*host, strconv.Itoa(*port))
 	httpServer := &http.Server{
 		Addr:              addr,
 		Handler:           apiServer,
