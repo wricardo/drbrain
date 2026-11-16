@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blankCells, formatLayout, localLayoutIssues, parseLayout, resizeCells } from './layout';
+import { MAX_MAP_ID, blankCells, copyId, formatLayout, localLayoutIssues, parseLayout, resizeCells } from './layout';
 
 describe('layout', () => {
 	const layout = ['.*.', '#.<', '...'];
@@ -42,5 +42,26 @@ describe('layout', () => {
 		const two = parseLayout(['^.>', '.*.', '...']);
 		expect(localLayoutIssues(two)).toContain('Place exactly one start cell.');
 		expect(localLayoutIssues(parseLayout(['^*', '..']))[0]).toMatch(/per side/);
+	});
+});
+
+describe('copyId', () => {
+	it('appends _copy for ids that leave room', () => {
+		expect(copyId('comb')).toBe('comb_copy');
+		expect(copyId('a')).toBe('a_copy');
+	});
+
+	it('never exceeds the server id limit', () => {
+		const long = 'z'.repeat(MAX_MAP_ID);
+		const out = copyId(long);
+		expect(out.length).toBeLessThanOrEqual(MAX_MAP_ID);
+		expect(out).toMatch(/^[a-z0-9_-]{1,64}$/);
+	});
+
+	it('does not leave a trailing separator after truncating', () => {
+		const id = `${'a'.repeat(MAX_MAP_ID - 6)}-`;
+		const out = copyId(id);
+		expect(out).toMatch(/^[a-z0-9_-]{1,64}$/);
+		expect(out).not.toMatch(/[-_]_copy$/);
 	});
 });

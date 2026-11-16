@@ -12,6 +12,7 @@
 		MIN_SIDE,
 		START_GLYPHS,
 		blankCells,
+		copyId,
 		formatLayout,
 		localLayoutIssues,
 		parseLayout,
@@ -93,7 +94,7 @@
 		cells = p.cells;
 		start = p.start;
 		if (p.start) facing = p.start.facing;
-		id = duplicate ? `${m.id}_copy` : m.id;
+		id = duplicate ? copyId(m.id) : m.id;
 		name = duplicate ? `${m.name} (copy)` : m.name;
 		description = m.description;
 		difficulty = m.difficulty;
@@ -205,6 +206,22 @@
 			if (!confirm(`Delete map "${id}"? Existing sessions keep their own copy.`)) return;
 			await unwrap(client.mutation(DELETE_MAP_MUTATION, { id: id.trim() }));
 			await goto('/maps');
+		});
+
+	// Turns the loaded built-in map into a new player map: the copy gets its own
+	// id, needs no admin key, and the original is left untouched.
+	const duplicate = () =>
+		run(async () => {
+			const copyID = copyId(id.trim());
+			if (!confirm(`Create "${copyID}" as your own copy? The original stays unchanged.`)) return;
+			const data = await unwrap<{ createMap: GameMap }>(
+				client.mutation(CREATE_MAP_MUTATION, {
+					map: { ...toInput(), id: copyID, name: `${name.trim()} (copy)` }
+				})
+			);
+			await goto(`/editor?map=${encodeURIComponent(data.createMap.id)}`);
+			load(data.createMap, false);
+			notice = `Created "${data.createMap.id}". It is your own map, so you can edit it without the admin key.`;
 		});
 
 	const field = 'mt-1 w-full rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm';
@@ -364,7 +381,8 @@
 			<div class="rounded-xl border border-indigo-200 bg-white p-3 space-y-3">
 				{#if builtin}
 					<p class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid="builtin-warning">
-						This is a built-in map. Saving or deleting it needs the admin key; duplicate it to make your own copy.
+						This is a built-in map. Saving or deleting it needs the admin key, and it ships with the game.
+						To make changes, duplicate it below and edit your own copy.
 					</p>
 					<label class="block text-sm">Admin key
 						<input
@@ -384,6 +402,15 @@
 					</button>
 					{#if existing}
 						<button type="button" class="{btn} border border-rose-300 text-rose-800 hover:bg-rose-50" disabled={busy} onclick={remove}>Delete</button>
+					{/if}
+					{#if builtin}
+						<button
+							type="button"
+							class="{btn} border border-indigo-300 text-indigo-900 hover:bg-indigo-50"
+							disabled={busy}
+							onclick={duplicate}
+							data-testid="duplicate-map">Duplicate as my own map</button
+						>
 					{/if}
 				</div>
 			</div>

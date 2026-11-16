@@ -86,3 +86,19 @@ export function localLayoutIssues(p: ParsedLayout): string[] {
 export function samePos(a: Position, b: Position): boolean {
 	return a.x === b.x && a.y === b.y;
 }
+
+/** Max length of a map id, matching the server (^[a-z0-9_-]{1,64}$). */
+export const MAX_MAP_ID = 64;
+
+/**
+ * Derives the id for a copy of `id`: `_copy` appended to the source id, with the
+ * source trimmed to fit the server's limit and any trailing separator dropped so
+ * the result reads cleanly. Always satisfies ^[a-z0-9_-]{1,64}$.
+ */
+export function copyId(id: string): string {
+	const suffix = '_copy';
+	const trimTail = (s: string) => s.replace(/[-_]+$/, '');
+	const base = trimTail(id) || 'map';
+	const head = trimTail(base.slice(0, Math.max(1, MAX_MAP_ID - suffix.length))) || 'map';
+	return `${base.length + suffix.length <= MAX_MAP_ID ? base : head}${suffix}`;
+}
