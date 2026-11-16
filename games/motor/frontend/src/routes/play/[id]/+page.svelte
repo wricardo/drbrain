@@ -347,7 +347,7 @@
 					<h2 class="text-xs font-semibold uppercase tracking-widest text-indigo-900">Help</h2>
 					<ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
 						<li>Click a slot to pick an instruction, or arm one in the palette and click slots to stamp it.</li>
-						<li>Drag an instruction onto a slot to place it. Drag a slot to swap it with another, hold <kbd>Shift</kbd> to reorder a tape, <kbd>Alt</kbd> to copy, or drop it on Erase to clear it.</li>
+						<li>Drag an instruction onto a slot to place it. Drag a slot to swap it with another, hold <kbd>Shift</kbd> to reorder a tape, <kbd>Alt</kbd> to copy, or drop it on the palette to clear it.</li>
 						<li>With a slot focused: <kbd>F</kbd> forward, <kbd>L</kbd>/<kbd>R</kbd> turn, {callKeys} <kbd>Backspace</kbd> clear, arrows move.</li>
 						<li><kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes a program edit, <kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs or pauses.</li>
 						<li><kbd>S</kbd> steps once and <kbd>R</kbd> resets the robot when no slot is focused.</li>

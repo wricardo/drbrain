@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { DRAG_MIME, activeDrag, decodeDrag, encodeDrag } from '$lib/dnd';
+	import { DRAG_MIME, activeDrag, decodeDrag, encodeDrag, eraseTargetFor } from '$lib/dnd';
 	import { setTileDragImage } from '$lib/dragImage';
 	import { instructionMeta, paletteInstructions } from '$lib/instructions';
 	import type { SlotRef } from '$lib/program';
@@ -14,16 +14,16 @@
 		selected?: Instruction | null;
 		subCount: number;
 		disabled?: boolean;
-		/** A slot was dropped on the Erase tile. */
+		/** A placed step was dropped on the palette (the Erase tile or anywhere else in it). */
 		onerase?: (slot: SlotRef) => void;
 	} = $props();
 
 	const items = $derived<Instruction[]>([...paletteInstructions(subCount), 'EMPTY']);
 
-	// True while a slot is dragged over the Erase tile.
+	// True while a placed step is dragged over the palette.
 	let eraseHover = $state(false);
-	// Erase is a drop target only for slot drags (a palette tile dropped here would do nothing).
-	const slotDragActive = $derived(!disabled && $activeDrag?.kind === 'slot');
+	// The palette is an erase drop zone only for slot drags (a palette tile dropped here does nothing).
+	const slotDragActive = $derived(eraseTargetFor($activeDrag, disabled) !== null);
 
 	function toggle(ins: Instruction) {
 		if (disabled) return;
@@ -43,25 +43,25 @@
 		activeDrag.set(source);
 	}
 
-	function onEraseDragOver(e: DragEvent) {
+	function onZoneDragOver(e: DragEvent) {
 		if (!slotDragActive) return;
 		e.preventDefault();
 		eraseHover = true;
 		if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
 	}
 
-	function onEraseDragLeave(e: DragEvent) {
+	function onZoneDragLeave(e: DragEvent) {
 		if (e.currentTarget instanceof Node && e.relatedTarget instanceof Node && e.currentTarget.contains(e.relatedTarget)) return;
 		eraseHover = false;
 	}
 
-	function onEraseDrop(e: DragEvent) {
+	function onZoneDrop(e: DragEvent) {
 		const wasSlotDrag = slotDragActive;
 		endDrag();
 		if (!wasSlotDrag) return;
 		e.preventDefault();
-		const source = decodeDrag(e.dataTransfer?.getData(DRAG_MIME) ?? '');
-		if (source?.kind === 'slot') onerase({ tape: source.tape, slot: source.slot });
+		const target = eraseTargetFor(decodeDrag(e.dataTransfer?.getData(DRAG_MIME) ?? ''), disabled);
+		if (target) onerase(target);
 	}
 
 	function endDrag() {
@@ -70,7 +70,19 @@
 	}
 </script>
 
-<div role="group" aria-label="Instruction palette" class="flex flex-wrap gap-2">
+<!-- The whole palette is an erase drop zone while a placed step is dragged (plain drop target, not a control). -->
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<div
+	role="group"
+	aria-label="Instruction palette"
+	data-testid="palette"
+	class="relative flex flex-wrap gap-2 rounded-lg transition-all duration-100 {slotDragActive
+		? 'outline-2 outline-dashed outline-offset-4 outline-rose-500'
+		: ''} {slotDragActive && eraseHover ? 'bg-rose-50 ring-4 ring-rose-300 outline-rose-600' : ''}"
+	ondragover={onZoneDragOver}
+	ondragleave={onZoneDragLeave}
+	ondrop={onZoneDrop}
+>
 	{#each items as ins (ins)}
 		{@const meta = instructionMeta(ins)}
 		{@const erase = ins === 'EMPTY'}
@@ -87,15 +99,22 @@
 			draggable={!disabled}
 			ondragstart={(e) => onDragStart(e, ins)}
 			ondragend={endDrag}
-			ondragover={erase ? onEraseDragOver : undefined}
-			ondragleave={erase ? onEraseDragLeave : undefined}
-			ondrop={erase ? onEraseDrop : undefined}
 			onclick={() => toggle(ins)}
-			title={erase && slotDragActive ? 'Drop here to erase the slot' : `${meta.label}${meta.key ? ` (${meta.key})` : ' (Backspace)'}`}
+			title={slotDragActive ? 'Drop here to erase the slot' : `${meta.label}${meta.key ? ` (${meta.key})` : ' (Backspace)'}`}
 		>
 			<span class="pointer-events-none block text-lg leading-none" aria-hidden="true">{erase ? '⌫' : meta.glyph}</span>
 			<span class="pointer-events-none block text-[11px] mt-1">{erase ? 'Erase' : meta.label}</span>
 			{#if meta.key}<kbd class="pointer-events-none block text-[10px] opacity-70">{meta.key}</kbd>{/if}
 		</button>
 	{/each}
+	{#if slotDragActive}
+		<span
+			data-testid="palette-erase-hint"
+			class="pointer-events-none absolute -top-3 right-2 rounded-full px-2 text-[11px] font-semibold {eraseHover
+				? 'bg-rose-600 text-white'
+				: 'bg-rose-100 text-rose-800'}"
+		>
+			⌫ Drop here to erase
+		</span>
+	{/if}
 </div>
