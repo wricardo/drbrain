@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeDrag, dropEffectFor, dropModeFor, encodeDrag } from './dnd';
+import { decodeDrag, dropEffectFor, dropModeFor, encodeDrag, eraseTargetFor } from './dnd';
 
 describe('drag payload', () => {
 	it('round-trips palette and slot sources', () => {
@@ -42,5 +42,21 @@ describe('drag payload', () => {
 			expect(dropEffectFor('move')).toBe('move');
 			expect(dropEffectFor('insert')).toBe('move');
 		});
+	});
+});
+
+describe('eraseTargetFor', () => {
+	const slot = { kind: 'slot', tape: 1, slot: 4 } as const;
+	const palette = { kind: 'palette', instruction: 'TURN_LEFT' } as const;
+
+	it('erases the dragged placed step, main tape (-1) and subs alike', () => {
+		expect(eraseTargetFor(slot)).toEqual({ tape: 1, slot: 4 });
+		expect(eraseTargetFor({ kind: 'slot', tape: -1, slot: 0 })).toEqual({ tape: -1, slot: 0 });
+	});
+
+	it('is a no-op for palette drags, no drag, or a locked palette', () => {
+		expect(eraseTargetFor(palette)).toBeNull();
+		expect(eraseTargetFor(null)).toBeNull();
+		expect(eraseTargetFor(slot, true)).toBeNull();
 	});
 });

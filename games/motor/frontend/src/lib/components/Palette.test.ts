@@ -66,6 +66,65 @@ describe('Palette drag and drop', () => {
 		await fireEvent.drop(screen.getByTestId('palette-erase'), { dataTransfer: transfer(encodeDrag(slot)) });
 		expect(onerase).not.toHaveBeenCalled();
 	});
+
+	it('erases a step dropped anywhere on the palette, not just on the Erase tile', async () => {
+		const onerase = vi.fn();
+		render(Palette, { subCount: 1, onerase });
+		const slot = { kind: 'slot', tape: 1, slot: 2 } as const;
+		activeDrag.set(slot);
+		const dt = transfer(encodeDrag(slot));
+		for (const target of [screen.getByRole('button', { name: /forward/i }), screen.getByTestId('palette')]) {
+			onerase.mockClear();
+			activeDrag.set(slot);
+			await fireEvent.dragOver(target, { dataTransfer: dt });
+			expect(dt.dropEffect).toBe('move');
+			await fireEvent.drop(target, { dataTransfer: dt });
+			expect(onerase).toHaveBeenCalledOnce();
+			expect(onerase).toHaveBeenCalledWith({ tape: 1, slot: 2 });
+		}
+	});
+
+	it('shows a drop affordance while a placed step is dragged, and hides it after', async () => {
+		render(Palette, { subCount: 1 });
+		const zone = screen.getByTestId('palette');
+		expect(screen.queryByTestId('palette-erase-hint')).toBeNull();
+		expect(zone.className).not.toMatch(/outline-rose-500/);
+
+		const slot = { kind: 'slot', tape: -1, slot: 0 } as const;
+		activeDrag.set(slot);
+		expect(await screen.findByTestId('palette-erase-hint')).toBeTruthy();
+		expect(zone.className).toMatch(/outline-rose-500/);
+
+		await fireEvent.dragOver(zone, { dataTransfer: transfer(encodeDrag(slot)) });
+		expect(zone.className).toMatch(/ring-rose-300/);
+
+		await fireEvent.dragEnd(screen.getByTestId('palette-erase'), { dataTransfer: transfer() });
+		expect(screen.queryByTestId('palette-erase-hint')).toBeNull();
+	});
+
+	it('dropping a palette tile on the palette stays a no-op with no affordance', async () => {
+		const onerase = vi.fn();
+		render(Palette, { subCount: 1, onerase });
+		const tile = { kind: 'palette', instruction: 'MOVE_FORWARD' } as const;
+		activeDrag.set(tile);
+		const zone = screen.getByTestId('palette');
+		const dt = transfer(encodeDrag(tile));
+		await fireEvent.dragOver(zone, { dataTransfer: dt });
+		expect(dt.dropEffect).toBe('');
+		expect(screen.queryByTestId('palette-erase-hint')).toBeNull();
+		await fireEvent.drop(screen.getByRole('button', { name: /forward/i }), { dataTransfer: dt });
+		expect(onerase).not.toHaveBeenCalled();
+	});
+
+	it('a disabled palette shows no affordance and ignores drops anywhere', async () => {
+		const onerase = vi.fn();
+		render(Palette, { subCount: 1, onerase, disabled: true });
+		const slot = { kind: 'slot', tape: 0, slot: 0 } as const;
+		activeDrag.set(slot);
+		expect(screen.queryByTestId('palette-erase-hint')).toBeNull();
+		await fireEvent.drop(screen.getByTestId('palette'), { dataTransfer: transfer(encodeDrag(slot)) });
+		expect(onerase).not.toHaveBeenCalled();
+	});
 });
 
 describe('Palette stamping hint', () => {
