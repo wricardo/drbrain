@@ -33,6 +33,20 @@ describe('Tape', () => {
 		expect(document.activeElement).toBe(screen.getByTestId('slot--1-1'));
 	});
 
+	it('pressing elsewhere closes the menu without moving focus, so a drag can still start', async () => {
+		render(Tape, { program: emptyProgram(cfg), onchange: vi.fn() });
+		await fireEvent.click(screen.getByTestId('slot--1-0'));
+		expect(screen.getByTestId('slot-picker')).toBeTruthy();
+		const outside = document.createElement('button');
+		document.body.append(outside);
+		outside.focus();
+		await fireEvent.pointerDown(outside);
+		expect(screen.queryByTestId('slot-picker')).toBeNull();
+		// Handing focus back to the slot mid-press cancels a drag that is starting on another element.
+		expect(document.activeElement).toBe(outside);
+		outside.remove();
+	});
+
 	it('instruction menu: shortcut keys pick, Backspace erases, Escape closes', async () => {
 		const onchange = vi.fn();
 		render(Tape, { program: setSlot(emptyProgram(cfg), 0, 1, 'MOVE_FORWARD'), onchange });
