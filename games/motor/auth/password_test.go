@@ -1,10 +1,10 @@
 package auth
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -64,29 +64,6 @@ func (f *fakeAccounts) VerifyPassword(handle, password string) (*service.Account
 	return a, nil
 }
 
-func (h *harness) postJSON(path, body string, hdr ...string) (*http.Response, map[string]any) {
-	h.t.Helper()
-	req, _ := http.NewRequest(http.MethodPost, h.ts.URL+path, strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Origin", h.ts.URL)
-	for i := 0; i+1 < len(hdr); i += 2 {
-		if hdr[i+1] == "" {
-			req.Header.Del(hdr[i])
-		} else {
-			req.Header.Set(hdr[i], hdr[i+1])
-		}
-	}
-	resp, err := h.client.Do(req)
-	if err != nil {
-		h.t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
-	var out map[string]any
-	_ = json.Unmarshal(raw, &out)
-	return resp, out
-}
-
 func pwHarness(t *testing.T, mut func(*Config)) *harness {
 	t.Helper()
 	return newHarness(t, func(string) []Provider { return nil }, func(c *Config) {
@@ -98,57 +75,113 @@ func pwHarness(t *testing.T, mut func(*Config)) *harness {
 	})
 }
 
-const goodPw = `{"handle":"speedy_fox","password":"tangerine-ladder-42"}`
+const (
+	goodHandle = "speedy_fox"
+	goodPw     = "tangerine-ladder-42"
+)
+
+// browserReq builds the POST a browser's GraphQL call carries: the Origin is
+// this site's, which is what the same-origin check looks at.
+func (h *harness) browserReq(hdr ...string) *http.Request {
+	h.t.Helper()
+	req := httptest.NewRequest(http.MethodPost, h.ts.URL+"/graphql", nil)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", h.ts.URL)
+	// A loopback peer, as a real browser behind the local reverse proxy is: that
+	// is what makes ClientIP trust the X-Forwarded-For the tests set.
+	req.RemoteAddr = "127.0.0.1:1234"
+	if c := h.cookie(SessionCookie); c != nil {
+		req.AddCookie(c)
+	}
+	for i := 0; i+1 < len(hdr); i += 2 {
+		if hdr[i+1] == "" {
+			req.Header.Del(hdr[i])
+		} else {
+			req.Header.Set(hdr[i], hdr[i+1])
+		}
+	}
+	return req
+}
+
+// session is what PasswordSignIn hands to the transport: the cookie it must set.
+type session struct {
+	token   string
+	expires time.Time
+	set     bool
+}
+
+// signIn calls PasswordSignIn as the browser would and returns the account, the
+// session it asked to set and the error.
+func (h *harness) signIn(register bool, handle, password string, hdr ...string) (*service.Account, session, error) {
+	h.t.Helper()
+	var s session
+	acct, err := h.a.PasswordSignIn(register, h.browserReq(hdr...), handle, password, func(token string, expires time.Time) {
+		s = session{token: token, expires: expires, set: true}
+	})
+	return acct, s, err
+}
+
+// wantCode asserts err is a coded service error with code.
+func wantCode(t *testing.T, err error, code string) {
+	t.Helper()
+	var se *service.Error
+	if !errors.As(err, &se) {
+		t.Fatalf("err = %v (%T), want a coded error %s", err, err, code)
+	}
+	if se.Code != code {
+		t.Fatalf("code = %q, want %q (%v)", se.Code, code, se)
+	}
+}
 
 func TestPasswordRegisterAndLogin(t *testing.T) {
 	h := pwHarness(t, nil)
 
-	resp, out := h.postJSON("/auth/password/register", goodPw)
-	if resp.StatusCode != http.StatusOK || out["handle"] != "speedy_fox" {
-		t.Fatalf("register = %d %v", resp.StatusCode, out)
+	acct, s, err := h.signIn(true, "Speedy_Fox", goodPw)
+	if err != nil {
+		t.Fatalf("register: %v", err)
 	}
-	c := setCookieHeader(resp, SessionCookie)
-	for _, want := range []string{"HttpOnly", "SameSite=Lax", "Path=/"} {
-		if !strings.Contains(c, want) {
-			t.Errorf("cookie %q lacks %s", c, want)
-		}
+	if acct.Handle != goodHandle {
+		t.Fatalf("handle = %q", acct.Handle)
 	}
-	first := h.cookie(SessionCookie)
-	if first == nil || len(first.Value) < 20 {
-		t.Fatal("no session cookie after registering")
+	if !s.set || len(s.token) < 20 {
+		t.Fatal("no login cookie was set")
 	}
-	if _, ok := h.accounts.Authenticate(first.Value); !ok {
-		t.Fatal("the cookie is not a valid login")
+	if _, ok := h.accounts.Authenticate(s.token); !ok {
+		t.Fatal("the token is not a valid login")
 	}
 
-	// Logging in again rotates the cookie and ends the one the browser arrived with.
-	resp, out = h.postJSON("/auth/password/login", `{"handle":"SPEEDY_FOX","password":"tangerine-ladder-42"}`)
-	if resp.StatusCode != http.StatusOK || out["handle"] != "speedy_fox" {
-		t.Fatalf("login = %d %v", resp.StatusCode, out)
+	// Logging in again rotates the token and ends the one the browser arrived with.
+	first := s.token
+	h.client.Jar.(*simpleJar).cookies[SessionCookie] = &http.Cookie{Name: SessionCookie, Value: first, Path: "/"}
+	acct2, s2, err := h.signIn(false, "SPEEDY_FOX", goodPw)
+	if err != nil {
+		t.Fatalf("login: %v", err)
 	}
-	second := h.cookie(SessionCookie)
-	if second.Value == first.Value {
+	if acct2.Handle != goodHandle {
+		t.Fatalf("login handle = %q", acct2.Handle)
+	}
+	if s2.token == first {
 		t.Fatal("the session token was reused (fixation)")
 	}
-	if _, ok := h.accounts.Authenticate(first.Value); ok {
+	if _, ok := h.accounts.Authenticate(first); ok {
 		t.Fatal("the previous login was not ended")
 	}
 }
 
 func TestPasswordFailuresReadTheSame(t *testing.T) {
 	h := pwHarness(t, nil)
-	h.postJSON("/auth/password/register", goodPw)
-	h.client.Jar.(*simpleJar).cookies = map[string]*http.Cookie{}
-
-	r1, wrong := h.postJSON("/auth/password/login", `{"handle":"speedy_fox","password":"tangerine-ladder-43"}`)
-	r2, unknown := h.postJSON("/auth/password/login", `{"handle":"nobody_here","password":"tangerine-ladder-42"}`)
-	if r1.StatusCode != http.StatusUnauthorized || r2.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("statuses %d / %d", r1.StatusCode, r2.StatusCode)
+	if _, _, err := h.signIn(true, goodHandle, goodPw); err != nil {
+		t.Fatal(err)
 	}
-	if wrong["error"] != unknown["error"] || wrong["code"] != unknown["code"] {
-		t.Fatalf("a wrong password and an unknown user are distinguishable: %v vs %v", wrong, unknown)
+	// A wrong password and an unknown username must be indistinguishable.
+	_, s1, errWrong := h.signIn(false, goodHandle, "tangerine-ladder-43")
+	_, s2, errUnknown := h.signIn(false, "nobody_here", goodPw)
+	wantCode(t, errWrong, service.CodeUnauthenticated)
+	wantCode(t, errUnknown, service.CodeUnauthenticated)
+	if errWrong.Error() != errUnknown.Error() {
+		t.Fatalf("a wrong password and an unknown user are distinguishable: %v vs %v", errWrong, errUnknown)
 	}
-	if h.cookie(SessionCookie) != nil {
+	if s1.set || s2.set {
 		t.Fatal("a failed login set a cookie")
 	}
 }
@@ -156,62 +189,56 @@ func TestPasswordFailuresReadTheSame(t *testing.T) {
 func TestPasswordRegistrationValidation(t *testing.T) {
 	h := pwHarness(t, nil)
 	tests := []struct {
-		name, body string
-		status     int
+		name, handle, password string
 	}{
-		{"weak password", `{"handle":"fresh_one","password":"password123"}`, http.StatusBadRequest},
-		{"short password", `{"handle":"fresh_one","password":"short"}`, http.StatusBadRequest},
-		{"bad handle", `{"handle":"no spaces","password":"tangerine-ladder-42"}`, http.StatusBadRequest},
-		{"blocked handle", `{"handle":"fuck_you","password":"tangerine-ladder-42"}`, http.StatusBadRequest},
-		{"unknown field", `{"handle":"fresh_one","password":"tangerine-ladder-42","admin":true}`, http.StatusBadRequest},
-		{"not json", `handle=fresh_one`, http.StatusBadRequest},
-		{"empty body", ``, http.StatusBadRequest},
-		{"oversized body", `{"handle":"fresh_one","password":"` + strings.Repeat("a", 5000) + `"}`, http.StatusBadRequest},
+		{"weak password", "fresh_one", "password123"},
+		{"short password", "fresh_one", "short"},
+		{"bad handle", "no spaces", goodPw},
+		{"blocked handle", "fuck_you", goodPw},
+		{"empty handle", "", goodPw},
+		{"password is the username", "fresh_one", "Fresh_One"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			resp, out := h.postJSON("/auth/password/register", tc.body)
-			if resp.StatusCode != tc.status {
-				t.Fatalf("status = %d %v, want %d", resp.StatusCode, out, tc.status)
+			_, s, err := h.signIn(true, tc.handle, tc.password)
+			if err == nil {
+				t.Fatalf("register(%q, %q) succeeded", tc.handle, tc.password)
 			}
-			if h.cookie(SessionCookie) != nil {
+			if s.set {
 				t.Fatal("a refused registration set a cookie")
 			}
 		})
 	}
-	h.postJSON("/auth/password/register", goodPw)
-	h.client.Jar.(*simpleJar).cookies = map[string]*http.Cookie{}
-	if resp, _ := h.postJSON("/auth/password/register", goodPw); resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("a taken username = %d", resp.StatusCode)
+	if _, _, err := h.signIn(true, goodHandle, goodPw); err != nil {
+		t.Fatal(err)
 	}
+	h.client.Jar.(*simpleJar).cookies = map[string]*http.Cookie{}
+	_, _, err := h.signIn(true, goodHandle, goodPw)
+	wantCode(t, err, service.CodeInvalidArgument)
 }
 
 // Another site must be able neither to create accounts nor to guess passwords
-// through a victim's browser.
-func TestPasswordRoutesRefuseCrossSiteAndNonJSON(t *testing.T) {
+// through a victim's browser, whichever transport asks.
+func TestPasswordRefusesCrossSite(t *testing.T) {
 	h := pwHarness(t, nil)
-	h.postJSON("/auth/password/register", goodPw)
+	if _, _, err := h.signIn(true, goodHandle, goodPw); err != nil {
+		t.Fatal(err)
+	}
 	h.client.Jar.(*simpleJar).cookies = map[string]*http.Cookie{}
 
-	tests := []struct {
-		name   string
-		hdr    []string
-		status int
+	for _, tc := range []struct {
+		name string
+		hdr  []string
 	}{
-		{"foreign origin", []string{"Origin", "https://evil.example"}, http.StatusForbidden},
-		{"origin null", []string{"Origin", "null"}, http.StatusForbidden},
-		{"cross-site metadata, no origin", []string{"Origin", "", "Sec-Fetch-Site", "cross-site"}, http.StatusForbidden},
-		{"form encoding", []string{"Content-Type", "application/x-www-form-urlencoded"}, http.StatusUnsupportedMediaType},
-		{"text/plain", []string{"Content-Type", "text/plain"}, http.StatusUnsupportedMediaType},
-	}
-	for _, path := range []string{"/auth/password/login", "/auth/password/register"} {
-		for _, tc := range tests {
-			t.Run(path+" "+tc.name, func(t *testing.T) {
-				resp, _ := h.postJSON(path, goodPw, tc.hdr...)
-				if resp.StatusCode != tc.status {
-					t.Fatalf("status = %d, want %d", resp.StatusCode, tc.status)
-				}
-				if h.cookie(SessionCookie) != nil {
+		{"foreign origin", []string{"Origin", "https://evil.example"}},
+		{"origin null", []string{"Origin", "null"}},
+		{"cross-site metadata, no origin", []string{"Origin", "", "Sec-Fetch-Site", "cross-site"}},
+	} {
+		for _, register := range []bool{true, false} {
+			t.Run(fmt.Sprint(tc.name, " register=", register), func(t *testing.T) {
+				_, s, err := h.signIn(register, "fresh_one", goodPw, tc.hdr...)
+				wantCode(t, err, service.CodeForbidden)
+				if s.set {
 					t.Fatal("a refused request set a cookie")
 				}
 			})
@@ -220,76 +247,81 @@ func TestPasswordRoutesRefuseCrossSiteAndNonJSON(t *testing.T) {
 	if len(h.accounts.pw().byHandle) != 1 {
 		t.Fatal("a cross-site request created an account")
 	}
-	// GET is not a way in.
-	if resp := h.get("/auth/password/login"); resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusMethodNotAllowed {
-		t.Fatalf("GET /auth/password/login = %d", resp.StatusCode)
+}
+
+// The per-address request limit still guards the mutations.
+func TestPasswordRateLimitedPerAddress(t *testing.T) {
+	h := pwHarness(t, func(c *Config) { c.Limiter = NewLimiter(3, time.Minute, nil) })
+	for i := 0; i < 3; i++ {
+		if _, _, err := h.signIn(false, "nobody_here", goodPw); err == nil {
+			t.Fatalf("attempt %d succeeded", i)
+		}
+	}
+	_, s, err := h.signIn(false, "nobody_here", goodPw)
+	wantCode(t, err, service.CodeLimit)
+	if s.set {
+		t.Fatal("a refused request set a cookie")
 	}
 }
 
 func TestPasswordLockout(t *testing.T) {
 	h := pwHarness(t, nil)
-	h.postJSON("/auth/password/register", goodPw)
+	if _, _, err := h.signIn(true, goodHandle, goodPw); err != nil {
+		t.Fatal(err)
+	}
 	h.client.Jar.(*simpleJar).cookies = map[string]*http.Cookie{}
-	bad := `{"handle":"speedy_fox","password":"guess-number-%d"}`
 
 	for i := 0; i < 5; i++ {
-		resp, _ := h.postJSON("/auth/password/login", strings.Replace(bad, "%d", string(rune('a'+i)), 1))
-		if resp.StatusCode != http.StatusUnauthorized {
-			t.Fatalf("attempt %d = %d", i, resp.StatusCode)
-		}
+		_, _, err := h.signIn(false, goodHandle, fmt.Sprintf("guess-number-%c", 'a'+i))
+		wantCode(t, err, service.CodeUnauthenticated)
 	}
 	// Locked: even the right password is refused, without being checked.
-	resp, out := h.postJSON("/auth/password/login", goodPw)
-	if resp.StatusCode != http.StatusTooManyRequests || resp.Header.Get("Retry-After") == "" || out["code"] != service.CodeLimit {
-		t.Fatalf("locked login = %d %v (Retry-After %q)", resp.StatusCode, out, resp.Header.Get("Retry-After"))
-	}
-	if h.cookie(SessionCookie) != nil {
+	_, s, err := h.signIn(false, goodHandle, goodPw)
+	wantCode(t, err, service.CodeLimit)
+	if s.set {
 		t.Fatal("a locked login set a cookie")
 	}
 	// A different client address is not locked by the per-address counter...
-	resp, _ = h.postJSON("/auth/password/login", goodPw, "X-Forwarded-For", "203.0.113.50")
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("other address = %d", resp.StatusCode)
+	if _, _, err := h.signIn(false, goodHandle, goodPw, "X-Forwarded-For", "203.0.113.50"); err != nil {
+		t.Fatalf("other address: %v", err)
 	}
 	// ...and the lock lifts after 15 minutes.
 	h.client.Jar.(*simpleJar).cookies = map[string]*http.Cookie{}
 	h.advance(16 * time.Minute)
-	if resp, _ = h.postJSON("/auth/password/login", goodPw); resp.StatusCode != http.StatusOK {
-		t.Fatalf("after the lock = %d", resp.StatusCode)
+	if _, _, err := h.signIn(false, goodHandle, goodPw); err != nil {
+		t.Fatalf("after the lock: %v", err)
 	}
 }
 
 // Failures for one username from many addresses still lock that username.
 func TestPasswordLockoutPerUsername(t *testing.T) {
 	h := pwHarness(t, nil)
-	h.postJSON("/auth/password/register", goodPw)
+	if _, _, err := h.signIn(true, goodHandle, goodPw); err != nil {
+		t.Fatal(err)
+	}
 	h.client.Jar.(*simpleJar).cookies = map[string]*http.Cookie{}
 	for i := 0; i < 40; i++ {
 		ip := fmt.Sprintf("198.51.100.%d", i+1)
-		h.postJSON("/auth/password/login", `{"handle":"speedy_fox","password":"wrong-guess-here"}`, "X-Forwarded-For", ip)
+		h.signIn(false, goodHandle, "wrong-guess-here", "X-Forwarded-For", ip)
 	}
-	resp, _ := h.postJSON("/auth/password/login", goodPw, "X-Forwarded-For", "203.0.113.77")
-	if resp.StatusCode != http.StatusTooManyRequests {
-		t.Fatalf("after 40 distributed failures = %d", resp.StatusCode)
-	}
+	_, _, err := h.signIn(false, goodHandle, goodPw, "X-Forwarded-For", "203.0.113.77")
+	wantCode(t, err, service.CodeLimit)
 }
 
-func TestPasswordRoutesOffUnlessEnabled(t *testing.T) {
+func TestPasswordOffUnlessEnabled(t *testing.T) {
 	g := newFakeGoogle(t)
 	h := newHarness(t, func(string) []Provider { return []Provider{g.provider()} }, nil)
-	for _, p := range []string{"/auth/password/register", "/auth/password/login"} {
-		if resp, _ := h.postJSON(p, goodPw); resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusMethodNotAllowed {
-			t.Errorf("POST %s with AUTH_PASSWORD off = %d", p, resp.StatusCode)
+	for _, register := range []bool{true, false} {
+		_, s, err := h.signIn(register, goodHandle, goodPw)
+		wantCode(t, err, service.CodeForbidden)
+		if s.set {
+			t.Fatal("a refused request set a cookie")
 		}
 	}
 	for _, p := range h.a.Providers() {
 		if p.ID == PasswordProviderID {
 			t.Fatal("password is offered while disabled")
 		}
-	}
-	// A "password" OAuth provider path never exists either.
-	if resp := h.get("/auth/password/login"); resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusMethodNotAllowed {
-		t.Fatalf("GET /auth/password/login = %d", resp.StatusCode)
 	}
 }
 
@@ -309,26 +341,15 @@ func TestPasswordIsListedAsAProviderAndAloneIsEnough(t *testing.T) {
 func TestPasswordSignInWithoutPublicURL(t *testing.T) {
 	h := pwHarness(t, func(c *Config) { c.PublicURL = "" })
 
-	resp, out := h.postJSON("/auth/password/register", goodPw)
-	if resp.StatusCode != http.StatusOK || out["handle"] != "speedy_fox" {
-		t.Fatalf("register without -public-url = %d %v", resp.StatusCode, out)
+	if _, _, err := h.signIn(true, goodHandle, goodPw); err != nil {
+		t.Fatalf("register without -public-url: %v", err)
 	}
-	c := setCookieHeader(resp, SessionCookie)
-	if c == "" {
-		t.Fatal("no login cookie")
-	}
-	// The request came in over plain http, so the cookie must not be Secure.
-	if strings.Contains(c, "Secure") {
-		t.Errorf("cookie %q is Secure on plain http", c)
-	}
-
 	// A cross-site Origin is still refused, with no -public-url to compare to.
-	if resp, _ := h.postJSON("/auth/password/login", goodPw, "Origin", "https://evil.example"); resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("cross-site login = %d, want 403", resp.StatusCode)
-	}
+	_, _, err := h.signIn(false, goodHandle, goodPw, "Origin", "https://evil.example")
+	wantCode(t, err, service.CodeForbidden)
 	// And a same-origin login still works.
-	if resp, out := h.postJSON("/auth/password/login", goodPw); resp.StatusCode != http.StatusOK {
-		t.Fatalf("login without -public-url = %d %v", resp.StatusCode, out)
+	if _, _, err := h.signIn(false, goodHandle, goodPw); err != nil {
+		t.Fatalf("login without -public-url: %v", err)
 	}
 }
 
@@ -338,19 +359,15 @@ func TestPasswordSignInWithoutPublicURL(t *testing.T) {
 func TestPasswordSignInWithoutPublicURLRefusesPublicHosts(t *testing.T) {
 	h := pwHarness(t, func(c *Config) { c.PublicURL = "" })
 
-	req, _ := http.NewRequest(http.MethodPost, h.ts.URL+"/auth/password/register", strings.NewReader(goodPw))
+	req := httptest.NewRequest(http.MethodPost, "http://rebind.evil.example/graphql", nil)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Origin", "http://rebind.evil.example")
 	req.Host = "rebind.evil.example"
-	resp, err := h.client.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("register from a rebound public host = %d, want 403", resp.StatusCode)
-	}
-	if len(resp.Header.Values("Set-Cookie")) != 0 {
+	req.RemoteAddr = "192.0.2.10:1234"
+	set := false
+	_, err := h.a.PasswordSignIn(true, req, goodHandle, goodPw, func(string, time.Time) { set = true })
+	wantCode(t, err, service.CodeForbidden)
+	if set {
 		t.Fatal("a refused sign-in still set a cookie")
 	}
 }

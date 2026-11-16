@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/vektah/gqlparser/v2/gqlerror"
 	"github.com/wricardo/drbrain-motor-programming/game/engine"
@@ -29,6 +30,16 @@ type Resolver struct {
 	Hub     *websocket.Hub
 	// Providers lists the enabled sign-in providers (empty = sign-in is off).
 	Providers []Provider
+	// Passwords serves the username/password mutations; nil when sign-in is
+	// off (the schema then answers FORBIDDEN).
+	Passwords Passwords
+}
+
+// Passwords is the username/password sign-in of the auth package. The mutations
+// call it, so the rules it enforces (same-origin, rate limits, lockouts) cannot
+// be bypassed by a different transport.
+type Passwords interface {
+	PasswordSignIn(register bool, r *http.Request, handle, password string, setSession func(token string, expires time.Time)) (*service.Account, error)
 }
 
 // Provider is a sign-in provider as shown to clients.
@@ -47,6 +58,20 @@ type HTTPRequestKey struct{}
 // ViewerKey is the context key under which the HTTP middleware stores the
 // *Viewer of a request.
 type ViewerKey struct{}
+
+// SignInKey is the context key under which the HTTP middleware stores the
+// sign-in hooks that need the response (setting the login cookie).
+type SignInKey struct{}
+
+// SignIn is what the password mutations need from the transport: it sets the
+// login cookie on the response and reports whether that is possible at all.
+// overHTTP is false for a websocket connection, which has no response to set a
+// cookie on, so signing in there would hand out a login nobody could keep.
+type SignIn struct {
+	OverHTTP bool
+	// SetSession writes the login cookie. Only call it when OverHTTP.
+	SetSession func(token string, expires time.Time)
+}
 
 // Viewer is the signed-in player of a request. It is only set when the login
 // cookie is valid and the request passed the same-origin check, so a cross-site
@@ -84,6 +109,16 @@ func sessionActor(ctx context.Context, ownerToken *string) service.SessionActor 
 		a.OwnerToken = *ownerToken
 	}
 	return a
+}
+
+// requireSignIn returns the request's sign-in hooks or a FORBIDDEN error when
+// the cookie cannot be set (a subscription over websocket, or sign-in off).
+func requireSignIn(ctx context.Context) (*SignIn, error) {
+	s, _ := ctx.Value(SignInKey{}).(*SignIn)
+	if s == nil || !s.OverHTTP {
+		return nil, codedError(service.CodeForbidden, "sign-in needs a request with a response; use HTTP, not a subscription")
+	}
+	return s, nil
 }
 
 // requireViewer returns the signed-in account or an UNAUTHENTICATED error.

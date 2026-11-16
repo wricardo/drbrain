@@ -54,10 +54,17 @@ func TestOnlyTheOwnerCanDeleteOrRenameASignedInPlayersSession(t *testing.T) {
 	if code := firstErrCode(bob.gql(deleteQ, map[string]any{"id": id})); code != service.CodeForbidden {
 		t.Fatalf("another account: code %q", code)
 	}
+	if code := firstErrCode(bob.gql(setProgramQ, map[string]any{"id": id, "p": winningProgram()})); code != service.CodeForbidden {
+		t.Fatalf("another account playing: code %q", code)
+	}
 
-	// Playing the session stays open: an agent given the id can still use it.
-	if out := anon.gql(setProgramQ, map[string]any{"id": id, "p": winningProgram()}); out["errors"] != nil {
-		t.Fatalf("an agent could not play the signed-in player's session: %v", out)
+	// The secret token is the way to play someone else's session (how a run is
+	// handed to a second person or an AI agent) — and so is the owner's cookie.
+	if out := anon.gql(setProgramQ, map[string]any{"id": id, "p": winningProgram(), "t": token}); out["errors"] != nil {
+		t.Fatalf("an agent with the owner token could not play: %v", out)
+	}
+	if out := alice.gql(setProgramQ, map[string]any{"id": id, "p": winningProgram()}); out["errors"] != nil {
+		t.Fatalf("the owner could not play their own session: %v", out)
 	}
 
 	// The secret token works for someone without the cookie, and the owner's cookie works.
@@ -75,7 +82,9 @@ func TestOnlyTheOwnerCanDeleteOrRenameASignedInPlayersSession(t *testing.T) {
 	}
 }
 
-func TestGuestSessionsAreStillOpenToEveryone(t *testing.T) {
+// Deleting or renaming a guest session still needs nothing: agents clean up by
+// id, and only playing is creator-only.
+func TestGuestSessionsCanStillBeDeletedAndRenamedByAnyone(t *testing.T) {
 	ts := newAccountsServer(t, "")
 	guest, other := newBrowser(t, ts.URL), newBrowser(t, ts.URL)
 	out := guest.gql(createSessionQ, map[string]any{"name": "G"})
@@ -91,6 +100,90 @@ func TestGuestSessionsAreStillOpenToEveryone(t *testing.T) {
 	// Deleting something that does not exist is still NOT_FOUND, not FORBIDDEN.
 	if code := firstErrCode(other.gql(deleteQ, map[string]any{"id": "00000000deadbeef"})); code != service.CodeNotFound {
 		t.Fatalf("unknown session: code %q", code)
+	}
+}
+
+// A guest (no account at all) is the creator of their session: the owner token
+// is the only proof, and without it nobody else can play.
+func TestOnlyTheCreatorCanPlayAGuestsSession(t *testing.T) {
+	ts := newAccountsServer(t, "")
+	creator, stranger := newBrowser(t, ts.URL), newBrowser(t, ts.URL)
+	out := creator.gql(createSessionQ, map[string]any{"name": "G"})
+	id := dig(t, out, "data", "createSession", "id").(string)
+	token := dig(t, out, "data", "createSession", "ownerToken").(string)
+
+	// The creator plays with the token it was given (this browser keeps it in localStorage).
+	if out := creator.gql(setProgramQ, map[string]any{"id": id, "p": winningProgram(), "t": token}); out["errors"] != nil {
+		t.Fatalf("creator could not play: %v", out)
+	}
+	if out := creator.gql(stepQ, map[string]any{"id": id, "t": token}); out["errors"] != nil {
+		t.Fatalf("creator could not step: %v", out)
+	}
+
+	// A stranger holding only the public id cannot play it at all.
+	for name, vars := range map[string]map[string]any{
+		"no token":    {"id": id},
+		"wrong token": {"id": id, "t": "not-the-token"},
+		"empty token": {"id": id, "t": ""},
+	} {
+		for _, q := range []string{setProgramQ, stepQ} {
+			v := map[string]any{"p": winningProgram()}
+			for k, val := range vars {
+				v[k] = val
+			}
+			if code := firstErrCode(stranger.gql(q, v)); code != service.CodeForbidden {
+				t.Fatalf("%s (%s): code %q", q, name, code)
+			}
+		}
+	}
+	// Every play mutation is gated, not just setProgram/step.
+	for _, q := range []string{
+		`mutation($id: ID!) { run(sessionID: $id) { id } }`,
+		`mutation($id: ID!) { pause(sessionID: $id) { id } }`,
+		`mutation($id: ID!) { reset(sessionID: $id) { id } }`,
+	} {
+		if code := firstErrCode(stranger.gql(q, map[string]any{"id": id})); code != service.CodeForbidden {
+			t.Fatalf("%s: code %q", q, code)
+		}
+	}
+
+	// Sharing the token is the way to let a second player in, and it does not
+	// stop working for the creator.
+	if out := stranger.gql(setProgramQ, map[string]any{"id": id, "p": winningProgram(), "t": token}); out["errors"] != nil {
+		t.Fatalf("a shared session could not be played: %v", out)
+	}
+
+	// Watching stays open: the public id is enough to read the session.
+	if s := dig(t, stranger.gql(`query($id: ID!) { session(id: $id) { id displayName } }`, map[string]any{"id": id}), "data", "session"); s == nil {
+		t.Fatal("a stranger could not spectate")
+	}
+}
+
+// canPlaySession lets a play page decide between playing and a read-only view
+// without provoking a FORBIDDEN on the first save.
+func TestCanPlaySessionReflectsOwnership(t *testing.T) {
+	ts := newAccountsServer(t, "")
+	creator, stranger := newBrowser(t, ts.URL), newBrowser(t, ts.URL)
+	out := creator.gql(createSessionQ, map[string]any{"name": "G"})
+	id := dig(t, out, "data", "createSession", "id").(string)
+	token := dig(t, out, "data", "createSession", "ownerToken").(string)
+	q := `query($id: ID!, $t: String) { canPlaySession(id: $id, ownerToken: $t) }`
+
+	for name, tc := range map[string]struct {
+		b    *browser
+		vars map[string]any
+		want bool
+	}{
+		"creator with the token": {creator, map[string]any{"id": id, "t": token}, true},
+		"creator without it":     {creator, map[string]any{"id": id}, false},
+		"stranger with it":       {stranger, map[string]any{"id": id, "t": token}, true},
+		"stranger without it":    {stranger, map[string]any{"id": id}, false},
+		"stranger, wrong token":  {stranger, map[string]any{"id": id, "t": "nope"}, false},
+		"unknown session":        {stranger, map[string]any{"id": "00000000deadbeef"}, false},
+	} {
+		if got := dig(t, tc.b.gql(q, tc.vars), "data", "canPlaySession"); got != tc.want {
+			t.Fatalf("%s: canPlaySession = %v, want %v", name, got, tc.want)
+		}
 	}
 }
 

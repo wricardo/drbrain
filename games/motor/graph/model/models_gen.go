@@ -184,8 +184,10 @@ type Session struct {
 	LastEvent    *StepEvent `json:"lastEvent,omitempty"`
 	// Secret that proves the caller created this session; keep it private. Returned only by the
 	// createSession response that made the session and null everywhere else (queries, lists,
-	// subscriptions). A signed-in player can later attach the session to their account with
-	// claimSessions({sessionID, ownerToken}). Optional: clients that never select it are unaffected.
+	// subscriptions). It is the credential for playing the session (pass it to setProgram, run, step,
+	// pause and reset) and for changing or attaching it (deleteSession, renameSession, claimSessions).
+	// Sharing it is how a session is handed to a second person or an AI agent. Optional: clients that
+	// never select it are unaffected.
 	OwnerToken *string `json:"ownerToken,omitempty"`
 }
 

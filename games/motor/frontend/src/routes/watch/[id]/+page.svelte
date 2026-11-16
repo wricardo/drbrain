@@ -10,13 +10,17 @@
 	import Stats from '$lib/components/Stats.svelte';
 	import Tape from '$lib/components/Tape.svelte';
 	import { buildSessionPrompt } from '$lib/prompt';
-	import { statusLine } from '$lib/sessions';
+	import { ownerTokenFor, statusLine } from '$lib/sessions';
 	import { createSessionStore } from '$lib/stores/session';
 	import { createSessionSource } from '$lib/stores/source';
 
 	const sessionId = $page.params.id ?? '';
 	const store = createSessionStore(createSessionSource(getContextClient()), sessionId);
 	onDestroy(() => store.destroy());
+
+	// Watching is open to everyone; playing is not. When this browser holds the
+	// session's owner token it is the creator, so the prompt can carry it.
+	const ownerToken = ownerTokenFor(sessionId);
 
 	const origin = typeof window !== 'undefined' ? window.location.origin : '';
 	const session = $derived($store.session);
@@ -68,7 +72,11 @@
 				</p>
 				<Stats {session} />
 				<div class="flex flex-wrap items-center gap-3">
-					<a href="/play/{session.id}" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700" data-testid="take-over">Take over</a>
+					{#if ownerToken}
+						<a href="/play/{session.id}" class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700" data-testid="take-over">Take over</a>
+					{:else}
+						<span class="text-sm text-slate-600" data-testid="not-yours">Only the player who started this run can take it over.</span>
+					{/if}
 					<a href="/" class="text-sm text-indigo-700 underline">Pick your own map</a>
 				</div>
 				<div class="rounded-xl border border-indigo-200 bg-white p-3">
@@ -82,7 +90,7 @@
 				</div>
 				<CallStack callStack={session.vm.callStack} map={session.map} lastEvent={session.lastEvent} />
 				<AiPromptCard
-					prompt={buildSessionPrompt(origin, session)}
+					prompt={buildSessionPrompt(origin, { ...session, ownerToken })}
 					blurb="Copy this prompt into an AI chat and it will program the robot to win this session."
 				/>
 			</section>

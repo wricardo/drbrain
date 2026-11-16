@@ -4,6 +4,7 @@ import {
 	claimableSessions,
 	forgetAllOwnerTokens,
 	forgetOwnerTokens,
+	ownerTokenFor,
 	ownerTokens,
 	rememberOwnerToken,
 	rememberSession
@@ -22,6 +23,15 @@ describe('owner tokens', () => {
 			{ sessionID: 'aaaaaaaaaaaaaaaa', ownerToken: 'tok-a' },
 			{ sessionID: 'bbbbbbbbbbbbbbbb', ownerToken: 'tok-b' }
 		]);
+	});
+
+	it('looks up the play credential for one session', () => {
+		rememberOwnerToken('aaaaaaaaaaaaaaaa', 'tok-a');
+		expect(ownerTokenFor('aaaaaaaaaaaaaaaa')).toBe('tok-a');
+		// A session this browser did not create has no token to play with.
+		expect(ownerTokenFor('bbbbbbbbbbbbbbbb')).toBeNull();
+		localStorage.clear();
+		expect(ownerTokenFor('aaaaaaaaaaaaaaaa')).toBeNull();
 	});
 
 	it('keeps the newest ones when there are too many', () => {

@@ -1,5 +1,9 @@
 import { isOfficial } from './maps';
 import { buildRunRows, type RunRow } from './runs';
+import { unwrap } from './api';
+import { describeError } from './errors';
+import { LOG_IN_WITH_PASSWORD_MUTATION, REGISTER_WITH_PASSWORD_MUTATION } from './queries';
+import type { Client } from '@urql/svelte';
 import type { Account, GameMap, PlayerRun, SessionClaimResult } from './types';
 
 /** Handles are 3-20 characters: lower-case letters, digits and underscores (the server is the authority). */
@@ -168,31 +172,32 @@ export interface PasswordResult {
 }
 
 /**
- * Posts the username/password form to /auth/password/login or /auth/password/register. The server
- * sets the login cookie on success. The same-origin JSON request is what the server insists on.
+ * Signs up or signs in with a username and password, through the
+ * registerWithPassword / logInWithPassword mutations. The server sets the login
+ * cookie on that response, exactly as the old form post did.
+ *
+ * The failure text comes from the GraphQL error: the server answers a wrong
+ * password and an unknown username identically (UNAUTHENTICATED), and locks a
+ * (address, username) pair out after repeated failures (LIMIT_REACHED) with the
+ * wait spelled out in the message.
  */
 export async function submitPassword(
 	mode: PasswordMode,
 	handle: string,
 	password: string,
-	doFetch: typeof fetch = fetch
+	client: Pick<Client, 'mutation'>
 ): Promise<PasswordResult> {
 	try {
-		const res = await doFetch(`/auth/password/${mode}`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ handle: normalizeHandle(handle), password })
-		});
-		if (res.ok) return { ok: true, message: '' };
-		let message = '';
-		try {
-			const body = (await res.json()) as { error?: unknown };
-			if (typeof body.error === 'string') message = body.error;
-		} catch {
-			// not JSON: fall through to the generic text
-		}
-		return { ok: false, message: message || (res.status === 429 ? 'Too many attempts. Try again later.' : 'That did not work. Try again.') };
-	} catch {
-		return { ok: false, message: 'Could not reach the server.' };
+		await unwrap(
+			client.mutation(mode === 'register' ? REGISTER_WITH_PASSWORD_MUTATION : LOG_IN_WITH_PASSWORD_MUTATION, {
+				handle: normalizeHandle(handle),
+				password
+			})
+		);
+		return { ok: true, message: '' };
+	} catch (err) {
+		const described = describeError(err);
+		const message = described.message || described.title;
+		return { ok: false, message: message === 'Request failed' ? 'That did not work. Try again.' : message };
 	}
 }

@@ -20,6 +20,7 @@
 	import { nextMap } from '$lib/maps';
 	import { subCallKeys } from '$lib/instructions';
 	import {
+		CAN_PLAY_SESSION_QUERY,
 		CREATE_SESSION_MUTATION,
 		MAPS_QUERY,
 		PAUSE_MUTATION,
@@ -28,7 +29,7 @@
 		SET_PROGRAM_MUTATION,
 		STEP_MUTATION
 	} from '$lib/queries';
-	import { rememberSession, statusLine } from '$lib/sessions';
+	import { ownerTokenFor, rememberSession, statusLine } from '$lib/sessions';
 	import { serialRunner } from '$lib/serialRunner';
 	import { replayTo, stepBackTarget } from '$lib/stepBack';
 	import { clampSpeed } from '$lib/speed';
@@ -93,6 +94,13 @@
 		} catch {
 			// "Next map" is hidden without the map list
 		}
+		// A session opened from someone else's link is readable but not playable.
+		try {
+			const res = await client.query<{ canPlaySession: boolean }>(CAN_PLAY_SESSION_QUERY, { id: sessionId, ownerToken }).toPromise();
+			if (!res.error && res.data) canPlay = res.data.canPlaySession;
+		} catch {
+			// On a failed check keep the page usable; a refused save reports FORBIDDEN itself.
+		}
 	});
 	const next = $derived(session ? nextMap(maps, session.mapId) : null);
 
@@ -105,6 +113,12 @@
 	const emptyMain = $derived(!!draft && !draft.main.some((i) => i !== 'EMPTY'));
 	const terminal = $derived(status === 'WON' || status === 'LOST');
 	const playing = $derived(session?.playing ?? false);
+	// The owner token this browser was given when it created the session. It is the
+	// credential for every play call; a signed-in owner needs none (their cookie).
+	const ownerToken = ownerTokenFor(sessionId);
+	// Whether this browser may play at all: a session created elsewhere and opened
+	// from a shared link is readable but not playable.
+	let canPlay = $state(true);
 	// Reset only does something once the robot has moved or a run is under way.
 	const canReset = $derived(playing || !!session && (terminal || session.vm.steps > 0));
 	const showModal = $derived(terminal && !!session && dismissedAttempts !== session.attempts);
@@ -117,13 +131,19 @@
 	);
 
 	async function act(fn: () => Promise<Session | void>) {
+		if (!canPlay) return;
 		busy = true;
 		actionError = null;
 		try {
 			const s = await fn();
 			if (s) store.apply(s);
 		} catch (e) {
-			actionError = describeError(e);
+			const d = describeError(e);
+			// A session that turns out to be someone else's (created elsewhere, or
+			// opened from a shared link) switches the page to read-only rather than
+			// failing on every edit.
+			if (d.code === 'FORBIDDEN') canPlay = false;
+			actionError = d;
 		} finally {
 			busy = false;
 		}
@@ -133,7 +153,7 @@
 	async function saveIfDirty(): Promise<void> {
 		if (!draft || !session || programsEqual(draft, session.program)) return;
 		const data = await unwrap<{ setProgram: Session }>(
-			client.mutation(SET_PROGRAM_MUTATION, { sessionID: sessionId, program: draft })
+			client.mutation(SET_PROGRAM_MUTATION, { sessionID: sessionId, program: draft, ownerToken })
 		);
 		store.apply(data.setProgram);
 	}
@@ -144,9 +164,13 @@
 	// Save a moment after the player stops editing, so the server (spectators, agents) stays in step
 	// and the robot returns to the start as soon as the program changes.
 	$effect(() => {
-		if (!dirty || playing) return;
+		if (!dirty || playing || !canPlay) return;
 		const timer = setTimeout(() => {
-			flushSave().catch((e) => (actionError = describeError(e)));
+			flushSave().catch((e) => {
+				const d = describeError(e);
+				if (d.code === 'FORBIDDEN') canPlay = false;
+				actionError = d;
+			});
 		}, AUTOSAVE_MS);
 		return () => clearTimeout(timer);
 	});
@@ -154,14 +178,17 @@
 	const run = () =>
 		act(async () => {
 			await flushSave();
-			return (await unwrap<{ run: Session }>(client.mutation(RUN_MUTATION, { sessionID: sessionId, speedMs }))).run;
+			return (await unwrap<{ run: Session }>(client.mutation(RUN_MUTATION, { sessionID: sessionId, speedMs, ownerToken }))).run;
 		});
 	const pause = () =>
-		act(async () => (await unwrap<{ pause: Session }>(client.mutation(PAUSE_MUTATION, { sessionID: sessionId }))).pause);
+		act(
+			async () =>
+				(await unwrap<{ pause: Session }>(client.mutation(PAUSE_MUTATION, { sessionID: sessionId, ownerToken }))).pause
+		);
 	const stepOnce = () =>
 		act(async () => {
 			await flushSave();
-			return (await unwrap<{ step: Session }>(client.mutation(STEP_MUTATION, { sessionID: sessionId }))).step;
+			return (await unwrap<{ step: Session }>(client.mutation(STEP_MUTATION, { sessionID: sessionId, ownerToken }))).step;
 		});
 	// Go back one step by replaying the program from the start for one step fewer (see lib/stepBack.ts).
 	const canStepBack = $derived(!dirty && !!session && stepBackTarget(session.vm.steps) !== null);
@@ -173,16 +200,17 @@
 			return replayTo(
 				target,
 				async () => {
-					const s = (await unwrap<{ reset: Session }>(client.mutation(RESET_MUTATION, { sessionID: sessionId }))).reset;
+					const s = (await unwrap<{ reset: Session }>(client.mutation(RESET_MUTATION, { sessionID: sessionId, ownerToken }))).reset;
 					dismissedAttempts = s.attempts;
 					return s;
 				},
-				async () => (await unwrap<{ step: Session }>(client.mutation(STEP_MUTATION, { sessionID: sessionId }))).step
+				async () =>
+					(await unwrap<{ step: Session }>(client.mutation(STEP_MUTATION, { sessionID: sessionId, ownerToken }))).step
 			);
 		});
 	const reset = () =>
 		act(async () => {
-			const s = (await unwrap<{ reset: Session }>(client.mutation(RESET_MUTATION, { sessionID: sessionId }))).reset;
+			const s = (await unwrap<{ reset: Session }>(client.mutation(RESET_MUTATION, { sessionID: sessionId, ownerToken }))).reset;
 			dismissedAttempts = s.attempts;
 			return s;
 		});
@@ -302,6 +330,13 @@
 			</p>
 		{/if}
 
+		{#if !canPlay}
+			<p class="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="read-only">
+				<strong>Read-only.</strong> This run belongs to whoever created it, so only they can play it.
+				You can still watch it live at <a class="underline" href="/watch/{session.id}">the spectator view</a>.
+			</p>
+		{/if}
+
 		<div class="mt-4 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,28rem)]">
 			<!-- On phones the board is pinned small at the top so it stays visible while you edit and run; on wide screens it sits in its own sticky column. -->
 			<section
@@ -335,7 +370,7 @@
 					<RunControls
 						{playing}
 						finished={terminal}
-						{busy}
+						busy={busy || !canPlay}
 						{canReset}
 						empty={emptyMain}
 						{canStepBack}
@@ -356,13 +391,13 @@
 						<Palette
 							bind:selected
 							subCount={draft.subs.length}
-							disabled={playing}
+							disabled={playing || !canPlay}
 							onerase={(s) => edit(setSlot(draft!, s.tape, s.slot, 'EMPTY'))}
 						/>
 						<Tape
 							program={draft}
 							{selected}
-							disabled={playing}
+							disabled={playing || !canPlay}
 							callStack={dirty ? [] : session.vm.callStack}
 							lastEvent={dirty ? null : session.lastEvent}
 							{status}
@@ -391,7 +426,7 @@
 				</div>
 
 				<AiPromptCard
-					prompt={buildSessionPrompt(origin, session)}
+					prompt={buildSessionPrompt(origin, { ...session, ownerToken })}
 					blurb="Copy this prompt into an AI chat and it will program the robot to win this session."
 				/>
 			</section>

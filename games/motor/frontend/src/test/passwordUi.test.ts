@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readable } from 'svelte/store';
+import type { Client } from '@urql/svelte';
 import PasswordForm from '$lib/components/PasswordForm.svelte';
 import SignInDialog from '$lib/components/SignInDialog.svelte';
 import SettingsPage from '../routes/settings/+page.svelte';
@@ -22,12 +23,44 @@ const pwAccount: Account = {
 	handleChangeableAt: null,
 	hasPassword: true
 };
-const ok = (data: unknown) => ({ toPromise: () => Promise.resolve({ data }) });
-const bad = (code: string, message: string) => ({
+/** What a stubbed urql operation answers with; `unwrap` only awaits `toPromise`. */
+interface OperationAnswer<T> {
+	toPromise(): Promise<T>;
+}
+
+/** A GraphQL result carrying data. */
+const ok = <T>(data: T): OperationAnswer<{ data: T }> => ({ toPromise: () => Promise.resolve({ data }) });
+
+/** A GraphQL error result. */
+const bad = (code: string, message: string): OperationAnswer<unknown> => ({
 	toPromise: () => Promise.resolve({ error: { graphQLErrors: [{ message, extensions: { code } }] } })
 });
 
-const jsonResponse = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
+/** Records the document and variables a mutation was called with. */
+interface MutationMock {
+	(...args: [doc: string, vars?: Record<string, unknown>]): OperationAnswer<unknown>;
+	mock: { calls: [string, Record<string, unknown> | undefined][] };
+}
+
+/** A mutation that always answers with `answer`, recording how it was called. */
+function mutationMock(answer: OperationAnswer<unknown>): MutationMock {
+	return vi.fn((_doc: string, _vars?: Record<string, unknown>) => answer) as unknown as MutationMock;
+}
+
+/**
+ * The part of the urql client `submitPassword` takes, named so tests do not
+ * restate `Pick<Client, 'mutation'>`.
+ */
+type PasswordClient = Pick<Client, 'mutation'>;
+
+/**
+ * A client whose `mutation` answers with `answer`. The cast is unchecked and
+ * deliberately narrow: a real urql mutation returns an operation object, while
+ * these tests only need the promise `unwrap` awaits.
+ */
+function clientAnswering(mutation: MutationMock): PasswordClient {
+	return { mutation } as unknown as PasswordClient;
+}
 
 beforeEach(() => {
 	setMe(null);
@@ -52,46 +85,71 @@ describe('passwordProblem', () => {
 });
 
 describe('submitPassword', () => {
-	it('posts same-origin JSON with a normalised username', async () => {
-		const doFetch = vi.fn(async () => jsonResponse(200, { handle: 'speedy_fox' }));
-		const r = await submitPassword('register', '  @Speedy_Fox ', 'tangerine-ladder-42', doFetch as never);
+	it('sends the mutation with a normalised username', async () => {
+		const mutation = mutationMock(ok({ registerWithPassword: pwAccount }));
+		const r = await submitPassword('register', '  @Speedy_Fox ', 'tangerine-ladder-42', clientAnswering(mutation));
 		expect(r).toEqual({ ok: true, message: '' });
-		const [url, init] = doFetch.mock.calls[0] as unknown as [string, RequestInit];
-		expect(url).toBe('/auth/password/register');
-		expect(init.method).toBe('POST');
-		expect((init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
-		expect(JSON.parse(init.body as string)).toEqual({ handle: 'speedy_fox', password: 'tangerine-ladder-42' });
+		const [doc, vars] = mutation.mock.calls[0];
+		expect(doc).toContain('registerWithPassword');
+		expect(vars).toEqual({ handle: 'speedy_fox', password: 'tangerine-ladder-42' });
 	});
-	it("shows the server's reason, a rate-limit text and network failures", async () => {
-		expect(await submitPassword('login', 'a', 'b', (async () => jsonResponse(401, { error: 'wrong username or password' })) as never)).toEqual({
-			ok: false,
-			message: 'wrong username or password'
-		});
-		expect((await submitPassword('login', 'a', 'b', (async () => new Response('', { status: 429 })) as never)).message).toContain('Too many');
-		expect((await submitPassword('login', 'a', 'b', (async () => new Response('<html>', { status: 502 })) as never)).message).toContain('did not work');
-		expect((await submitPassword('login', 'a', 'b', (async () => Promise.reject(new Error('offline'))) as never)).message).toContain('Could not reach');
+
+	it('signs in with the other mutation', async () => {
+		const mutation = mutationMock(ok({ logInWithPassword: pwAccount }));
+		await submitPassword('login', 'speedy_fox', 'tangerine-ladder-42', clientAnswering(mutation));
+		expect(mutation.mock.calls[0][0]).toContain('logInWithPassword');
+	});
+
+	it("shows the server's reason, a lockout and a network failure", async () => {
+		const wrong = await submitPassword(
+			'login',
+			'a',
+			'b',
+			clientAnswering(mutationMock(bad('UNAUTHENTICATED', 'wrong username or password')))
+		);
+		expect(wrong).toEqual({ ok: false, message: 'wrong username or password' });
+
+		const locked = await submitPassword(
+			'login',
+			'a',
+			'b',
+			clientAnswering(mutationMock(bad('LIMIT_REACHED', 'too many failed attempts; try again in 15 minutes')))
+		);
+		expect(locked.message).toContain('too many failed attempts');
+
+		const offline = await submitPassword(
+			'login',
+			'a',
+			'b',
+			clientAnswering(mutationMock({ toPromise: () => Promise.reject(new Error('offline')) }))
+		);
+		expect(offline.ok).toBe(false);
+		expect(offline.message).toBeTruthy();
 	});
 });
 
 describe('PasswordForm', () => {
-	it('signs in and then goes to the validated return path', async () => {
-		const doFetch = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse(200, { handle: 'speedy_fox' }));
-		vi.stubGlobal('fetch', doFetch);
+	/** Renders the form with a client whose mutations answer `answer`. */
+	function renderForm(next: string, answer: OperationAnswer<unknown>) {
+		const mutation = mutationMock(answer);
 		const onsuccess = vi.fn();
-		render(PasswordForm, { props: { next: '/play/abc', onsuccess } });
+		render(PasswordForm, { props: { next, onsuccess }, context: new Map([[CLIENT_KEY, { query: vi.fn(), mutation }]]) });
+		return { mutation, onsuccess };
+	}
+
+	it('signs in and then goes to the validated return path', async () => {
+		const { mutation, onsuccess } = renderForm('/play/abc', ok({ logInWithPassword: pwAccount }));
 		const submit = screen.getByTestId('pw-submit');
 		expect(submit).toBeDisabled();
 		await fireEvent.input(screen.getByTestId('pw-handle'), { target: { value: 'Speedy_Fox' } });
 		await fireEvent.input(screen.getByTestId('pw-password'), { target: { value: 'tangerine-ladder-42' } });
 		await fireEvent.click(submit);
 		await waitFor(() => expect(onsuccess).toHaveBeenCalledWith('/play/abc'));
-		expect(doFetch.mock.calls[0][0]).toBe('/auth/password/login');
+		expect(mutation.mock.calls[0][0]).toContain('logInWithPassword');
 	});
 
 	it('never follows a hostile return path', async () => {
-		vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(200, {})));
-		const onsuccess = vi.fn();
-		render(PasswordForm, { props: { next: 'https://evil.example', onsuccess } });
+		const { onsuccess } = renderForm('https://evil.example', ok({ logInWithPassword: pwAccount }));
 		await fireEvent.input(screen.getByTestId('pw-handle'), { target: { value: 'a_user' } });
 		await fireEvent.input(screen.getByTestId('pw-password'), { target: { value: 'tangerine-ladder-42' } });
 		await fireEvent.click(screen.getByTestId('pw-submit'));
@@ -99,9 +157,7 @@ describe('PasswordForm', () => {
 	});
 
 	it('shows a failed sign-in without leaving the page', async () => {
-		vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(401, { error: 'wrong username or password' })));
-		const onsuccess = vi.fn();
-		render(PasswordForm, { props: { next: '/', onsuccess } });
+		const { onsuccess } = renderForm('/', bad('UNAUTHENTICATED', 'wrong username or password'));
 		await fireEvent.input(screen.getByTestId('pw-handle'), { target: { value: 'speedy_fox' } });
 		await fireEvent.input(screen.getByTestId('pw-password'), { target: { value: 'nope-nope-nope' } });
 		await fireEvent.click(screen.getByTestId('pw-submit'));
@@ -110,9 +166,7 @@ describe('PasswordForm', () => {
 	});
 
 	it('warns that there is no reset before an account is created, and checks the obvious problems', async () => {
-		const doFetch = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse(200, {}));
-		vi.stubGlobal('fetch', doFetch);
-		render(PasswordForm, { props: { next: '/', onsuccess: () => {} } });
+		const { mutation } = renderForm('/', ok({ registerWithPassword: pwAccount }));
 		expect(screen.queryByTestId('pw-warning')).toBeNull();
 		await fireEvent.click(screen.getByTestId('pw-tab-register'));
 		expect(screen.getByTestId('pw-warning')).toHaveTextContent(/No email, no reset/);
@@ -123,18 +177,18 @@ describe('PasswordForm', () => {
 		await fireEvent.input(screen.getByTestId('pw-password'), { target: { value: 'short' } });
 		expect(screen.getAllByRole('alert').map((a) => a.textContent).join(' ')).toMatch(/lower-case letters.*at least 8/);
 		expect(screen.getByTestId('pw-submit')).toBeDisabled();
-		expect(doFetch).not.toHaveBeenCalled();
+		expect(mutation).not.toHaveBeenCalled();
 
 		await fireEvent.input(screen.getByTestId('pw-handle'), { target: { value: 'speedy_fox' } });
 		await fireEvent.input(screen.getByTestId('pw-password'), { target: { value: 'tangerine-ladder-42' } });
 		expect(screen.getByTestId('pw-submit')).toBeEnabled();
 		await fireEvent.click(screen.getByTestId('pw-submit'));
-		await waitFor(() => expect(doFetch).toHaveBeenCalled());
-		expect(doFetch.mock.calls[0][0]).toBe('/auth/password/register');
+		await waitFor(() => expect(mutation).toHaveBeenCalled());
+		expect(mutation.mock.calls[0][0]).toContain('registerWithPassword');
 	});
 
 	it('can show the password', async () => {
-		render(PasswordForm, { props: { next: '/' } });
+		renderForm('/', ok({ logInWithPassword: pwAccount }));
 		const input = screen.getByTestId('pw-password');
 		expect(input).toHaveAttribute('type', 'password');
 		await fireEvent.click(screen.getByRole('checkbox', { name: 'Show password' }));
@@ -145,16 +199,18 @@ describe('PasswordForm', () => {
 describe('SignInDialog with the password option', () => {
 	const google = { id: 'google', name: 'Google' };
 	const password = { id: 'password', name: 'Username and password' };
+	/** The dialog hosts PasswordForm, which needs a urql client in context. */
+	const context = new Map<string, unknown>([[CLIENT_KEY, { query: vi.fn(), mutation: vi.fn(() => ok({ logInWithPassword: pwAccount })) }]]);
 
 	it('shows Google/GitHub as links and the form below them', () => {
-		render(SignInDialog, { props: { providers: [google, password], next: '/', onclose: () => {} } });
+		render(SignInDialog, { props: { providers: [google, password], next: '/', onclose: () => {} }, context });
 		expect(screen.getByTestId('signin-google')).toHaveAttribute('href', '/auth/google/login?next=%2F');
 		expect(screen.queryByTestId('signin-password')).toBeNull(); // the password option is a form, never a link
 		expect(screen.getByTestId('password-form')).toBeInTheDocument();
 	});
 
 	it('works with the password option alone', () => {
-		render(SignInDialog, { props: { providers: [password], next: '/', onclose: () => {} } });
+		render(SignInDialog, { props: { providers: [password], next: '/', onclose: () => {} }, context });
 		expect(screen.queryByRole('link')).toBeNull();
 		expect(screen.getByTestId('password-form')).toBeInTheDocument();
 	});

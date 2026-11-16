@@ -55,8 +55,8 @@ Routes:
 | Path | What it is |
 |---|---|
 | `/` | Landing page: short hero, Continue card (this browser's last unfinished session), first 3 maps, recent started sessions |
-| `/play/<session>` | Board, status line, stats, run controls, program editor, call stack, help, AI prompt card, result modal |
-| `/watch/<session>` | Read-only live view of any session: status line, stats, Take over, tapes, AI prompt card |
+| `/play/<session>` | Board, status line, stats, run controls, program editor, call stack, help, AI prompt card, result modal; a session this browser cannot play (someone else's, opened from a link) shows an amber read-only notice and locks the controls |
+| `/watch/<session>` | Read-only live view of any session: status line, stats, **Take over** only when this browser holds the session's owner token (otherwise a line saying the starter has to do it), tapes, AI prompt card |
 | `/sessions` | All sessions: status chips, search (name/id/map), map filter, sort, Load more, select rows to watch together; auto-refreshes every 10 s |
 | `/multi?ids=a,b` | Several sessions as compact live boards (from "Watch selected" on `/sessions`) |
 | `/maps` | All maps as cards: search and difficulty chips |
@@ -64,7 +64,7 @@ Routes:
 | `/leaderboard?map=<id>&order=slots` or `steps` | Per-map ranking of winners: map picker, two boards, your entries highlighted |
 | `/u/<handle>` | Public profile: solved counts (official and community), best run per map, recent activity; a private profile is "not found" for everyone but its owner |
 | `/settings` | Signed-in player: handle, display name, public/private profile, add guest runs, delete account |
-| `/auth/<provider>/login`, `/auth/<provider>/callback`, `POST /auth/logout`, `POST /auth/password/{register,login}` | Sign-in routes; only exist when the matching sign-in is enabled (see [Accounts and sign-in](#accounts-and-sign-in)) |
+| `/auth/<provider>/login`, `/auth/<provider>/callback` | Sign-in routes for the redirect providers (Google, GitHub, dev); only exist when that provider is configured. Username/password sign-in and signing out are GraphQL mutations (`registerWithPassword`, `logInWithPassword`, `logout`), see [Accounts and sign-in](#accounts-and-sign-in) |
 | `/editor` | Map editor with server-side validation; anyone can create a map, changing a built-in one needs the admin key |
 | `/learn` | How it works: the game, instructions, rules, controls, how an AI plays, a generic AI prompt, tips |
 | `/graphql` | GraphQL over HTTP and WebSocket (`graphql-ws`); `/playground` when enabled |
@@ -132,7 +132,7 @@ HTTP /graphql (api) → gqlgen resolver (graph) → GameService (game/service)
 
 ### Errors
 
-`*service.Error{Code, Msg}` with codes `NOT_FOUND`, `INVALID_PROGRAM`, `INVALID_ARGUMENT`, `SESSION_PLAYING`, `SESSION_TERMINAL`, `FORBIDDEN`, `LIMIT_REACHED`. Resolvers expose them as `extensions.code`; unknown errors are logged and returned as `INTERNAL`. Looking up a missing map or session returns `null`, not an error. Check codes with `errors.As`.
+`*service.Error{Code, Msg}` with codes `NOT_FOUND`, `INVALID_PROGRAM`, `INVALID_ARGUMENT`, `SESSION_PLAYING`, `SESSION_TERMINAL`, `FORBIDDEN`, `LIMIT_REACHED`, plus `UNAUTHENTICATED` (`CodeUnauthenticated` in `game/service/accounts.go`) for the account operations that need a signed-in player. Resolvers expose them as `extensions.code`; unknown errors are logged and returned as `INTERNAL`. Looking up a missing map or session returns `null`, not an error. Check codes with `errors.As`.
 
 ### Security and hardening
 
@@ -143,7 +143,7 @@ HTTP /graphql (api) → gqlgen resolver (graph) → GameService (game/service)
 - A corrupt player map file is logged and skipped at startup; a corrupt or misnamed built-in map is fatal.
 - `max_steps ≤ 10000` and `max_call_depth ≤ 64` bound the cost of a run.
 - Request body capped at 1 MiB; query complexity capped at 1000 with weighted costs (`sessions` by `limit`). `api/hardening_test.go` keeps a copy of the frontend queries to make sure they stay under the cap.
-- Accounts: deleting or renaming a signed-in player's session needs their login or owner token (see [Who may change a session](#who-may-change-a-session)); handles are validated and blocklisted, login tokens and owner tokens are random 32-byte values stored only as SHA-256, cookies are `HttpOnly`/`SameSite=Lax`/`Secure` and only honoured on same-origin JSON POSTs, OAuth state is single use and bound to the browser, redirects are relative-only, `/auth` is rate limited. Details in [Accounts and sign-in](#accounts-and-sign-in).
+- Accounts: playing any session needs its owner token (or the owner's login), and deleting or renaming a signed-in player's session needs their login or owner token (see [Who may play, delete or rename a session](#who-may-play-delete-or-rename-a-session)); handles are validated and blocklisted, login tokens and owner tokens are random 32-byte values stored only as SHA-256, cookies are `HttpOnly`/`SameSite=Lax`/`Secure` and only honoured on same-origin JSON POSTs, OAuth state is single use and bound to the browser, redirects are relative-only, `/auth` is rate limited. Details in [Accounts and sign-in](#accounts-and-sign-in).
 - WebSocket: 10 s init timeout, frame-size guard (`api/wslimit.go`), origin check against `ALLOWED_ORIGINS`, which also drives CORS on `/graphql`.
 - Map creation is atomic (`MapStore.Create`; a conflict is `INVALID_ARGUMENT`). Never check-then-save.
 
@@ -177,15 +177,29 @@ A session is one run of one map. `setProgram` (rejected while running) resets th
 
 Glyphs: `.` empty, `#` rock, `*` treat, `^ > v <` start and facing (exactly one). Grid 3–32 per side, at least one treat, main tape 1–32, 0–10 subs of 1–16 each. Defaults when omitted: main 10, subs `[10]`, max_steps 200, max_call_depth 16, recursion off. `sub_tape_lengths: []` (no subs) is different from omitting it, so the field has no `omitempty` and `[]` must never become `nil`. JSON Schema: `map-schema.json`.
 
-Shipped maps (11): five introductory levels (`straight_line`, `turn_challenge`, `rock_obstacle`, `symmetric_paths`, `zigzag_path`), plus puzzles whose tapes are tight enough that the intended solution is *provably* required:
+Shipped maps (17), in three named series (`<Series> <n> - <Name>`, which is what the map cards print):
+
+- **Levels 1–5** (`straight_line`, `turn_challenge`, `rock_obstacle`, `symmetric_paths`, `zigzag_path`) teach the basics; in each, the counting ceiling already allows the whole route at a single nesting level, so no deep nesting is required.
+- **Patterns 1–7** (`serpentine`, `powers`, `pinwheel`, `comb`, `ladder`, `nested_doubling`, `diamond_ring`) are tight enough that the brute-force route does not fit: you have to find the repeated unit and nest subs.
+- **Recursion 1–5** (`long_corridor`, `staircase`, `bump_spiral`, `mountain_range`, `switchback`) have `allow_recursion: true`; for each of them `just validate` refuses a reference solution that also wins with recursion turned off (`CheckRecursionRequired` in `validate/validate.go`).
+
+The forcing bounds, measured with the helpers in `validate/validate_test.go` (`minActions` is the BFS minimum of TURN/MOVE actions, `maxLeafActions` the most a program with `n` nesting levels can execute). "Needed" and the ceilings are those numbers; a map is forced when the ceiling is below what the route needs:
 
 | map | idea | why it's forced |
 |---|---|---|
-| `long_corridor`, `staircase` | recursion | non-recursive programs execute fewer forward moves than the treat distance |
-| `serpentine` | mirrored row + U-turn subs that share a row sub | 61 actions needed; main-only sub calls run at most 7 × 7 = 49 |
-| `powers` | each sub triples the one below (S1=2, S2=6, S3=18 moves) | 19 moves needed; two nesting levels reach at most 18 |
+| `long_corridor`, `staircase` | recursion | 15 and 18 forward moves needed; a non-recursive program executes at most 6 and 15 |
+| `serpentine` | mirrored row + U-turn subs that share a row sub | 61 actions needed; one nesting level runs at most 7 × 7 = 49 |
+| `powers` | each sub triples the one below (S1=2, S2=6, S3=18 moves) | 19 actions needed; two nesting levels reach at most 18, so three are required |
 | `pinwheel` | one out-and-back unit repeated per arm, each ending facing the next arm | 35 actions needed; one nesting level runs at most 4 × 5 = 20 |
 | `bump_spiral` | recursion; walls absorb overshoot, so one pattern follows every side | 56 actions needed; without recursion at most 3 × 10 = 30 |
+| `comb` | one tooth built once, then repeated up the comb | 51 actions needed; one nesting level runs at most 40, so two are required |
+| `ladder` | two alcoves per rung, then climb two rows | 42 actions needed; one nesting level runs at most 32, so two are required |
+| `diamond_ring` | one diagonal step, then one side, then a side plus a turn | 37 actions needed; one nesting level runs at most 16, so two are required |
+| `nested_doubling` | a block, doubled, doubled again | 16 actions needed; two nesting levels reach at most 8, so three are required |
+| `switchback` | a two-row loop recursed down the corridor | no counting bound proves it (36 actions needed, one nesting level allows 22 but two already allow 132); recursion is proven only by the reference solution losing without it |
+| `mountain_range` | one up-and-over step recursed across five peaks | no counting bound proves it (12 actions needed, one nesting level already allows 27); recursion is proven only by the reference solution losing without it |
+
+Only the six bounds asserted in `TestNestingMapsAreProvablyNeeded` and `TestRecursionMapsCountingBound` are regression-guarded; the rest of this table is measured once and needs re-measuring if the map changes, so prefer adding a test over trusting a row.
 
 ### Designing a good map
 
@@ -211,14 +225,14 @@ Maps can also be created by anyone in `/editor` or with the `createMap` mutation
 
 The schema lives in `graph/schema.graphqls`.
 
-- **Queries:** `maps`, `map(id)`, `session(id)`, `sessions(sort, limit, mapId)`, `leaderboard(mapId, order, limit, sessionId)`, `playerRuns(sessionIds, name)`, plus `me`, `authProviders` and `profile(handle)` for [accounts](#accounts-and-sign-in).
-- **Mutations:** `createSession` (its response also carries the optional secret `ownerToken`), `renameSession`, `deleteSession`, `setProgram`, `run`, `step`, `pause`, `reset`, plus `createMap` and `validateMap` (open) and `updateMap`/`deleteMap` (open for player maps, admin key for built-in ones). For signed-in browsers: `logout`, `updateAccount`, `changePassword`, `deleteAccount(confirmHandle)`, `claimSessions`.
+- **Queries:** `maps`, `map(id)`, `session(id)`, `canPlaySession(id, ownerToken)`, `sessions(sort, limit, mapId)`, `leaderboard(mapId, order, limit, sessionId)`, `playerRuns(sessionIds, name)`, plus `me`, `authProviders` and `profile(handle)` for [accounts](#accounts-and-sign-in). `canPlaySession` is `false` for a session this caller may not play (someone else's, opened from a link) and for an unknown id, so a client can pick a read-only view instead of discovering `FORBIDDEN` on the first save.
+- **Mutations:** `createSession` (its response also carries the secret `ownerToken`, which every play call below needs), `renameSession`, `deleteSession`, `setProgram`, `run`, `step`, `pause`, `reset` (each takes an optional `ownerToken`), plus `createMap` and `validateMap` (open) and `updateMap`/`deleteMap` (open for player maps, admin key for built-in ones). For signed-in browsers: `logout`, `updateAccount`, `changePassword`, `deleteAccount(confirmHandle)`, `claimSessions`. For players with a username and password: `registerWithPassword` and `logInWithPassword` (the only data API they need; the OAuth providers still use redirect routes).
 - **Subscription:** `sessionUpdated(sessionID)` emits the current snapshot, then every change.
 
 Agent support:
 
 - `/llms.txt` (template `llms.txt.tmpl`, embedded in the binary) is the full guide for agents: rules, endpoints and a valid example for every call. Keep it in sync with the schema; every example must run against the live API.
-- The **Play with an AI** card on `/play` and `/watch` (`frontend/src/lib/prompt.ts`) builds a prompt for that exact session: id, map layout with an x/y ruler, tape lengths, recursion rule and ready-to-run GraphQL calls. Never a solution.
+- The **Play with an AI** card on `/play` and `/watch` (`frontend/src/lib/prompt.ts`) builds a prompt for that exact session: the secret owner token, id, map layout with an x/y ruler, tape lengths, recursion rule and ready-to-run GraphQL calls. Never a solution. On `/watch` it can only carry the token when this browser is the creator; opened from a stranger's link the card still shows the map and call shapes but says the token is missing, so the agent cannot play it.
 - `/learn` has a generic prompt for any map.
 
 ## Leaderboard
@@ -284,7 +298,8 @@ Plain HTTP routes outside GraphQL (`auth/auth.go`):
 |---|---|
 | `GET /auth/<provider>/login?next=/path` | makes `state`, `nonce`, a PKCE verifier and a browser-binding cookie, then redirects to the provider |
 | `GET /auth/<provider>/callback` | consumes the state (single use, 10 minutes, bound to the browser that started it), exchanges the code, finds or creates the account, rotates the login and redirects to `next` |
-| `POST /auth/logout` | same-origin only; ends the login and clears the cookie |
+
+Signing out is the GraphQL `logout` mutation, not a route.
 
 Pending sign-ins live in memory (bounded to 5000); a restart only cancels sign-ins in progress. A failed or cancelled sign-in returns to the site with `?signin=failed` or `?signin=cancelled`, which the layout shows as a dismissible notice. `next` must be a same-site relative path (`SafeNext`: no scheme or host, no `//`, no backslashes or control characters, never `/auth/...`). All `/auth` routes are rate limited per client IP (30 requests a minute, in memory; behind the nginx proxy the last `X-Forwarded-For` entry is used, only when the peer is loopback) and sent with `Cache-Control: no-store`.
 
@@ -297,8 +312,8 @@ Unlike a redirect provider it has no callback URL to register, so it does not re
 - **Username = the public handle** (`^[a-z0-9_]{3,20}$`, same reserved list, blocklist and case-insensitive uniqueness). Changing the handle in Settings changes the login name too. A password account is an ordinary account (profile, leaderboard, claiming guest runs, delete); its `Provider` is `password`.
 - **No email, no recovery.** Nothing is stored that could reset a password, so a forgotten password means the account cannot be recovered (the player can start a new account). The UI says so before an account is created and in Settings. This was a deliberate choice for child privacy; adding recovery later would need either an email address or one-time recovery codes.
 - **Passwords** are 8 to 128 bytes, not on a small embedded list of the most common passwords (`commonPasswords` in `game/service/password.go`), and not equal to the username. There are no composition rules. They are stored only as an **argon2id** hash (19 MiB, 2 passes, 1 lane, random 16-byte salt, PHC string with its own parameters, in the account file as `password_hash`); the hash is read back with bounded parameters, compared in constant time, and never leaves the service (`Account.PasswordHash` is cleared on every account the service returns; `hasPassword` is exposed instead). At most four hashes run at once.
-- **Routes** (`auth/auth.go`, only mounted when enabled): `POST /auth/password/register` and `POST /auth/password/login` with `{"handle", "password"}`. Like the GraphQL cookie they need a same-origin `application/json` request, so another site cannot create accounts or probe passwords through a victim's browser; the body is capped at 4 KiB and unknown fields are refused. Success sets the same login cookie as the OAuth flow (rotating the previous one).
-- **Guessing.** A wrong password and an unknown username give the identical `401` and cost one hash each (a dummy hash is verified for unknown usernames). Failures are counted per (IP, username): 5 within 15 minutes locks that pair for 15 minutes, and per username: 40 within an hour locks the username for 15 minutes, from every address. A locked key is refused before any hashing, even with the right password. Trade-off: because handles are public, someone can keep a victim's *password login* locked with enough distributed attempts; sessions already signed in, and Google/GitHub sign-in, are unaffected. The per-IP request limit on `/auth` still applies.
+- **Mutations, not routes.** Signing up, signing in and signing out are GraphQL mutations: `registerWithPassword(handle, password)`, `logInWithPassword(handle, password)` and `logout`. Only the redirect providers keep an HTTP route (`/auth/<provider>/login` and `/callback`), because those are browser navigations to a third party. The password mutations are the same code as the old `auth/password/{register,login}` handlers (`auth.Auth.PasswordSignIn`): it still insists on a same-origin request, so another site cannot create accounts or probe passwords through a victim's browser, and it still rate-limits per address and locks out failing (address, username) pairs and usernames. Success sets the same login cookie as the OAuth flow (rotating the previous one) on the mutation's own response. A websocket connection has no response to set a cookie on, so both mutations are refused there (`FORBIDDEN`) instead of handing out a login the browser could never send back.
+- **Guessing.** A wrong password and an unknown username are answered identically (`UNAUTHENTICATED`) and cost one hash each (a dummy hash is verified for unknown usernames). Failures are counted per (IP, username): 5 within 15 minutes locks that pair for 15 minutes, and per username: 40 within an hour locks the username for 15 minutes, from every address. A locked key is refused before any hashing, even with the right password, and answers `LIMIT_REACHED` with the wait in the message. Trade-off: because handles are public, someone can keep a victim's *password login* locked with enough distributed attempts; sessions already signed in, and Google/GitHub sign-in, are unaffected. The per-IP request limit on the sign-in paths still applies.
 - **Changing the password** is the GraphQL mutation `changePassword(currentPassword, newPassword)`: it needs the current password even though the player is signed in, applies the same rules, and ends every other login of the account (the caller's own stays). Google/GitHub accounts have no password and cannot add one. `hasPassword` on `me` tells the UI which kind it is.
 - The frontend shows the form in the sign-in dialog when `authProviders` contains the `password` entry (`PasswordForm.svelte`: Sign in / Create account tabs, a "No email, no reset" warning on sign-up) and a "Password" section in Settings for password accounts.
 
@@ -318,14 +333,14 @@ A handle is `^[a-z0-9_]{3,20}$`, unique case-insensitively, checked against a re
 A session id is public (anyone watching a winner sees it), so an account can **never** claim a session by id:
 
 - A signed-in creator's `createSession` attaches the session to the account from the cookie.
-- Every session made through `createSession` gets a secret **owner token**. Only its SHA-256 is stored (`Session.OwnerHash`); the token is returned once, in the `ownerToken` field of the `createSession` response, and is `null` in every query, list and subscription. Existing agents that read `id` are unaffected; the field is optional.
+- Every session made through `createSession` gets a secret **owner token**. Only its SHA-256 is stored (`Session.OwnerHash`); the token is returned once, in the `ownerToken` field of the `createSession` response, and is `null` in every query, list and subscription. It is the credential for playing the session (`setProgram`, `run`, `step`, `pause`, `reset` all take `ownerToken:`) as well as for claiming, renaming and deleting it, so a client must keep it. Existing agents that only read `id` are unaffected by the field being optional, but they can no longer play a session without it.
 - After signing in the browser offers (never automatically, since a shared computer may hold someone else's guest runs) to "add my guest runs": `claimSessions([{sessionID, ownerToken}])`, up to 100 a call. A claim succeeds only when the token matches (constant-time compare of the hashes) and the session belongs to no account. A session already on another account is never re-attached; unknown sessions, wrong tokens and sessions from before owner tokens all answer `REJECTED` without saying which. The browser keeps the tokens in `localStorage` (`lib/sessions.ts`) and forgets them once handled or when the account is deleted.
 
-### Who may change a session
+### Who may play, delete or rename a session
 
-Session ids are public, so what an id lets you do is limited. **Guest sessions** are open to anyone who knows the id, as they always were: a human and an agent can share one, and every existing agent keeps working. A session that belongs to a **signed-in player's account** (created while signed in, or claimed) is protected against the two destructive actions: `deleteSession` and `renameSession` need that account's login (cookie) or the secret owner token, passed as the optional `ownerToken` argument (`AuthorizeSessionChange` in `game/service/accounts.go`, called by the resolvers before `DeleteSession`/`RenameSession`; anyone else gets `FORBIDDEN`, an unknown session is still `NOT_FOUND`). Deleting would destroy the account's leaderboard entry, and renaming would let anyone put text on a child's session in the public lists.
+Session ids are public, so what an id lets you do is limited. **Guest sessions** stay open to anyone who knows the id for deleting and renaming (see below for playing), so an agent can still clean up after itself. A session that belongs to a **signed-in player's account** (created while signed in, or claimed) is protected against the two destructive actions: `deleteSession` and `renameSession` need that account's login (cookie) or the secret owner token, passed as the optional `ownerToken` argument (`AuthorizeSessionChange` in `game/service/accounts.go`, called by the resolvers before `DeleteSession`/`RenameSession`; anyone else gets `FORBIDDEN`, an unknown session is still `NOT_FOUND`). Deleting would destroy the account's leaderboard entry, and renaming would let anyone put text on a child's session in the public lists.
 
-Playing (`setProgram`, `run`, `step`, `pause`, `reset`) stays open on purpose: "Play with an AI" hands the session id to an agent, and recorded wins survive any program change, so playing someone's session cannot remove or worsen their entry. If that ever needs closing, the owner token (or a separate play token that the prompt card includes) is the mechanism. A link to an account that no longer exists, or accounts being off, counts as a guest session.
+**Playing is creator-only.** `setProgram`, `run`, `step`, `pause` and `reset` all take the same optional `ownerToken` and are gated by `AuthorizeSessionPlay`: the creator proves ownership with the token `createSession` returned (the browser keeps it in `localStorage`, so a guest needs no account), or, for a session created while signed in, with the owning account's login cookie. A stranger holding only the public id gets `FORBIDDEN`, so a shared watch link is exactly that — a spectator view. Sharing the token is the supported way to let a second person or an AI agent play: the "Play with an AI" prompt card carries it, and `canPlaySession(id, ownerToken)` lets the UI choose between playing and a read-only view. The rule lives in the service, not in the resolver, so no transport can bypass it. A session **without an owner hash** (a file written before owner tokens, or the token-less `CreateSession` used by tests) has nothing to compare and stays open rather than becoming unplayable for everyone. A link to an account that no longer exists, or accounts being off, counts as a guest session.
 
 ### Leaderboard and profiles
 
@@ -375,7 +390,7 @@ Password sign-in needs no setup at all: it is on by default, so the live site of
 - Program editing works on a local draft. The draft is saved with `setProgram` on Run or Step; saving resets the robot to the start, and the UI says so.
 - Logic lives in plain TypeScript modules in `lib/` (`program.ts`, `grid.ts`, `highlight.ts`, `dnd.ts`, `shortcuts.ts`, `instructions.ts`, `prompt.ts`, `leaderboard.ts`), each with Vitest tests. Components stay thin.
 - GraphQL documents and types are written by hand in `lib/queries.ts` and `lib/types.ts`. Update them whenever the schema changes.
-- Accounts: `lib/stores/account.ts` holds the signed-in player and the provider list (loaded once by the root layout; a failed lookup counts as signed out, so guests are never blocked), `lib/account.ts` the pure logic (handle checks, `safeNext`, sign-in links, profile summary, claim wording). `AccountMenu` (header) and `SignInDialog` appear only when a provider exists; sign-in is a full-page navigation (`data-sveltekit-reload`), not a router link. `lib/sessions.ts` also remembers the owner tokens `createSession` returns; `ClaimBanner` and `/settings` offer to attach those runs.
+- Accounts: `lib/stores/account.ts` holds the signed-in player and the provider list (loaded once by the root layout; a failed lookup counts as signed out, so guests are never blocked), `lib/account.ts` the pure logic (handle checks, `safeNext`, sign-in links, profile summary, claim wording, and `submitPassword`, which runs the `registerWithPassword`/`logInWithPassword` mutation through the shared urql client). `AccountMenu` (header) and `SignInDialog` appear only when a provider exists. A redirect provider's button is a full-page navigation (`data-sveltekit-reload`), not a router link, because `/auth/...` is not a SPA route; the password form is an ordinary mutation that sets the cookie on its own response and then navigates to `next`. `lib/sessions.ts` also remembers the owner tokens `createSession` returns (`ownerTokens`, `ownerTokenFor`, `claimableSessions`), which the play and watch pages pass to every play call; `ClaimBanner` and `/settings` offer to attach those runs.
 - Brand names come from `lib/brand.ts` (`SITE`, `GAME`, `TITLE`, `pageTitle()`); don't hard-code them. `localStorage` keys use the `drbrain-motor-programming.` prefix; the admin key is kept in `sessionStorage` only and is asked for only when editing a built-in map.
 - Gotcha: explicit `onchange`/`oninput` handlers run *before* `bind:value` updates. Read `event.currentTarget.value`, not the bound variable.
 
@@ -409,7 +424,7 @@ The goal: friendly, bright and calm, like a puzzle book. There is a matching dar
 - Play page: two columns on large screens (board left and sticky, sized to the viewport; side panel right), one column on mobile, where the board is pinned small at the top of the screen (about 22% of the viewport height, `max-lg:sticky`, filled with `--page-bg`) so it stays visible while you edit the tapes and press Run, and the map description moves under it. The site header gives the nav links their own horizontally scrolling row below the logo on phones instead of wrapping to three rows. The side panel order is fixed: status line (Ready / Running at N ms/step / Paused / Won in N steps / Lost: reason), stats row (Steps, Treats, Best, Runs), run controls, palette and tapes, call stack, Help (key list, "All rules →") and the AI prompt card. Winning or losing opens the result modal (Try again · Next map · All maps); Next map starts the next map in `sortMaps` order with the same player name.
 - Keyboard (`lib/globalKeys.ts`): **R** resets and **S** steps when no program slot is focused (inside a slot R means turn right), **?** opens the shortcuts dialog. `editKeyAction` adds **Ctrl/Cmd+Z** undo, **Ctrl/Cmd+Shift+Z** or **Ctrl+Y** redo and **Ctrl/Cmd+Enter** run/pause; these also work from a focused slot (slots never use Ctrl/Cmd) but not in form fields.
 - Undo/redo (`lib/history.ts`): the play page keeps past/future stacks of whole programs (100 deep) and routes every player edit through `edit()`, which records the previous draft. A program replaced by someone else (an agent, another tab) is recorded too, so your version stays one undo away. Tapes show "n of m slots used" and flag a filled sub that nothing reachable from main calls (`unreachableSubs` in `lib/program.ts`).
-- Watch page: the same layout read-only — status line, stats, **Take over** (opens `/play/<id>`), tapes, call stack, AI prompt card.
+- Watch page: the same layout read-only — status line, stats, tapes, call stack, AI prompt card, and **Take over** (opens `/play/<id>`) only when this browser holds the session's owner token; otherwise a line says only the player who started the run can take it over. Watching is open to everyone; the owner token is what makes the prompt card's calls valid and the play page writable.
 
 ### The board
 

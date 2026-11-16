@@ -6,6 +6,7 @@ package graph
 
 import (
 	"context"
+	"errors"
 
 	"github.com/wricardo/drbrain-motor-programming/game/service"
 	"github.com/wricardo/drbrain-motor-programming/graph/generated"
@@ -65,7 +66,10 @@ func (r *mutationResolver) RenameSession(ctx context.Context, id string, display
 }
 
 // SetProgram is the resolver for the setProgram field.
-func (r *mutationResolver) SetProgram(ctx context.Context, sessionID string, program model.ProgramInput) (*model.Session, error) {
+func (r *mutationResolver) SetProgram(ctx context.Context, sessionID string, program model.ProgramInput, ownerToken *string) (*model.Session, error) {
+	if err := r.Service.AuthorizeSessionPlay(sessionID, sessionActor(ctx, ownerToken)); err != nil {
+		return nil, toGQLError(err)
+	}
 	s, err := r.Service.SetProgram(sessionID, fromProgramInput(program))
 	if err != nil {
 		return nil, toGQLError(err)
@@ -74,7 +78,10 @@ func (r *mutationResolver) SetProgram(ctx context.Context, sessionID string, pro
 }
 
 // Run is the resolver for the run field.
-func (r *mutationResolver) Run(ctx context.Context, sessionID string, speedMs *int) (*model.Session, error) {
+func (r *mutationResolver) Run(ctx context.Context, sessionID string, speedMs *int, ownerToken *string) (*model.Session, error) {
+	if err := r.Service.AuthorizeSessionPlay(sessionID, sessionActor(ctx, ownerToken)); err != nil {
+		return nil, toGQLError(err)
+	}
 	speed := 500
 	if speedMs != nil {
 		speed = *speedMs
@@ -87,7 +94,10 @@ func (r *mutationResolver) Run(ctx context.Context, sessionID string, speedMs *i
 }
 
 // Pause is the resolver for the pause field.
-func (r *mutationResolver) Pause(ctx context.Context, sessionID string) (*model.Session, error) {
+func (r *mutationResolver) Pause(ctx context.Context, sessionID string, ownerToken *string) (*model.Session, error) {
+	if err := r.Service.AuthorizeSessionPlay(sessionID, sessionActor(ctx, ownerToken)); err != nil {
+		return nil, toGQLError(err)
+	}
 	s, err := r.Service.Pause(sessionID)
 	if err != nil {
 		return nil, toGQLError(err)
@@ -96,7 +106,10 @@ func (r *mutationResolver) Pause(ctx context.Context, sessionID string) (*model.
 }
 
 // Step is the resolver for the step field.
-func (r *mutationResolver) Step(ctx context.Context, sessionID string) (*model.Session, error) {
+func (r *mutationResolver) Step(ctx context.Context, sessionID string, ownerToken *string) (*model.Session, error) {
+	if err := r.Service.AuthorizeSessionPlay(sessionID, sessionActor(ctx, ownerToken)); err != nil {
+		return nil, toGQLError(err)
+	}
 	s, err := r.Service.Step(sessionID)
 	if err != nil {
 		return nil, toGQLError(err)
@@ -105,7 +118,10 @@ func (r *mutationResolver) Step(ctx context.Context, sessionID string) (*model.S
 }
 
 // Reset is the resolver for the reset field.
-func (r *mutationResolver) Reset(ctx context.Context, sessionID string) (*model.Session, error) {
+func (r *mutationResolver) Reset(ctx context.Context, sessionID string, ownerToken *string) (*model.Session, error) {
+	if err := r.Service.AuthorizeSessionPlay(sessionID, sessionActor(ctx, ownerToken)); err != nil {
+		return nil, toGQLError(err)
+	}
 	s, err := r.Service.Reset(sessionID)
 	if err != nil {
 		return nil, toGQLError(err)
@@ -123,6 +139,16 @@ func (r *mutationResolver) Logout(ctx context.Context) (bool, error) {
 		}
 	}
 	return true, nil
+}
+
+// RegisterWithPassword is the resolver for the registerWithPassword field.
+func (r *mutationResolver) RegisterWithPassword(ctx context.Context, handle string, password string) (*model.Account, error) {
+	return r.passwordSignIn(ctx, true, handle, password)
+}
+
+// LogInWithPassword is the resolver for the logInWithPassword field.
+func (r *mutationResolver) LogInWithPassword(ctx context.Context, handle string, password string) (*model.Account, error) {
+	return r.passwordSignIn(ctx, false, handle, password)
 }
 
 // UpdateAccount is the resolver for the updateAccount field.
@@ -326,6 +352,23 @@ func (r *queryResolver) Session(ctx context.Context, id string) (*model.Session,
 		return nil, toGQLError(err)
 	}
 	return toSession(s), nil
+}
+
+// CanPlaySession is the resolver for the canPlaySession field. It answers
+// false for someone else's session so the UI can offer a read-only view; the
+// play mutations enforce the same rule themselves.
+func (r *queryResolver) CanPlaySession(ctx context.Context, id string, ownerToken *string) (bool, error) {
+	if err := r.Service.AuthorizeSessionPlay(id, sessionActor(ctx, ownerToken)); err != nil {
+		if isNotFound(err) {
+			return false, nil
+		}
+		var se *service.Error
+		if errors.As(err, &se) && se.Code == service.CodeForbidden {
+			return false, nil
+		}
+		return false, toGQLError(err)
+	}
+	return true, nil
 }
 
 // Sessions is the resolver for the sessions field.

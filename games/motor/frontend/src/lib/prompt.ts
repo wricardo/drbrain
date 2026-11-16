@@ -6,6 +6,11 @@ import { TITLE } from './brand';
 export interface PromptSession {
 	id: string;
 	map: GameMap;
+	/**
+	 * The session's owner token. Playing is creator-only, so an agent needs it;
+	 * the watch page (a spectator view) does not have it and omits it.
+	 */
+	ownerToken?: string | null;
 }
 
 const instructionList = (subCount: number): string =>
@@ -34,6 +39,11 @@ export function buildSessionPrompt(origin: string, s: PromptSession): string {
 	const tapes = [`main = ${m.mainTapeLength} slots`, ...subs.map((n, i) => `sub${i + 1} (subs[${i}]) = ${n} slots`)].join('; ');
 	const skeleton = `main: ${emptyTape(m.mainTapeLength)}\n    subs: [${subs.map(emptyTape).join(', ')}]`;
 	const treats = m.treats.map((t) => `(${t.x},${t.y})`).join(' ');
+	const ownerTokenLine = s.ownerToken
+		? `Owner token (this session's play credential, keep it private — it is needed on every play call below): ${s.ownerToken}`
+		: 'Owner token: (not available — this session cannot be played from this view)';
+	// Every play call is creator-only, so the token has to ride along in each one.
+	const tokenArg = s.ownerToken ? `, ownerToken: "${s.ownerToken}"` : '';
 	const recursion = m.allowRecursion
 		? `Recursion is ALLOWED on this map: a sub may call itself (or any sub already running). The call stack is bounded by maxCallDepth = ${m.maxCallDepth} and by the step limit, and there is no tail-call optimisation (the stack stays deep until a sub finishes).`
 		: `Recursion is NOT allowed on this map: a CALL_SUB_k aimed at the sub that is running, or at any sub already waiting on the call stack, does nothing (the step is still spent). A sub may call a different sub that is not on the stack, so you can nest subs; maxCallDepth = ${m.maxCallDepth}.`;
@@ -43,6 +53,7 @@ export function buildSessionPrompt(origin: string, s: PromptSession): string {
 ${TITLE} is a robot programming puzzle. You do not steer the robot: you write it a program (a main tape plus ${subs.length} subroutine ${subs.length === 1 ? 'tape' : 'tapes'} of instructions), the server runs it one instruction per step, and you win the moment every treat has been collected.
 
 Session ID: ${s.id}
+${ownerTokenLine}
 GraphQL endpoint: ${origin}/graphql
 Playground: ${origin}/playground
 Full rules and every field: ${origin}/llms.txt
@@ -75,14 +86,14 @@ Limits: at most ${m.maxSteps} steps; ${recursion}
 1. Plan on paper first: write the route as straight runs and turns using the coordinates above. Tapes are tiny, so look for repeated patterns and put them in subroutines (a sub can be a "row", a "U-turn", a "spiral side"...). Remember a blocked move costs a step but does no harm, so an over-long run of MOVE_FORWARD is safe when a wall will stop it.
 2. Store the program in the session:
 mutation {
-  setProgram(sessionID: "${s.id}", program: {
+  setProgram(sessionID: "${s.id}"${tokenArg}, program: {
     ${skeleton}
   }) { id vm { status steps } }
 }
    (Replace the EMPTY slots with real instructions.)
 3. Run it on the server (50-5000 ms per step) or step manually, then read the result:
-mutation { run(sessionID: "${s.id}", speedMs: 100) { playing vm { status steps } } }
-mutation { step(sessionID: "${s.id}") { vm { status steps pos { x y } } lastEvent { instruction blocked callBlocked } } }
+mutation { run(sessionID: "${s.id}"${tokenArg}, speedMs: 100) { playing vm { status steps } } }
+mutation { step(sessionID: "${s.id}"${tokenArg}) { vm { status steps pos { x y } } lastEvent { instruction blocked callBlocked } } }
 query { session(id: "${s.id}") { playing attempts bestSteps vm { status lossReason steps pos { x y } facing treatsRemaining { x y } callStack { tape pc } } } }
 4. If the status is LOST, read lossReason and treatsRemaining, fix the program, and repeat from step 2 (call reset first if you want to run again without changing the program). Do not stop until vm.status is WON, then report the winning program and its step count.
 5. Winners are ranked per map by slots used (non-EMPTY slots across all tapes; fewer is better), then by steps. Once you have won, you may try to win again with fewer slots or steps (setProgram, then run) and read your rank:
@@ -102,7 +113,7 @@ You write the robot a program (a main tape plus up to 10 subroutine tapes); the 
 1. Read ${origin}/llms.txt first: it has the complete rules, the coordinate convention (row 0 is the top, y grows downward) and working examples for every step.
 2. GraphQL endpoint: ${origin}/graphql (Playground: ${origin}/playground).
 3. List the maps: query { maps { id name difficulty layout mainTapeLength subTapeLengths maxSteps maxCallDepth allowRecursion } } and pick one (start with an easy one).
-4. Create your own session: mutation { createSession(mapID: "MAP_ID", displayName: "my agent") { id } } (displayName is optional: without it you get a random guest name like BraveOtter)
-5. Plan the route from the layout, then setProgram, run, and read the session until vm.status is WON. If it is LOST, read lossReason, fix the program and try again.
+4. Create your own session: mutation { createSession(mapID: "MAP_ID", displayName: "my agent") { id ownerToken } } (displayName is optional: without it you get a random guest name like BraveOtter).
+5. KEEP the ownerToken that createSession returned. Playing a session is creator-only: setProgram, run, step, pause and reset all need it (ownerToken: "..."), otherwise they answer FORBIDDEN. Plan the route from the layout, then setProgram, run, and read the session until vm.status is WON. If it is LOST, read lossReason, fix the program and try again.
 6. Tell me the session id so I can watch it live at ${origin}/watch/SESSION_ID, and report the winning program and its step count. Winners are ranked per map by fewest slots used (non-EMPTY slots across all tapes), then fewest steps: query { leaderboard(mapId: "MAP_ID") { entries { rank displayName slots steps } } }.`;
 }

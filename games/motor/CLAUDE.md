@@ -35,6 +35,7 @@ scripts/smoke.sh 9191                      # end-to-end HTTP smoke (starts its o
 - **Delivery**: full snapshot + monotonic `Seq` on every broadcast; hub drops the *oldest* queued update and ignores `Seq` ≤ last published; subscription resolver emits the current snapshot first.
 - **Map snapshot**: sessions embed their own map copy; map edits/deletes never touch sessions. Map creation is atomic via `MapStore.Create`, never check-then-save.
 - **Security**: map ids `^[a-z0-9_-]{1,64}$` (filenames); session ids 16 lowercase hex, validated before disk; admin mutations need `X-Admin-Key` (constant-time) unless `ALLOW_UNAUTHENTICATED_ADMIN=true` with no key set; `max_steps ≤ 10000`, `max_call_depth ≤ 64`.
+- **Session ownership**: `AuthorizeSessionPlay` gates `setProgram`/`run`/`step`/`pause`/`reset` (owner token or owning account's login; a session with no `OwnerHash` stays open) and `AuthorizeSessionChange` gates rename/delete. Both live in `game/service` and are called by the resolvers, so no transport can bypass them. `canPlaySession` answers the same question for the UI.
 - **Recursion off**: calling a sub already on the call stack is a no-op (still a step).
 - **Zero subs**: `sub_tape_lengths: []` ≠ omitted. No `omitempty`; never turn `[]` into `nil` (incl. `graph/convert.go`).
 

@@ -67,16 +67,17 @@ func TestLeaderboardOverHTTP(t *testing.T) {
 	ts := newRealServer(t)
 
 	createWith := func(name, main, sub string) string {
-		_, out := gql(t, ts.URL, `mutation { createSession(mapID: "wide", displayName: "`+name+`") { id } }`, nil)
+		_, out := gql(t, ts.URL, `mutation { createSession(mapID: "wide", displayName: "`+name+`") { id ownerToken } }`, nil)
 		id, _ := dig(t, out, "data", "createSession", "id").(string)
-		if id == "" {
+		token, _ := dig(t, out, "data", "createSession", "ownerToken").(string)
+		if id == "" || token == "" {
 			t.Fatalf("createSession: %v", out)
 		}
-		if _, out = gql(t, ts.URL, `mutation { setProgram(sessionID: "`+id+`", program: {main: [`+main+`], subs: [[`+sub+`]]}) { id } }`, nil); out["errors"] != nil {
+		if _, out = gql(t, ts.URL, `mutation { setProgram(sessionID: "`+id+`", program: {main: [`+main+`], subs: [[`+sub+`]]}, ownerToken: "`+token+`") { id } }`, nil); out["errors"] != nil {
 			t.Fatalf("setProgram: %v", out)
 		}
 		for range 30 {
-			_, out = gql(t, ts.URL, `mutation { step(sessionID: "`+id+`") { vm { status } } }`, nil)
+			_, out = gql(t, ts.URL, `mutation { step(sessionID: "`+id+`", ownerToken: "`+token+`") { vm { status } } }`, nil)
 			if out["errors"] != nil {
 				t.Fatalf("step: %v", out)
 			}
@@ -191,18 +192,21 @@ func gqlVars(t *testing.T, url, query string, vars map[string]any) (int, map[str
 func TestGuestNamesAndPlayerRunsOverHTTP(t *testing.T) {
 	ts := newRealServer(t)
 
-	_, out := gql(t, ts.URL, `mutation { createSession(mapID: "wide") { id displayName } }`, nil)
+	_, out := gql(t, ts.URL, `mutation { createSession(mapID: "wide") { id displayName ownerToken } }`, nil)
 	id, _ := dig(t, out, "data", "createSession", "id").(string)
 	guest, _ := dig(t, out, "data", "createSession", "displayName").(string)
+	token, _ := dig(t, out, "data", "createSession", "ownerToken").(string)
 	if !regexp.MustCompile(`^[A-Z][a-z]+[A-Z][a-z]+$`).MatchString(guest) {
 		t.Fatalf("displayName = %q, want a <Adjective><Noun> guest name (%v)", guest, out)
 	}
 	main := "[" + strings.Repeat("MOVE_FORWARD,", 7) + "EMPTY]"
-	if _, out = gql(t, ts.URL, `mutation { setProgram(sessionID: "`+id+`", program: {main: `+main+`, subs: [[EMPTY,EMPTY,EMPTY,EMPTY]]}) { id } }`, nil); out["errors"] != nil {
+	if _, out = gql(t, ts.URL, `mutation { setProgram(sessionID: "`+id+`", program: {main: `+main+`, subs: [[EMPTY,EMPTY,EMPTY,EMPTY]]}, ownerToken: "`+token+`") { id } }`, nil); out["errors"] != nil {
 		t.Fatalf("setProgram: %v", out)
 	}
 	for range 7 {
-		gql(t, ts.URL, `mutation { step(sessionID: "`+id+`") { id } }`, nil)
+		if _, out = gql(t, ts.URL, `mutation { step(sessionID: "`+id+`", ownerToken: "`+token+`") { id } }`, nil); out["errors"] != nil {
+			t.Fatalf("step: %v", out)
+		}
 	}
 
 	check := func(label string, vars map[string]any) {

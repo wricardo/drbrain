@@ -135,8 +135,10 @@ type Session {
   """
   Secret that proves the caller created this session; keep it private. Returned only by the
   createSession response that made the session and null everywhere else (queries, lists,
-  subscriptions). A signed-in player can later attach the session to their account with
-  claimSessions({sessionID, ownerToken}). Optional: clients that never select it are unaffected.
+  subscriptions). It is the credential for playing the session (pass it to setProgram, run, step,
+  pause and reset) and for changing or attaching it (deleteSession, renameSession, claimSessions).
+  Sharing it is how a session is handed to a second person or an AI agent. Optional: clients that
+  never select it are unaffected.
   """
   ownerToken: String
 }
@@ -293,6 +295,13 @@ type Query {
   maps: [Map!]!
   map(id: ID!): Map
   session(id: ID!): Session
+  """
+  Whether this caller may play the session (setProgram, run, step, pause, reset): true when they
+  created it — a signed-in owner by their login, anyone else by passing the ownerToken — or when the
+  session predates owner tokens. False when it belongs to someone else, so a play page can show a
+  read-only view instead of failing on the first save.
+  """
+  canPlaySession(id: ID!, ownerToken: String): Boolean!
   sessions(sort: SessionSort = RECENT, limit: Int = 50, mapId: ID): [Session!]!
   "Ranks the winning sessions of a map (limit defaults to 20, at most 100). Null when the map does not exist."
   leaderboard(mapId: ID!, order: LeaderboardOrder = SLOTS, limit: Int = 20, sessionId: ID): Leaderboard
@@ -306,6 +315,10 @@ type Query {
 }
 
 type Mutation {
+  """
+  Starts a session. The response carries the secret `ownerToken`: it is needed to play the session
+  (setProgram, run, step, pause, reset) and to rename, delete or claim it, so keep it.
+  """
   createSession(mapID: ID!, displayName: String): Session!
   """
   Deletes a session. A guest session can be deleted by anyone who knows its id. A session that belongs to a
@@ -315,14 +328,37 @@ type Mutation {
   deleteSession(id: ID!, ownerToken: String): Boolean!
   "Renames a session; the same rule as deleteSession applies."
   renameSession(id: ID!, displayName: String!, ownerToken: String): Session!
-  setProgram(sessionID: ID!, program: ProgramInput!): Session!
-  run(sessionID: ID!, speedMs: Int = 500): Session!
-  pause(sessionID: ID!): Session!
-  step(sessionID: ID!): Session!
-  reset(sessionID: ID!): Session!
+  """
+  Stores the program and resets the robot. Only the session's creator may play it: pass the
+  ownerToken that createSession returned, or be signed in to the account that owns the session
+  (FORBIDDEN otherwise). Sessions created before owner tokens stay open.
+  """
+  setProgram(sessionID: ID!, program: ProgramInput!, ownerToken: String): Session!
+  "Starts the program; the same creator-only rule as setProgram applies."
+  run(sessionID: ID!, speedMs: Int = 500, ownerToken: String): Session!
+  "Pauses playback; the same creator-only rule as setProgram applies."
+  pause(sessionID: ID!, ownerToken: String): Session!
+  "Executes one step; the same creator-only rule as setProgram applies."
+  step(sessionID: ID!, ownerToken: String): Session!
+  "Puts the robot back at the start; the same creator-only rule as setProgram applies."
+  reset(sessionID: ID!, ownerToken: String): Session!
 
   "Signs the player out (clears the login cookie). Always true."
   logout: Boolean!
+  """
+  Creates a username/password account and signs the browser in with it. The username is the public
+  handle. Refused cross-site, so another site cannot create accounts through a victim's browser.
+  Errors: INVALID_ARGUMENT (bad handle, weak or taken password), LIMIT_REACHED, FORBIDDEN (password
+  sign-in is off), UNAUTHENTICATED (no cookie can be set: a subscription connection).
+  """
+  registerWithPassword(handle: String!, password: String!): Account!
+  """
+  Signs in with a username and password, rotating the browser's previous login. Refused cross-site.
+  An unknown username and a wrong password are answered identically (UNAUTHENTICATED). Repeated
+  failures lock the (address, username) pair and then the username: LIMIT_REACHED, refused before
+  any hashing. FORBIDDEN when password sign-in is off or no cookie can be set.
+  """
+  logInWithPassword(handle: String!, password: String!): Account!
   "Changes the signed-in player's handle, display name or profile visibility."
   updateAccount(input: AccountInput!): Account!
   "Changes the password of a username/password account and signs out its other browsers. There is no email, so there is no password reset."

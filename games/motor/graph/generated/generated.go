@@ -119,23 +119,25 @@ type ComplexityRoot struct {
 	}
 
 	Mutation struct {
-		ChangePassword func(childComplexity int, currentPassword string, newPassword string) int
-		ClaimSessions  func(childComplexity int, claims []*model.SessionClaimInput) int
-		CreateMap      func(childComplexity int, mapArg model.MapInput) int
-		CreateSession  func(childComplexity int, mapID string, displayName *string) int
-		DeleteAccount  func(childComplexity int, confirmHandle string) int
-		DeleteMap      func(childComplexity int, id string) int
-		DeleteSession  func(childComplexity int, id string, ownerToken *string) int
-		Logout         func(childComplexity int) int
-		Pause          func(childComplexity int, sessionID string) int
-		RenameSession  func(childComplexity int, id string, displayName string, ownerToken *string) int
-		Reset          func(childComplexity int, sessionID string) int
-		Run            func(childComplexity int, sessionID string, speedMs *int) int
-		SetProgram     func(childComplexity int, sessionID string, program model.ProgramInput) int
-		Step           func(childComplexity int, sessionID string) int
-		UpdateAccount  func(childComplexity int, input model.AccountInput) int
-		UpdateMap      func(childComplexity int, mapArg model.MapInput) int
-		ValidateMap    func(childComplexity int, mapArg model.MapInput) int
+		ChangePassword       func(childComplexity int, currentPassword string, newPassword string) int
+		ClaimSessions        func(childComplexity int, claims []*model.SessionClaimInput) int
+		CreateMap            func(childComplexity int, mapArg model.MapInput) int
+		CreateSession        func(childComplexity int, mapID string, displayName *string) int
+		DeleteAccount        func(childComplexity int, confirmHandle string) int
+		DeleteMap            func(childComplexity int, id string) int
+		DeleteSession        func(childComplexity int, id string, ownerToken *string) int
+		LogInWithPassword    func(childComplexity int, handle string, password string) int
+		Logout               func(childComplexity int) int
+		Pause                func(childComplexity int, sessionID string, ownerToken *string) int
+		RegisterWithPassword func(childComplexity int, handle string, password string) int
+		RenameSession        func(childComplexity int, id string, displayName string, ownerToken *string) int
+		Reset                func(childComplexity int, sessionID string, ownerToken *string) int
+		Run                  func(childComplexity int, sessionID string, speedMs *int, ownerToken *string) int
+		SetProgram           func(childComplexity int, sessionID string, program model.ProgramInput, ownerToken *string) int
+		Step                 func(childComplexity int, sessionID string, ownerToken *string) int
+		UpdateAccount        func(childComplexity int, input model.AccountInput) int
+		UpdateMap            func(childComplexity int, mapArg model.MapInput) int
+		ValidateMap          func(childComplexity int, mapArg model.MapInput) int
 	}
 
 	PlayerRun struct {
@@ -163,15 +165,16 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
-		AuthProviders func(childComplexity int) int
-		Leaderboard   func(childComplexity int, mapID string, order *model.LeaderboardOrder, limit *int, sessionID *string) int
-		Map           func(childComplexity int, id string) int
-		Maps          func(childComplexity int) int
-		Me            func(childComplexity int) int
-		PlayerRuns    func(childComplexity int, sessionIds []string, name *string) int
-		Profile       func(childComplexity int, handle string) int
-		Session       func(childComplexity int, id string) int
-		Sessions      func(childComplexity int, sort *model.SessionSort, limit *int, mapID *string) int
+		AuthProviders  func(childComplexity int) int
+		CanPlaySession func(childComplexity int, id string, ownerToken *string) int
+		Leaderboard    func(childComplexity int, mapID string, order *model.LeaderboardOrder, limit *int, sessionID *string) int
+		Map            func(childComplexity int, id string) int
+		Maps           func(childComplexity int) int
+		Me             func(childComplexity int) int
+		PlayerRuns     func(childComplexity int, sessionIds []string, name *string) int
+		Profile        func(childComplexity int, handle string) int
+		Session        func(childComplexity int, id string) int
+		Sessions       func(childComplexity int, sort *model.SessionSort, limit *int, mapID *string) int
 	}
 
 	Session struct {
@@ -243,12 +246,14 @@ type MutationResolver interface {
 	CreateSession(ctx context.Context, mapID string, displayName *string) (*model.Session, error)
 	DeleteSession(ctx context.Context, id string, ownerToken *string) (bool, error)
 	RenameSession(ctx context.Context, id string, displayName string, ownerToken *string) (*model.Session, error)
-	SetProgram(ctx context.Context, sessionID string, program model.ProgramInput) (*model.Session, error)
-	Run(ctx context.Context, sessionID string, speedMs *int) (*model.Session, error)
-	Pause(ctx context.Context, sessionID string) (*model.Session, error)
-	Step(ctx context.Context, sessionID string) (*model.Session, error)
-	Reset(ctx context.Context, sessionID string) (*model.Session, error)
+	SetProgram(ctx context.Context, sessionID string, program model.ProgramInput, ownerToken *string) (*model.Session, error)
+	Run(ctx context.Context, sessionID string, speedMs *int, ownerToken *string) (*model.Session, error)
+	Pause(ctx context.Context, sessionID string, ownerToken *string) (*model.Session, error)
+	Step(ctx context.Context, sessionID string, ownerToken *string) (*model.Session, error)
+	Reset(ctx context.Context, sessionID string, ownerToken *string) (*model.Session, error)
 	Logout(ctx context.Context) (bool, error)
+	RegisterWithPassword(ctx context.Context, handle string, password string) (*model.Account, error)
+	LogInWithPassword(ctx context.Context, handle string, password string) (*model.Account, error)
 	UpdateAccount(ctx context.Context, input model.AccountInput) (*model.Account, error)
 	ChangePassword(ctx context.Context, currentPassword string, newPassword string) (bool, error)
 	DeleteAccount(ctx context.Context, confirmHandle string) (bool, error)
@@ -265,6 +270,7 @@ type QueryResolver interface {
 	Maps(ctx context.Context) ([]*model.Map, error)
 	Map(ctx context.Context, id string) (*model.Map, error)
 	Session(ctx context.Context, id string) (*model.Session, error)
+	CanPlaySession(ctx context.Context, id string, ownerToken *string) (bool, error)
 	Sessions(ctx context.Context, sort *model.SessionSort, limit *int, mapID *string) ([]*model.Session, error)
 	Leaderboard(ctx context.Context, mapID string, order *model.LeaderboardOrder, limit *int, sessionID *string) (*model.Leaderboard, error)
 	PlayerRuns(ctx context.Context, sessionIds []string, name *string) ([]*model.PlayerRun, error)
@@ -684,6 +690,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Mutation.DeleteSession(childComplexity, args["id"].(string), args["ownerToken"].(*string)), true
 
+	case "Mutation.logInWithPassword":
+		if e.complexity.Mutation.LogInWithPassword == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_logInWithPassword_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.LogInWithPassword(childComplexity, args["handle"].(string), args["password"].(string)), true
+
 	case "Mutation.logout":
 		if e.complexity.Mutation.Logout == nil {
 			break
@@ -701,7 +719,19 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.Pause(childComplexity, args["sessionID"].(string)), true
+		return e.complexity.Mutation.Pause(childComplexity, args["sessionID"].(string), args["ownerToken"].(*string)), true
+
+	case "Mutation.registerWithPassword":
+		if e.complexity.Mutation.RegisterWithPassword == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_registerWithPassword_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.RegisterWithPassword(childComplexity, args["handle"].(string), args["password"].(string)), true
 
 	case "Mutation.renameSession":
 		if e.complexity.Mutation.RenameSession == nil {
@@ -725,7 +755,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.Reset(childComplexity, args["sessionID"].(string)), true
+		return e.complexity.Mutation.Reset(childComplexity, args["sessionID"].(string), args["ownerToken"].(*string)), true
 
 	case "Mutation.run":
 		if e.complexity.Mutation.Run == nil {
@@ -737,7 +767,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.Run(childComplexity, args["sessionID"].(string), args["speedMs"].(*int)), true
+		return e.complexity.Mutation.Run(childComplexity, args["sessionID"].(string), args["speedMs"].(*int), args["ownerToken"].(*string)), true
 
 	case "Mutation.setProgram":
 		if e.complexity.Mutation.SetProgram == nil {
@@ -749,7 +779,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.SetProgram(childComplexity, args["sessionID"].(string), args["program"].(model.ProgramInput)), true
+		return e.complexity.Mutation.SetProgram(childComplexity, args["sessionID"].(string), args["program"].(model.ProgramInput), args["ownerToken"].(*string)), true
 
 	case "Mutation.step":
 		if e.complexity.Mutation.Step == nil {
@@ -761,7 +791,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.Step(childComplexity, args["sessionID"].(string)), true
+		return e.complexity.Mutation.Step(childComplexity, args["sessionID"].(string), args["ownerToken"].(*string)), true
 
 	case "Mutation.updateAccount":
 		if e.complexity.Mutation.UpdateAccount == nil {
@@ -889,6 +919,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.AuthProviders(childComplexity), true
+
+	case "Query.canPlaySession":
+		if e.complexity.Query.CanPlaySession == nil {
+			break
+		}
+
+		args, err := ec.field_Query_canPlaySession_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.CanPlaySession(childComplexity, args["id"].(string), args["ownerToken"].(*string)), true
 
 	case "Query.leaderboard":
 		if e.complexity.Query.Leaderboard == nil {
@@ -1545,8 +1587,10 @@ type Session {
   """
   Secret that proves the caller created this session; keep it private. Returned only by the
   createSession response that made the session and null everywhere else (queries, lists,
-  subscriptions). A signed-in player can later attach the session to their account with
-  claimSessions({sessionID, ownerToken}). Optional: clients that never select it are unaffected.
+  subscriptions). It is the credential for playing the session (pass it to setProgram, run, step,
+  pause and reset) and for changing or attaching it (deleteSession, renameSession, claimSessions).
+  Sharing it is how a session is handed to a second person or an AI agent. Optional: clients that
+  never select it are unaffected.
   """
   ownerToken: String
 }
@@ -1703,6 +1747,13 @@ type Query {
   maps: [Map!]!
   map(id: ID!): Map
   session(id: ID!): Session
+  """
+  Whether this caller may play the session (setProgram, run, step, pause, reset): true when they
+  created it — a signed-in owner by their login, anyone else by passing the ownerToken — or when the
+  session predates owner tokens. False when it belongs to someone else, so a play page can show a
+  read-only view instead of failing on the first save.
+  """
+  canPlaySession(id: ID!, ownerToken: String): Boolean!
   sessions(sort: SessionSort = RECENT, limit: Int = 50, mapId: ID): [Session!]!
   "Ranks the winning sessions of a map (limit defaults to 20, at most 100). Null when the map does not exist."
   leaderboard(mapId: ID!, order: LeaderboardOrder = SLOTS, limit: Int = 20, sessionId: ID): Leaderboard
@@ -1716,6 +1767,10 @@ type Query {
 }
 
 type Mutation {
+  """
+  Starts a session. The response carries the secret ` + "`" + `ownerToken` + "`" + `: it is needed to play the session
+  (setProgram, run, step, pause, reset) and to rename, delete or claim it, so keep it.
+  """
   createSession(mapID: ID!, displayName: String): Session!
   """
   Deletes a session. A guest session can be deleted by anyone who knows its id. A session that belongs to a
@@ -1725,14 +1780,37 @@ type Mutation {
   deleteSession(id: ID!, ownerToken: String): Boolean!
   "Renames a session; the same rule as deleteSession applies."
   renameSession(id: ID!, displayName: String!, ownerToken: String): Session!
-  setProgram(sessionID: ID!, program: ProgramInput!): Session!
-  run(sessionID: ID!, speedMs: Int = 500): Session!
-  pause(sessionID: ID!): Session!
-  step(sessionID: ID!): Session!
-  reset(sessionID: ID!): Session!
+  """
+  Stores the program and resets the robot. Only the session's creator may play it: pass the
+  ownerToken that createSession returned, or be signed in to the account that owns the session
+  (FORBIDDEN otherwise). Sessions created before owner tokens stay open.
+  """
+  setProgram(sessionID: ID!, program: ProgramInput!, ownerToken: String): Session!
+  "Starts the program; the same creator-only rule as setProgram applies."
+  run(sessionID: ID!, speedMs: Int = 500, ownerToken: String): Session!
+  "Pauses playback; the same creator-only rule as setProgram applies."
+  pause(sessionID: ID!, ownerToken: String): Session!
+  "Executes one step; the same creator-only rule as setProgram applies."
+  step(sessionID: ID!, ownerToken: String): Session!
+  "Puts the robot back at the start; the same creator-only rule as setProgram applies."
+  reset(sessionID: ID!, ownerToken: String): Session!
 
   "Signs the player out (clears the login cookie). Always true."
   logout: Boolean!
+  """
+  Creates a username/password account and signs the browser in with it. The username is the public
+  handle. Refused cross-site, so another site cannot create accounts through a victim's browser.
+  Errors: INVALID_ARGUMENT (bad handle, weak or taken password), LIMIT_REACHED, FORBIDDEN (password
+  sign-in is off), UNAUTHENTICATED (no cookie can be set: a subscription connection).
+  """
+  registerWithPassword(handle: String!, password: String!): Account!
+  """
+  Signs in with a username and password, rotating the browser's previous login. Refused cross-site.
+  An unknown username and a wrong password are answered identically (UNAUTHENTICATED). Repeated
+  failures lock the (address, username) pair and then the username: LIMIT_REACHED, refused before
+  any hashing. FORBIDDEN when password sign-in is off or no cookie can be set.
+  """
+  logInWithPassword(handle: String!, password: String!): Account!
   "Changes the signed-in player's handle, display name or profile visibility."
   updateAccount(input: AccountInput!): Account!
   "Changes the password of a username/password account and signs out its other browsers. There is no email, so there is no password reset."
@@ -2028,6 +2106,57 @@ func (ec *executionContext) field_Mutation_deleteSession_argsOwnerToken(
 	return zeroVal, nil
 }
 
+func (ec *executionContext) field_Mutation_logInWithPassword_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Mutation_logInWithPassword_argsHandle(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["handle"] = arg0
+	arg1, err := ec.field_Mutation_logInWithPassword_argsPassword(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["password"] = arg1
+	return args, nil
+}
+func (ec *executionContext) field_Mutation_logInWithPassword_argsHandle(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["handle"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("handle"))
+	if tmp, ok := rawArgs["handle"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Mutation_logInWithPassword_argsPassword(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["password"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("password"))
+	if tmp, ok := rawArgs["password"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
 func (ec *executionContext) field_Mutation_pause_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -2036,6 +2165,11 @@ func (ec *executionContext) field_Mutation_pause_args(ctx context.Context, rawAr
 		return nil, err
 	}
 	args["sessionID"] = arg0
+	arg1, err := ec.field_Mutation_pause_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg1
 	return args, nil
 }
 func (ec *executionContext) field_Mutation_pause_argsSessionID(
@@ -2050,6 +2184,75 @@ func (ec *executionContext) field_Mutation_pause_argsSessionID(
 	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("sessionID"))
 	if tmp, ok := rawArgs["sessionID"]; ok {
 		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Mutation_pause_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Mutation_registerWithPassword_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Mutation_registerWithPassword_argsHandle(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["handle"] = arg0
+	arg1, err := ec.field_Mutation_registerWithPassword_argsPassword(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["password"] = arg1
+	return args, nil
+}
+func (ec *executionContext) field_Mutation_registerWithPassword_argsHandle(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["handle"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("handle"))
+	if tmp, ok := rawArgs["handle"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Mutation_registerWithPassword_argsPassword(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["password"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("password"))
+	if tmp, ok := rawArgs["password"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
 	}
 
 	var zeroVal string
@@ -2138,6 +2341,11 @@ func (ec *executionContext) field_Mutation_reset_args(ctx context.Context, rawAr
 		return nil, err
 	}
 	args["sessionID"] = arg0
+	arg1, err := ec.field_Mutation_reset_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg1
 	return args, nil
 }
 func (ec *executionContext) field_Mutation_reset_argsSessionID(
@@ -2158,6 +2366,24 @@ func (ec *executionContext) field_Mutation_reset_argsSessionID(
 	return zeroVal, nil
 }
 
+func (ec *executionContext) field_Mutation_reset_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
 func (ec *executionContext) field_Mutation_run_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -2171,6 +2397,11 @@ func (ec *executionContext) field_Mutation_run_args(ctx context.Context, rawArgs
 		return nil, err
 	}
 	args["speedMs"] = arg1
+	arg2, err := ec.field_Mutation_run_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg2
 	return args, nil
 }
 func (ec *executionContext) field_Mutation_run_argsSessionID(
@@ -2209,6 +2440,24 @@ func (ec *executionContext) field_Mutation_run_argsSpeedMs(
 	return zeroVal, nil
 }
 
+func (ec *executionContext) field_Mutation_run_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
 func (ec *executionContext) field_Mutation_setProgram_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -2222,6 +2471,11 @@ func (ec *executionContext) field_Mutation_setProgram_args(ctx context.Context, 
 		return nil, err
 	}
 	args["program"] = arg1
+	arg2, err := ec.field_Mutation_setProgram_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg2
 	return args, nil
 }
 func (ec *executionContext) field_Mutation_setProgram_argsSessionID(
@@ -2260,6 +2514,24 @@ func (ec *executionContext) field_Mutation_setProgram_argsProgram(
 	return zeroVal, nil
 }
 
+func (ec *executionContext) field_Mutation_setProgram_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
 func (ec *executionContext) field_Mutation_step_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -2268,6 +2540,11 @@ func (ec *executionContext) field_Mutation_step_args(ctx context.Context, rawArg
 		return nil, err
 	}
 	args["sessionID"] = arg0
+	arg1, err := ec.field_Mutation_step_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg1
 	return args, nil
 }
 func (ec *executionContext) field_Mutation_step_argsSessionID(
@@ -2285,6 +2562,24 @@ func (ec *executionContext) field_Mutation_step_argsSessionID(
 	}
 
 	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Mutation_step_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
 	return zeroVal, nil
 }
 
@@ -2397,6 +2692,57 @@ func (ec *executionContext) field_Query___type_argsName(
 	}
 
 	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_canPlaySession_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Query_canPlaySession_argsID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	arg1, err := ec.field_Query_canPlaySession_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg1
+	return args, nil
+}
+func (ec *executionContext) field_Query_canPlaySession_argsID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["id"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
+	if tmp, ok := rawArgs["id"]; ok {
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_canPlaySession_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
 	return zeroVal, nil
 }
 
@@ -5088,7 +5434,7 @@ func (ec *executionContext) _Mutation_setProgram(ctx context.Context, field grap
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().SetProgram(rctx, fc.Args["sessionID"].(string), fc.Args["program"].(model.ProgramInput))
+		return ec.resolvers.Mutation().SetProgram(rctx, fc.Args["sessionID"].(string), fc.Args["program"].(model.ProgramInput), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -5175,7 +5521,7 @@ func (ec *executionContext) _Mutation_run(ctx context.Context, field graphql.Col
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().Run(rctx, fc.Args["sessionID"].(string), fc.Args["speedMs"].(*int))
+		return ec.resolvers.Mutation().Run(rctx, fc.Args["sessionID"].(string), fc.Args["speedMs"].(*int), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -5262,7 +5608,7 @@ func (ec *executionContext) _Mutation_pause(ctx context.Context, field graphql.C
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().Pause(rctx, fc.Args["sessionID"].(string))
+		return ec.resolvers.Mutation().Pause(rctx, fc.Args["sessionID"].(string), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -5349,7 +5695,7 @@ func (ec *executionContext) _Mutation_step(ctx context.Context, field graphql.Co
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().Step(rctx, fc.Args["sessionID"].(string))
+		return ec.resolvers.Mutation().Step(rctx, fc.Args["sessionID"].(string), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -5436,7 +5782,7 @@ func (ec *executionContext) _Mutation_reset(ctx context.Context, field graphql.C
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().Reset(rctx, fc.Args["sessionID"].(string))
+		return ec.resolvers.Mutation().Reset(rctx, fc.Args["sessionID"].(string), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -5549,6 +5895,144 @@ func (ec *executionContext) fieldContext_Mutation_logout(_ context.Context, fiel
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type Boolean does not have child fields")
 		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_registerWithPassword(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_registerWithPassword(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().RegisterWithPassword(rctx, fc.Args["handle"].(string), fc.Args["password"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.Account)
+	fc.Result = res
+	return ec.marshalNAccount2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐAccount(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mutation_registerWithPassword(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "handle":
+				return ec.fieldContext_Account_handle(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Account_displayName(ctx, field)
+			case "profilePublic":
+				return ec.fieldContext_Account_profilePublic(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Account_createdAt(ctx, field)
+			case "handleChangeableAt":
+				return ec.fieldContext_Account_handleChangeableAt(ctx, field)
+			case "hasPassword":
+				return ec.fieldContext_Account_hasPassword(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Account", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_registerWithPassword_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_logInWithPassword(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_logInWithPassword(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().LogInWithPassword(rctx, fc.Args["handle"].(string), fc.Args["password"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.Account)
+	fc.Result = res
+	return ec.marshalNAccount2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmotorᚑprogrammingᚋgraphᚋmodelᚐAccount(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mutation_logInWithPassword(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "handle":
+				return ec.fieldContext_Account_handle(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Account_displayName(ctx, field)
+			case "profilePublic":
+				return ec.fieldContext_Account_profilePublic(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Account_createdAt(ctx, field)
+			case "handleChangeableAt":
+				return ec.fieldContext_Account_handleChangeableAt(ctx, field)
+			case "hasPassword":
+				return ec.fieldContext_Account_hasPassword(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Account", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_logInWithPassword_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
 	}
 	return fc, nil
 }
@@ -7062,6 +7546,61 @@ func (ec *executionContext) fieldContext_Query_session(ctx context.Context, fiel
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_session_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_canPlaySession(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Query_canPlaySession(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().CanPlaySession(rctx, fc.Args["id"].(string), fc.Args["ownerToken"].(*string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Query_canPlaySession(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_canPlaySession_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -12271,6 +12810,20 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "registerWithPassword":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_registerWithPassword(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "logInWithPassword":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_logInWithPassword(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "updateAccount":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_updateAccount(ctx, field)
@@ -12676,6 +13229,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_session(ctx, field)
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "canPlaySession":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_canPlaySession(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
 				return res
 			}
 

@@ -119,6 +119,7 @@ func newGraphQLServer(svc service.GameService, hub *websocket.Hub, opts Options)
 	}
 	resolver := graph.NewResolver(svc, hub)
 	if opts.Auth != nil {
+		resolver.Passwords = opts.Auth
 		for _, p := range opts.Auth.Providers() {
 			resolver.Providers = append(resolver.Providers, graph.Provider{ID: p.ID, Name: p.Name})
 		}
@@ -251,7 +252,13 @@ func withHTTPRequest(next http.Handler) http.Handler {
 // it in the context. Only POST requests carry a viewer (subscriptions and
 // everything else stay public), and only same-origin JSON ones: a request that
 // fails Auth.Viewer is treated as anonymous, so another site can never act as
-// the player. With auth nil (sign-in off) the cookie is never looked at.
+// the player.
+//
+// It also stores the sign-in hooks the password mutations need. Those are
+// absent on a websocket upgrade, which has no HTTP response to set a cookie on,
+// so signing in over a subscription is refused rather than handing out a login
+// the browser could never send back. With auth nil (sign-in off) the cookie is
+// never looked at.
 func withViewer(a *auth.Auth, next http.Handler) http.Handler {
 	if a == nil {
 		return next
@@ -262,9 +269,20 @@ func withViewer(a *auth.Auth, next http.Handler) http.Handler {
 				v := &graph.Viewer{Account: acct, Token: token, ClearSession: func() { a.ClearSession(w, r) }}
 				r = r.WithContext(context.WithValue(r.Context(), graph.ViewerKey{}, v))
 			}
+			signIn := &graph.SignIn{
+				OverHTTP:   !isWebSocketUpgrade(r),
+				SetSession: func(token string, expires time.Time) { a.SetSession(w, r, token, expires) },
+			}
+			r = r.WithContext(context.WithValue(r.Context(), graph.SignInKey{}, signIn))
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// isWebSocketUpgrade reports whether the request asks to leave HTTP for a
+// websocket (gqlgen's subscription transport).
+func isWebSocketUpgrade(r *http.Request) bool {
+	return strings.EqualFold(r.Header.Get("Upgrade"), "websocket")
 }
 
 // limitBody caps request bodies at MaxRequestBodyBytes.

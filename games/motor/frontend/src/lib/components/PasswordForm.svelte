@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { getContextClient } from '@urql/svelte';
 	import { normalizeHandle, handleProblem, passwordProblem, safeNext, submitPassword, type PasswordMode } from '$lib/account';
 
 	/**
@@ -10,6 +11,8 @@
 		next,
 		onsuccess = (to: string) => window.location.assign(to)
 	}: { next: string; onsuccess?: (to: string) => void } = $props();
+
+	const client = getContextClient();
 
 	let mode = $state<PasswordMode>('login');
 	let handle = $state('');
@@ -30,7 +33,7 @@
 		if (!ready) return;
 		busy = true;
 		error = '';
-		const result = await submitPassword(mode, handle, password);
+		const result = await submitPassword(mode, handle, password, client);
 		busy = false;
 		if (result.ok) {
 			password = '';

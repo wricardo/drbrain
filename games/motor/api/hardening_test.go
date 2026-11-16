@@ -90,7 +90,10 @@ func TestFrontendQueriesStayUnderComplexityLimit(t *testing.T) {
 		{"account", accountQ, nil},
 		{"profile", profileQ, map[string]any{"handle": "x"}},
 		{"create session with owner token", `mutation($m: ID!) { createSession(mapID: $m) { ` + sessionSel + ` ownerToken } }`, map[string]any{"m": "x"}},
+		{"register with password", `mutation($h: String!, $p: String!) { registerWithPassword(handle: $h, password: $p) { handle displayName profilePublic createdAt handleChangeableAt hasPassword } }`, map[string]any{"h": "x", "p": "y"}},
+		{"log in with password", `mutation($h: String!, $p: String!) { logInWithPassword(handle: $h, password: $p) { handle displayName profilePublic createdAt handleChangeableAt hasPassword } }`, map[string]any{"h": "x", "p": "y"}},
 		{"mutation with full session", `mutation($sessionID: ID!) { run(sessionID: $sessionID) { ` + sessionSel + ` } }`, map[string]any{"sessionID": "x"}},
+		{"can play session", `query($id: ID!) { canPlaySession(id: $id) }`, map[string]any{"id": "x"}},
 		{"subscription", `subscription($sessionID: ID!) { sessionUpdated(sessionID: $sessionID) { seq session { ` + sessionSel + ` } event { ` + eventSel + ` } } }`, map[string]any{"sessionID": "x"}},
 	}
 	for _, tc := range cases {

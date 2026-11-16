@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 )
 
@@ -452,13 +453,23 @@ func (svc *gameService) GetProfile(handle, viewerAccountID string) (*Profile, er
 // returned. Only the token's hash is stored. The token is what lets a browser
 // attach the session to an account later (ClaimSessions); a session id alone
 // never can, because ids are public (spectator links).
+//
+// An empty displayName from a signed-in caller defaults to the account's display
+// name, not a random guest name: the player is not a guest, and the name is what
+// the play and watch pages show for the session.
 func (svc *gameService) CreateOwnedSession(mapID, displayName, accountID string) (*Session, string, error) {
+	var owner *Account
 	if accountID != "" {
 		if st := svc.opts.Accounts; st == nil {
 			accountID = ""
-		} else if _, ok := st.Get(accountID); !ok {
+		} else if a, ok := st.Get(accountID); ok {
+			owner = &a
+		} else {
 			accountID = ""
 		}
+	}
+	if owner != nil && strings.TrimSpace(displayName) == "" {
+		displayName = owner.DisplayName
 	}
 	token, hash, err := newToken()
 	if err != nil {
@@ -524,9 +535,8 @@ func (svc *gameService) claimOne(accountID string, c SessionClaim) string {
 	return ClaimAttached
 }
 
-// SessionActor is who asks to delete or rename a session: the signed-in account
-// of the request (""= none) and/or the owner token the session's creator was
-// given.
+// SessionActor is who asks to change or play a session: the signed-in account of
+// the request (""= none) and/or the owner token the session's creator was given.
 type SessionActor struct {
 	AccountID  string
 	OwnerToken string
@@ -536,20 +546,16 @@ type SessionActor struct {
 // Guest sessions stay open to anyone who knows the id, as they always were (a
 // human and an agent can share one). A session that belongs to a signed-in
 // player's account is theirs: it needs that account's login, or the secret
-// owner token (constant-time compare of hashes). Playing a session (setProgram,
-// run, step, pause, reset) is deliberately not gated, so "Play with an AI" keeps
-// working for signed-in players; recorded wins survive those anyway, and
-// deleting a session is what would destroy a leaderboard entry. An unknown
-// session is NOT_FOUND, as before. A link to an account that no longer exists
-// (or accounts being off) counts as a guest session.
+// owner token (constant-time compare of hashes). Playing is gated separately, by
+// AuthorizeSessionPlay, because a shared watch link should be read-only. An
+// unknown session is NOT_FOUND, as before. A link to an account that no longer
+// exists (or accounts being off) counts as a guest session.
 func (svc *gameService) AuthorizeSessionChange(id string, actor SessionActor) error {
 	s, err := svc.get(id)
 	if err != nil {
 		return err
 	}
-	s.Lock()
-	owner, hash := s.AccountID, s.OwnerHash
-	s.Unlock()
+	owner, hash := sessionProof(s)
 	if owner == "" {
 		return nil
 	}
@@ -563,11 +569,53 @@ func (svc *gameService) AuthorizeSessionChange(id string, actor SessionActor) er
 	if actor.AccountID == owner {
 		return nil
 	}
-	if actor.OwnerToken != "" && hash != "" &&
-		subtle.ConstantTimeCompare([]byte(HashToken(actor.OwnerToken)), []byte(hash)) == 1 {
+	if tokenMatches(actor.OwnerToken, hash) {
 		return nil
 	}
 	return Errorf(CodeForbidden, "this run belongs to a signed-in player; only they can delete or rename it")
+}
+
+// AuthorizeSessionPlay decides whether actor may play a session: setProgram,
+// run, step, pause and reset. Unlike AuthorizeSessionChange the rule is the
+// same for guests and signed-in players, because the owner token is minted for
+// every session: the creator proves it with that token (the browser keeps it
+// in its own storage, so a guest needs no account) or, for a session created
+// while signed in, with the owning account's login. Whoever holds either can
+// play, which is how a session is shared with a second person or an AI agent.
+//
+// A session without an owner hash predates owner tokens (or was made through
+// the token-less CreateSession): there is nothing to compare against, so it
+// stays open rather than becoming unplayable for everyone.
+func (svc *gameService) AuthorizeSessionPlay(id string, actor SessionActor) error {
+	s, err := svc.get(id)
+	if err != nil {
+		return err
+	}
+	owner, hash := sessionProof(s)
+	if hash == "" {
+		return nil
+	}
+	if owner != "" && actor.AccountID == owner {
+		return nil
+	}
+	if tokenMatches(actor.OwnerToken, hash) {
+		return nil
+	}
+	return Errorf(CodeForbidden, "this run belongs to whoever created it; only they can play it (share its owner token to let someone else play)")
+}
+
+// sessionProof reads a session's ownership fields. Caller must not hold the lock.
+func sessionProof(s *Session) (owner, hash string) {
+	s.Lock()
+	defer s.Unlock()
+	return s.AccountID, s.OwnerHash
+}
+
+// tokenMatches compares an owner token with a stored hash in constant time. An
+// empty token or hash never matches (a session without a hash cannot be proven).
+func tokenMatches(token, hash string) bool {
+	return token != "" && hash != "" &&
+		subtle.ConstantTimeCompare([]byte(HashToken(token)), []byte(hash)) == 1
 }
 
 // accountFor looks up an account for a board row; false when accounts are off

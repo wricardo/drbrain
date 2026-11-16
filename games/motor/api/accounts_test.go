@@ -154,8 +154,8 @@ func newAccountsServer(t *testing.T, allowedOrigins string) *acctServer {
 
 const (
 	createSessionQ = `mutation($name: String) { createSession(mapID: "wide", displayName: $name) { id ownerToken } }`
-	stepQ          = `mutation($id: ID!) { step(sessionID: $id) { vm { status } } }`
-	setProgramQ    = `mutation($id: ID!, $p: ProgramInput!) { setProgram(sessionID: $id, program: $p) { id } }`
+	stepQ          = `mutation($id: ID!, $t: String) { step(sessionID: $id, ownerToken: $t) { vm { status } } }`
+	setProgramQ    = `mutation($id: ID!, $p: ProgramInput!, $t: String) { setProgram(sessionID: $id, program: $p, ownerToken: $t) { id } }`
 	meQ            = `{ me { handle displayName profilePublic createdAt handleChangeableAt } }`
 	boardQ         = `query($sid: ID) { leaderboard(mapId: "wide", sessionId: $sid) { total entries { rank sessionId displayName handle mine slots steps } yours { sessionId handle mine } } }`
 	profileGQL     = `query($h: String!) { profile(handle: $h) { handle displayName isMine runs { mapId total entry { rank sessionId slots steps } } } }`
@@ -181,11 +181,11 @@ func (b *browser) play(name string) (id, token string) {
 	if id == "" || token == "" {
 		b.t.Fatalf("createSession: %v", out)
 	}
-	if out = b.gql(setProgramQ, map[string]any{"id": id, "p": winningProgram()}); out["errors"] != nil {
+	if out = b.gql(setProgramQ, map[string]any{"id": id, "p": winningProgram(), "t": token}); out["errors"] != nil {
 		b.t.Fatalf("setProgram: %v", out)
 	}
 	for range 20 {
-		out = b.gql(stepQ, map[string]any{"id": id})
+		out = b.gql(stepQ, map[string]any{"id": id, "t": token})
 		if dig(b.t, out, "data", "step", "vm", "status") == "WON" {
 			return id, token
 		}
@@ -440,11 +440,16 @@ func TestCookieIsIgnoredOnCrossSiteRequests(t *testing.T) {
 	if dig(t, b.gql(meQ, nil), "data", "me", "profilePublic") != true {
 		t.Fatal("a cross-site request changed the account")
 	}
-	// Logout over a foreign origin is refused outright.
-	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/auth/logout", nil)
-	req.Header.Set("Origin", "https://evil.example")
-	if resp, _ := b.do(req); resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("cross-site /auth/logout = %d", resp.StatusCode)
+	// Logout over a foreign origin is a no-op, not a refusal: the viewer is never
+	// resolved for a cross-site request, so there is nothing to sign out. The
+	// mutation still answers true, as the schema promises it always does, and the
+	// login survives.
+	_, out = b.gqlWith(`mutation { logout }`, nil, map[string]string{"Origin": "https://evil.example"})
+	if dig(t, out, "data", "logout") != true {
+		t.Fatalf("cross-site logout = %v, want true", out)
+	}
+	if dig(t, b.gql(meQ, nil), "data", "me") == nil {
+		t.Fatal("a cross-site request signed the player out")
 	}
 }
 
@@ -516,7 +521,7 @@ func TestNoProvidersLeavesTheAppUnchanged(t *testing.T) {
 	ts := newRealServer(t) // no Auth, no account store
 	b := newBrowser(t, ts.URL)
 
-	for _, p := range []string{"/auth/google/login", "/auth/dev/login", "/auth/google/callback", "/auth/logout"} {
+	for _, p := range []string{"/auth/google/login", "/auth/dev/login", "/auth/google/callback"} {
 		for _, m := range []string{http.MethodGet, http.MethodPost} {
 			req, _ := http.NewRequest(m, ts.URL+p, nil)
 			resp, _ := b.do(req)

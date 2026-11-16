@@ -25,6 +25,10 @@ type fakeService struct {
 	saved    []engine.MapConfig
 	deleted  []string
 	err      error
+	// playErr is returned by AuthorizeSessionPlay; played records the actors
+	// that were let through.
+	playErr error
+	played  []service.SessionActor
 }
 
 func (f *fakeService) GetMap(id string) (*engine.Map, error) {
@@ -73,6 +77,16 @@ func (f *fakeService) GetSession(id string) (*service.Session, error) {
 
 func (f *fakeService) SetProgram(id string, p engine.Program) (*service.Session, error) {
 	return nil, f.err
+}
+
+// AuthorizeSessionPlay allows everything unless the test sets playErr, so the
+// resolver tests that are not about play permissions stay unaffected.
+func (f *fakeService) AuthorizeSessionPlay(id string, actor service.SessionActor) error {
+	if f.playErr != nil {
+		return f.playErr
+	}
+	f.played = append(f.played, actor)
+	return nil
 }
 
 func testMapConfig(id string) engine.MapConfig {
@@ -299,9 +313,11 @@ func TestToGQLErrorMapping(t *testing.T) {
 }
 
 func TestSetProgramPropagatesCode(t *testing.T) {
-	fs := &fakeService{err: service.Errorf(service.CodeSessionPlaying, "session is playing")}
+	fs := &fakeService{
+		err: service.Errorf(service.CodeSessionPlaying, "session is playing"),
+	}
 	m := &mutationResolver{&Resolver{Service: fs}}
-	_, err := m.SetProgram(context.Background(), "s", model.ProgramInput{})
+	_, err := m.SetProgram(context.Background(), "s", model.ProgramInput{}, nil)
 	if codeOf(t, err) != service.CodeSessionPlaying {
 		t.Fatalf("err = %v", err)
 	}

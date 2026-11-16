@@ -74,6 +74,22 @@ describe('buildSessionPrompt', () => {
 	it('does not depend on session state (stable text)', () => {
 		expect(buildSessionPrompt('http://h:1', { id: 'abc123', map: map() })).toBe(p);
 	});
+
+	it('carries the owner token into every play call, since playing is creator-only', () => {
+		const shared = buildSessionPrompt('http://h:1', { id: 'abc123', map: map(), ownerToken: 'tok-secret' });
+		expect(shared).toContain('tok-secret');
+		// Each play mutation must pass it, or the server answers FORBIDDEN.
+		for (const call of ['setProgram(', 'run(', 'step(']) {
+			const at = shared.indexOf(call);
+			expect(at).toBeGreaterThan(-1);
+			expect(shared.slice(at, shared.indexOf(')', at))).toContain('ownerToken: "tok-secret"');
+		}
+	});
+
+	it('says so when no owner token is available (a stranger watching)', () => {
+		expect(p).toContain('Owner token: (not available');
+		expect(p).not.toContain('ownerToken: "');
+	});
 });
 
 describe('leaderboard in prompts', () => {

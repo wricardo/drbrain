@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -44,7 +43,8 @@ type Accounts interface {
 }
 
 // PasswordProviderID is the id the UI sees for username/password sign-in. It is
-// not a redirect provider: the browser posts the form to /auth/password/...
+// not a redirect provider: the form calls the registerWithPassword and
+// logInWithPassword mutations instead of navigating anywhere.
 const PasswordProviderID = service.PasswordProvider
 
 // Config configures Auth.
@@ -59,9 +59,9 @@ type Config struct {
 	// Limiter guards the /auth routes (default 30 requests per minute per IP).
 	Limiter *Limiter
 	Now     func() time.Time
-	// Password enables username/password sign-up and sign-in
-	// (/auth/password/register and /auth/password/login), next to or instead of
-	// the OAuth providers.
+	// Password enables username/password sign-up and sign-in, next to or
+	// instead of the OAuth providers. It is served by the GraphQL mutations
+	// registerWithPassword and logInWithPassword (see PasswordSignIn).
 	Password bool
 }
 
@@ -149,13 +149,10 @@ func (a *Auth) Providers() []ProviderInfo {
 	return out
 }
 
-// Routes mounts the /auth routes on r.
+// Routes mounts the sign-in routes on r. Only the redirect providers need one:
+// password sign-in is served by the GraphQL mutations (see PasswordSignIn), and
+// signing out by the logout mutation.
 func (a *Auth) Routes(r *mux.Router) {
-	r.HandleFunc("/auth/logout", a.guard(a.handleLogout)).Methods(http.MethodPost)
-	if a.cfg.Password {
-		r.HandleFunc("/auth/password/register", a.guard(a.handlePassword(true))).Methods(http.MethodPost)
-		r.HandleFunc("/auth/password/login", a.guard(a.handlePassword(false))).Methods(http.MethodPost)
-	}
 	if p, ok := a.providers["dev"].(*DevProvider); ok {
 		r.HandleFunc("/auth/dev/authorize", a.guard(p.authorize)).Methods(http.MethodGet)
 	}
@@ -429,113 +426,73 @@ func (a *Auth) handleCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, flow.next, http.StatusFound)
 }
 
-func (a *Auth) handleLogout(w http.ResponseWriter, r *http.Request) {
-	if !a.SameOrigin(r) {
-		http.Error(w, "cross-site request refused", http.StatusForbidden)
-		return
-	}
-	if c, err := r.Cookie(SessionCookie); err == nil {
-		a.cfg.Accounts.EndLogin(c.Value)
-	}
-	a.ClearSession(w, r)
-	w.WriteHeader(http.StatusNoContent)
-}
-
 // ---- username / password -------------------------------------------------
 
-type passwordRequest struct {
-	Handle   string `json:"handle"`
-	Password string `json:"password"`
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func jsonError(w http.ResponseWriter, status int, code, msg string) {
-	writeJSON(w, status, map[string]string{"error": msg, "code": code})
-}
-
-// handlePassword serves register (register=true) and login. Both need a
-// same-origin JSON POST, so a cross-site page can neither create accounts nor
-// probe passwords from a victim's browser. Login failures are counted per
-// (IP, username) and per username; a locked key is refused before any hashing.
-// The answer is the same for an unknown username and a wrong password.
-func (a *Auth) handlePassword(register bool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if !a.SameOrigin(r) {
-			jsonError(w, http.StatusForbidden, service.CodeForbidden, "cross-site request refused")
-			return
-		}
-		if !strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "application/json") {
-			jsonError(w, http.StatusUnsupportedMediaType, service.CodeInvalidArgument, "send application/json")
-			return
-		}
-		var req passwordRequest
-		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
-		dec.DisallowUnknownFields()
-		if err := dec.Decode(&req); err != nil {
-			jsonError(w, http.StatusBadRequest, service.CodeInvalidArgument, "expected {\"handle\", \"password\"}")
-			return
-		}
-		handle := service.NormalizeHandle(req.Handle)
-		ipKey := ClientIP(r) + "|" + handle
-		if !register {
-			for _, t := range []struct {
-				f   *FailTracker
-				key string
-			}{{a.failIP, ipKey}, {a.failUser, handle}} {
-				if blocked, wait := t.f.Blocked(t.key); blocked {
-					w.Header().Set("Retry-After", strconv.Itoa(int(wait.Seconds())+1))
-					jsonError(w, http.StatusTooManyRequests, service.CodeLimit,
-						"too many failed attempts; try again in "+strconv.Itoa(int(wait.Minutes())+1)+" minutes")
-					return
-				}
-			}
-		}
-		var acct *service.Account
-		var err error
-		if register {
-			acct, err = a.cfg.Accounts.RegisterPassword(req.Handle, req.Password)
-		} else {
-			acct, err = a.cfg.Accounts.VerifyPassword(req.Handle, req.Password)
-		}
-		if err != nil {
-			status := http.StatusBadRequest
-			var se *service.Error
-			if errors.As(err, &se) {
-				switch se.Code {
-				case service.CodeUnauthenticated:
-					status = http.StatusUnauthorized
-					a.failIP.Fail(ipKey)
-					a.failUser.Fail(handle)
-				case service.CodeForbidden:
-					status = http.StatusNotFound
-				case service.CodeLimit:
-					status = http.StatusTooManyRequests
-				}
-				jsonError(w, status, se.Code, se.Msg)
-				return
-			}
-			log.Printf("auth: password %s: %v", map[bool]string{true: "register", false: "login"}[register], err)
-			jsonError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
-			return
-		}
-		a.failIP.Clear(ipKey)
-		if old, err := r.Cookie(SessionCookie); err == nil {
-			a.cfg.Accounts.EndLogin(old.Value)
-		}
-		token, expires, err := a.cfg.Accounts.StartLogin(acct.ID)
-		if err != nil {
-			log.Printf("auth: start login: %v", err)
-			jsonError(w, http.StatusInternalServerError, "INTERNAL", "internal error")
-			return
-		}
-		a.SetSession(w, r, token, expires)
-		writeJSON(w, http.StatusOK, map[string]string{"handle": acct.Handle})
+// PasswordSignIn performs a username/password sign-up (register=true) or
+// sign-in for the browser that made r, and returns the account now signed in.
+// On success it sets the login cookie through setSession, which the caller
+// supplies because only it knows the response (the GraphQL HTTP transport).
+//
+// This was an HTTP handler pair (/auth/password/register and /login) and is now
+// called from the registerWithPassword and logInWithPassword mutations. The
+// checks moved with it unchanged, so none of them depends on the route: a
+// cross-site request is refused, requests are limited per address, and login
+// failures are counted per (address, username) and per username, with a locked
+// key refused before any hashing. The answer is the same for an unknown
+// username and a wrong password.
+func (a *Auth) PasswordSignIn(register bool, r *http.Request, handle, password string, setSession func(token string, expires time.Time)) (*service.Account, error) {
+	if !a.cfg.Password {
+		return nil, service.Errorf(service.CodeForbidden, "password sign-in is off")
 	}
+	if !a.SameOrigin(r) {
+		return nil, service.Errorf(service.CodeForbidden, "cross-site request refused")
+	}
+	if ok, retry := a.limiter.Allow(ClientIP(r)); !ok {
+		return nil, service.Errorf(service.CodeLimit, "too many sign-in requests; try again in %d seconds", int(retry.Seconds())+1)
+	}
+	normalized := service.NormalizeHandle(handle)
+	ipKey := ClientIP(r) + "|" + normalized
+	if !register {
+		for _, t := range []struct {
+			f   *FailTracker
+			key string
+		}{{a.failIP, ipKey}, {a.failUser, normalized}} {
+			if blocked, wait := t.f.Blocked(t.key); blocked {
+				return nil, service.Errorf(service.CodeLimit,
+					"too many failed attempts; try again in %d minutes", int(wait.Minutes())+1)
+			}
+		}
+	}
+	var acct *service.Account
+	var err error
+	if register {
+		acct, err = a.cfg.Accounts.RegisterPassword(handle, password)
+	} else {
+		acct, err = a.cfg.Accounts.VerifyPassword(handle, password)
+	}
+	if err != nil {
+		var se *service.Error
+		if errors.As(err, &se) {
+			if se.Code == service.CodeUnauthenticated {
+				a.failIP.Fail(ipKey)
+				a.failUser.Fail(normalized)
+			}
+			return nil, err
+		}
+		log.Printf("auth: password %s: %v", map[bool]string{true: "register", false: "login"}[register], err)
+		return nil, service.Errorf("INTERNAL", "internal error")
+	}
+	a.failIP.Clear(ipKey)
+	if old, cerr := r.Cookie(SessionCookie); cerr == nil {
+		a.cfg.Accounts.EndLogin(old.Value)
+	}
+	token, expires, err := a.cfg.Accounts.StartLogin(acct.ID)
+	if err != nil {
+		log.Printf("auth: start login: %v", err)
+		return nil, service.Errorf("INTERNAL", "internal error")
+	}
+	setSession(token, expires)
+	return acct, nil
 }
 
 // ---- redirect validation -----------------------------------------------------

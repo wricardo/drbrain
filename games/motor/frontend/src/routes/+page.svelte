@@ -10,7 +10,8 @@
 	import { describeError, type DescribedError } from '$lib/errors';
 	import { nameSyncMessage, renameOwnSessions } from '$lib/nameSync';
 	import { CREATE_SESSION_MUTATION, MAPS_QUERY, RENAME_SESSION_MUTATION, SESSION_QUERY, SESSIONS_QUERY } from '$lib/queries';
-	import { forgetSession, isFinished, lastSessionId, ownSessionIds, progressText, recentStarted, rememberSession, saveDisplayName, savedDisplayName, statusText } from '$lib/sessions';
+	import { forgetSession, isFinished, lastSessionId, ownSessionIds, ownsSession, progressText, recentStarted, rememberSession, saveDisplayName, savedDisplayName, statusText } from '$lib/sessions';
+	import { account } from '$lib/stores/account';
 	import { absoluteTime, relativeTime } from '$lib/time';
 	import type { GameMap, Session, SessionSummary } from '$lib/types';
 
@@ -27,6 +28,12 @@
 	/** Home shows only the first few maps; the rest live on /maps. */
 	const HOME_MAPS = 3;
 	let displayName = $state(savedDisplayName());
+	// A signed-in player's sessions are named after their account: the server
+	// defaults to it, so show it here instead of an empty "random guest name" box.
+	$effect(() => {
+		const me = $account.me;
+		if (me && !displayName.trim()) displayName = me.displayName || me.handle;
+	});
 
 	onMount(async () => {
 		try {
@@ -242,7 +249,7 @@
 						<div class="flex items-center gap-4 text-xs text-slate-600">
 							<span>{progressText(s, mapById.get(s.mapId))}</span>
 							<span title={absoluteTime(s.lastActionAt)}>{relativeTime(s.lastActionAt)}</span>
-							{#if !isFinished(s)}
+							{#if !isFinished(s) && ownsSession(s.id)}
 								<a class="font-semibold text-indigo-700 underline" href="/play/{s.id}">Play</a>
 							{/if}
 							<a class="text-indigo-700 underline" href="/watch/{s.id}">Watch</a>

@@ -14,6 +14,7 @@
 		filterSessions,
 		isFinished,
 		progressText,
+		ownsSession,
 		sortSessions,
 		statusText,
 		type SessionSort,
@@ -270,7 +271,7 @@
 							<td class="px-4 py-2 text-slate-700">{progressText(s, mapById.get(s.mapId))}</td>
 							<td class="px-4 py-2 text-slate-700" title={absoluteTime(at)}>{relativeTime(at, now)}</td>
 							<td class="px-4 py-2 whitespace-nowrap text-right">
-								{#if !isFinished(s)}
+								{#if !isFinished(s) && ownsSession(s.id)}
 									<a class="font-semibold text-indigo-700 underline" href="/play/{s.id}">Play</a>
 									<span aria-hidden="true" class="text-slate-400"> · </span>
 								{/if}

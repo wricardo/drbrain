@@ -119,32 +119,39 @@ export const RENAME_SESSION_MUTATION = `
 `;
 
 export const SET_PROGRAM_MUTATION = `
-  mutation SetProgram($sessionID: ID!, $program: ProgramInput!) {
-    setProgram(sessionID: $sessionID, program: $program) { ${SESSION_FIELDS} }
+  mutation SetProgram($sessionID: ID!, $program: ProgramInput!, $ownerToken: String) {
+    setProgram(sessionID: $sessionID, program: $program, ownerToken: $ownerToken) { ${SESSION_FIELDS} }
   }
 `;
 
 export const RUN_MUTATION = `
-  mutation Run($sessionID: ID!, $speedMs: Int) {
-    run(sessionID: $sessionID, speedMs: $speedMs) { ${SESSION_FIELDS} }
+  mutation Run($sessionID: ID!, $speedMs: Int, $ownerToken: String) {
+    run(sessionID: $sessionID, speedMs: $speedMs, ownerToken: $ownerToken) { ${SESSION_FIELDS} }
   }
 `;
 
 export const PAUSE_MUTATION = `
-  mutation Pause($sessionID: ID!) {
-    pause(sessionID: $sessionID) { ${SESSION_FIELDS} }
+  mutation Pause($sessionID: ID!, $ownerToken: String) {
+    pause(sessionID: $sessionID, ownerToken: $ownerToken) { ${SESSION_FIELDS} }
   }
 `;
 
 export const STEP_MUTATION = `
-  mutation Step($sessionID: ID!) {
-    step(sessionID: $sessionID) { ${SESSION_FIELDS} }
+  mutation Step($sessionID: ID!, $ownerToken: String) {
+    step(sessionID: $sessionID, ownerToken: $ownerToken) { ${SESSION_FIELDS} }
   }
 `;
 
 export const RESET_MUTATION = `
-  mutation Reset($sessionID: ID!) {
-    reset(sessionID: $sessionID) { ${SESSION_FIELDS} }
+  mutation Reset($sessionID: ID!, $ownerToken: String) {
+    reset(sessionID: $sessionID, ownerToken: $ownerToken) { ${SESSION_FIELDS} }
+  }
+`;
+
+/** Whether this browser may play the session (it created it, or has its owner token). */
+export const CAN_PLAY_SESSION_QUERY = `
+  query CanPlaySession($id: ID!, $ownerToken: String) {
+    canPlaySession(id: $id, ownerToken: $ownerToken)
   }
 `;
 
@@ -238,6 +245,23 @@ export const PROFILE_QUERY = `
 export const LOGOUT_MUTATION = `
   mutation Logout {
     logout
+  }
+`;
+
+/**
+ * Username/password sign-up and sign-in. Both are ordinary mutations now: the
+ * server sets the login cookie on the response. They are separate documents
+ * because every root field of one document runs.
+ */
+export const REGISTER_WITH_PASSWORD_MUTATION = `
+  mutation RegisterWithPassword($handle: String!, $password: String!) {
+    registerWithPassword(handle: $handle, password: $password) { ${ACCOUNT_FIELDS} }
+  }
+`;
+
+export const LOG_IN_WITH_PASSWORD_MUTATION = `
+  mutation LogInWithPassword($handle: String!, $password: String!) {
+    logInWithPassword(handle: $handle, password: $password) { ${ACCOUNT_FIELDS} }
   }
 `;
 

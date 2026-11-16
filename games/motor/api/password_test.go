@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,7 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	gorillaws "github.com/gorilla/websocket"
 	"github.com/wricardo/drbrain-motor-programming/auth"
 	"github.com/wricardo/drbrain-motor-programming/game/account"
 	"github.com/wricardo/drbrain-motor-programming/game/config"
@@ -55,20 +56,26 @@ func newPasswordServer(t *testing.T) *httptest.Server {
 	return ts
 }
 
-// pwPost posts JSON to an /auth/password route as this browser.
-func (b *browser) pwPost(path, handle, password string, override map[string]string) (*http.Response, map[string]any) {
-	b.t.Helper()
-	body, _ := json.Marshal(map[string]string{"handle": handle, "password": password})
-	req, _ := http.NewRequest(http.MethodPost, b.base+path, bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Origin", b.base)
-	for k, v := range override {
-		req.Header.Set(k, v)
+// setCookieHeader returns the Set-Cookie header for name, or "".
+func setCookieHeader(resp *http.Response, name string) string {
+	for _, v := range resp.Header.Values("Set-Cookie") {
+		if strings.HasPrefix(v, name+"=") {
+			return v
+		}
 	}
-	resp, raw := b.do(req)
-	var out map[string]any
-	_ = json.Unmarshal(raw, &out)
-	return resp, out
+	return ""
+}
+
+// pwSignIn registers (register=true) or signs in through the GraphQL mutations
+// as this browser, and returns the response and the decoded body.
+func (b *browser) pwSignIn(register bool, handle, password string, override map[string]string) (*http.Response, map[string]any) {
+	b.t.Helper()
+	field := "logInWithPassword"
+	if register {
+		field = "registerWithPassword"
+	}
+	q := `mutation($h: String!, $p: String!) { ` + field + `(handle: $h, password: $p) { handle hasPassword } }`
+	return b.gqlWith(q, map[string]any{"h": handle, "p": password}, override)
 }
 
 const (
@@ -88,9 +95,13 @@ func TestPasswordAccountsEndToEnd(t *testing.T) {
 	}
 
 	// Register: the username becomes the handle, and the player is signed in.
-	resp, reg := alice.pwPost("/auth/password/register", "Speedy_Fox", "tangerine-ladder-42", nil)
-	if resp.StatusCode != http.StatusOK || reg["handle"] != "speedy_fox" {
+	resp, reg := alice.pwSignIn(true, "Speedy_Fox", "tangerine-ladder-42", nil)
+	if resp.StatusCode != http.StatusOK || dig(t, reg, "data", "registerWithPassword", "handle") != "speedy_fox" {
 		t.Fatalf("register = %d %v", resp.StatusCode, reg)
+	}
+	// The cookie came back on the mutation's own response.
+	if setCookieHeader(resp, "dbmp_session") == "" {
+		t.Fatal("registering did not set the login cookie")
 	}
 	me := dig(t, alice.gql(pwMeQ, nil), "data", "me").(map[string]any)
 	if me["handle"] != "speedy_fox" || me["hasPassword"] != true {
@@ -108,11 +119,11 @@ func TestPasswordAccountsEndToEnd(t *testing.T) {
 	}
 
 	// A second browser signs in with the password.
-	if resp, _ := laptop.pwPost("/auth/password/login", "speedy_fox", "wrong-guess-here", nil); resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("wrong password = %d", resp.StatusCode)
+	if _, out := laptop.pwSignIn(false, "speedy_fox", "wrong-guess-here", nil); firstErrCode(out) != service.CodeUnauthenticated {
+		t.Fatalf("wrong password = %v", out)
 	}
-	if resp, _ := laptop.pwPost("/auth/password/login", "Speedy_Fox", "tangerine-ladder-42", nil); resp.StatusCode != http.StatusOK {
-		t.Fatalf("login = %d", resp.StatusCode)
+	if _, out := laptop.pwSignIn(false, "Speedy_Fox", "tangerine-ladder-42", nil); firstErrCode(out) != "" {
+		t.Fatalf("login = %v", out)
 	}
 	if dig(t, laptop.gql(pwMeQ, nil), "data", "me", "handle") != "speedy_fox" {
 		t.Fatal("the laptop is not signed in")
@@ -138,11 +149,11 @@ func TestPasswordAccountsEndToEnd(t *testing.T) {
 	}
 
 	// Old password dead, new password works.
-	if resp, _ := laptop.pwPost("/auth/password/login", "speedy_fox", "tangerine-ladder-42", nil); resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("old password = %d", resp.StatusCode)
+	if _, out := laptop.pwSignIn(false, "speedy_fox", "tangerine-ladder-42", nil); firstErrCode(out) != service.CodeUnauthenticated {
+		t.Fatalf("old password = %v", out)
 	}
-	if resp, _ := laptop.pwPost("/auth/password/login", "speedy_fox", "brand-new-pass-77", nil); resp.StatusCode != http.StatusOK {
-		t.Fatalf("new password = %d", resp.StatusCode)
+	if _, out := laptop.pwSignIn(false, "speedy_fox", "brand-new-pass-77", nil); firstErrCode(out) != "" {
+		t.Fatalf("new password = %v", out)
 	}
 
 	// Another site can neither change the password nor sign in through the browser.
@@ -152,8 +163,12 @@ func TestPasswordAccountsEndToEnd(t *testing.T) {
 	}()); code != service.CodeUnauthenticated {
 		t.Fatalf("cross-site changePassword = %q", code)
 	}
-	if resp, _ := evil.pwPost("/auth/password/login", "speedy_fox", "brand-new-pass-77", map[string]string{"Origin": "https://evil.example"}); resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("cross-site login = %d", resp.StatusCode)
+	if _, out := evil.pwSignIn(false, "speedy_fox", "brand-new-pass-77", map[string]string{"Origin": "https://evil.example"}); firstErrCode(out) != service.CodeForbidden {
+		t.Fatalf("cross-site login = %v", out)
+	}
+	// ...and it did not sign the victim's browser in either.
+	if dig(t, evil.gql(pwMeQ, nil), "data", "me") != nil {
+		t.Fatal("a cross-site request signed a browser in")
 	}
 
 	// Logout, then deleting the account frees the username.
@@ -161,30 +176,82 @@ func TestPasswordAccountsEndToEnd(t *testing.T) {
 	if dig(t, alice.gql(pwMeQ, nil), "data", "me") != nil {
 		t.Fatal("still signed in after logout")
 	}
-	if resp, _ := alice.pwPost("/auth/password/login", "speedy_fox", "brand-new-pass-77", nil); resp.StatusCode != http.StatusOK {
-		t.Fatalf("login after logout = %d", resp.StatusCode)
+	if _, out := alice.pwSignIn(false, "speedy_fox", "brand-new-pass-77", nil); firstErrCode(out) != "" {
+		t.Fatalf("login after logout = %v", out)
 	}
 	if out := alice.gql(`mutation { deleteAccount(confirmHandle: "speedy_fox") }`, nil); out["errors"] != nil {
 		t.Fatalf("deleteAccount: %v", out)
 	}
-	if resp, _ := alice.pwPost("/auth/password/login", "speedy_fox", "brand-new-pass-77", nil); resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("login after delete = %d", resp.StatusCode)
+	if _, out := alice.pwSignIn(false, "speedy_fox", "brand-new-pass-77", nil); firstErrCode(out) != service.CodeUnauthenticated {
+		t.Fatalf("login after delete = %v", out)
+	}
+}
+
+// The two mutations are the only way in, and a websocket connection has no HTTP
+// response to set a cookie on: signing in over a subscription is refused rather
+// than handing out a login the browser could never send back.
+func TestPasswordSignInRefusedOverWebsocket(t *testing.T) {
+	ts := newPasswordServer(t)
+	d := gorillaws.Dialer{Subprotocols: []string{"graphql-transport-ws"}, HandshakeTimeout: 5 * time.Second}
+	c, _, err := d.Dial("ws"+strings.TrimPrefix(ts.URL, "http")+"/graphql", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	if err := c.WriteMessage(gorillaws.TextMessage, []byte(`{"type":"connection_init"}`)); err != nil {
+		t.Fatal(err)
+	}
+	_ = c.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, msg, err := c.ReadMessage(); err != nil || !strings.Contains(string(msg), "connection_ack") {
+		t.Fatalf("ack = %q, %v", msg, err)
+	}
+	op := `{"id":"1","type":"subscribe","payload":{"query":"mutation { registerWithPassword(handle: \"speedy_fox\", password: \"tangerine-ladder-42\") { handle } }"}}`
+	if err := c.WriteMessage(gorillaws.TextMessage, []byte(op)); err != nil {
+		t.Fatal(err)
+	}
+	_, msg, err := c.ReadMessage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var frame struct {
+		Type    string `json:"type"`
+		Payload struct {
+			Errors []struct {
+				Extensions struct {
+					Code string `json:"code"`
+				} `json:"extensions"`
+			} `json:"errors"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal(msg, &frame); err != nil {
+		t.Fatalf("frame %q: %v", msg, err)
+	}
+	if frame.Type != "next" || len(frame.Payload.Errors) == 0 || frame.Payload.Errors[0].Extensions.Code != service.CodeForbidden {
+		t.Fatalf("sign-in over a websocket = %s (%q)", msg, frame.Type)
+	}
+	// Nothing was created, and the browser is not signed in.
+	b := newBrowser(t, ts.URL)
+	if dig(t, b.gql(pwMeQ, nil), "data", "me") != nil {
+		t.Fatal("a viewer appeared")
+	}
+	if _, out := b.pwSignIn(false, "speedy_fox", "tangerine-ladder-42", nil); firstErrCode(out) != service.CodeUnauthenticated {
+		t.Fatalf("the account exists after a refused registration: %v", out)
 	}
 }
 
 func TestPasswordSignInAbsentUnlessEnabled(t *testing.T) {
 	ts := newRealServer(t) // no auth at all
 	b := newBrowser(t, ts.URL)
-	for _, p := range []string{"/auth/password/register", "/auth/password/login"} {
-		if resp, _ := b.pwPost(p, "speedy_fox", "tangerine-ladder-42", nil); resp.StatusCode != http.StatusNotFound {
-			t.Errorf("POST %s = %d, want 404", p, resp.StatusCode)
+	for _, register := range []bool{true, false} {
+		if _, out := b.pwSignIn(register, "speedy_fox", "tangerine-ladder-42", nil); firstErrCode(out) != service.CodeForbidden {
+			t.Errorf("register=%v with sign-in off = %v", register, out)
 		}
 	}
-	// A dev-provider deployment without AUTH_PASSWORD has no password routes either.
+	// A dev-provider deployment without AUTH_PASSWORD has no password sign-in either.
 	dev := newAccountsServer(t, "")
 	bd := newBrowser(t, dev.URL)
-	if resp, _ := bd.pwPost("/auth/password/register", "speedy_fox", "tangerine-ladder-42", nil); resp.StatusCode == http.StatusOK {
-		t.Fatal("registration works with AUTH_PASSWORD off")
+	if _, out := bd.pwSignIn(true, "speedy_fox", "tangerine-ladder-42", nil); firstErrCode(out) != service.CodeForbidden {
+		t.Fatalf("registration works with AUTH_PASSWORD off: %v", out)
 	}
 	if dig(t, bd.gql(`{ me { hasPassword } }`, nil), "data", "me") != nil {
 		t.Fatal("a viewer appeared")

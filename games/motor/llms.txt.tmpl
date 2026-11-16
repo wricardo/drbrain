@@ -65,7 +65,7 @@ CALL_SUB_k is only valid when the map has at least k sub tapes (k = 1..10).
 ### Errors
 
 Errors carry `extensions.code`: NOT_FOUND, INVALID_PROGRAM, SESSION_PLAYING, SESSION_TERMINAL,
-INVALID_ARGUMENT, FORBIDDEN, LIMIT_REACHED.
+INVALID_ARGUMENT, FORBIDDEN, LIMIT_REACHED, UNAUTHENTICATED.
 
 ---
 
@@ -77,17 +77,19 @@ INVALID_ARGUMENT, FORBIDDEN, LIMIT_REACHED.
 query { maps { id name difficulty width height layout mainTapeLength subTapeLengths maxSteps allowRecursion } }
 ```
 
-2. Create a session:
+2. Create a session. The response also carries a secret `ownerToken`: keep it, because it is
+what lets you play the session.
 
 ```graphql
-mutation { createSession(mapID: "straight_line", displayName: "my bot") { id map { mainTapeLength subTapeLengths } } }
+mutation { createSession(mapID: "straight_line", displayName: "my bot") { id ownerToken map { mainTapeLength subTapeLengths } } }
 ```
 
-3. Store the program in your session (resets the robot):
+3. Store the program in your session (resets the robot). Every play call needs the `ownerToken`
+from step 2:
 
 ```graphql
 mutation {
-  setProgram(sessionID: "SESSION_ID", program: {
+  setProgram(sessionID: "SESSION_ID", ownerToken: "OWNER_TOKEN", program: {
     main: [MOVE_FORWARD, MOVE_FORWARD, MOVE_FORWARD, MOVE_FORWARD, MOVE_FORWARD, MOVE_FORWARD, MOVE_FORWARD, EMPTY]
     subs: [[EMPTY, EMPTY, EMPTY, EMPTY]]
   }) { id vm { status steps } }
@@ -97,11 +99,11 @@ mutation {
 4. Run it on the server (50–5000 ms per step) or step manually:
 
 ```graphql
-mutation { run(sessionID: "SESSION_ID", speedMs: 100) { playing vm { status steps } } }
+mutation { run(sessionID: "SESSION_ID", speedMs: 100, ownerToken: "OWNER_TOKEN") { playing vm { status steps } } }
 ```
 
 ```graphql
-mutation { step(sessionID: "SESSION_ID") { vm { status steps pos { x y } } lastEvent { instruction blocked callBlocked } } }
+mutation { step(sessionID: "SESSION_ID", ownerToken: "OWNER_TOKEN") { vm { status steps pos { x y } } lastEvent { instruction blocked callBlocked } } }
 ```
 
 5. Poll or subscribe for the result:
@@ -120,19 +122,22 @@ full snapshot; ignore updates whose `seq` is not greater than the last one you s
 `displayName` is optional (max 40 characters). Without one the session gets a random guest name
 like `BraveOtter`, which is what the leaderboard shows.
 
-You play as a guest: no sign-in, no key, nothing else to send. `createSession` also accepts an
-optional `ownerToken` field (`createSession(...) { id ownerToken }`). It is a secret that only that
-response ever contains, which a human who later signs in can use to attach the session to their
-account. You can ignore it; never post it anywhere (a session id alone is public and cannot be
-claimed).
+You play as a guest: no sign-in, no key. The one thing you must keep is the `ownerToken` that
+`createSession` returns (`createSession(...) { id ownerToken }`). It is the credential that lets you
+play the session: `setProgram`, `run`, `step`, `pause` and `reset` all reject a call without it
+with `FORBIDDEN`. Never post it anywhere — a session id alone is public (it is the watch link) and
+cannot be played with.
+
+A human can hand you a session to play by giving you its `ownerToken`; that is the supported way to
+play someone else's run. You can check first with
+`query { canPlaySession(id: "SESSION_ID", ownerToken: "OWNER_TOKEN") }`.
 
 Other session mutations: `pause`, `reset`, `renameSession(id, displayName)`,
-`deleteSession(id)`. Sessions you create are guest sessions and anyone who knows the id can play,
-rename or delete them. A session that belongs to a signed-in human can still be played by anyone
-with its id (that is how an agent helps a person), but only that person's signed-in browser, or a
-call that passes the `ownerToken` argument (`deleteSession(id, ownerToken: "...")`,
-`renameSession(id, displayName, ownerToken: "...")`), can delete or rename it; anyone else gets
-`FORBIDDEN`. Query `sessions(sort: RECENT, limit: 50, mapId: "...")` lists sessions.
+`deleteSession(id)`. Only playing is gated by the token: anyone who knows the id can rename or
+delete a guest session, and `deleteSession`/`renameSession` on a session belonging to a signed-in
+human need their login or the `ownerToken` argument (`deleteSession(id, ownerToken: "...")`,
+`renameSession(id, displayName, ownerToken: "...")`), otherwise `FORBIDDEN`. Query
+`sessions(sort: RECENT, limit: 50, mapId: "...")` lists sessions.
 
 ---
 
@@ -211,10 +216,14 @@ query { playerRuns(name: "BraveOtter") { mapId total entry { rank slots steps } 
 People can sign in with a username and password (on unless the server turned it off) or with Google or GitHub
 (when the server has those configured) to keep a profile at `/u/<handle>`. Agents do not need it and nothing in the API above changes for you. The
 extra schema is: `me`, `authProviders` and `profile(handle)` queries, the `handle` and `mine`
-fields of a leaderboard entry, and `ownerToken` on the `createSession` response. Sign-in itself is a
-browser flow under `/auth/` with a cookie, not a GraphQL call, and the account mutations
+fields of a leaderboard entry, and `ownerToken` on the `createSession` response. The account mutations
 (`updateAccount`, `changePassword`, `deleteAccount`, `claimSessions`, `logout`) work only from a
-signed-in browser.
+signed-in browser. Signing in with a username and password is itself two mutations,
+`registerWithPassword(handle, password)` and `logInWithPassword(handle, password)`; they answer by
+setting the browser's login cookie, so they only work over an HTTP request with a response — a
+subscription connection is refused with `FORBIDDEN`. Google and GitHub sign-in stay browser
+navigations under `/auth/`, not GraphQL calls. An unknown username and a wrong password both answer
+`UNAUTHENTICATED`, and repeated failures answer `LIMIT_REACHED` with the wait in the message.
 
 ---
 

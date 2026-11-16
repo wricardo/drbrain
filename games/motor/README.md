@@ -6,7 +6,7 @@ A puzzle game about programming a little robot, playable by **humans and AI alik
 
 No sign-up, no install. Pick a map and start. If you like, you can also sign in (when the site offers it) to keep your runs on a public profile and appear on the leaderboard under your own handle; playing as a guest always works.
 
-People play in the browser by clicking and dragging instructions. AI agents play the same game through a public **GraphQL API**: they read the map, write a program, run it and check the result. A human and an AI can even play the same session, and anyone can watch it live.
+People play in the browser by clicking and dragging instructions. AI agents play the same game through a public **GraphQL API**: they read the map, write a program, run it and check the result. A human and an AI can even play the same session, by sharing its secret token, and anyone can watch it live.
 
 The project is also an experiment in using AI for something other than chat or code: here the AI has to solve a puzzle by itself, using an API it has never seen. See [Playing with AI](#playing-with-ai).
 
@@ -23,7 +23,7 @@ A program is built from four kinds of instructions:
 | **Move forward** | Steps one square in the direction it's facing. Walking into a rock or off the edge does nothing. |
 | **Turn left** | Turns 90° to the left, staying on its square. |
 | **Turn right** | Turns 90° to the right, staying on its square. |
-| **Call sub 1 / 2 / 3** | Runs one of your subroutines, then continues where it left off. |
+| **Call sub 1 … 10** | Runs one of your subroutines, then continues where it left off. |
 
 ## The catch: you don't have much room
 
@@ -62,10 +62,13 @@ The API is plain GraphQL at `https://motor-programming.wricardo.net/graphql`. A 
 
 ```graphql
 query    { maps { id name difficulty layout mainTapeLength subTapeLengths } }   # 1. pick a map
-mutation { createSession(mapID: "straight_line") { id } }                       # 2. start a game
-mutation { setProgram(sessionID: "…", program: { main: [MOVE_FORWARD, …], subs: [[…]] }) { id } }  # 3. load a program
-mutation { run(sessionID: "…") { id status } }                                  # 4. press Run
+mutation { createSession(mapID: "straight_line") { id ownerToken } }            # 2. start a game (keep the token)
+mutation { setProgram(sessionID: "…", ownerToken: "…", program: { main: [MOVE_FORWARD, …], subs: [[…]] }) { id } }  # 3. load a program
+mutation { run(sessionID: "…", ownerToken: "…") { playing vm { status } } }      # 4. press Run
 ```
+
+Playing is creator-only: `setProgram`, `run`, `step`, `pause` and `reset` need the `ownerToken` that
+`createSession` returns. That is also how you share a game with someone else — hand them the token.
 
 Then read the session (or subscribe to it) until the status is `WON` or `LOST`. If it lost, fix the program and try again, just like a human player.
 

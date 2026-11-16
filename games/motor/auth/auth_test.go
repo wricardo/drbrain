@@ -504,47 +504,25 @@ func TestUnknownProviderAndMethods(t *testing.T) {
 			t.Errorf("GET %s = %d, want 404", p, resp.StatusCode)
 		}
 	}
-	// Logout is POST only.
-	if resp := h.get("/auth/logout"); resp.StatusCode != http.StatusMethodNotAllowed && resp.StatusCode != http.StatusNotFound {
-		t.Errorf("GET /auth/logout = %d", resp.StatusCode)
-	}
-}
-
-func TestLogout(t *testing.T) {
-	g := newFakeGoogle(t)
-	h := newHarness(t, func(string) []Provider { return []Provider{g.provider()} }, nil)
-	q := h.startLogin("google", "").Query()
-	g.nonce = q.Get("nonce")
-	h.get("/auth/google/callback?code=good-code&state=" + url.QueryEscape(q.Get("state")))
-	tok := h.cookie(SessionCookie).Value
-
-	post := func(origin string) *http.Response {
-		req, _ := http.NewRequest(http.MethodPost, h.ts.URL+"/auth/logout", nil)
-		if origin != "" {
-			req.Header.Set("Origin", origin)
+	// The password routes and the logout route are gone: signing in and out are
+	// GraphQL mutations now (see TestPasswordRegisterAndLogin in password_test.go
+	// and the api package for the mutations over HTTP). A POST to the old
+	// password paths only matches the {provider} GET routes, so it is 405.
+	for _, p := range []string{"/auth/logout", "/auth/password/register", "/auth/password/login"} {
+		for _, m := range []string{http.MethodGet, http.MethodPost} {
+			req, _ := http.NewRequest(m, h.ts.URL+p, nil)
+			resp, err := h.client.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusMethodNotAllowed {
+				t.Errorf("%s %s = %d, want 404", m, p, resp.StatusCode)
+			}
+			if len(resp.Header.Values("Set-Cookie")) != 0 {
+				t.Errorf("%s %s set a cookie", m, p)
+			}
 		}
-		resp, err := h.client.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		resp.Body.Close()
-		return resp
-	}
-	if resp := post("https://evil.example"); resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("cross-site logout = %d", resp.StatusCode)
-	}
-	if _, ok := h.accounts.Authenticate(tok); !ok {
-		t.Fatal("cross-site request signed the player out")
-	}
-	resp := post(h.ts.URL)
-	if resp.StatusCode != http.StatusNoContent {
-		t.Fatalf("logout = %d", resp.StatusCode)
-	}
-	if c := setCookieHeader(resp, SessionCookie); !strings.Contains(c, "Max-Age=0") && !strings.Contains(c, "Max-Age=-1") && !strings.Contains(c, "1970") {
-		t.Fatalf("cookie not cleared: %q", c)
-	}
-	if _, ok := h.accounts.Authenticate(tok); ok {
-		t.Fatal("login survives logout")
 	}
 }
 

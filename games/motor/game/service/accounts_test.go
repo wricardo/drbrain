@@ -70,6 +70,45 @@ func (e *acctEnv) ownedWin(t *testing.T, accountID, name string, p engine.Progra
 	return s.ID, tok
 }
 
+// A signed-in player who starts a session without typing a name gets their
+// account's name, not a random guest name: the play and watch pages show the
+// session's own displayName, so a guest name there reads as somebody else.
+func TestSignedInSessionWithoutANameUsesTheAccountName(t *testing.T) {
+	e := newAcctEnv(t, service.Options{})
+	alice := e.signIn(t, "alice")
+
+	for name, displayName := range map[string]string{
+		"empty":       "",
+		"only spaces": "   ",
+	} {
+		s, _, err := e.svc.CreateOwnedSession("wide", displayName, alice.ID)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if s.DisplayName != alice.DisplayName {
+			t.Fatalf("%s: display name = %q, want the account's %q", name, s.DisplayName, alice.DisplayName)
+		}
+	}
+
+	// A name the player typed still wins over the account's.
+	s, _, err := e.svc.CreateOwnedSession("wide", "My Own Name", alice.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.DisplayName != "My Own Name" {
+		t.Fatalf("typed name was replaced: %q", s.DisplayName)
+	}
+
+	// Guests keep the random guest name: there is no account to borrow from.
+	g, _, err := e.svc.CreateOwnedSession("wide", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g.DisplayName == "" || g.DisplayName == alice.DisplayName {
+		t.Fatalf("guest display name = %q, want a random guest name", g.DisplayName)
+	}
+}
+
 func TestAccountsOffByDefault(t *testing.T) {
 	e := newEnv(t, envOpts{}, wideCfg)
 	if e.svc.AccountsEnabled() {
