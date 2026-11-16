@@ -12,6 +12,8 @@ describe('globalKeyAction', () => {
 		expect(globalKeyAction(ev('?'))).toBe('shortcuts');
 		expect(globalKeyAction(ev('s'))).toBe('step');
 		expect(globalKeyAction(ev('S'))).toBe('step');
+		expect(globalKeyAction(ev('b'))).toBe('back');
+		expect(globalKeyAction(ev('B'))).toBe('back');
 		expect(globalKeyAction(ev('x'))).toBeNull();
 	});
 
@@ -22,6 +24,7 @@ describe('globalKeyAction', () => {
 		expect(globalKeyAction(ev('r', slot))).toBeNull();
 		expect(globalKeyAction(ev('r', input))).toBeNull();
 		expect(globalKeyAction(ev('s', slot))).toBeNull();
+		expect(globalKeyAction(ev('b', slot))).toBeNull();
 		expect(globalKeyAction(ev('r', document.body, { metaKey: true }))).toBeNull();
 	});
 });

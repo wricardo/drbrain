@@ -89,3 +89,25 @@ describe('RunControls with an empty Main tape', () => {
 		expect(disabled('retry')).toBe(false);
 	});
 });
+
+describe('RunControls step back', () => {
+	it('is off until the robot has moved, then calls the handler', async () => {
+		const h = { onstepback: vi.fn() };
+		setup(h);
+		expect(disabled('stepback')).toBe(true);
+		cleanup();
+		const h2 = setup({ canStepBack: true, ...h });
+		expect(disabled('stepback')).toBe(false);
+		await fireEvent.click(screen.getByTestId('stepback'));
+		expect(h.onstepback).toHaveBeenCalledOnce();
+		expect(h2.onstep).not.toHaveBeenCalled();
+	});
+
+	it('is off while the program runs, and stays available after a finished run', () => {
+		setup({ canStepBack: true, playing: true });
+		expect(disabled('stepback')).toBe(true);
+		cleanup();
+		setup({ canStepBack: true, finished: true });
+		expect(disabled('stepback')).toBe(false);
+	});
+});
