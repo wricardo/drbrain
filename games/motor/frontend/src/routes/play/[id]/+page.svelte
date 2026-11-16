@@ -279,13 +279,20 @@
 		{/if}
 
 		<div class="mt-4 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,28rem)]">
-			<section aria-label="Board" class="space-y-3 lg:sticky lg:top-4 lg:self-start">
-				<Grid map={session.map} vm={session.vm} lastEvent={session.lastEvent} />
-				<p class="text-sm text-slate-600">{session.map.description}</p>
+			<!-- On phones the board is pinned small at the top so it stays visible while you edit and run; on wide screens it sits in its own sticky column. -->
+			<section
+				aria-label="Board"
+				class="space-y-3 max-lg:sticky max-lg:top-0 max-lg:z-30 max-lg:-mx-4 max-lg:border-b max-lg:border-indigo-200 max-lg:px-4 max-lg:py-2 max-lg:bg-[var(--page-bg)] sm:max-lg:-mx-6 sm:max-lg:px-6 lg:sticky lg:top-4 lg:self-start"
+			>
+				<div class="mx-auto max-lg:max-w-[min(100%,calc(22vh*var(--ar)))]" style="--ar: {session.map.width / session.map.height}">
+					<Grid map={session.map} vm={session.vm} lastEvent={session.lastEvent} />
+				</div>
+				<p class="text-sm text-slate-600 max-lg:hidden">{session.map.description}</p>
 				<p class="sr-only" role="status" aria-live="polite" data-testid="result-live">{resultText}</p>
 			</section>
 
 			<section aria-label="Program" class="space-y-4">
+				<p class="text-sm text-slate-600 lg:hidden">{session.map.description}</p>
 				<p
 					class="rounded-lg px-3 py-2 text-sm font-semibold {status === 'WON'
 						? 'bg-emerald-50 text-emerald-900'
