@@ -32,7 +32,7 @@
 	import { ownerTokenFor, rememberSession, statusLine } from '$lib/sessions';
 	import { serialRunner } from '$lib/serialRunner';
 	import { replayTo, stepBackTarget } from '$lib/stepBack';
-	import { clampSpeed } from '$lib/speed';
+	import { initialSpeed, saveSpeed, savedSpeed } from '$lib/speed';
 	import { cloneProgram, programsEqual, setSlot } from '$lib/program';
 	import { buildSessionPrompt } from '$lib/prompt';
 	import { createSessionStore } from '$lib/stores/session';
@@ -83,7 +83,7 @@
 		const s = session;
 		if (!s || initialised) return;
 		initialised = true;
-		speedMs = clampSpeed(s.speedMs || 500);
+		speedMs = initialSpeed(s, savedSpeed());
 		// Do not pop the result modal for an outcome that was already there on load.
 		if (s.vm.status === 'WON' || s.vm.status === 'LOST') dismissedAttempts = s.attempts;
 	});
@@ -192,22 +192,39 @@
 		});
 	// Go back one step by replaying the program from the start for one step fewer (see lib/stepBack.ts).
 	const canStepBack = $derived(!dirty && !!session && stepBackTarget(session.vm.steps) !== null);
+	// Editing is locked while a step back replays, so an edit cannot reset the robot half way through it.
+	let rewinding = $state(false);
 	const stepBack = () =>
 		act(async () => {
 			const target = session ? stepBackTarget(session.vm.steps) : null;
 			if (target === null) return;
 			await flushSave();
-			return replayTo(
-				target,
-				async () => {
-					const s = (await unwrap<{ reset: Session }>(client.mutation(RESET_MUTATION, { sessionID: sessionId, ownerToken }))).reset;
-					dismissedAttempts = s.attempts;
-					return s;
-				},
-				async () =>
-					(await unwrap<{ step: Session }>(client.mutation(STEP_MUTATION, { sessionID: sessionId, ownerToken }))).step
-			);
+			rewinding = true;
+			try {
+				return await replayTo(
+					target,
+					async () => {
+						const s = (await unwrap<{ reset: Session }>(client.mutation(RESET_MUTATION, { sessionID: sessionId, ownerToken }))).reset;
+						dismissedAttempts = s.attempts;
+						return s;
+					},
+					async () =>
+						(await unwrap<{ step: Session }>(client.mutation(STEP_MUTATION, { sessionID: sessionId, ownerToken }))).step
+				);
+			} finally {
+				rewinding = false;
+			}
 		});
+	/** Remembers the chosen speed; while a run is playing it is restarted at the new speed (the server fixes the speed when a run starts). */
+	function changeSpeed(ms: number) {
+		saveSpeed(ms);
+		if (!playing) return;
+		void act(async () => {
+			const paused = (await unwrap<{ pause: Session }>(client.mutation(PAUSE_MUTATION, { sessionID: sessionId, ownerToken }))).pause;
+			if (paused.vm.status === 'WON' || paused.vm.status === 'LOST') return paused;
+			return (await unwrap<{ run: Session }>(client.mutation(RUN_MUTATION, { sessionID: sessionId, speedMs: ms, ownerToken }))).run;
+		});
+	}
 	const reset = () =>
 		act(async () => {
 			const s = (await unwrap<{ reset: Session }>(client.mutation(RESET_MUTATION, { sessionID: sessionId, ownerToken }))).reset;
@@ -379,6 +396,7 @@
 						onpause={pause}
 						onstep={stepOnce}
 						onstepback={stepBack}
+						onspeed={changeSpeed}
 						onreset={reset}
 					/>
 					{#if playing}
@@ -391,13 +409,13 @@
 						<Palette
 							bind:selected
 							subCount={draft.subs.length}
-							disabled={playing || !canPlay}
+							disabled={playing || !canPlay || rewinding}
 							onerase={(s) => edit(setSlot(draft!, s.tape, s.slot, 'EMPTY'))}
 						/>
 						<Tape
 							program={draft}
 							{selected}
-							disabled={playing || !canPlay}
+							disabled={playing || !canPlay || rewinding}
 							callStack={dirty ? [] : session.vm.callStack}
 							lastEvent={dirty ? null : session.lastEvent}
 							{status}
