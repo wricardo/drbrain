@@ -29,6 +29,7 @@
 	} from '$lib/queries';
 	import { rememberSession, statusLine } from '$lib/sessions';
 	import { serialRunner } from '$lib/serialRunner';
+	import { replayTo, stepBackTarget } from '$lib/stepBack';
 	import { clampSpeed } from '$lib/speed';
 	import { cloneProgram, programsEqual, setSlot } from '$lib/program';
 	import { buildSessionPrompt } from '$lib/prompt';
@@ -161,6 +162,23 @@
 			await flushSave();
 			return (await unwrap<{ step: Session }>(client.mutation(STEP_MUTATION, { sessionID: sessionId }))).step;
 		});
+	// Go back one step by replaying the program from the start for one step fewer (see lib/stepBack.ts).
+	const canStepBack = $derived(!dirty && !!session && stepBackTarget(session.vm.steps) !== null);
+	const stepBack = () =>
+		act(async () => {
+			const target = session ? stepBackTarget(session.vm.steps) : null;
+			if (target === null) return;
+			await flushSave();
+			return replayTo(
+				target,
+				async () => {
+					const s = (await unwrap<{ reset: Session }>(client.mutation(RESET_MUTATION, { sessionID: sessionId }))).reset;
+					dismissedAttempts = s.attempts;
+					return s;
+				},
+				async () => (await unwrap<{ step: Session }>(client.mutation(STEP_MUTATION, { sessionID: sessionId }))).step
+			);
+		});
 	const reset = () =>
 		act(async () => {
 			const s = (await unwrap<{ reset: Session }>(client.mutation(RESET_MUTATION, { sessionID: sessionId }))).reset;
@@ -183,6 +201,7 @@
 	const shortcutKeys = $derived<[string, string][]>([
 		['Ctrl+Enter', 'Run, or pause while running'],
 		['S', 'Step once (when no slot is focused)'],
+		['B', 'Go back one step (when no slot is focused)'],
 		['R', 'Reset the robot (when no slot is focused)'],
 		['Ctrl+Z', 'Undo a program edit'],
 		['Ctrl+Shift+Z', 'Redo (Ctrl+Y also works)'],
@@ -213,6 +232,8 @@
 		if (action === 'shortcuts') showShortcuts = true;
 		else if (action === 'step') {
 			if (!busy && !playing && !terminal && !emptyMain) stepOnce();
+		} else if (action === 'back') {
+			if (!busy && !playing && canStepBack) stepBack();
 		} else if (!busy) reset();
 	}
 
@@ -309,10 +330,12 @@
 						{busy}
 						{canReset}
 						empty={emptyMain}
+						{canStepBack}
 						bind:speedMs
 						onrun={run}
 						onpause={pause}
 						onstep={stepOnce}
+						onstepback={stepBack}
 						onreset={reset}
 					/>
 					{#if playing}
@@ -353,7 +376,7 @@
 						<li>Drag an instruction onto a slot to place it. Drag a slot to swap it with another, hold <kbd>Shift</kbd> to reorder a tape, <kbd>Alt</kbd> to copy, or drop it on Erase to clear it.</li>
 						<li>With a slot focused: <kbd>F</kbd> forward, <kbd>L</kbd>/<kbd>R</kbd> turn, {callKeys} <kbd>Backspace</kbd> clear, arrows move.</li>
 						<li><kbd>Ctrl</kbd>+<kbd>Z</kbd> undoes a program edit, <kbd>Ctrl</kbd>+<kbd>Enter</kbd> runs or pauses.</li>
-						<li><kbd>S</kbd> steps once and <kbd>R</kbd> resets the robot when no slot is focused.</li>
+						<li><kbd>S</kbd> steps once, <kbd>B</kbd> goes back a step and <kbd>R</kbd> resets the robot when no slot is focused.</li>
 						<li>Press <kbd>?</kbd> for shortcuts.</li>
 					</ul>
 					<a href="/learn" class="mt-2 inline-block text-sm font-medium text-indigo-700 underline">All rules →</a>

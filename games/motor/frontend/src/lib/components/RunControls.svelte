@@ -7,10 +7,12 @@
 		busy = false,
 		canReset,
 		empty = false,
+		canStepBack = false,
 		speedMs = $bindable(500),
 		onrun,
 		onpause,
 		onstep,
+		onstepback = () => {},
 		onreset
 	}: {
 		/** The server is running the program. */
@@ -22,11 +24,14 @@
 		canReset: boolean;
 		/** The Main tape has no instruction, so running would only waste an attempt. */
 		empty?: boolean;
+		/** The robot has taken at least one step and the program is saved, so one step can be taken back. */
+		canStepBack?: boolean;
 		/** Milliseconds per step; changed from the presets, locked while running. */
 		speedMs?: number;
 		onrun: () => void;
 		onpause: () => void;
 		onstep: () => void;
+		onstepback?: () => void;
 		onreset: () => void;
 	} = $props();
 
@@ -78,6 +83,16 @@
 				{@render icon('M8 5v14l11-7z')}Run
 			</button>
 		{/if}
+		<button
+			type="button"
+			data-testid="stepback"
+			class={secondary}
+			disabled={busy || playing || !canStepBack}
+			title="Go back one step (B)"
+			onclick={onstepback}
+		>
+			{@render icon('M6 5h2v14H6zM9 12l9 7V5z')}Back
+		</button>
 		<button
 			type="button"
 			data-testid="step"

@@ -1,5 +1,5 @@
 /** Page-level shortcuts (outside the tape editor). */
-export type GlobalKeyAction = 'reset' | 'shortcuts' | 'step';
+export type GlobalKeyAction = 'back' | 'reset' | 'shortcuts' | 'step';
 
 /** Modifier shortcuts that work anywhere on the page, including from a focused slot. */
 export type EditKeyAction = 'undo' | 'redo' | 'run';
@@ -14,7 +14,7 @@ function inside(e: KeyInfo, selector: string): boolean {
 }
 
 /**
- * Maps a window keydown to a page shortcut: R resets, S steps, ? opens the
+ * Maps a window keydown to a page shortcut: R resets, S steps, B steps back, ? opens the
  * shortcuts dialog. Ignored with modifiers, while typing in a form field, and
  * while a program slot or the slot menu has focus (there R means "turn right").
  */
@@ -24,6 +24,7 @@ export function globalKeyAction(e: KeyInfo): GlobalKeyAction | null {
 	if (e.key === '?') return 'shortcuts';
 	if (e.key === 'r' || e.key === 'R') return 'reset';
 	if (e.key === 's' || e.key === 'S') return 'step';
+	if (e.key === 'b' || e.key === 'B') return 'back';
 	return null;
 }
 
