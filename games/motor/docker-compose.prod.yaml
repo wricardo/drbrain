@@ -1,0 +1,52 @@
+# Production PostgreSQL for drbrain-motor-programming, run on the app host.
+#
+#   docker compose -f docker-compose.prod.yaml up -d --wait postgres
+#
+# `POSTGRES_PASSWORD` must be set in the app's `.env` (hex is safest: Compose
+# interpolates `$`); `DATABASE_URL` in the same file points at this container.
+# The volume name is explicit so moving the checkout cannot orphan the data.
+# The app's systemd unit runs this `up` as ExecStartPre, so the server never
+# starts before the database is healthy. Back up with `pg_dump`, not the volume.
+name: drbrain
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: drbrain
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: drbrain
+    command:
+      - postgres
+      - -c
+      - shared_buffers=64MB
+      - -c
+      - max_connections=20
+      - -c
+      - effective_cache_size=128MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=32MB
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    shm_size: 128mb
+    mem_limit: 256m
+    stop_grace_period: 1m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U drbrain -d drbrain"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  pgdata:
+    name: drbrain-pgdata

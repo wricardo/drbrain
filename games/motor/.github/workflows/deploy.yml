@@ -40,14 +40,19 @@ jobs:
         env:
           TEST_DATABASE_URL: postgres://drbrain:drbrain_ci@localhost:5432/drbrain?sslmode=disable
 
-      # The SvelteKit UI is prebuilt and committed in static/.
-      - name: Build binary (linux/arm64)
-        run: CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /tmp/drbrain-motor-programming .
+      # The SvelteKit UI is prebuilt and committed in static/. import-json is the
+      # JSON <-> PostgreSQL cutover/export tool; it ships so the host needs no Go
+      # toolchain to run a cutover.
+      - name: Build binaries (linux/arm64)
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /tmp/drbrain-motor-programming .
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /tmp/import-json ./cmd/import-json
 
       - name: Package
         run: |
           mkdir -p /tmp/pkg
-          cp /tmp/drbrain-motor-programming /tmp/pkg/
+          cp /tmp/drbrain-motor-programming /tmp/import-json /tmp/pkg/
+          cp docker-compose.prod.yaml /tmp/pkg/
           cp -r maps static /tmp/pkg/
           tar czf /tmp/deploy.tgz -C /tmp/pkg .
 
@@ -78,10 +83,11 @@ jobs:
       - name: Upload
         run: scp /tmp/deploy.tgz deploy:/tmp/drbrain-motor-programming-deploy.tgz
 
-      # Systemd unit, nginx vhost and /opt/drbrain-motor-programming/.env are
+      # Systemd unit, nginx vhost, Docker and /opt/drbrain-motor-programming/.env are
       # provisioned once on the host; this step only swaps the release.
-      # sessions/, maps-user/ (player-created maps), accounts/ (player accounts) and
-      # .env are preserved: only maps/ and static/ are replaced.
+      # sessions/, maps-user/, accounts/ and .env are preserved (the file stores are
+      # the rollback path); only maps/, static/, the binaries and the compose file
+      # are replaced. The PostgreSQL volume lives outside the release directory.
       - name: Install and restart
         run: |
           ssh deploy '
@@ -91,6 +97,12 @@ jobs:
             tar xzf /tmp/drbrain-motor-programming-deploy.tgz -C .
             rm -f /tmp/drbrain-motor-programming-deploy.tgz
             mkdir -p sessions maps-user
+            # Reconcile the production database before the app starts; the unit
+            # repeats this in ExecStartPre so a plain restart does the same. A host
+            # still on the JSON file stores has no DATABASE_URL and skips this.
+            if grep -q "^DATABASE_URL=." .env 2>/dev/null && command -v docker >/dev/null; then
+              sudo docker compose -f docker-compose.prod.yaml up -d --wait postgres
+            fi
             sudo systemctl restart drbrain-motor-programming.service
             systemctl is-active drbrain-motor-programming.service
           '

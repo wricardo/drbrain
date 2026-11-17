@@ -157,6 +157,8 @@ Where the runtime state lives depends on one setting, `DATABASE_URL` (or `-datab
 
 **Local database.** `docker-compose.yaml` runs PostgreSQL 17 with a healthcheck and a named volume; the app stays on the host. `just db-up` / `just db-down` start and stop it, `just dev-db` is `just dev` against it, and `just test-db` runs the Go tests including the database ones. Set `POSTGRES_PORT` when 5432 is taken. A local `.env` line is enough: `DATABASE_URL=postgres://drbrain:drbrain_dev@localhost:5432/drbrain?sslmode=disable`.
 
+**Production database.** `docker-compose.prod.yaml` is the production variant of the same service: explicit project and volume names (`drbrain-pgdata`), `restart: unless-stopped`, a required `POSTGRES_PASSWORD`, a loopback-only port, a 256 MB memory limit with tuned `shared_buffers`, and log rotation. The deploy workflow ships it to `/opt/drbrain-motor-programming`; the unit's `ExecStartPre` runs `docker compose -f docker-compose.prod.yaml up -d --wait postgres`, and the deploy step does the same, so the app never starts before the database is healthy. Back up with `pg_dump` (nightly cron, see [Deployment and hosting](#deployment-and-hosting)); the Docker volume is not a backup.
+
 **Tests.** Database tests call `pgtest.Pool(t)` (`internal/pgdb/pgtest`): it skips unless `TEST_DATABASE_URL` is set and otherwise gives each test its own freshly migrated schema, dropped afterwards, so tests and packages never see each other's rows. `go test ./...` therefore needs no database; CI runs them against a PostgreSQL service container.
 
 **Moving data.** `cmd/import-json` (also `just db-import`, `just db-export`) copies between the files and the database:
@@ -164,7 +166,7 @@ Where the runtime state lives depends on one setting, `DATABASE_URL` (or `-datab
 - `import-json` inserts player maps, accounts, logins and sessions that the database does not have yet (maps, then accounts, then sessions, which reference accounts). It never overwrites a row, so it is safe to run again, e.g. once more right before cutover. `-dry-run` only counts. Sessions linked to an account that is not in the files are imported as guest rows. Reading the account files drops expired or orphaned logins, as a server start would.
 - `import-json -export` writes the database back out as files, into directories that hold no `.json` yet (it refuses to overwrite). That is the pre-migration/rollback copy.
 
-**Cutover** (production, one-time): back up `sessions/`, `accounts/` and `maps-user/`; provision PostgreSQL on the host and put `DATABASE_URL` in `/opt/drbrain-motor-programming/.env` (the systemd unit should start after PostgreSQL, or restart on failure); stop the service; run `import-json` with the host's directories; start it. The old folders are then read-only backups and are no longer written. Merging this change deploys nothing new until `DATABASE_URL` is set on the host. Back up the PostgreSQL volume (or `pg_dump`) from then on instead of the folders.
+**Cutover** (production, one-time): back up `sessions/`, `accounts/` and `maps-user/`; start PostgreSQL (`docker compose -f docker-compose.prod.yaml up -d --wait postgres`) and put `POSTGRES_PASSWORD` + `DATABASE_URL` in `/opt/drbrain-motor-programming/.env` (the unit starts after `docker.service` and waits for the container); stop the service; run the shipped `import-json` with the host's directories; start it. The old folders are then read-only backups and are no longer written. Back up with `pg_dump` from then on instead of the folders; the Docker volume (`drbrain-pgdata`) is not a backup.
 
 ### Errors
 
@@ -567,18 +569,21 @@ Frontend build-time variables: `PUBLIC_GRAPHQL_URL`, `PUBLIC_WS_URL` (Vite, not 
 
 ## Deployment and hosting
 
-Production runs at https://motor-programming.wricardo.net on a small ARM64 Ubuntu EC2 host shared with other apps.
+Production runs at https://motor-programming.wricardo.net on a small ARM64 Ubuntu EC2 host shared with other apps. PostgreSQL 17 runs there in Docker from `docker-compose.prod.yaml`; the app stays a systemd unit on the host.
 
-**Continuous deployment.** Every push to `main` runs `.github/workflows/deploy.yml`: vet and test, build a static `linux/arm64` binary, upload it with `maps/` and `static/`, unpack into `/opt/drbrain-motor-programming` (keeping `sessions/`, `maps-user/`, `accounts/` and `.env`), restart the service and smoke-test GraphQL on the host. The Go tests there run against a PostgreSQL service container (`TEST_DATABASE_URL`); `.github/workflows/ci.yml` runs the tests and the smoke script (JSON files and PostgreSQL) on every pull request. Repository secrets: `EC2_HOST`, `EC2_SSH_KEY` (a deploy-only key), `EC2_KNOWN_HOSTS`.
+**Continuous deployment.** Every push to `main` runs `.github/workflows/deploy.yml`: vet and test, build static `linux/arm64` binaries (`drbrain-motor-programming` and `import-json`), upload them with `maps/`, `static/` and `docker-compose.prod.yaml`, unpack into `/opt/drbrain-motor-programming` (keeping `sessions/`, `maps-user/`, `accounts/`, `.env` and the PostgreSQL volume), start/reconcile PostgreSQL with Compose, restart the service and smoke-test GraphQL on the host. The Go tests there run against a PostgreSQL service container (`TEST_DATABASE_URL`); `.github/workflows/ci.yml` runs the tests and the smoke script (JSON files and PostgreSQL) on every pull request. Repository secrets: `EC2_HOST`, `EC2_SSH_KEY` (a deploy-only key), `EC2_KNOWN_HOSTS`.
 
 **One-time host setup** (not in the repo; repeat on a new host):
 
 1. Create `/opt/drbrain-motor-programming/` owned by `ubuntu`, with `sessions/`, `maps-user/` and a `.env` (and `accounts/` once sign-in is enabled; the server creates it) (production: playground off, a random `ADMIN_API_KEY`, `ALLOWED_ORIGINS` set to the site's http and https origins).
-2. Add a systemd unit `drbrain-motor-programming.service`: `WorkingDirectory=/opt/drbrain-motor-programming`, `ExecStart=… -host 127.0.0.1 -port 8086 -maps-dir maps -user-maps-dir maps-user -sessions-dir sessions -accounts-dir accounts -public-url https://motor-programming.wricardo.net`, `Restart=always`.
-3. Add an nginx `server` block for the domain that proxies to `127.0.0.1:8086` with WebSocket upgrade headers and a long `proxy_read_timeout`.
-4. Point DNS at the host and run `sudo certbot --nginx -d motor-programming.wricardo.net --redirect`. `certbot.timer` renews the certificate.
-5. To enable sign-in follow [Owner setup](#owner-setup): register the OAuth apps, add the `AUTH_*` variables to `.env`, restart.
-6. Add the deploy key's public half to `~/.ssh/authorized_keys` and set the three repository secrets. The systemd `ExecStart` already carries `-public-url https://motor-programming.wricardo.net`; keep it, because password sign-in (on by default) uses it for the same-origin check and the `Secure` cookie.
+2. Install the database host: `sudo apt-get install -y docker.io docker-compose-v2`, `sudo systemctl enable --now docker`, `sudo usermod -aG docker ubuntu`. On hosts under ~1 GiB RAM add a swap file first. Put `POSTGRES_PASSWORD` (hex, so Compose cannot interpolate it) in `.env`; the deploy ships `docker-compose.prod.yaml`.
+3. Add a systemd unit `drbrain-motor-programming.service`: `WorkingDirectory=/opt/drbrain-motor-programming`, `ExecStart=… -host 127.0.0.1 -port 8086 -maps-dir maps -user-maps-dir maps-user -sessions-dir sessions -accounts-dir accounts -public-url https://motor-programming.wricardo.net`, `Restart=always`; add a drop-in with `After=docker.service`, `Wants=docker.service` and `ExecStartPre=/usr/bin/docker compose -f docker-compose.prod.yaml up -d --wait postgres`.
+4. Add an nginx `server` block for the domain that proxies to `127.0.0.1:8086` with WebSocket upgrade headers and a long `proxy_read_timeout`.
+5. Point DNS at the host and run `sudo certbot --nginx -d motor-programming.wricardo.net --redirect`. `certbot.timer` renews the certificate.
+6. To enable sign-in follow [Owner setup](#owner-setup): register the OAuth apps, add the `AUTH_*` variables to `.env`, restart.
+7. Add the deploy key's public half to `~/.ssh/authorized_keys` and set the three repository secrets. The systemd `ExecStart` already carries `-public-url https://motor-programming.wricardo.net`; keep it, because password sign-in (on by default) uses it for the same-origin check and the `Secure` cookie.
+
+**Backups.** PostgreSQL is the only state that changes after cutover. Take a nightly `pg_dump` (for example `docker compose -f docker-compose.prod.yaml exec -T postgres pg_dump -U drbrain -Fc drbrain`), keep a copy off the host, and prove a restore before relying on it. The file directories are frozen rollback copies, and the Docker volume alone is not a backup.
 
 ## Maintaining the project
 
