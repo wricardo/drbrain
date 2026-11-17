@@ -689,6 +689,61 @@ func TestSessionTTLSweptOnNew(t *testing.T) {
 	}
 }
 
+// A long-running server expires idle sessions on a timer, not only at startup,
+// and Shutdown stops that timer.
+func TestSessionTTLSweptPeriodically(t *testing.T) {
+	maps := newFakeMaps(t, corridorCfg)
+	mgr := session.NewManager(nil, 10)
+	m := mustMap(t, corridorCfg)
+	svc := service.New(maps, mgr, nil, service.Options{SessionTTL: time.Hour, SweepInterval: 5 * time.Millisecond})
+
+	put := func(id string, idle time.Duration) {
+		now := time.Now()
+		s := &service.Session{
+			ID: id, MapID: m.ID, Map: m, Program: engine.EmptyProgram(m), VM: engine.NewVMState(m), SpeedMs: 500,
+			CreatedAt: now.Add(-idle), LastActionAt: now.Add(-idle),
+		}
+		if err := mgr.Put(s); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Both arrive after New returned, so only the periodic sweep can remove the stale one.
+	put("0000000000000001", 48*time.Hour)
+	put("0000000000000002", time.Minute)
+
+	waitFor(t, "the idle session to be swept", func() bool { _, ok := mgr.Get("0000000000000001"); return !ok })
+	if _, ok := mgr.Get("0000000000000002"); !ok {
+		t.Fatal("fresh session was swept")
+	}
+
+	svc.Shutdown()
+	svc.Shutdown() // idempotent, including the sweep goroutine
+	put("0000000000000003", 48*time.Hour)
+	time.Sleep(30 * time.Millisecond)
+	if _, ok := mgr.Get("0000000000000003"); !ok {
+		t.Fatal("the sweep kept running after Shutdown")
+	}
+}
+
+func TestNoPeriodicSweepWithoutInterval(t *testing.T) {
+	maps := newFakeMaps(t, corridorCfg)
+	mgr := session.NewManager(nil, 10)
+	m := mustMap(t, corridorCfg)
+	svc := service.New(maps, mgr, nil, service.Options{SessionTTL: time.Hour})
+	t.Cleanup(svc.Shutdown)
+	now := time.Now()
+	if err := mgr.Put(&service.Session{
+		ID: "0000000000000001", MapID: m.ID, Map: m, Program: engine.EmptyProgram(m), VM: engine.NewVMState(m), SpeedMs: 500,
+		CreatedAt: now.Add(-48 * time.Hour), LastActionAt: now.Add(-48 * time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(30 * time.Millisecond)
+	if _, ok := mgr.Get("0000000000000001"); !ok {
+		t.Fatal("swept without a SweepInterval")
+	}
+}
+
 func TestNoGoroutineLeak(t *testing.T) {
 	base := runtime.NumGoroutine()
 	e := newEnv(t, envOpts{})

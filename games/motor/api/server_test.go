@@ -115,8 +115,6 @@ func firstErrCode(out map[string]any) string {
 	return code
 }
 
-const createMapMutation = `mutation { createMap(map: {id: "fresh", name: "F", layout: ["...", ">.*", "..."]}) { id } }`
-
 func TestMapsQueryOverHTTP(t *testing.T) {
 	ts := newTestServer(t, Options{Introspection: true})
 	status, out := gql(t, ts.URL, `{ maps { id start { x y } startFacing treats { x y } } }`, nil)
@@ -129,52 +127,61 @@ func TestMapsQueryOverHTTP(t *testing.T) {
 	}
 }
 
+// Map mutations over HTTP: creating a map needs a signed-in player (a guest is
+// UNAUTHENTICATED and nothing is stored), a player-created map stays open to
+// everyone for edits and deletes, and a shipped map needs the admin key.
 func TestMapMutationsOverHTTP(t *testing.T) {
 	t.Setenv("ADMIN_API_KEY", "secret")
 	t.Setenv("ALLOW_UNAUTHENTICATED_ADMIN", "")
-	ts := newTestServer(t, Options{})
+	ts := newPasswordServer(t) // serves the shipped map "wide"
+	guest, signedIn := newBrowser(t, ts.URL), newBrowser(t, ts.URL)
+	if _, out := signedIn.pwSignIn(true, "map_maker", "tangerine-ladder-42", nil); firstErrCode(out) != "" {
+		t.Fatalf("sign in: %v", out)
+	}
 
-	// Creating a map needs no key.
-	_, out := gql(t, ts.URL, createMapMutation, nil)
-	if out["errors"] != nil {
-		t.Fatalf("create without key rejected: %v", out)
-	}
-	// Editing a shipped map (m1) still does.
-	const updateMapMutation = `mutation { updateMap(map: {id: "m1", name: "F", layout: ["...", ">.*", "..."]}) { id } }`
-	_, out = gql(t, ts.URL, updateMapMutation, nil)
-	if got := firstErrCode(out); got != service.CodeForbidden {
-		t.Fatalf("no key: code %q out=%v", got, out)
-	}
-	_, out = gql(t, ts.URL, updateMapMutation, map[string]string{"X-Admin-Key": "wrong"})
-	if got := firstErrCode(out); got != service.CodeForbidden {
-		t.Fatalf("wrong key: code %q", got)
-	}
-	_, out = gql(t, ts.URL, updateMapMutation, map[string]string{"X-Admin-Key": "secret"})
-	if out["errors"] != nil {
-		t.Fatalf("right key rejected: %v", out)
-	}
-	const deleteMapMutation = `mutation { deleteMap(id: "m1") }`
-	_, out = gql(t, ts.URL, deleteMapMutation, nil)
-	if got := firstErrCode(out); got != service.CodeForbidden {
-		t.Fatalf("delete no key: code %q out=%v", got, out)
-	}
-	// A player-created map is fully open: update, delete, no key.
 	const createMutation = `mutation { createMap(map: {id: "mine", name: "Mine", layout: ["...", ">.*", "..."]}) { id builtin } }`
-	_, out = gql(t, ts.URL, createMutation, nil)
+	// A guest cannot create a map, and the store is untouched.
+	if out := guest.gql(createMutation, nil); firstErrCode(out) != service.CodeUnauthenticated {
+		t.Fatalf("guest create: %v", out)
+	}
+	if maps := guest.gql(`{ maps { id } }`, nil); strings.Contains(string(mustJSON(maps)), `"mine"`) {
+		t.Fatalf("a guest create stored a map: %v", maps)
+	}
+	// A signed-in player can, without any key.
+	out := signedIn.gql(createMutation, nil)
 	created, _ := out["data"].(map[string]any)["createMap"].(map[string]any)
 	if created == nil || created["builtin"] != false {
 		t.Fatalf("create: out=%v", out)
 	}
+	// Editing a shipped map (wide) needs the admin key.
+	const updateShipped = `mutation { updateMap(map: {id: "wide", name: "F", layout: ["...", ">.*", "..."]}) { id } }`
+	if out = guest.gql(updateShipped, nil); firstErrCode(out) != service.CodeForbidden {
+		t.Fatalf("no key: out=%v", out)
+	}
+	guest.headers["X-Admin-Key"] = "wrong"
+	if out = guest.gql(updateShipped, nil); firstErrCode(out) != service.CodeForbidden {
+		t.Fatalf("wrong key: %v", out)
+	}
+	guest.headers["X-Admin-Key"] = "secret"
+	if out = guest.gql(updateShipped, nil); out["errors"] != nil {
+		t.Fatalf("right key rejected: %v", out)
+	}
+	delete(guest.headers, "X-Admin-Key")
+	const deleteShipped = `mutation { deleteMap(id: "wide") }`
+	if out = guest.gql(deleteShipped, nil); firstErrCode(out) != service.CodeForbidden {
+		t.Fatalf("delete no key: %v", out)
+	}
+	// A player-created map stays fully open: update and delete need no login or key.
 	const updateMine = `mutation { updateMap(map: {id: "mine", name: "Mine 2", layout: ["...", ">.*", "..."]}) { id name } }`
-	if _, out = gql(t, ts.URL, updateMine, nil); out["errors"] != nil {
+	if out = guest.gql(updateMine, nil); out["errors"] != nil {
 		t.Fatalf("update own map: %v", out)
 	}
 	const deleteMine = `mutation { deleteMap(id: "mine") }`
-	if _, out = gql(t, ts.URL, deleteMine, nil); out["errors"] != nil {
+	if out = guest.gql(deleteMine, nil); out["errors"] != nil {
 		t.Fatalf("delete own map: %v", out)
 	}
 	// Deleting a map that does not exist is NOT_FOUND, not silently true.
-	if _, out = gql(t, ts.URL, deleteMine, nil); firstErrCode(out) != service.CodeNotFound {
+	if out = guest.gql(deleteMine, nil); firstErrCode(out) != service.CodeNotFound {
 		t.Fatalf("delete missing: out=%v", out)
 	}
 }
