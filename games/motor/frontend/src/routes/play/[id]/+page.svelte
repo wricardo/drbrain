@@ -60,6 +60,8 @@
 	let selected = $state<Instruction | null>(null);
 	let speedMs = $state(500);
 	let busy = $state(false);
+	// A Back step replays the program from the start; editing is locked until it lands.
+	let rewinding = $state(false);
 	let actionError = $state<DescribedError | null>(null);
 	let dismissedAttempts = $state<number | null>(null);
 	let showShortcuts = $state(false);
@@ -186,7 +188,7 @@
 	// Save a moment after the player stops editing, so the server (spectators, agents) stays in step
 	// and the robot returns to the start as soon as the program changes.
 	$effect(() => {
-		if (!dirty || playing || !canPlay) return;
+		if (!dirty || playing || rewinding || !canPlay) return;
 		const timer = setTimeout(() => {
 			flushSave().catch((e) => {
 				const d = describeError(e);
@@ -215,7 +217,6 @@
 	// Go back one step by replaying the program from the start for one step fewer (see lib/stepBack.ts).
 	const canStepBack = $derived(!dirty && !!session && stepBackTarget(session.vm.steps) !== null);
 	// Editing is locked while a step back replays, so an edit cannot reset the robot half way through it.
-	let rewinding = $state(false);
 	const stepBack = () =>
 		act(async () => {
 			const target = session ? stepBackTarget(session.vm.steps) : null;
@@ -313,7 +314,9 @@
 	}
 
 	function undoEdit() {
-		if (!draft || playing) return;
+		// busy covers a Back step's replay: an edit then would save the draft and reset the robot
+		// half way through it, so the replay would land somewhere else than one step back.
+		if (!draft || playing || busy) return;
 		const r = undo(history, draft);
 		if (!r) return;
 		history = r.history;
@@ -321,7 +324,7 @@
 	}
 
 	function redoEdit() {
-		if (!draft || playing) return;
+		if (!draft || playing || busy) return;
 		const r = redo(history, draft);
 		if (!r) return;
 		history = r.history;
