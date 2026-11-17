@@ -265,6 +265,19 @@ export function savedDisplayName(): string {
 	}
 }
 
+/**
+ * The `displayName` to create a session with. A signed-in player's run belongs
+ * to the account already (the login cookie is the identity; `createSession`
+ * takes no account argument), and the server names an owned session after the
+ * account when no name is sent. So send nothing rather than the guest alias this
+ * browser kept from before signing in: an owned run showing a guest name is the
+ * drift that had to be reconciled by hand afterwards.
+ */
+export function newSessionName(signedIn: boolean): string | null {
+	if (signedIn) return null;
+	return savedDisplayName().trim() || null;
+}
+
 /** Saves the player name used for new sessions. */
 export function saveDisplayName(name: string): void {
 	try {

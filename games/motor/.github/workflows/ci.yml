@@ -1,0 +1,72 @@
+name: CI
+
+# Runs on pull requests (and on pushes to main, next to the deploy workflow) so a
+# change is exercised before it merges: the Go tests with a real PostgreSQL, and
+# the end-to-end smoke test once with JSON-file storage and once with PostgreSQL.
+"on":
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: drbrain
+          POSTGRES_PASSWORD: drbrain_ci
+          POSTGRES_DB: drbrain
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U drbrain -d drbrain"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go vet ./...
+      - run: go test -race ./...
+        env:
+          TEST_DATABASE_URL: postgres://drbrain:drbrain_ci@localhost:5432/drbrain?sslmode=disable
+
+  smoke:
+    name: Smoke (${{ matrix.storage }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        storage: [files, postgres]
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: drbrain
+          POSTGRES_PASSWORD: drbrain_ci
+          POSTGRES_DB: drbrain
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U drbrain -d drbrain"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Smoke test
+        env:
+          SMOKE_DATABASE_URL: ${{ matrix.storage == 'postgres' && 'postgres://drbrain:drbrain_ci@localhost:5432/drbrain?sslmode=disable' || '' }}
+        run: scripts/smoke.sh 9191

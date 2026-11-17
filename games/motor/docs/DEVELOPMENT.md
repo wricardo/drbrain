@@ -25,7 +25,7 @@ These decisions shape everything else. Keep them when changing the game or start
 2. **The server is the source of truth.** Programs run on the server, one step per tick. Clients only display snapshots. Two browsers, or a browser and an agent, can play or watch the same session and always agree.
 3. **Pure rules engine.** All game rules live in one package with no I/O, no clock and no dependencies. It can be tested exhaustively and reused by the validator and the live runner.
 4. **Full snapshots, ordered by sequence number.** Every update carries the whole session state and a `seq` that only goes up. Clients never patch state; they replace it and drop anything older. Dropped or reordered messages can't corrupt the view.
-5. **Files, not a database.** Maps are JSON files in `maps/` (shipped) and `maps-user/` (player-created); each session is one JSON file in `sessions/`; accounts are files in `accounts/`. Writes are atomic (temp file + fsync + rename). One binary plus a few folders is the whole deployment.
+5. **Shipped maps are files; everything players create is PostgreSQL or files.** Shipped maps are JSON in `maps/` (git-tracked, replaced on every deploy, read-only for players). Sessions, accounts, logins and player-created maps live in **PostgreSQL** when `DATABASE_URL` is set, and otherwise stay JSON files (`sessions/`, `accounts/`, `maps-user/`; writes are atomic: temp file + fsync + rename). The database is a *store*, not the source of truth: live sessions stay in memory and are written through, exactly as the files were. See [Storage](#storage).
 6. **Agent-readable by design.** `/llms.txt` explains the rules and every API call for an AI. Each game page can copy a ready-made prompt. Answers are never exposed: reference solutions are not in the API, the prompts or the public repo.
 7. **Puzzles are verified, not hoped for.** Every map has a reference solution that must win, and the harder maps come with a proof that the intended trick is required.
 
@@ -35,7 +35,7 @@ These decisions shape everything else. Keep them when changing the game or start
 cp .env.example .env      # optional
 just restart              # rebuild UI + binary and serve http://localhost:8000 (API + UI)
 just run                  # rebuild and serve in the foreground
-just dev                  # stop whatever holds the port, then go run . -port 8000 -host 127.0.0.1 -public-url http://localhost:8000 -debug
+just dev                  # stop whatever holds the port, then go run . -port 8000 -host 0.0.0.0 -public-url http://localhost:8000 -debug
 ```
 
 Every recipe passes `-public-url http://localhost:<port>` (override with `PUBLIC_URL=... just restart`); sign-in is on by default and uses it for the same-origin check. Plain `go run .` works too on localhost, where the request's own `Host` is trusted instead, but a public host without `-public-url` refuses sign-in rather than trust a rebindable host.
@@ -48,7 +48,7 @@ Frontend development with hot reload, against a server running on :8000:
 cd frontend && npm run dev:local     # http://localhost:5173
 ```
 
-Server flags: `-port 8000 -host 0.0.0.0 -maps-dir maps -user-maps-dir maps-user -sessions-dir sessions -accounts-dir accounts -solutions-dir solutions -debug -public-url <url>` (`-public-url` sets the base URL written into `/llms.txt`, is the base of the OAuth callbacks, and is the origin used for the sign-in same-origin check and the `Secure` cookie; it is required once a redirect provider is configured, while password sign-in — on by default — falls back to each request's own host).
+Server flags: `-port 8000 -host 0.0.0.0 -maps-dir maps -user-maps-dir maps-user -sessions-dir sessions -accounts-dir accounts -database-url <url> -solutions-dir solutions -debug -public-url <url>` (`-database-url`, default `$DATABASE_URL`, switches sessions, accounts and player maps to PostgreSQL; the three directory flags then only matter to `cmd/import-json`) (`-public-url` sets the base URL written into `/llms.txt`, is the base of the OAuth callbacks, and is the origin used for the sign-in same-origin check and the `Secure` cookie; it is required once a redirect provider is configured, while password sign-in — on by default — falls back to each request's own host).
 
 Routes:
 
@@ -65,7 +65,7 @@ Routes:
 | `/u/<handle>` | Public profile: solved counts (official and community), best run per map, recent activity; a private profile is "not found" for everyone but its owner |
 | `/settings` | Signed-in player: handle, display name, public/private profile, add guest runs, delete account |
 | `/auth/<provider>/login`, `/auth/<provider>/callback` | Sign-in routes for the redirect providers (Google, GitHub, dev); only exist when that provider is configured, and the dev fake additionally serves `/auth/dev/authorize`, the page where you type a name. Username/password sign-in and signing out are GraphQL mutations (`registerWithPassword`, `logInWithPassword`, `logout`), see [Accounts and sign-in](#accounts-and-sign-in) |
-| `/editor` | Map editor with server-side validation; anyone can create a map, changing a built-in one needs the admin key |
+| `/editor` | Map editor with server-side validation; creating a map needs a signed-in player, changing a built-in one needs the admin key |
 | `/learn` | How it works: the game, instructions, rules, controls, how an AI plays, a generic AI prompt, tips |
 | `/graphql` | GraphQL over HTTP and WebSocket (`graphql-ws`); `/playground` when enabled |
 | `/llms.txt` | Guide for AI agents, rendered from `llms.txt.tmpl` |
@@ -78,12 +78,12 @@ game/engine          pure rules, no deps/IO: MapConfig/NewMap, Program, VMState 
 game/service         Session type, GameService facade + impl + Runner (ticker goroutine per playing session);
                      interfaces MapStore, SessionStore, Broadcaster, AccountStore; coded errors; leaderboard (recorded wins + ranking);
                      accounts, handles, logins, claims
-game/account         AccountStore impl: accounts/accounts/<id>.json + accounts/logins/<sha256>.json, in-memory indexes
+game/account         AccountStore impls: files (accounts/accounts/<id>.json + accounts/logins/<sha256>.json, in-memory indexes) and PostgreSQL (postgres.go)
 auth                 Sign-in: username/password (on by default), providers (Google OIDC, GitHub OAuth2, dev fake), /auth routes,
                      login cookie, same-origin check, per-IP rate limiter
-game/config          MapStore impl: maps/*.json (shipped, admin-only writes) + maps-user/*.json
+game/config          MapStore impl: maps/*.json (shipped, admin-only writes) + player maps in maps-user/*.json or, with a database, the `maps` table (`UserStore`)
                      (player-created), RWMutex, atomic writes
-game/session         SessionStore impl: in-memory Manager + FilePersistence (sessions/<id>.json)
+game/session         SessionStore impl: in-memory Manager + FilePersistence (sessions/<id>.json) or PostgresPersistence
 transport/websocket  Hub: per-session fan-out, latest-wins delivery
 validate             map checks, reachability, reference-solution checks (+ cmd/validate CLI)
 graph                gqlgen schema, resolvers, converters, subscription forwarder, admin gate
@@ -105,7 +105,7 @@ HTTP /graphql (api) → gqlgen resolver (graph) → GameService (game/service)
 
 ### Composition and dependencies
 
-- `main.go` is the composition root. It builds the map store (`game/config`), the session store and file persistence (`game/session`), the broadcaster (`transport/websocket`) and, only when a sign-in provider is configured (or `accounts/` already exists), the account store (`game/account`) and `auth.Auth`, passes them to `service.New(...)`, then starts `api.NewServer`. On shutdown it stops HTTP first, then the runners, persisting every session.
+- `main.go` is the composition root. It opens PostgreSQL first when `DATABASE_URL` is set (and exits with a clear error if it cannot, never falling back to files), then builds the map store (`game/config`), the session store and its persistence (`game/session`), the broadcaster (`transport/websocket`) and, when password or OAuth sign-in is on (or, without a database, `accounts/` already exists), the account store (`game/account`) and `auth.Auth`, passes them to `service.New(...)`, then starts `api.NewServer`. On shutdown it stops HTTP first, then the runners, persisting every session, and only then closes the database pool.
 - `game/service` defines the `MapStore`, `SessionStore`, `Broadcaster` and `AccountStore` interfaces it needs. Implementations import `service` and assert the interfaces at compile time; `service` never imports them. This keeps the core testable with fakes.
 - `graph/` is a thin adapter: resolvers call `GameService` and convert results in `graph/convert.go`. `graph/generated` and `graph/model` are gqlgen output (committed, never hand-edited).
 
@@ -129,7 +129,42 @@ HTTP /graphql (api) → gqlgen resolver (graph) → GameService (game/service)
 - Each session embeds a copy of its map, so editing or deleting a map never affects existing sessions.
 - A session file also carries `account_id` and `owner_hash` when it belongs to an account or has an owner token (see [Accounts and sign-in](#accounts-and-sign-in)), its best wins for the [leaderboard](#leaderboard) (`fewest_slots`, `fewest_steps`), and the VM's opened doors (`doors_open`; a file without it reads as all doors closed). Files written before leaderboards still load: a session whose VM is `WON` gets its win recovered from the program stored with it.
 - The session and map stores share `internal/fsutil` for the two file-system steps that differ by platform: `SyncDir` (fsync the directory after a rename or remove; a no-op on Windows, which cannot open a directory for syncing) and `RenameReplace` (os.Rename on Linux; on Windows a short retry, because replacing a file fails with "Access is denied" while a reader, virus scanner or indexer has it open). Production is Linux, where both are the plain calls; the point is that the whole test suite also passes on a Windows developer machine.
-- Idle sessions older than `SESSION_TTL` are removed on startup. `MAX_SESSIONS` caps how many exist.
+- Idle sessions older than `SESSION_TTL` are removed on startup and then every `SESSION_SWEEP_INTERVAL` (default 1 h), through `DeleteSession`, so a running server does not keep idle sessions forever. `MAX_SESSIONS` caps how many exist.
+
+### Storage
+
+Where the runtime state lives depends on one setting, `DATABASE_URL` (or `-database-url`):
+
+| State | With `DATABASE_URL` | Without it |
+|---|---|---|
+| Shipped maps | `maps/*.json` (always files: git-tracked, replaced on deploy) | same |
+| Player-created maps | `maps` table | `maps-user/<id>.json` |
+| Sessions | `sessions` table | `sessions/<id>.json` |
+| Accounts | `accounts` table | `accounts/accounts/<id>.json` |
+| Logins (one per signed-in browser, keyed by the SHA-256 of the cookie token) | `logins` table | `accounts/logins/<sha256>.json` |
+| Leaderboards | derived by scanning live sessions | same |
+| `solutions/` | not server state: a local input to `just validate` | same |
+
+**The database is a store, not the source of truth.** Live sessions stay shared pointers with a mutex in `session.Manager`; the runner still ticks in memory; the hub still broadcasts clones. PostgreSQL replaces only the bottom layer: `session.PostgresPersistence` implements `SessionPersistence`, `account.PostgresStore` implements `service.AccountStore` and `config.PostgresUserMaps` implements `config.UserStore` (the seam that lets `config.Manager` keep shipped maps in files). The file implementations stay, so unsetting `DATABASE_URL` is the rollback. Persistence keeps its contract: it is write-through, a failed save is logged and never fails a tick, and nothing is persisted or waited on while a session lock is held.
+
+- **Schema** is plain SQL in `internal/pgdb/migrations/` (embedded in the binary), applied at startup by `pgdb.Migrate` inside one transaction per file, under an advisory lock, and recorded in `schema_migrations`. To change the schema add the next numbered file; never edit one that has shipped. `just db-migrate` applies them without starting the server.
+- **The database enforces what Go used to.** Handles are unique ignoring case (`UNIQUE` index on `lower(handle)`) and a provider identity is unique, so two concurrent sign-ups cannot both win; the violated index name is mapped back to `ErrHandleTaken` / `ErrIdentityExists`. `PutLogin` takes the account's row lock and evicts the oldest logins past `MaxLoginsPerAccount` in the same transaction. Deleting an account cascades to its logins and sets `sessions.account_id` to NULL, so its sessions become guest rows; `Save` also stores a link to a missing account as NULL, so a late persist of such a session cannot fail. `Update` locks the row for its read-modify-write.
+- **Session rows** keep the file format's JSON as `jsonb` (`map`, `program`, `vm`, `fewest_slots`, `fewest_steps`) next to scalar columns (`id`, `map_id`, `speed_ms`, `seq`, the timestamps and the win counters). A row goes through the same validation as a file (`restoreSession`), so one corrupt row is logged and skipped at startup and never stops the server. `sub_tape_lengths: []` stays distinct from absent. Times are stored as `timestamptz` (microseconds) and returned as UTC. Claiming a session stays atomic because it happens on the live session under its lock; only the result is written.
+- **Owner tokens are never stored**, only their SHA-256 (`owner_hash`), and logins only by token hash.
+- **Startup** fails with a message naming `DATABASE_URL` (never its password) when the database is unreachable; it does not fall back to files. Open the pool before anything else and close it after `svc.Shutdown`, which persists every session.
+- **Sweeping**: besides idle sessions, a database-backed store also deletes expired logins on each sweep.
+- **Not covered:** an admin editing a *shipped* map still writes `maps/<id>.json` (that path is for local use; the deploy replaces `maps/`). `MAX_SESSIONS` still bounds the live registry; sessions are loaded into memory at startup, so history beyond the live registry is not kept.
+
+**Local database.** `docker-compose.yaml` runs PostgreSQL 17 with a healthcheck and a named volume; the app stays on the host. `just db-up` / `just db-down` start and stop it, `just dev-db` is `just dev` against it, and `just test-db` runs the Go tests including the database ones. Set `POSTGRES_PORT` when 5432 is taken. A local `.env` line is enough: `DATABASE_URL=postgres://drbrain:drbrain_dev@localhost:5432/drbrain?sslmode=disable`.
+
+**Tests.** Database tests call `pgtest.Pool(t)` (`internal/pgdb/pgtest`): it skips unless `TEST_DATABASE_URL` is set and otherwise gives each test its own freshly migrated schema, dropped afterwards, so tests and packages never see each other's rows. `go test ./...` therefore needs no database; CI runs them against a PostgreSQL service container.
+
+**Moving data.** `cmd/import-json` (also `just db-import`, `just db-export`) copies between the files and the database:
+
+- `import-json` inserts player maps, accounts, logins and sessions that the database does not have yet (maps, then accounts, then sessions, which reference accounts). It never overwrites a row, so it is safe to run again, e.g. once more right before cutover. `-dry-run` only counts. Sessions linked to an account that is not in the files are imported as guest rows. Reading the account files drops expired or orphaned logins, as a server start would.
+- `import-json -export` writes the database back out as files, into directories that hold no `.json` yet (it refuses to overwrite). That is the pre-migration/rollback copy.
+
+**Cutover** (production, one-time): back up `sessions/`, `accounts/` and `maps-user/`; provision PostgreSQL on the host and put `DATABASE_URL` in `/opt/drbrain-motor-programming/.env` (the systemd unit should start after PostgreSQL, or restart on failure); stop the service; run `import-json` with the host's directories; start it. The old folders are then read-only backups and are no longer written. Merging this change deploys nothing new until `DATABASE_URL` is set on the host. Back up the PostgreSQL volume (or `pg_dump`) from then on instead of the folders.
 
 ### Errors
 
@@ -138,9 +173,9 @@ HTTP /graphql (api) → gqlgen resolver (graph) → GameService (game/service)
 ### Security and hardening
 
 - Map ids match `^[a-z0-9_-]{1,64}$` because they are file names. Session ids are 16 lowercase hex characters and are validated before touching disk.
-- `createMap` and `validateMap` are open to everyone: creating a map is how players add content, and an existing id is `INVALID_ARGUMENT`, so nothing can be overwritten that way.
+- `createMap` needs a signed-in player (`UNAUTHENTICATED` otherwise, checked in the resolver before the store is touched) and `validateMap` is open to everyone: checking a draft stores nothing, so guests can still design maps. An existing id is `INVALID_ARGUMENT`, so nothing can be overwritten that way.
 - `updateMap` and `deleteMap` are open for player-created maps and require `X-Admin-Key` equal to `ADMIN_API_KEY` for built-in ones (shipped in `maps/`), compared through SHA-256 digests in constant time. `ALLOW_UNAUTHENTICATED_ADMIN=true` is honoured only when no key is set (local development). Provenance is `Map.builtin`, resolved from the map store so it also answers for session snapshots.
-- New maps are stored in `maps-user/` (survives deploys); `maps/` is only written by an admin editing a built-in map. `MAX_USER_MAPS` caps how many player maps may exist.
+- New maps are stored in the `maps` table (or `maps-user/` without a database); `maps/` is only written by an admin editing a built-in map. `MAX_USER_MAPS` caps how many player maps may exist. A stored map whose id belongs to a shipped map is ignored on load, as a file would be.
 - A corrupt player map file is logged and skipped at startup; a corrupt or misnamed built-in map is fatal.
 - `max_steps ≤ 10000` and `max_call_depth ≤ 64` bound the cost of a run.
 - Request body capped at 1 MiB; query complexity capped at 1000 with weighted costs (`sessions` by `limit`). `api/hardening_test.go` keeps a copy of the frontend queries to make sure they stay under the cap.
@@ -195,7 +230,7 @@ Shipped maps (28), in four named series (`<Series> <n> - <Name>`, which is what 
 - **Levels 1–5** (`straight_line`, `turn_challenge`, `rock_obstacle`, `symmetric_paths`, `zigzag_path`) teach the basics; in each, the counting ceiling already allows the whole route at a single nesting level, so no deep nesting is required.
 - **Patterns 1–12** (`serpentine`, `powers`, `pinwheel`, `comb`, `ladder`, `nested_doubling`, `diamond_ring`, `grand_star`, `crown`, `clover`, `zipper`, `cross`) are tight enough that the brute-force route does not fit: you have to find the repeated unit and nest subs.
 - **Recursion 1–5** (`long_corridor`, `staircase`, `bump_spiral`, `mountain_range`, `switchback`) have `allow_recursion: true`; for each of them `just validate` refuses a reference solution that also wins with recursion turned off (`CheckRecursionRequired` in `validate/validate.go`).
-- **Terrain 1–4** (`belt_run`, `mirror_hall`, `key_garden`, `portal_hop`) teach one tile each: the tape is smaller than the tile-free route (11 moves against 6 slots; 16 against 14); the other two have no plain walk at all: `key_garden`'s door is the only way to the treat (a rock blocks the way around, and the key-first route needs 9 actions), and `portal_hop`'s portal is the only way past the wall. `TestTerrainMapsNeedTheirTiles` guards the tape-vs-route bound, `TestKeyGardenDoorBlocksWithoutKey` proves the door blocks, and `TestKeyGardenDoorIsTheOnlyWayIn` proves walking around it is impossible (`minActionsWithTiles(m, false)` is -1: with keys ignored the treat is unreachable).
+- **Terrain 1–4** (`belt_run`, `mirror_hall`, `key_garden`, `portal_hop`) teach one tile each, but only three of them force it: `belt_run`'s plain walk is 11 moves against 6 slots; `key_garden` and `portal_hop` have no plain walk at all — the door is the only way to the treat (a rock blocks the way around, and the key-first route needs 9 actions) and the portal is the only way past the wall (20 plain actions against 8 slots). `mirror_hall` is the exception and a known weakness: the shipped solution walks the mirror route (14 `MOVE_FORWARD`), but a plain route also wins in 5 actions (turn right, walk four cells) inside its 14 slots, so the mirrors can be ignored. `TestTerrainMapsNeedTheirTiles` guards the tape-vs-route bound with hand-written `need` constants, and its `mirror_hall` row (`need: 16` against 14 slots) is therefore vacuous: 16 is above the real tile-free minimum, 5. `TestKeyGardenDoorBlocksWithoutKey` proves the door blocks, and `TestKeyGardenDoorIsTheOnlyWayIn` proves walking around it is impossible (`minActionsWithTiles(m, false)` is -1: with keys ignored the treat is unreachable).
 - **Terrain 5–6** (`mirror_circuit`, `belt_ladder`) are the hard ones: tiles plus recursion, with exactly one sub tape, so nesting cannot stand in for recursion. `mirror_circuit` is a one-cell ring whose corners are mirrors — no turn fits and one lap needs 17 moves against a 5-action ceiling. `belt_ladder` is four belt runs steered by mirrors at both ends — 22 moves against a 12-action ceiling. `TestTerrainHardMapsForceRecursion` proves both with `minActionsWithTiles` (a BFS that applies the tile effects, since the plain `minActions` ignores them).
 
 The forcing bounds, measured with the helpers in `validate/validate_test.go` (`minActions` is the BFS minimum of TURN/MOVE actions, `maxLeafActions` the most a program with `n` nesting levels can execute). "Needed" and the ceilings are those numbers; a map is forced when the ceiling is below what the route needs:
@@ -239,14 +274,14 @@ Only the eleven bounds asserted in `TestNestingMapsAreProvablyNeeded` (serpentin
 3. Run `just validate`: it checks structure, that every treat is reachable, and that the reference solution wins.
 4. Add its golden step count to the table in `validate/validate_test.go`.
 
-Maps can also be created by anyone in `/editor` or with the `createMap` mutation. Built-in maps (`maps/*.json`) can only be changed or deleted with the admin key; a new map lands in `maps-user/<id>.json` and is playable immediately.
+Maps can also be created in `/editor` or with the `createMap` mutation by a signed-in player. Built-in maps (`maps/*.json`) can only be changed or deleted with the admin key; a new map lands in `maps-user/<id>.json` and is playable immediately.
 
 ## API for humans and AI agents
 
 The schema lives in `graph/schema.graphqls`.
 
 - **Queries:** `maps`, `map(id)`, `session(id, ownerToken)`, `canPlaySession(id, ownerToken)`, `sessions(sort, limit, mapId)`, `leaderboard(mapId, order, limit, sessionId)`, `playerRuns(sessionIds, name)`, plus `me`, `authProviders` and `profile(handle)` for [accounts](#accounts-and-sign-in). `canPlaySession` is `false` for a session this caller may not play (someone else's, opened from a link) and for an unknown id, so a client can pick a read-only view instead of discovering `FORBIDDEN` on the first save. `session` returns `program: null` unless the caller may play it (see the rule below), and the session lists never carry programs.
-- **Mutations:** `createSession` (its response also carries the secret `ownerToken`, which every play call below needs), `renameSession`, `deleteSession`, `setProgram`, `run`, `step`, `pause`, `reset` (each takes an optional `ownerToken`), plus `createMap` and `validateMap` (open) and `updateMap`/`deleteMap` (open for player maps, admin key for built-in ones). For signed-in browsers: `logout`, `updateAccount`, `changePassword`, `deleteAccount(confirmHandle)`, `claimSessions`. For players with a username and password: `registerWithPassword` and `logInWithPassword` (the only data API they need; the OAuth providers still use redirect routes).
+- **Mutations:** `createSession` (its response also carries the secret `ownerToken`, which every play call below needs), `renameSession`, `deleteSession`, `setProgram`, `run`, `step`, `pause`, `reset` (each takes an optional `ownerToken`), plus `createMap` (signed-in players only), `validateMap` (open) and `updateMap`/`deleteMap` (open for player maps, admin key for built-in ones). For signed-in browsers: `logout`, `updateAccount`, `changePassword`, `deleteAccount(confirmHandle)`, `claimSessions`. For players with a username and password: `registerWithPassword` and `logInWithPassword` (the only data API they need; the OAuth providers still use redirect routes).
 - **Subscription:** `sessionUpdated(sessionID, ownerToken)` emits the current snapshot, then every change; like the query, its payload carries `program` only for a player of that session.
 - **Tile surface:** `Map` gains `conveyors` (`pos`, `dir`), `mirrors` (`pos`, `slash`), `keys`/`doors` (`pos`, `letter`) and `portals` (`pos`, `pair`); `VMState` gains `openDoors: [String!]!`; `StepEvent` gains `pushed`, `pushBlocked`, `mirrored`, `collectedKey` and `teleported`. Older clients can ignore them; the glyphs themselves stay in `layout`.
 
@@ -279,13 +314,13 @@ Entries that tie on both numbers share a rank (1, 2, 2, 4); the earlier win is l
 
 **What is exposed.** Rank, session id, display name, handle (account entries), whether it is the viewer's, slots, steps and when. Never the program, so reading a board cannot reveal a route (a session's program is visible only to its player; reference solutions stay private). Names go through `PublicName`: control, bidi and zero-width characters become spaces, whitespace collapses, the result is cut to `MaxDisplayName`; empty (only sessions from before guest names) means `Anonymous`. The UI escapes names like any text.
 
-**API.** `leaderboard(mapId, order = SLOTS, limit = 20, sessionId)` returns `{ mapId, order, total, entries, yours }`. `limit` of `0` means the default 20, a negative is `INVALID_ARGUMENT`, and anything above 100 is clamped to 100. `total` counts every ranked session. `yours` is the signed-in viewer's account entry when there is one, otherwise the entry of `sessionId` even outside the returned rows (`null` if neither has won). An unknown map is `null`. Each call scans every session, so it has a flat complexity cost plus a per-row cost scaled by `limit` (`complexityRoot` in `api/server.go`), like `sessions`.
+**API.** `leaderboard(mapId, order = SLOTS, limit = 20, sessionId)` returns `{ mapId, order, total, entries, yours }`. `limit` of `0` means the default 20, a negative is `INVALID_ARGUMENT`, and anything above 100 is clamped to 100. `total` counts every entry on the board — one per account per map after collapsing plus one per winning guest session — not the number of winning sessions. `yours` is the signed-in viewer's account entry when there is one, otherwise the entry of `sessionId` even outside the returned rows (`null` if neither has won). An unknown map is `null`. Each call scans every session, so it has a flat complexity cost plus a per-row cost scaled by `limit` (`complexityRoot` in `api/server.go`), like `sessions`.
 
 **Frontend.** `/leaderboard` (`routes/leaderboard`, in `spaRoutes` and the nav): map picker in the standard map order, two board chips, a ranked table, `?map=` and `?order=` kept in the URL so boards can be linked, refresh every 15 s. This browser's own sessions (`ownSessionIds` in `lib/sessions.ts`, filled by `rememberSession`, newest 200) get a "You" pill. After a win the result modal shows "Rank 2 of 14 · 6 slots · 9 steps" with a link to the board (`RankHint.svelte`, one request with `limit: 1`; silent if the lookup fails). Pure logic lives in `lib/leaderboard.ts`.
 
-**Guest names.** A session created (or renamed) without a display name gets a random `<Adjective><Noun>` name from `GuestName` (`game/service/guest.go`: 40 × 40 curated, one-word, family-friendly lists, shortened to `MaxDisplayName`; no digits, since a name is not an identity and a clash is harmless). It is generated on the server, in `cleanName`, so browser players and agents calling `createSession` get the same behaviour and the existing `displayName` field carries it. The browser keeps one identity: `rememberSession(id, name)` (`lib/sessions.ts`) saves the server-assigned name as the saved name when none is saved, so the next session reuses it; a name the player typed is never replaced, and clearing the name field gives a new guest. Sessions that predate guest names and have no name still show as `Anonymous`. Changing the name on the home page (when the field loses focus or Enter is pressed) also renames every session this browser started (`renameOwnSessions` in `lib/nameSync.ts`, 4 `renameSession` calls at a time, skipping sessions already named right), because a board entry shows the name of the session that won it; without that, old runs would keep the old name and new runs would look like a second player. An empty name renames nothing. Sessions that cannot be renamed (expired, or owned by an account, whose board entries show the account name anyway) are skipped and counted in the note under the field.
+**Guest names.** A session created (or renamed) without a display name gets a random `<Adjective><Noun>` name from `GuestName` (`game/service/guest.go`: 40 × 40 curated, one-word, family-friendly lists, shortened to `MaxDisplayName`; no digits, since a name is not an identity and a clash is harmless). It is generated on the server, in `cleanName`, so browser players and agents calling `createSession` get the same behaviour and the existing `displayName` field carries it. The browser keeps one identity: `rememberSession(id, name)` (`lib/sessions.ts`) saves the server-assigned name as the saved name when none is saved, so the next session reuses it; a name the player typed is never replaced, and clearing the name field gives a new guest. A signed-in player has no name box: the home page shows "Playing as <display name> @<handle>" and sends no name, so the run is named after the account and appears under its handle. Sessions that predate guest names and have no name still show as `Anonymous`. Changing the name on the home page (when the field loses focus or Enter is pressed) also renames every session this browser started (`renameOwnSessions` in `lib/nameSync.ts`, 4 `renameSession` calls at a time, skipping sessions already named right), because a board entry shows the name of the session that won it; without that, old runs would keep the old name and new runs would look like a second player. An empty name renames nothing. Sessions that cannot be renamed (expired, or owned by an account, whose board entries show the account name anyway) are skipped and counted in the note under the field.
 
-**Player runs.** `playerRuns(sessionIds | name)` returns one row per map a player has won: their best session on the SLOTS board with its current rank and the board total (`GetPlayerRuns`, one scan of the sessions through the same ranking as `leaderboard`, so the fingerprint rule applies). Exactly one selector is allowed. `sessionIds` (up to 200, the number a browser remembers) is exact and is what "My runs" uses. `name` (case-insensitive) matches every session with that display name and powers the shareable link `/runs?name=BraveOtter`; it can mix people who chose the same name and says so on the page. Leaderboard rows link player names to it. `RunsQuery` is the single place that selects a player's sessions: a signed-in viewer's account is one more selector there (added to `sessionIds`, which may then be omitted; `name` stays guest-only), and `/u/<handle>` reuses the same ranking through `GetProfile`.
+**Player runs.** `playerRuns(sessionIds | name)` returns one row per map a player has won: their best session on the SLOTS board with its current rank and the board total (`GetPlayerRuns`, one scan of the sessions through the same ranking as `leaderboard`, so the fingerprint rule applies). Exactly one selector is allowed. `sessionIds` (up to 200, the number a browser remembers) is exact and is what "My runs" uses. `name` (case-insensitive) matches every **guest** session with that display name — rows owned by an account never match, since a board shows the account's name, not the session's — and powers the shareable link `/runs?name=BraveOtter`; it can mix people who chose the same name and says so on the page. Leaderboard rows link player names to it. `RunsQuery` is the single place that selects a player's sessions: a signed-in viewer's account is one more selector there (added to `sessionIds`, which may then be omitted; `name` stays guest-only), and `/u/<handle>` reuses the same ranking through `GetProfile`.
 
 **My runs page.** `/runs` (`routes/runs`, in `spaRoutes` and the nav): every map in the standard order with Solved / Not yet, best run (slots · steps), rank "n of total", when, and Watch / Leaderboard links, or a Play button for unsolved maps; filter chips and a "Solved x of y" count; "Copy link to share" for the saved name. Row building and filters are in `lib/runs.ts`. Runs live as long as their sessions (`SESSION_TTL`, 7 days idle by default) and as the browser remembers their ids.
 
@@ -295,7 +330,7 @@ Entries that tie on both numbers share a rank (1, 2, 2, 4); the earlier win is l
 
 **Username and password accounts are on by default**: anyone can create an account on the live site with a handle and a password, with nothing to register anywhere (`AUTH_PASSWORD=false` turns it off). Google and GitHub are each their own switch and stay off until credentials are in the environment. Guest play, the public API and the agent guide work exactly as before; a player who signs in keeps their runs on a profile, appears on the leaderboard under their own handle and gets a public page at `/u/<handle>`. With every way of signing in turned off nothing in this section is active: no `/auth` routes, no cookies, no `accounts/` directory is created, `me` is `null` and `authProviders` is empty.
 
-Because password sign-in is on by default, `accounts/` exists on any deployment (it is created at startup). It is the one new thing to back up; see [Owner setup](#owner-setup).
+Because password sign-in is on by default, accounts exist on any deployment: in the `accounts` and `logins` tables, or in `accounts/` without a database. That is the one thing to back up (the PostgreSQL volume, or the directory); see [Storage](#storage) and [Owner setup](#owner-setup).
 
 ### What is stored
 
@@ -303,8 +338,8 @@ Only the minimum, because the game may be played by children:
 
 | Where | What |
 |---|---|
-| `accounts/accounts/<id>.json` | random id, provider name + the provider's opaque user id (only used to recognise the player at the next sign-in, never exposed), handle, display name, `profilePublic`, `createdAt`, `handleChangedAt`, and for [username/password accounts](#username-and-password-on-by-default) the argon2id `password_hash` |
-| `accounts/logins/<sha256>.json` | account id and expiry of one signed-in browser, named by the SHA-256 of its cookie token |
+| `accounts` table, or `accounts/accounts/<id>.json` | random id, provider name + the provider's opaque user id (only used to recognise the player at the next sign-in, never exposed), handle, display name, `profilePublic`, `createdAt`, `handleChangedAt`, and for [username/password accounts](#username-and-password-on-by-default) the argon2id `password_hash` |
+| `logins` table, or `accounts/logins/<sha256>.json` | account id and expiry of one signed-in browser, named by the SHA-256 of its cookie token |
 | session file | `account_id` and `owner_hash` (SHA-256 of the owner token), only when set |
 
 No email address, no avatar, no provider profile data is requested or stored (a password account stores only a salted hash of its password) (Google is asked for the `openid` scope only, GitHub for no scope: the one call made reads the numeric user id). Deleting an account removes its file and logins. The handle and provider indexes are in memory, rebuilt from the files at startup (`game/account`); writes are atomic like session files, ids and hashes are validated before they touch disk.
@@ -332,7 +367,7 @@ Unlike a redirect provider it has no callback URL to register, so it does not re
 
 - **Username = the public handle** (`^[a-z0-9_]{3,20}$`, same reserved list, blocklist and case-insensitive uniqueness). Changing the handle in Settings changes the login name too. A password account is an ordinary account (profile, leaderboard, claiming guest runs, delete); its `Provider` is `password`.
 - **No email, no recovery.** Nothing is stored that could reset a password, so a forgotten password means the account cannot be recovered (the player can start a new account). The UI says so before an account is created and in Settings. This was a deliberate choice for child privacy; adding recovery later would need either an email address or one-time recovery codes.
-- **Passwords** are 8 to 128 bytes, not on a small embedded list of the most common passwords (`commonPasswords` in `game/service/password.go`), and not equal to the username. There are no composition rules. They are stored only as an **argon2id** hash (19 MiB, 2 passes, 1 lane, random 16-byte salt, PHC string with its own parameters, in the account file as `password_hash`); the hash is read back with bounded parameters, compared in constant time, and never leaves the service (`Account.PasswordHash` is cleared on every account the service returns; `hasPassword` is exposed instead). At most four hashes run at once.
+- **Passwords** are at least 8 characters (runes) and at most 128 bytes, not on a small embedded list of the most common passwords (`commonPasswords` in `game/service/password.go`), and not equal to the username. There are no composition rules. They are stored only as an **argon2id** hash (19 MiB, 2 passes, 1 lane, random 16-byte salt, PHC string with its own parameters, in the account file as `password_hash`); the hash is read back with bounded parameters, compared in constant time, and never leaves the service (`Account.PasswordHash` is cleared on every account the service returns; `hasPassword` is exposed instead). At most four hashes run at once.
 - **Mutations, not routes.** Signing up, signing in and signing out are GraphQL mutations: `registerWithPassword(handle, password)`, `logInWithPassword(handle, password)` and `logout`. Only the redirect providers keep an HTTP route (`/auth/<provider>/login` and `/callback`), because those are browser navigations to a third party. The password mutations are the same code as the old `auth/password/{register,login}` handlers (`auth.Auth.PasswordSignIn`): it still insists on a same-origin request, so another site cannot create accounts or probe passwords through a victim's browser, and it still rate-limits per address and locks out failing (address, username) pairs and usernames. Success sets the same login cookie as the OAuth flow (rotating the previous one) on the mutation's own response. A websocket connection has no response to set a cookie on, so both mutations are refused there (`FORBIDDEN`) instead of handing out a login the browser could never send back.
 - **Guessing.** A wrong password and an unknown username are answered identically (`UNAUTHENTICATED`) and cost one hash each (a dummy hash is verified for unknown usernames). Failures are counted per (IP, username): 5 within 15 minutes locks that pair for 15 minutes, and per username: 40 within an hour locks the username for 15 minutes, from every address. A locked key is refused before any hashing, even with the right password, and answers `LIMIT_REACHED` with the wait in the message. Trade-off: because handles are public, someone can keep a victim's *password login* locked with enough distributed attempts; sessions already signed in, and Google/GitHub sign-in, are unaffected. The per-IP request limit on the sign-in paths still applies.
 - **Changing the password** is the GraphQL mutation `changePassword(currentPassword, newPassword)`: it needs the current password even though the player is signed in, applies the same rules, and ends every other login of the account (the caller's own stays). Google/GitHub accounts have no password and cannot add one. `hasPassword` on `me` tells the UI which kind it is.
@@ -341,7 +376,7 @@ Unlike a redirect provider it has no callback URL to register, so it does not re
 ### Login state, cookies and CSRF
 
 - A login is 32 random bytes (base64url) in the `dbmp_session` cookie: `HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` whenever the public URL is https or the request came in over https (plain-http localhost is the only case without it). Only the SHA-256 is stored. Logins last 30 days from sign-in (fixed, not sliding), at most 10 per account. Every sign-in creates a fresh token and ends the one the browser arrived with, so there is no session fixation.
-- The cookie is honoured by `/graphql` only for **same-origin JSON POSTs** (`Auth.Viewer`): `Origin` must be this site's own origin (from `-public-url`, or the request host when `ALLOWED_ORIGINS` is empty or `-public-url` is unset) or listed in `ALLOWED_ORIGINS`; without `Origin`, `Sec-Fetch-Site` must not say cross-site; the content type must be `application/json`. Any other request is simply anonymous, so another site can never act as the player. Subscriptions stay public and never read the cookie.
+- The cookie is honoured by `/graphql` only for **same-origin JSON POSTs** (`Auth.Viewer`): `Origin` must be this site's own origin (from `-public-url`; the request's own host is trusted only while `ALLOWED_ORIGINS` is empty and, with no `-public-url`, only on a local host) or listed in `ALLOWED_ORIGINS`; without `Origin`, `Sec-Fetch-Site` must not say cross-site; the content type must be `application/json`. Any other request is simply anonymous, so another site can never act as the player. Subscriptions stay public and never read the cookie.
 - CORS never sends `Access-Control-Allow-Credentials`, whatever `ALLOWED_ORIGINS` says, so a cross-origin page cannot send the cookie either.
 - Local development against the Vite server (`npm run dev:local`, origin `http://localhost:5173`) needs `ALLOWED_ORIGINS=http://localhost:5173` for the cookie to be accepted; the built UI served by the Go server needs nothing.
 
@@ -353,7 +388,7 @@ A handle is `^[a-z0-9_]{3,20}$`, unique case-insensitively, checked against a re
 
 A session id is public (anyone watching a winner sees it), so an account can **never** claim a session by id:
 
-- A signed-in creator's `createSession` attaches the session to the account from the cookie.
+- A signed-in creator's `createSession` attaches the session to the account from the cookie, and the home page sends no display name while signed in, so the run is named after the account's display name (an explicitly passed name still wins, and `renameSession` can change it later).
 - Every session made through `createSession` gets a secret **owner token**. Only its SHA-256 is stored (`Session.OwnerHash`); the token is returned once, in the `ownerToken` field of the `createSession` response, and is `null` in every query, list and subscription. It is the credential for playing the session (`setProgram`, `run`, `step`, `pause`, `reset` all take `ownerToken:`) as well as for claiming, renaming and deleting it, so a client must keep it. Existing agents that only read `id` are unaffected by the field being optional, but they can no longer play a session without it.
 - After signing in the browser offers (never automatically, since a shared computer may hold someone else's guest runs) to "add my guest runs": `claimSessions([{sessionID, ownerToken}])`, up to 100 a call. A claim succeeds only when the token matches (constant-time compare of the hashes) and the session belongs to no account. A session already on another account is never re-attached; unknown sessions, wrong tokens and sessions from before owner tokens all answer `REJECTED` without saying which. The browser keeps the tokens in `localStorage` (`lib/sessions.ts`) and forgets them once handled or when the account is deleted.
 
@@ -399,9 +434,9 @@ Password sign-in needs no setup at all: it is on by default, so the live site of
    ```
 
 4. **Flags.** The systemd `ExecStart` must carry `-public-url https://motor-programming.wricardo.net` (it already does) and should add `-accounts-dir accounts`. Make sure `ALLOWED_ORIGINS` contains the site's origins (it already does in production). nginx needs nothing new: `/auth/` goes through the same proxy block; keep `X-Forwarded-Proto` and `X-Forwarded-For` set (`proxy_set_header X-Forwarded-Proto $scheme; proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`).
-5. **Persistence.** `accounts/` lives next to `sessions/` and `maps-user/` in `/opt/drbrain-motor-programming` and **must survive deploys**. The deploy workflow only replaces `maps/` and `static/`, so it does; never `rm -rf` the directory, and include it in backups. Password accounts are on by default, so this directory is created on first start even without any OAuth app; losing it loses every account. Never set `AUTH_PASSWORD=false` "temporarily" on a live site and back: the accounts stay on disk, so that only hides sign-in until it is turned back on.
+5. **Persistence.** With a database (`DATABASE_URL`), accounts are in PostgreSQL: back up that database (see [Storage](#storage)). Without one, `accounts/` lives next to `sessions/` and `maps-user/` in `/opt/drbrain-motor-programming` and **must survive deploys**. The deploy workflow only replaces `maps/` and `static/`, so it does; never `rm -rf` the directory, and include it in backups. Password accounts are on by default, so the directory is created on first start even without any OAuth app; losing it loses every account. Never set `AUTH_PASSWORD=false` "temporarily" on a live site and back: the accounts stay on disk, so that only hides sign-in until it is turned back on.
 6. Password sign-in needs no step of its own: it is on unless `AUTH_PASSWORD=false`. It stores no email, so a forgotten password cannot be reset (a player starts a new account). Read [Username and password](#username-and-password-on-by-default) before enabling OAuth apps, since that section also explains the trade-offs of public handles.
-7. Restart the service. The log shows `sign-in enabled: providers=[google github] password=true (accounts=accounts)`; the header then shows "Sign in" and the dialog offers the username/password form.
+7. Restart the service. The log shows `sign-in enabled: providers=[google github] password=true (accounts: files in accounts)` (or `accounts: PostgreSQL` with a database); the header then shows "Sign in" and the dialog offers the username/password form.
 
 ## Frontend architecture
 
@@ -451,7 +486,7 @@ The goal: friendly, bright and calm, like a puzzle book. There is a matching dar
 
 ### The board
 
-- An SVG drawn at 40 units per cell, scaling to the width available (capped at about 56 px per cell), so it stays sharp at any size.
+- An SVG drawn in a 40-unit-per-cell coordinate space, scaled by CSS to `max(280px, min(width × 72px, (100vh − 13rem) × aspect))` (`Grid.svelte`), so up to about 72 px per cell (and at least 280 px wide) and sharp at any size.
 - Checkerboard of two pale indigo shades (`#eef2ff` / `#e0e7ff`).
 - **Robot:** an indigo arrowhead with a white outline. It glides and rotates with a 120 ms ease-out transition and always turns the short way (`nextAngle`).
 - **Treats:** chocolate-chip cookies (`Cookie.svelte`).
@@ -515,7 +550,8 @@ Boolean flags are read slightly differently, so trust the table below rather tha
 | `GRAPHQL_PLAYGROUND` | `true` | Serve `/playground` (off in production) |
 | `ADMIN_API_KEY` | empty | Key for changing or deleting a built-in map |
 | `ALLOW_UNAUTHENTICATED_ADMIN` | `false` | Local only: built-in map writes without a key, when none is set |
-| `MAX_USER_MAPS` | `200` | Cap on player-created maps in `maps-user/` |
+| `DATABASE_URL` | empty | PostgreSQL connection string. Set: sessions, accounts, logins and player maps are stored there (and an unreachable database stops the server at startup). Unset: they are JSON files. No default and no password in the repo; `.env` is git-ignored |
+| `MAX_USER_MAPS` | `200` | Cap on player-created maps (the `maps` table, or `maps-user/`) |
 | `ALLOWED_ORIGINS` | empty (all) | Comma-separated origins for WebSocket upgrades and CORS |
 | `MAX_SESSIONS` | `1000` | Cap on live sessions |
 | `AUTH_GOOGLE_CLIENT_ID`, `AUTH_GOOGLE_CLIENT_SECRET` | empty | Enable Google sign-in (both required; needs `-public-url`) |
@@ -523,7 +559,8 @@ Boolean flags are read slightly differently, so trust the table below rather tha
 | `AUTH_PASSWORD` | `true` | Username/password sign-up and sign-in; `false` turns it off (needs no external registration, and no `-public-url` on localhost) |
 | `AUTH_DEV_FAKE` | `false` | Local only: a fake provider for trying sign-in; the server refuses to start unless `-public-url` is a localhost URL |
 | `MAX_ACCOUNTS` | `10000` | Cap on accounts |
-| `SESSION_TTL` | `168h` | Idle sessions older than this are removed on startup |
+| `SESSION_TTL` | `168h` | Idle sessions older than this are removed, at startup and every `SESSION_SWEEP_INTERVAL` |
+| `SESSION_SWEEP_INTERVAL` | `1h` | How often idle sessions (and, with a database, expired logins) are swept while the server runs; `0` sweeps only at startup |
 
 Frontend build-time variables: `PUBLIC_GRAPHQL_URL`, `PUBLIC_WS_URL` (Vite, not read by the Go binary and not in `.env.example`; set them in the shell that runs `just build-ui`). When unset, the UI uses the page's own host and picks `ws`/`wss` from the page protocol.
 
@@ -531,7 +568,7 @@ Frontend build-time variables: `PUBLIC_GRAPHQL_URL`, `PUBLIC_WS_URL` (Vite, not 
 
 Production runs at https://motor-programming.wricardo.net on a small ARM64 Ubuntu EC2 host shared with other apps.
 
-**Continuous deployment.** Every push to `main` runs `.github/workflows/deploy.yml`: vet and test, build a static `linux/arm64` binary, upload it with `maps/` and `static/`, unpack into `/opt/drbrain-motor-programming` (keeping `sessions/`, `maps-user/`, `accounts/` and `.env`), restart the service and smoke-test GraphQL on the host. Repository secrets: `EC2_HOST`, `EC2_SSH_KEY` (a deploy-only key), `EC2_KNOWN_HOSTS`.
+**Continuous deployment.** Every push to `main` runs `.github/workflows/deploy.yml`: vet and test, build a static `linux/arm64` binary, upload it with `maps/` and `static/`, unpack into `/opt/drbrain-motor-programming` (keeping `sessions/`, `maps-user/`, `accounts/` and `.env`), restart the service and smoke-test GraphQL on the host. The Go tests there run against a PostgreSQL service container (`TEST_DATABASE_URL`); `.github/workflows/ci.yml` runs the tests and the smoke script (JSON files and PostgreSQL) on every pull request. Repository secrets: `EC2_HOST`, `EC2_SSH_KEY` (a deploy-only key), `EC2_KNOWN_HOSTS`.
 
 **One-time host setup** (not in the repo; repeat on a new host):
 
@@ -544,10 +581,27 @@ Production runs at https://motor-programming.wricardo.net on a small ARM64 Ubunt
 
 ## Maintaining the project
 
+### Where each document lives
+
+| File | Audience | It owns |
+|---|---|---|
+| `README.md` | players | What the game is, how to play, the map series, the live link. Never internals. |
+| `docs/DEVELOPMENT.md` | developers | This file: architecture, rules, maps, API, accounts, UI, configuration, deployment. |
+| `llms.txt.tmpl` | AI agents | The rules and every API call, as served at `/llms.txt`. `go:embed`ed at build time. |
+| `map-schema.json` | tools and contributors | The machine-readable map format. All shipped maps satisfy it today, but nothing checks that automatically — `just validate` is the enforced gate. |
+| `CLAUDE.md` (and `AGENTS.md`, a symlink to it) | coding agents | Commands, invariants, change checklists, repo rules. |
+| `.agents/skills/*/SKILL.md` | coding agents | Repeatable procedures: schema changes, local run, UI verification, map authoring, docs audit, env gates and beads. |
+
+Three rules keep the set honest, because re-reading prose does not catch drift:
+
+1. **Examples are executed, not proofread.** Every GraphQL example in `README.md` and `llms.txt.tmpl` must run against a live server before it ships; a schema change that invalidates one is a docs bug even if the code is right. `llms.txt.tmpl` is embedded with `go:embed`, so editing the template changes nothing in a running binary — rebuild and restart before checking `/llms.txt`.
+2. **Numbers are measured, never copied.** Forcing bounds come from the helpers in `validate/validate_test.go` (`minActions`, `maxLeafActions`, `minActionsWithTiles`, `requiredMoves`), golden counts from the map in `validate/validate_test.go`, and the UI test count from a Vitest run. A bound only proves forcing when the ceiling is *below* the requirement.
+3. **A claim names its evidence.** Prefer `file.go:symbol` and the test that guards it; when something is measured once and not regression-guarded (most of the forcing table), say so in the text.
+
 ### Common changes
 
 - **Schema change:** edit `graph/schema.graphqls` → `just generate` → update `graph/convert.go` and resolvers → mirror in `frontend/src/lib/{queries,types}.ts` → update `llms.txt.tmpl` and `prompt.ts` if agents are affected → update the query copies in `api/hardening_test.go`.
-- **Engine change:** update the golden step counts in `validate/validate_test.go` (7, 17, 19, 46, 23, 30, 44, 80, 32, 48, 83, 65, 77, 57, 40, 30, 42, 257, 199, 140, 151, 103, 6, 14, 9, 8 for the shipped solutions) and the five inline fixtures in `game/engine/engine_test.go` (7, 46, 23, 30, 44) on purpose, never just to make a failure go away.
+- **Engine change:** update the golden step counts in `validate/validate_test.go` (7, 17, 19, 46, 23, 30, 44, 80, 32, 48, 83, 65, 77, 57, 40, 30, 42, 257, 199, 140, 151, 103, 6, 14, 9, 8, 22, 27 for the shipped solutions) and the five inline fixtures in `game/engine/engine_test.go` (7, 46, 23, 30, 44) on purpose, never just to make a failure go away.
 - **UI change:** `cd frontend && npm run check && npm test && npm run build:static` (or `just build-ui`), then commit `static/`. If you skip the build, production keeps the old UI.
 - **New page:** add the route under `frontend/src/routes/`, add it to `spaRoutes` in `api/server.go`, and to the nav in `+layout.svelte` if needed.
 - **Dependencies:** don't run `go mod tidy` casually. `gqlgen generate` rewrites `go.mod`; re-`go get` anything it drops.
@@ -575,7 +629,7 @@ scripts/smoke.sh 9191                            # the same, on an explicit port
 
 `just verify && just validate`, then `scripts/smoke.sh 9191` (it builds and starts its own server, so leave the port free). For UI changes, open `/play/<id>` and `/watch/<id>` in a browser and run a program to the end. Pushing to `main` deploys.
 
-`just verify` covers the UI as well: type check plus the Vitest suite (`just check-ui`). It needs `frontend/node_modules`, so run `cd frontend && npm ci` once; without it the UI step prints `SKIP UI check` rather than failing, which keeps a fresh clone usable but means CI and a bare checkout do not exercise the 337 UI tests. Do not read that skip as a pass.
+`just verify` covers the UI as well: type check plus the Vitest suite (`just check-ui`). It needs `frontend/node_modules`, so run `cd frontend && npm ci` once; without it the UI step prints `SKIP UI check` rather than failing, which keeps a fresh clone usable but means CI and a bare checkout do not exercise the UI test suite. Do not read that skip as a pass.
 
 ### Public repo rules
 

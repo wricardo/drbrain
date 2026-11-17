@@ -13,6 +13,11 @@ bin := env("BIN", "drbrain-motor-programming")
 # the same-origin check and the Secure cookie flag; override it when the server is
 # reached under another name: PUBLIC_URL=https://dev.example just restart.
 public_url := env("PUBLIC_URL", "http://localhost:" + port)
+# PostgreSQL from docker-compose.yaml (POSTGRES_PORT when 5432 is taken). The app only
+# uses a database when DATABASE_URL is set (in .env or the environment); without it,
+# sessions, accounts and player maps stay JSON files.
+pg_port := env("POSTGRES_PORT", "5432")
+database_url := env("DATABASE_URL", "postgres://drbrain:" + env("POSTGRES_PASSWORD", "drbrain_dev") + "@localhost:" + pg_port + "/drbrain?sslmode=disable")
 pidfile := ".run/drbrain-" + port + ".pid"
 logfile := ".run/drbrain-" + port + ".log"
 
@@ -155,9 +160,38 @@ status:
 logs:
     tail -f {{logfile}}
 
+# Start PostgreSQL in Docker and wait until it is healthy (see docker-compose.yaml).
+db-up:
+    docker compose up -d --wait postgres
+    @echo "PostgreSQL is up. To use it: DATABASE_URL='{{database_url}}'"
+
+# Stop PostgreSQL (the data stays in the pgdata volume; add -v to docker compose down to erase it).
+db-down:
+    docker compose down
+
+# Apply the schema migrations (the server also applies them at startup).
+db-migrate:
+    DATABASE_URL='{{database_url}}' go run ./cmd/import-json -migrate-only
+
+# Copy sessions/, accounts/ and maps-user/ into the database. Safe to re-run; add -dry-run to only count.
+db-import *args:
+    DATABASE_URL='{{database_url}}' go run ./cmd/import-json {{args}}
+
+# Write the database out as JSON files (the rollback copy) into fresh directories under dir.
+db-export dir="backup":
+    DATABASE_URL='{{database_url}}' go run ./cmd/import-json -export -sessions-dir {{dir}}/sessions -accounts-dir {{dir}}/accounts -user-maps-dir {{dir}}/maps-user
+
+# Like dev, but with sessions, accounts and player maps in the compose PostgreSQL.
+dev-db: db-up stop
+    DATABASE_URL='{{database_url}}' go run . -port {{port}} -host {{host}} -public-url {{public_url}} -debug
+
 # Run all Go tests with the race detector.
 test:
     go test -race ./...
+
+# Run all Go tests, the PostgreSQL ones included, against the compose database.
+test-db: db-up
+    TEST_DATABASE_URL='{{database_url}}' go test -race ./...
 
 # Validate every map and its reference solution.
 validate:
@@ -211,6 +245,11 @@ check-ui:
 # End-to-end HTTP smoke test (starts its own server on the given port).
 smoke p="9191":
     scripts/smoke.sh {{p}}
+
+# The smoke test against PostgreSQL: a throwaway database drbrain_smoke in the compose container.
+smoke-db p="9191": db-up
+    docker compose exec -T postgres psql -U drbrain -d drbrain -c 'DROP DATABASE IF EXISTS drbrain_smoke' -c 'CREATE DATABASE drbrain_smoke'
+    SMOKE_DATABASE_URL='{{replace(database_url, "/drbrain?", "/drbrain_smoke?")}}' scripts/smoke.sh {{p}}
 
 # gofmt check, vet, lint, test and UI check — run before pushing.
 verify:

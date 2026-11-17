@@ -14,15 +14,26 @@ import (
 	"github.com/99designs/gqlgen/complexity"
 	gorillaws "github.com/gorilla/websocket"
 	"github.com/vektah/gqlparser/v2"
+	"github.com/wricardo/drbrain-motor-programming/game/service"
 	"github.com/wricardo/drbrain-motor-programming/graph"
 	"github.com/wricardo/drbrain-motor-programming/graph/generated"
 )
 
-// --- subTapeLengths through the HTTP path ---
+// --- subTapeLengths and the sign-in gate through the HTTP path ---
 
+// Creating a map needs a signed-in player, and the []-vs-omitted distinction
+// for subTapeLengths must survive the whole HTTP path.
 func TestCreateMapSubTapeLengthsOverHTTP(t *testing.T) {
-	ts := newTestServer(t, Options{})
+	ts := newPasswordServer(t)
+	guest, signedIn := newBrowser(t, ts.URL), newBrowser(t, ts.URL)
+	if _, out := signedIn.pwSignIn(true, "map_maker", "tangerine-ladder-42", nil); firstErrCode(out) != "" {
+		t.Fatalf("sign in: %v", out)
+	}
 	const layout = `["...", ">.*", "..."]`
+	const guestQ = `mutation { createMap(map: {id: "guests_map", name: "F", layout: ` + layout + `}) { id } }`
+	if out := guest.gql(guestQ, nil); firstErrCode(out) != service.CodeUnauthenticated {
+		t.Fatalf("guest create: %v", out)
+	}
 	cases := []struct {
 		name  string
 		id    string
@@ -36,7 +47,7 @@ func TestCreateMapSubTapeLengthsOverHTTP(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			q := `mutation { createMap(map: {id: "` + tc.id + `", name: "F", layout: ` + layout + tc.extra + `}) { subTapeLengths } }`
-			_, out := gql(t, ts.URL, q, nil)
+			out := signedIn.gql(q, nil)
 			if out["errors"] != nil {
 				t.Fatalf("errors: %v", out)
 			}

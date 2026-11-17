@@ -8,7 +8,8 @@
 	import { describeError, type DescribedError } from '$lib/errors';
 	import { DIFFICULTY_FILTERS, countByDifficulty, filterMaps, groupMaps, isOfficial, sortMaps, type DifficultyFilter } from '$lib/maps';
 	import { CREATE_SESSION_MUTATION, MAPS_QUERY } from '$lib/queries';
-	import { rememberSession, savedDisplayName } from '$lib/sessions';
+	import { newSessionName, rememberSession } from '$lib/sessions';
+	import { account } from '$lib/stores/account';
 	import type { GameMap, Session } from '$lib/types';
 
 	const client = getContextClient();
@@ -41,7 +42,7 @@
 		error = null;
 		try {
 			const data = await unwrap<{ createSession: Session }>(
-				client.mutation(CREATE_SESSION_MUTATION, { mapID: map.id, displayName: savedDisplayName().trim() || null })
+				client.mutation(CREATE_SESSION_MUTATION, { mapID: map.id, displayName: newSessionName(!!$account.me) })
 			);
 			rememberSession(data.createSession.id, data.createSession.displayName, data.createSession.ownerToken);
 			await goto(`/play/${data.createSession.id}`);

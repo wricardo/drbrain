@@ -5,6 +5,7 @@ import {
 	filterSessions,
 	lastSessionId,
 	MAX_OWN_SESSIONS,
+	newSessionName,
 	ownSessionIds,
 	recentStarted,
 	rememberSession,
@@ -164,6 +165,15 @@ describe('guest name', () => {
 		rememberSession('b');
 		expect(savedDisplayName()).toBe('');
 		expect(ownSessionIds()).toEqual(['a', 'b']);
+	});
+	it('creates a guest session with the saved name, or none', () => {
+		expect(newSessionName(false)).toBeNull();
+		saveDisplayName('  Ada  ');
+		expect(newSessionName(false)).toBe('Ada');
+	});
+	it('never names an owned session after a guest alias', () => {
+		saveDisplayName('BraveOtter'); // kept from before this browser signed in
+		expect(newSessionName(true)).toBeNull();
 	});
 });
 
