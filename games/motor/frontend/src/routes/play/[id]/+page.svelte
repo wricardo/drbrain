@@ -13,6 +13,7 @@
 	import ShortcutsDialog from '$lib/components/ShortcutsDialog.svelte';
 	import Stats from '$lib/components/Stats.svelte';
 	import Tape from '$lib/components/Tape.svelte';
+	import TileLegend from '$lib/components/TileLegend.svelte';
 	import { describeError, lossReasonText, type DescribedError } from '$lib/errors';
 		import { editKeyAction, globalKeyAction } from '$lib/globalKeys';
 	import { canRedo, canUndo, emptyHistory, recordEdit, redo, undo, type EditHistory } from '$lib/history';
@@ -394,6 +395,7 @@
 					<Grid map={session.map} vm={session.vm} lastEvent={session.lastEvent} />
 				</div>
 				<p class="text-sm text-slate-600 max-lg:hidden">{session.map.description}</p>
+				<div class="max-lg:hidden"><TileLegend map={session.map} /></div>
 				<p class="sr-only" role="status" aria-live="polite" data-testid="result-live">{resultText}</p>
 			</section>
 
@@ -468,6 +470,8 @@
 						/>
 					</div>
 				{/if}
+
+				<div class="lg:hidden"><TileLegend map={session.map} /></div>
 
 				<div class="rounded-xl border border-indigo-200 bg-white p-4" data-testid="help">
 					<h2 class="text-xs font-semibold uppercase tracking-widest text-indigo-900">Help</h2>
