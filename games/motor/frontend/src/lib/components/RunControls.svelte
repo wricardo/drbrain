@@ -13,6 +13,7 @@
 		onpause,
 		onstep,
 		onstepback = () => {},
+		onspeed = () => {},
 		onreset
 	}: {
 		/** The server is running the program. */
@@ -26,12 +27,14 @@
 		empty?: boolean;
 		/** The robot has taken at least one step and the program is saved, so one step can be taken back. */
 		canStepBack?: boolean;
-		/** Milliseconds per step; changed from the presets, locked while running. */
+		/** Milliseconds per step; changed with the presets, also while a run is playing. */
 		speedMs?: number;
 		onrun: () => void;
 		onpause: () => void;
 		onstep: () => void;
 		onstepback?: () => void;
+		/** A speed preset was chosen (also while running: the page restarts playback at the new speed). */
+		onspeed?: (ms: number) => void;
 		onreset: () => void;
 	} = $props();
 
@@ -125,7 +128,6 @@
 			role="radiogroup"
 			aria-labelledby="speed-label"
 			class="inline-flex overflow-hidden rounded-lg border border-indigo-300"
-			title={playing ? 'Pause to change the speed' : undefined}
 		>
 			{#each SPEED_PRESETS as p (p.id)}
 				<button
@@ -136,8 +138,14 @@
 					class="px-3 py-1 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 {preset?.id === p.id
 						? 'bg-indigo-600 text-white'
 						: 'text-indigo-900 hover:bg-indigo-50 disabled:hover:bg-transparent'}"
-					disabled={playing}
-					onclick={() => (speedMs = p.ms)}>{p.label}</button
+					disabled={busy}
+					onclick={() => {
+						// Clicking the active preset is a no-op: while playing it would pause and
+						// restart the run for a speed that is already set.
+						if (preset?.id === p.id) return;
+						speedMs = p.ms;
+						onspeed(p.ms);
+					}}>{p.label}</button
 				>
 			{/each}
 		</div>

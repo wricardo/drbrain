@@ -13,6 +13,7 @@
 	import ShortcutsDialog from '$lib/components/ShortcutsDialog.svelte';
 	import Stats from '$lib/components/Stats.svelte';
 	import Tape from '$lib/components/Tape.svelte';
+	import TileLegend from '$lib/components/TileLegend.svelte';
 	import { describeError, lossReasonText, type DescribedError } from '$lib/errors';
 		import { editKeyAction, globalKeyAction } from '$lib/globalKeys';
 	import { canRedo, canUndo, emptyHistory, recordEdit, redo, undo, type EditHistory } from '$lib/history';
@@ -32,8 +33,8 @@
 	import { serialRunner } from '$lib/serialRunner';
 	import { account } from '$lib/stores/account';
 	import { replayTo, stepBackTarget } from '$lib/stepBack';
+	import { initialSpeed, saveSpeed, savedSpeed } from '$lib/speed';
 	import { blockedCallNotice } from '$lib/recursion';
-	import { clampSpeed } from '$lib/speed';
 	import { cloneProgram, programsEqual, setSlot } from '$lib/program';
 	import { buildSessionPrompt } from '$lib/prompt';
 	import { createSessionStore } from '$lib/stores/session';
@@ -61,6 +62,8 @@
 	let selected = $state<Instruction | null>(null);
 	let speedMs = $state(500);
 	let busy = $state(false);
+	// A Back step replays the program from the start; editing is locked until it lands.
+	let rewinding = $state(false);
 	let actionError = $state<DescribedError | null>(null);
 	let dismissedAttempts = $state<number | null>(null);
 	let showShortcuts = $state(false);
@@ -87,7 +90,7 @@
 		const s = session;
 		if (!s || initialised) return;
 		initialised = true;
-		speedMs = clampSpeed(s.speedMs || 500);
+		speedMs = initialSpeed(s, savedSpeed());
 		// Do not pop the result modal for an outcome that was already there on load.
 		if (s.vm.status === 'WON' || s.vm.status === 'LOST') dismissedAttempts = s.attempts;
 	});
@@ -187,7 +190,7 @@
 	// Save a moment after the player stops editing, so the server (spectators, agents) stays in step
 	// and the robot returns to the start as soon as the program changes.
 	$effect(() => {
-		if (!dirty || playing || !canPlay) return;
+		if (!dirty || playing || rewinding || !canPlay) return;
 		const timer = setTimeout(() => {
 			flushSave().catch((e) => {
 				const d = describeError(e);
@@ -215,22 +218,38 @@
 		});
 	// Go back one step by replaying the program from the start for one step fewer (see lib/stepBack.ts).
 	const canStepBack = $derived(!dirty && !!session && stepBackTarget(session.vm.steps) !== null);
+	// Editing is locked while a step back replays, so an edit cannot reset the robot half way through it.
 	const stepBack = () =>
 		act(async () => {
 			const target = session ? stepBackTarget(session.vm.steps) : null;
 			if (target === null) return;
 			await flushSave();
-			return replayTo(
-				target,
-				async () => {
-					const s = (await unwrap<{ reset: Session }>(client.mutation(RESET_MUTATION, { sessionID: sessionId, ownerToken }))).reset;
-					dismissedAttempts = s.attempts;
-					return s;
-				},
-				async () =>
-					(await unwrap<{ step: Session }>(client.mutation(STEP_MUTATION, { sessionID: sessionId, ownerToken }))).step
-			);
+			rewinding = true;
+			try {
+				return await replayTo(
+					target,
+					async () => {
+						const s = (await unwrap<{ reset: Session }>(client.mutation(RESET_MUTATION, { sessionID: sessionId, ownerToken }))).reset;
+						dismissedAttempts = s.attempts;
+						return s;
+					},
+					async () =>
+						(await unwrap<{ step: Session }>(client.mutation(STEP_MUTATION, { sessionID: sessionId, ownerToken }))).step
+				);
+			} finally {
+				rewinding = false;
+			}
 		});
+	/** Remembers the chosen speed; while a run is playing it is restarted at the new speed (the server fixes the speed when a run starts). */
+	function changeSpeed(ms: number) {
+		saveSpeed(ms);
+		if (!playing) return;
+		void act(async () => {
+			const paused = (await unwrap<{ pause: Session }>(client.mutation(PAUSE_MUTATION, { sessionID: sessionId, ownerToken }))).pause;
+			if (paused.vm.status === 'WON' || paused.vm.status === 'LOST') return paused;
+			return (await unwrap<{ run: Session }>(client.mutation(RUN_MUTATION, { sessionID: sessionId, speedMs: ms, ownerToken }))).run;
+		});
+	}
 	const reset = () =>
 		act(async () => {
 			const s = (await unwrap<{ reset: Session }>(client.mutation(RESET_MUTATION, { sessionID: sessionId, ownerToken }))).reset;
@@ -301,7 +320,9 @@
 	}
 
 	function undoEdit() {
-		if (!draft || playing) return;
+		// busy covers a Back step's replay: an edit then would save the draft and reset the robot
+		// half way through it, so the replay would land somewhere else than one step back.
+		if (!draft || playing || busy) return;
 		const r = undo(history, draft);
 		if (!r) return;
 		history = r.history;
@@ -309,7 +330,7 @@
 	}
 
 	function redoEdit() {
-		if (!draft || playing) return;
+		if (!draft || playing || busy) return;
 		const r = redo(history, draft);
 		if (!r) return;
 		history = r.history;
@@ -374,6 +395,7 @@
 					<Grid map={session.map} vm={session.vm} lastEvent={session.lastEvent} />
 				</div>
 				<p class="text-sm text-slate-600 max-lg:hidden">{session.map.description}</p>
+				<div class="max-lg:hidden"><TileLegend map={session.map} /></div>
 				<p class="sr-only" role="status" aria-live="polite" data-testid="result-live">{resultText}</p>
 			</section>
 
@@ -417,6 +439,7 @@
 						onpause={pause}
 						onstep={stepOnce}
 						onstepback={stepBack}
+						onspeed={changeSpeed}
 						onreset={reset}
 					/>
 					{#if playing}
@@ -429,13 +452,13 @@
 						<Palette
 							bind:selected
 							subCount={draft.subs.length}
-							disabled={playing || !canPlay}
+							disabled={playing || !canPlay || rewinding}
 							onerase={(s) => edit(setSlot(draft!, s.tape, s.slot, 'EMPTY'))}
 						/>
 						<Tape
 							program={draft}
 							{selected}
-							disabled={playing || !canPlay}
+							disabled={playing || !canPlay || rewinding}
 							callStack={dirty ? [] : session.vm.callStack}
 							lastEvent={dirty ? null : session.lastEvent}
 							{status}
@@ -447,6 +470,8 @@
 						/>
 					</div>
 				{/if}
+
+				<div class="lg:hidden"><TileLegend map={session.map} /></div>
 
 				<div class="rounded-xl border border-indigo-200 bg-white p-4" data-testid="help">
 					<h2 class="text-xs font-semibold uppercase tracking-widest text-indigo-900">Help</h2>
