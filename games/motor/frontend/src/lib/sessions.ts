@@ -96,6 +96,29 @@ export function statusLine(s: {
 	return 'Paused';
 }
 
+/**
+ * The browser tab title for a session page, so a run on another tab can be followed from the tab strip:
+ * "▶ Map" while it plays, "✓ Map" once won, "✗ Map" once lost, the plain name otherwise.
+ */
+export function runTitle(mapName: string | undefined, s: { playing: boolean; status: Status } | null): string | undefined {
+	if (!mapName || !s) return mapName;
+	if (s.status === 'WON') return `✓ Won · ${mapName}`;
+	if (s.status === 'LOST') return `✗ Lost · ${mapName}`;
+	if (s.playing) return `▶ ${mapName}`;
+	return mapName;
+}
+
+/**
+ * The tab title for the spectator page. It says "Watching" while there is nothing to report, and
+ * the run state once there is one, so a finished run does not read "✓ Won · Watching Belt Run".
+ */
+export function watchTitle(mapName: string | undefined, s: { playing: boolean; status: Status } | null): string | undefined {
+	if (!mapName) return mapName;
+	if (s && (s.status === 'WON' || s.status === 'LOST')) return runTitle(mapName, s);
+	if (s?.playing) return `▶ Watching ${mapName}`;
+	return `Watching ${mapName}`;
+}
+
 const LAST_SESSION_KEY = 'drbrain-motor-programming.lastSession';
 
 const OWN_SESSIONS_KEY = 'drbrain-motor-programming.ownSessions';
