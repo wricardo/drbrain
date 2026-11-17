@@ -349,8 +349,8 @@ func TestPostgresDeleteRemovesLoginsAndKeepsSessionsAsGuests(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(context.Background(), `
-INSERT INTO sessions (id, display_name, map_id, map_fingerprint, map, program, vm, speed_ms, seq, created_at, last_action_at, attempts, best_steps, account_id)
-VALUES ('00112233445566aa', 'x', 'm', 'f', '{}', '{}', '{}', 500, 1, now(), now(), 0, 0, $1)`, id1); err != nil {
+INSERT INTO sessions (id, display_name, map_id, map, program, vm, speed_ms, seq, created_at, last_action_at, attempts, best_steps, account_id)
+VALUES ('00112233445566aa', 'x', 'm', '{}', '{}', '{}', 500, 1, now(), now(), 0, 0, $1)`, id1); err != nil {
 		t.Fatal(err)
 	}
 

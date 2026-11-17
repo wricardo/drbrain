@@ -30,7 +30,6 @@ CREATE TABLE sessions (
     id              text        PRIMARY KEY,
     display_name    text        NOT NULL,
     map_id          text        NOT NULL,
-    map_fingerprint text        NOT NULL,
     map             jsonb       NOT NULL,
     program         jsonb       NOT NULL,
     vm              jsonb       NOT NULL,

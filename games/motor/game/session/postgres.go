@@ -62,18 +62,18 @@ func (p *PostgresPersistence) Save(s *service.Session) error {
 	ctx, cancel := context.WithTimeout(context.Background(), pgdb.QueryTimeout)
 	defer cancel()
 	_, err = p.pool.Exec(ctx, `
-INSERT INTO sessions (id, display_name, map_id, map_fingerprint, map, program, vm, speed_ms, seq,
+INSERT INTO sessions (id, display_name, map_id, map, program, vm, speed_ms, seq,
                       created_at, last_action_at, attempts, best_steps, fewest_slots, fewest_steps,
                       account_id, owner_hash)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-        (SELECT id FROM accounts WHERE id = $16), $17)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+        (SELECT id FROM accounts WHERE id = $15), $16)
 ON CONFLICT (id) DO UPDATE SET
-    display_name = EXCLUDED.display_name, map_id = EXCLUDED.map_id, map_fingerprint = EXCLUDED.map_fingerprint,
+    display_name = EXCLUDED.display_name, map_id = EXCLUDED.map_id,
     map = EXCLUDED.map, program = EXCLUDED.program, vm = EXCLUDED.vm, speed_ms = EXCLUDED.speed_ms,
     seq = EXCLUDED.seq, last_action_at = EXCLUDED.last_action_at, attempts = EXCLUDED.attempts,
     best_steps = EXCLUDED.best_steps, fewest_slots = EXCLUDED.fewest_slots, fewest_steps = EXCLUDED.fewest_steps,
     account_id = EXCLUDED.account_id, owner_hash = EXCLUDED.owner_hash`,
-		s.ID, s.DisplayName, s.MapID, s.Map.Fingerprint(), mapJSON, progJSON, vmJSON, s.SpeedMs, int64(s.Seq),
+		s.ID, s.DisplayName, s.MapID, mapJSON, progJSON, vmJSON, s.SpeedMs, int64(s.Seq),
 		s.CreatedAt, s.LastActionAt, s.Attempts, s.BestSteps, slots, steps, s.AccountID, s.OwnerHash)
 	if err != nil {
 		return fmt.Errorf("save session %s: %w", s.ID, err)
