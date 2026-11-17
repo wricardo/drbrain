@@ -147,6 +147,14 @@ func run() error {
 		log.Println("storage: PostgreSQL (sessions, accounts, player maps); shipped maps from " + *mapsDir)
 	}
 
+	// What the log lines call the storage: the same sentence names it for the
+	// listener and the sign-in banner, so an operator can tell the two modes apart.
+	accountsWhere := "files in " + *accountsDir
+	storageWhere := fmt.Sprintf("files (sessions %s, accounts %s, player maps %s)", *sessionsDir, *accountsDir, *userMapsDir)
+	if pool != nil {
+		accountsWhere, storageWhere = "PostgreSQL", "PostgreSQL"
+	}
+
 	mapOpts := config.Options{
 		Dir:         *mapsDir,
 		UserDir:     *userMapsDir,
@@ -222,7 +230,7 @@ func run() error {
 		for i, p := range providers {
 			names[i] = p.ID()
 		}
-		log.Printf("sign-in enabled: providers=%v password=%t (accounts=%s)", names, passwordSignIn, *accountsDir)
+		log.Printf("sign-in enabled: providers=%v password=%t (accounts: %s)", names, passwordSignIn, accountsWhere)
 		if passwordSignIn && *publicURL == "" {
 			log.Printf("warning: no -public-url: sign-in requests are only accepted on localhost hosts or origins listed in ALLOWED_ORIGINS. Set -public-url to the site's base URL in production.")
 		}
@@ -257,7 +265,7 @@ func run() error {
 
 	serveErr := make(chan error, 1)
 	go func() {
-		log.Printf("listening on %s (maps=%s user-maps=%s sessions=%s solutions=%s)", addr, *mapsDir, *userMapsDir, *sessionsDir, *solutionsDir)
+		log.Printf("listening on %s (maps=%s solutions=%s storage=%s)", addr, *mapsDir, *solutionsDir, storageWhere)
 		log.Printf("GraphQL: http://%s/graphql  llms.txt: http://%s/llms.txt", addr, addr)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serveErr <- err
