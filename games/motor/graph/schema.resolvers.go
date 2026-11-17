@@ -62,12 +62,14 @@ func (r *mutationResolver) RenameSession(ctx context.Context, id string, display
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	return toSession(s, true), nil
+	// A guest session may be renamed by anyone with its id, so its program must
+	// not ride along in the response.
+	return toSession(s, r.mayEdit(ctx, id, ownerToken)), nil
 }
 
 // SetProgram is the resolver for the setProgram field.
 func (r *mutationResolver) SetProgram(ctx context.Context, sessionID string, program model.ProgramInput, ownerToken *string) (*model.Session, error) {
-	if err := r.Service.AuthorizeSessionPlay(sessionID, sessionActor(ctx, ownerToken)); err != nil {
+	if err := r.Service.AuthorizeSessionEdit(sessionID, sessionActor(ctx, ownerToken)); err != nil {
 		return nil, toGQLError(err)
 	}
 	s, err := r.Service.SetProgram(sessionID, fromProgramInput(program))
@@ -77,11 +79,9 @@ func (r *mutationResolver) SetProgram(ctx context.Context, sessionID string, pro
 	return toSession(s, true), nil
 }
 
-// Run is the resolver for the run field.
+// Run is the resolver for the run field. Anyone holding the session id may
+// drive playback; the program is only included for a caller who may edit it.
 func (r *mutationResolver) Run(ctx context.Context, sessionID string, speedMs *int, ownerToken *string) (*model.Session, error) {
-	if err := r.Service.AuthorizeSessionPlay(sessionID, sessionActor(ctx, ownerToken)); err != nil {
-		return nil, toGQLError(err)
-	}
 	speed := 500
 	if speedMs != nil {
 		speed = *speedMs
@@ -90,43 +90,34 @@ func (r *mutationResolver) Run(ctx context.Context, sessionID string, speedMs *i
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	return toSession(s, true), nil
+	return toSession(s, r.mayEdit(ctx, sessionID, ownerToken)), nil
 }
 
 // Pause is the resolver for the pause field.
 func (r *mutationResolver) Pause(ctx context.Context, sessionID string, ownerToken *string) (*model.Session, error) {
-	if err := r.Service.AuthorizeSessionPlay(sessionID, sessionActor(ctx, ownerToken)); err != nil {
-		return nil, toGQLError(err)
-	}
 	s, err := r.Service.Pause(sessionID)
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	return toSession(s, true), nil
+	return toSession(s, r.mayEdit(ctx, sessionID, ownerToken)), nil
 }
 
 // Step is the resolver for the step field.
 func (r *mutationResolver) Step(ctx context.Context, sessionID string, ownerToken *string) (*model.Session, error) {
-	if err := r.Service.AuthorizeSessionPlay(sessionID, sessionActor(ctx, ownerToken)); err != nil {
-		return nil, toGQLError(err)
-	}
 	s, err := r.Service.Step(sessionID)
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	return toSession(s, true), nil
+	return toSession(s, r.mayEdit(ctx, sessionID, ownerToken)), nil
 }
 
 // Reset is the resolver for the reset field.
 func (r *mutationResolver) Reset(ctx context.Context, sessionID string, ownerToken *string) (*model.Session, error) {
-	if err := r.Service.AuthorizeSessionPlay(sessionID, sessionActor(ctx, ownerToken)); err != nil {
-		return nil, toGQLError(err)
-	}
 	s, err := r.Service.Reset(sessionID)
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	return toSession(s, true), nil
+	return toSession(s, r.mayEdit(ctx, sessionID, ownerToken)), nil
 }
 
 // Logout is the resolver for the logout field. It is safe to call when signed
@@ -354,14 +345,16 @@ func (r *queryResolver) Session(ctx context.Context, id string, ownerToken *stri
 		}
 		return nil, toGQLError(err)
 	}
-	return toSession(s, r.mayPlay(ctx, id, ownerToken)), nil
+	return toSession(s, r.mayEdit(ctx, id, ownerToken)), nil
 }
 
 // CanPlaySession is the resolver for the canPlaySession field. It answers
-// false for someone else's session so the UI can offer a read-only view; the
-// play mutations enforce the same rule themselves.
+// whether this caller may write the session's program (and so read it back):
+// the creator, by their login or the owner token. Spectators get false even
+// though they may drive playback at the watch view, whose calls never return
+// the program.
 func (r *queryResolver) CanPlaySession(ctx context.Context, id string, ownerToken *string) (bool, error) {
-	if err := r.Service.AuthorizeSessionPlay(id, sessionActor(ctx, ownerToken)); err != nil {
+	if err := r.Service.AuthorizeSessionEdit(id, sessionActor(ctx, ownerToken)); err != nil {
 		if isNotFound(err) {
 			return false, nil
 		}
@@ -447,7 +440,7 @@ func (r *subscriptionResolver) SessionUpdated(ctx context.Context, sessionID str
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	return forwardSessionUpdates(ctx, s, updates, subscriptionBuffer, r.mayPlay(ctx, sessionID, ownerToken)), nil
+	return forwardSessionUpdates(ctx, s, updates, subscriptionBuffer, r.mayEdit(ctx, sessionID, ownerToken)), nil
 }
 
 // Map returns generated.MapResolver implementation.

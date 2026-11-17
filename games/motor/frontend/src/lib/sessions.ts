@@ -187,19 +187,20 @@ export function ownerTokens(): Record<string, string> {
 }
 
 /**
- * The owner token for one session, or null. This is the credential the server
- * wants on every play call (setProgram, run, step, pause, reset): the session id
- * alone is public. Null for a session this browser did not create — a signed-in
- * player's session does not need it either, because their login cookie proves it.
+ * The owner token for one session, or null. It proves this browser created the
+ * session: it is what setProgram (and the program in any response) needs, while
+ * the session id alone is public and enough to watch or drive playback. Null for
+ * a session this browser did not create — a signed-in player's session does not
+ * need it either, because their login cookie proves it.
  */
 export function ownerTokenFor(id: string): string | null {
 	return ownerTokens()[id] ?? null;
 }
 
 /**
- * Whether this browser started the session, and so may play it. A signed-in
- * account plays its own sessions with the cookie instead, which this cannot
- * see; the play page asks the server (`canPlaySession`) when it matters.
+ * Whether this browser started the session, and so may change its program. A
+ * signed-in account edits its own sessions with the cookie instead, which this
+ * cannot see; the play page asks the server (`canPlaySession`) when it matters.
  */
 export function ownsSession(id: string): boolean {
 	return ownerTokenFor(id) !== null;

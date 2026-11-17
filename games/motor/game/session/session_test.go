@@ -169,6 +169,51 @@ func TestFileRoundTrip(t *testing.T) {
 	}
 }
 
+func TestFileRoundTripTileMovedRun(t *testing.T) {
+	// A conveyor push and a portal teleport move the robot twice in one step, so
+	// such a run has more visited positions than steps+1. It is a normal run and
+	// must survive a save/load (a restart) instead of being skipped as corrupt.
+	for name, tc := range map[string]struct {
+		layout []string
+		want   engine.Position
+	}{
+		"conveyor": {layout: []string{">RRR*", "#####", "#####"}, want: engine.Position{X: 2, Y: 0}},
+		"portal":   {layout: []string{">1..*", "....1", "#####"}, want: engine.Position{X: 4, Y: 1}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fp, _ := newFile(t)
+			m := mustMap(t, engine.MapConfig{
+				ID: name, Name: name, Layout: tc.layout,
+				MainTapeLength: 4, SubTapeLengths: []int{}, MaxSteps: 20,
+			})
+			prog := engine.EmptyProgram(m)
+			prog.Main[0] = engine.MoveForward
+			vm := engine.NewVMState(m)
+			vm.Settle(&prog)
+			if _, err := vm.Step(m, &prog); err != nil {
+				t.Fatal(err)
+			}
+			if vm.Pos != tc.want || len(vm.Visited) != vm.Steps+2 {
+				t.Fatalf("step ended at %+v with %d visits for %d steps", vm.Pos, len(vm.Visited), vm.Steps)
+			}
+			s := &service.Session{
+				ID: idA, MapID: m.ID, Map: m, Program: prog, VM: vm,
+				SpeedMs: 500, Seq: 1, CreatedAt: time.Now(),
+			}
+			if err := fp.Save(s); err != nil {
+				t.Fatal(err)
+			}
+			got, err := fp.Load(idA)
+			if err != nil {
+				t.Fatalf("a run that used a %s must load: %v", name, err)
+			}
+			if !reflect.DeepEqual(got.VM, s.VM) {
+				t.Fatalf("vm differs:\n got %+v\nwant %+v", got.VM, s.VM)
+			}
+		})
+	}
+}
+
 func TestFileRoundTripZeroSubMap(t *testing.T) {
 	fp, _ := newFile(t)
 	m := mustMap(t, engine.MapConfig{
@@ -332,6 +377,14 @@ func TestLoadRejectsInvalidFiles(t *testing.T) {
 		"main not first":     func(p *PersistedSession) { p.VM.CallStack[0].Tape = 0 },
 		"pc beyond tape":     func(p *PersistedSession) { p.VM.CallStack[0].PC = 99 },
 		"steps beyond limit": func(p *PersistedSession) { p.VM.Steps = 10_000 },
+		// One step can visit at most two cells (entry plus a conveyor push or
+		// portal teleport), so 2*steps+2 is impossible and still rejected.
+		"impossible visits": func(p *PersistedSession) {
+			p.VM.Visited = make([]engine.Position, 2*p.VM.Steps+2)
+			for i := range p.VM.Visited {
+				p.VM.Visited[i] = p.VM.Pos
+			}
+		},
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {

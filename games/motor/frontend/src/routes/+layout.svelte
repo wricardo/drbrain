@@ -30,6 +30,7 @@
 	function isActive(href: string, pathname: string): boolean {
 		if (href === '/') return pathname === '/' || pathname.startsWith('/play/');
 		if (href === '/sessions') return pathname.startsWith('/sessions') || pathname.startsWith('/watch/') || pathname.startsWith('/multi');
+		if (href === '/maps') return pathname === '/maps' || pathname.startsWith('/map/');
 		return pathname === href || pathname.startsWith(`${href}/`);
 	}
 

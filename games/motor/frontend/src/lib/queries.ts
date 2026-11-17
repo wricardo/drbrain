@@ -159,7 +159,7 @@ export const RESET_MUTATION = `
   }
 `;
 
-/** Whether this browser may play the session (it created it, or has its owner token). */
+/** Whether this browser may change the session's program (it created it, or has its owner token) and so read it. */
 export const CAN_PLAY_SESSION_QUERY = `
   query CanPlaySession($id: ID!, $ownerToken: String) {
     canPlaySession(id: $id, ownerToken: $ownerToken)

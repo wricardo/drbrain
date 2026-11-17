@@ -8,6 +8,7 @@
 		canReset,
 		empty = false,
 		canStepBack = false,
+		showBack = true,
 		speedMs = $bindable(500),
 		onrun,
 		onpause,
@@ -27,6 +28,8 @@
 		empty?: boolean;
 		/** The robot has taken at least one step and the program is saved, so one step can be taken back. */
 		canStepBack?: boolean;
+		/** False on a spectator view, which has no program to replay and no Back shortcut. */
+		showBack?: boolean;
 		/** Milliseconds per step; changed with the presets, also while a run is playing. */
 		speedMs?: number;
 		onrun: () => void;
@@ -88,16 +91,18 @@
 				{@render icon('M8 5v14l11-7z')}Run
 			</button>
 		{/if}
-		<button
-			type="button"
-			data-testid="stepback"
-			class={secondary}
-			disabled={busy || playing || !canStepBack}
-			title="Go back one step (B)"
-			onclick={onstepback}
-		>
-			{@render icon('M6 5h2v14H6zM9 12l9 7V5z')}Back
-		</button>
+		{#if showBack}
+			<button
+				type="button"
+				data-testid="stepback"
+				class={secondary}
+				disabled={busy || playing || !canStepBack}
+				title="Go back one step (B)"
+				onclick={onstepback}
+			>
+				{@render icon('M6 5h2v14H6zM9 12l9 7V5z')}Back
+			</button>
+		{/if}
 		<button
 			type="button"
 			data-testid="step"

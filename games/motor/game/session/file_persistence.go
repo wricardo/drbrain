@@ -320,7 +320,11 @@ func validateVM(m *engine.Map, p *engine.Program, vm *engine.VMState) error {
 	if vm.Steps < 0 || vm.Steps > m.MaxSteps {
 		return fmt.Errorf("steps %d out of range 0..%d", vm.Steps, m.MaxSteps)
 	}
-	if len(vm.Visited) > vm.Steps+1 {
+	// One step appends the entry cell and may then append a second position: a
+	// portal teleport or a conveyor push (engine.VMState.enter). A turn, a blocked
+	// move and a CALL append nothing, so 2*steps+1 is the tight upper bound; a
+	// run that used a conveyor or portal is legitimate and must still load.
+	if len(vm.Visited) > 2*vm.Steps+1 {
 		return fmt.Errorf("visited has %d entries after %d steps", len(vm.Visited), vm.Steps)
 	}
 	for _, v := range vm.Visited {

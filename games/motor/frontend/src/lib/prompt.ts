@@ -7,8 +7,9 @@ export interface PromptSession {
 	id: string;
 	map: GameMap;
 	/**
-	 * The session's owner token. Playing is creator-only, so an agent needs it;
-	 * the watch page (a spectator view) does not have it and omits it.
+	 * The session's owner token. Changing the program is creator-only, so an agent
+	 * needs it for setProgram (playback does not need it, but a spectator can never
+	 * read the program); a spectator view does not have it and omits it.
 	 */
 	ownerToken?: string | null;
 }
@@ -89,9 +90,9 @@ export function buildSessionPrompt(origin: string, s: PromptSession): string {
 	const skeleton = `main: ${emptyTape(m.mainTapeLength)}\n    subs: [${subs.map(emptyTape).join(', ')}]`;
 	const treats = m.treats.map((t) => `(${t.x},${t.y})`).join(' ');
 	const ownerTokenLine = s.ownerToken
-		? `Owner token (this session's play credential, keep it private — it is needed on every play call below): ${s.ownerToken}`
-		: 'Owner token: (not available — this session cannot be played from this view)';
-	// Every play call is creator-only, so the token has to ride along in each one.
+		? `Owner token (this session's programming credential, keep it private — setProgram below needs it): ${s.ownerToken}`
+		: 'Owner token: (not available — you cannot change this session\'s program from here; you can still run, step, pause and reset it below)';
+	// Only setProgram needs the token: playback is open to anyone, but never returns the program.
 	const tokenArg = s.ownerToken ? `, ownerToken: "${s.ownerToken}"` : '';
 	const recursion = m.allowRecursion
 		? `Recursion is ALLOWED on this map: a sub may call itself (or any sub already running). The call stack is bounded by maxCallDepth = ${m.maxCallDepth} and by the step limit, and there is no tail-call optimisation (the stack stays deep until a sub finishes).`
@@ -167,6 +168,6 @@ You write the robot a program (a main tape plus up to 10 subroutine tapes); the 
 2. GraphQL endpoint: ${origin}/graphql (Playground: ${origin}/playground).
 3. List the maps: query { maps { id name difficulty layout mainTapeLength subTapeLengths maxSteps maxCallDepth allowRecursion } } and pick one (start with an easy one).
 4. Create your own session: mutation { createSession(mapID: "MAP_ID", displayName: "my agent") { id ownerToken } } (displayName is optional: without it you get a random guest name like BraveOtter).
-5. KEEP the ownerToken that createSession returned. Playing a session is creator-only: setProgram, run, step, pause and reset all need it (ownerToken: "..."), otherwise they answer FORBIDDEN. Plan the route from the layout, then setProgram, run, and read the session until vm.status is WON. If it is LOST, read lossReason, fix the program and try again.
+5. KEEP the ownerToken that createSession returned. Changing a session's program is creator-only: setProgram needs it (ownerToken: "..."), otherwise it answers FORBIDDEN. run, step, pause and reset work without it but never return the program, so the token is what lets you read back the program you are writing. Plan the route from the layout, then setProgram, run, and read the session until vm.status is WON. If it is LOST, read lossReason, fix the program and try again.
 6. Tell me the session id so I can watch it live at ${origin}/watch/SESSION_ID, and report the winning program and its step count. Winners are ranked per map by fewest slots used (non-EMPTY slots across all tapes), then fewest steps: query { leaderboard(mapId: "MAP_ID") { entries { rank displayName slots steps } } }.`;
 }

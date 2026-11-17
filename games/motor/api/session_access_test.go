@@ -83,7 +83,7 @@ func TestOnlyTheOwnerCanDeleteOrRenameASignedInPlayersSession(t *testing.T) {
 }
 
 // Deleting or renaming a guest session still needs nothing: agents clean up by
-// id, and only playing is creator-only.
+// id, and only editing the program is creator-only.
 func TestGuestSessionsCanStillBeDeletedAndRenamedByAnyone(t *testing.T) {
 	ts := newAccountsServer(t, "")
 	guest, other := newBrowser(t, ts.URL), newBrowser(t, ts.URL)
@@ -104,53 +104,67 @@ func TestGuestSessionsCanStillBeDeletedAndRenamedByAnyone(t *testing.T) {
 }
 
 // A guest (no account at all) is the creator of their session: the owner token
-// is the only proof, and without it nobody else can play.
-func TestOnlyTheCreatorCanPlayAGuestsSession(t *testing.T) {
+// is the only proof for changing its program. Anyone with the public id may
+// still drive playback (the watch link), which never returns the program.
+func TestOnlyTheCreatorCanEditAGuestsSession(t *testing.T) {
 	ts := newAccountsServer(t, "")
 	creator, stranger := newBrowser(t, ts.URL), newBrowser(t, ts.URL)
 	out := creator.gql(createSessionQ, map[string]any{"name": "G"})
 	id := dig(t, out, "data", "createSession", "id").(string)
 	token := dig(t, out, "data", "createSession", "ownerToken").(string)
 
-	// The creator plays with the token it was given (this browser keeps it in localStorage).
+	// The creator stores the program with the token it was given (this browser keeps it in localStorage).
 	if out := creator.gql(setProgramQ, map[string]any{"id": id, "p": winningProgram(), "t": token}); out["errors"] != nil {
-		t.Fatalf("creator could not play: %v", out)
+		t.Fatalf("creator could not program the session: %v", out)
 	}
 	if out := creator.gql(stepQ, map[string]any{"id": id, "t": token}); out["errors"] != nil {
 		t.Fatalf("creator could not step: %v", out)
 	}
 
-	// A stranger holding only the public id cannot play it at all.
+	// A stranger holding only the public id cannot change the program.
 	for name, vars := range map[string]map[string]any{
 		"no token":    {"id": id},
 		"wrong token": {"id": id, "t": "not-the-token"},
 		"empty token": {"id": id, "t": ""},
 	} {
-		for _, q := range []string{setProgramQ, stepQ} {
-			v := map[string]any{"p": winningProgram()}
-			for k, val := range vars {
-				v[k] = val
-			}
-			if code := firstErrCode(stranger.gql(q, v)); code != service.CodeForbidden {
-				t.Fatalf("%s (%s): code %q", q, name, code)
-			}
+		v := map[string]any{"p": winningProgram()}
+		for k, val := range vars {
+			v[k] = val
 		}
-	}
-	// Every play mutation is gated, not just setProgram/step.
-	for _, q := range []string{
-		`mutation($id: ID!) { run(sessionID: $id) { id } }`,
-		`mutation($id: ID!) { pause(sessionID: $id) { id } }`,
-		`mutation($id: ID!) { reset(sessionID: $id) { id } }`,
-	} {
-		if code := firstErrCode(stranger.gql(q, map[string]any{"id": id})); code != service.CodeForbidden {
-			t.Fatalf("%s: code %q", q, code)
+		if code := firstErrCode(stranger.gql(setProgramQ, v)); code != service.CodeForbidden {
+			t.Fatalf("setProgram (%s): code %q", name, code)
 		}
 	}
 
-	// Sharing the token is the way to let a second player in, and it does not
+	// Playback is open: the watch link drives run, step, pause and reset, and
+	// none of those responses may carry the program.
+	const playbackSel = ` { vm { status steps } playing program { main subs } }`
+	for _, tc := range []struct{ name, q string }{
+		{"run", `mutation($id: ID!, $ms: Int) { run(sessionID: $id, speedMs: $ms)` + playbackSel + ` }`},
+		{"pause", `mutation($id: ID!) { pause(sessionID: $id)` + playbackSel + ` }`},
+		{"step", `mutation($id: ID!) { step(sessionID: $id)` + playbackSel + ` }`},
+		{"reset", `mutation($id: ID!) { reset(sessionID: $id)` + playbackSel + ` }`},
+	} {
+		vars := map[string]any{"id": id}
+		if tc.name == "run" {
+			vars["ms"] = 5000 // slow enough that the first snapshot is still mid-run
+		}
+		res := stranger.gql(tc.q, vars)
+		if res["errors"] != nil {
+			t.Fatalf("a spectator could not %s: %v", tc.name, res)
+		}
+		if p := dig(t, res, "data", tc.name, "program"); p != nil {
+			t.Fatalf("%s leaked the program to a spectator: %v", tc.name, p)
+		}
+	}
+	if playing := dig(t, stranger.gql(`query($id: ID!) { session(id: $id) { playing vm { steps } program { main } } }`, map[string]any{"id": id}), "data", "session", "playing"); playing != false {
+		t.Fatalf("the spectator's reset did not stop playback: %v", playing)
+	}
+
+	// Sharing the token is the way to let a second player edit, and it does not
 	// stop working for the creator.
 	if out := stranger.gql(setProgramQ, map[string]any{"id": id, "p": winningProgram(), "t": token}); out["errors"] != nil {
-		t.Fatalf("a shared session could not be played: %v", out)
+		t.Fatalf("a shared session could not be edited: %v", out)
 	}
 
 	// Watching stays open: the public id is enough to read the session.
@@ -159,8 +173,9 @@ func TestOnlyTheCreatorCanPlayAGuestsSession(t *testing.T) {
 	}
 }
 
-// canPlaySession lets a play page decide between playing and a read-only view
-// without provoking a FORBIDDEN on the first save.
+// canPlaySession lets a play page decide between editing and a read-only view
+// without provoking a FORBIDDEN on the first save. It answers for editing (and
+// so reading) the program, not for driving playback, which anyone may do.
 func TestCanPlaySessionReflectsOwnership(t *testing.T) {
 	ts := newAccountsServer(t, "")
 	creator, stranger := newBrowser(t, ts.URL), newBrowser(t, ts.URL)

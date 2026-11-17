@@ -56,16 +56,26 @@ done
 [ "${STATUS}" = "WON" ] || fail "session did not reach WON (status=${STATUS})"
 echo "session WON"
 
-# Playing is creator-only: the token returned by createSession is the credential.
+# Changing the program is creator-only: the token returned by createSession is the credential.
 gql "mutation { setProgram(sessionID:\"${SID}\", program:{main:[EMPTY],subs:[[EMPTY,EMPTY,EMPTY,EMPTY]]}) { id } }" \
   | jq -e '.errors[0].extensions.code == "FORBIDDEN"' >/dev/null || fail "a token-less setProgram was allowed"
-gql "mutation { run(sessionID:\"${SID}\", speedMs:50) { id } }" \
-  | jq -e '.errors[0].extensions.code == "FORBIDDEN"' >/dev/null || fail "a token-less run was allowed"
+# Playback is open to anyone with the id (the watch link), and never hands out the program.
+# It runs on a throwaway session so the winning run above stays untouched for the restart check.
+PLAY=$(gql 'mutation { createSession(mapID:"straight_line") { id } }' | jq -er '.data.createSession.id') || fail "playback session"
+gql "mutation { step(sessionID:\"${PLAY}\") { vm { status steps } program { main subs } } }" \
+  | jq -e '.errors == null and .data.step.program == null' >/dev/null || fail "a token-less step was refused or leaked the program"
+gql "mutation { reset(sessionID:\"${PLAY}\") { playing program { main subs } } }" \
+  | jq -e '.errors == null and .data.reset.program == null' >/dev/null || fail "a token-less reset was refused or leaked the program"
+gql "mutation { run(sessionID:\"${PLAY}\", speedMs:5000) { playing program { main subs } } }" \
+  | jq -e '.errors == null and .data.run.program == null' >/dev/null || fail "a token-less run was refused or leaked the program"
+gql "mutation { pause(sessionID:\"${PLAY}\") { playing program { main subs } } }" \
+  | jq -e '.errors == null and .data.pause.program == null' >/dev/null || fail "a token-less pause was refused or leaked the program"
+gql "mutation { deleteSession(id:\"${PLAY}\") }" | jq -e '.data.deleteSession == true' >/dev/null || fail "delete the playback session"
 gql "query { canPlaySession(id:\"${SID}\") }" | jq -e '.data.canPlaySession == false' >/dev/null || fail "canPlaySession without the token"
 gql "query { canPlaySession(id:\"${SID}\", ownerToken:\"${TOKEN}\") }" | jq -e '.data.canPlaySession == true' >/dev/null || fail "canPlaySession with the token"
 # Watching stays open to anyone.
 gql "{ session(id:\"${SID}\") { id } }" | jq -e ".data.session.id == \"${SID}\"" >/dev/null || fail "spectating was blocked"
-echo "creator-only play ok"
+echo "creator-only editing, open playback ok"
 
 # The win is on the map's leaderboard with server-recorded slots (7 moves = 7 slots) and steps.
 gql "{ leaderboard(mapId:\"straight_line\", sessionId:\"${SID}\") { total yours { rank slots steps } } }" \

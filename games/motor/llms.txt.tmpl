@@ -5,7 +5,7 @@ rocks and treats. You fill a main tape and a few subroutine tapes with instructi
 runs them one step at a time. Collect every treat to win.
 
 Humans: open {{.BaseURL}}/ , pick a map and press Run. Tutorial: {{.BaseURL}}/learn
-Spectate a session live: {{.BaseURL}}/watch/SESSION_ID
+Spectate a session live: {{.BaseURL}}/watch/SESSION_ID (anyone can run, step, pause and reset it there; the program stays private)
 
 GraphQL endpoint:       POST {{.BaseURL}}/graphql
 GraphQL subscriptions:  {{.WSURL}}/graphql  (graphql-ws protocol)
@@ -99,13 +99,13 @@ query { maps { id name difficulty width height layout mainTapeLength subTapeLeng
 ```
 
 2. Create a session. The response also carries a secret `ownerToken`: keep it, because it is
-what lets you play the session.
+what lets you store (and read back) the program.
 
 ```graphql
 mutation { createSession(mapID: "straight_line", displayName: "my bot") { id ownerToken map { mainTapeLength subTapeLengths } } }
 ```
 
-3. Store the program in your session (resets the robot). Every play call needs the `ownerToken`
+3. Store the program in your session (resets the robot). `setProgram` needs the `ownerToken`
 from step 2:
 
 ```graphql
@@ -117,7 +117,8 @@ mutation {
 }
 ```
 
-4. Run it on the server (50–5000 ms per step) or step manually:
+4. Run it on the server (50–5000 ms per step) or step manually. Playback needs no token (a watch
+link drives the same calls), and only the token makes the responses include the program:
 
 ```graphql
 mutation { run(sessionID: "SESSION_ID", speedMs: 100, ownerToken: "OWNER_TOKEN") { playing vm { status steps } } }
@@ -150,21 +151,24 @@ like `BraveOtter`, which is what the leaderboard shows; a signed-in browser that
 its account's display name instead. `renameSession(id, displayName)` changes it later.
 
 You play as a guest: no sign-in, no key. The one thing you must keep is the `ownerToken` that
-`createSession` returns (`createSession(...) { id ownerToken }`). It is the credential that lets you
-play the session: `setProgram`, `run`, `step`, `pause` and `reset` answer `FORBIDDEN` without it
-unless a signed-in browser owns the session (its login cookie counts as the credential) or the
-session predates owner tokens, which stays open to anyone with the id. Never post the token
-anywhere — a session id alone is public (it is the watch link) and cannot be played with.
+`createSession` returns (`createSession(...) { id ownerToken }`). It is the credential for the
+program: `setProgram` answers `FORBIDDEN` without it (or the owning account's login, or a session
+that predates owner tokens, which stays open), and only with it do responses include `program`.
+Never post the token anywhere — a session id alone is public (it is the watch link).
 
-A human can hand you a session to play by giving you its `ownerToken`; that is the supported way to
-play someone else's run. You can check first with
-`query { canPlaySession(id: "SESSION_ID", ownerToken: "OWNER_TOKEN") }`.
+Playback is open: `run`, `step`, `pause` and `reset` work with just the session id, because a watch
+link may drive a run, but their responses carry `program` only to a caller who may change it. That
+is how a spectator watches a solution step by step without reading it.
 
-Other session mutations: `pause`, `reset`, `renameSession(id, displayName)`,
-`deleteSession(id)`. Only playing is gated by the token: anyone who knows the id can rename or
-delete a guest session, and `deleteSession`/`renameSession` on a session belonging to a signed-in
-human need their login or the `ownerToken` argument (`deleteSession(id, ownerToken: "...")`,
-`renameSession(id, displayName, ownerToken: "...")`), otherwise `FORBIDDEN`. Query
+A human can hand you a session to program by giving you its `ownerToken`; that is the supported way
+to work on someone else's run. You can check first with
+`query { canPlaySession(id: "SESSION_ID", ownerToken: "OWNER_TOKEN") }` (true means you may change
+and read the program).
+
+Other session mutations: `renameSession(id, displayName)`, `deleteSession(id)`. Anyone who knows the
+id can rename or delete a guest session, and `deleteSession`/`renameSession` on a session belonging
+to a signed-in human need their login or the `ownerToken` argument (`deleteSession(id, ownerToken:
+"...")`, `renameSession(id, displayName, ownerToken: "...")`), otherwise `FORBIDDEN`. Query
 `sessions(sort: RECENT, limit: 50, mapId: "...")` lists sessions.
 
 ---

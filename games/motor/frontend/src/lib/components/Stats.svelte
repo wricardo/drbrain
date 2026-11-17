@@ -1,7 +1,15 @@
 <script lang="ts">
-	import type { Session } from '$lib/types';
+	import type { GameMap, VMState } from '$lib/types';
 
-	let { session }: { session: Session } = $props();
+	/** A live session, or the zeroed preview of a map that has no session yet (/map). */
+	type StatsInput = {
+		map: Pick<GameMap, 'treats' | 'maxSteps'>;
+		vm: Pick<VMState, 'steps' | 'treatsRemaining'>;
+		bestSteps: number | null;
+		attempts: number;
+	};
+
+	let { session }: { session: StatsInput } = $props();
 
 	const total = $derived(session.map.treats.length);
 	const collected = $derived(total - session.vm.treatsRemaining.length);

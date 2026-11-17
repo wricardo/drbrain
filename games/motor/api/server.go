@@ -249,10 +249,12 @@ func withHTTPRequest(next http.Handler) http.Handler {
 }
 
 // withViewer resolves the signed-in player from the login cookie and stores
-// it in the context. Only POST requests carry a viewer (subscriptions and
-// everything else stay public), and only same-origin JSON ones: a request that
+// it in the context. Only POST requests and websocket upgrades carry a viewer
+// (everything else stays public), and only same-origin ones: a request that
 // fails Auth.Viewer is treated as anonymous, so another site can never act as
-// the player.
+// the player. The upgrade matters because Session.program is gated on the
+// viewer: a signed-in owner watching over a subscription must see their own
+// program without holding the owner token in that browser.
 //
 // It also stores the sign-in hooks the password mutations need. Those are
 // absent on a websocket upgrade, which has no HTTP response to set a cookie on,
@@ -264,11 +266,14 @@ func withViewer(a *auth.Auth, next http.Handler) http.Handler {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost {
+		if r.Method == http.MethodPost || isWebSocketUpgrade(r) {
 			if acct, token := a.Viewer(r); acct != nil {
 				v := &graph.Viewer{Account: acct, Token: token, ClearSession: func() { a.ClearSession(w, r) }}
 				r = r.WithContext(context.WithValue(r.Context(), graph.ViewerKey{}, v))
 			}
+			// The upgrade has no HTTP response to set a cookie on, so the hooks
+			// carry OverHTTP=false: a password mutation over a subscription is
+			// refused instead of minting a login the browser could never send back.
 			signIn := &graph.SignIn{
 				OverHTTP:   !isWebSocketUpgrade(r),
 				SetSession: func(token string, expires time.Time) { a.SetSession(w, r, token, expires) },
@@ -364,7 +369,7 @@ func (s *Server) handleLLMS(w http.ResponseWriter, r *http.Request) {
 
 // spaRoutes mirrors the top-level directories in frontend/src/routes.
 var spaRoutes = map[string]bool{
-	"": true, "play": true, "watch": true, "maps": true, "editor": true, "learn": true, "sessions": true, "multi": true, "leaderboard": true, "runs": true,
+	"": true, "play": true, "watch": true, "maps": true, "map": true, "editor": true, "learn": true, "sessions": true, "multi": true, "leaderboard": true, "runs": true,
 	"u": true, "settings": true,
 }
 

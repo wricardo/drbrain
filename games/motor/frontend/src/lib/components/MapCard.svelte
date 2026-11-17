@@ -28,7 +28,9 @@
 		{#if parts.series}
 			<p class="text-xs font-bold uppercase tracking-wider text-indigo-600" data-testid="map-series">{parts.series}</p>
 		{/if}
-		<h3 class="font-semibold text-indigo-950" title={map.name}>{parts.title}</h3>
+		<h3 class="font-semibold text-indigo-950" title={map.name}>
+			<a href="/map/{encodeURIComponent(map.id)}" class="hover:text-indigo-700 hover:underline" data-testid="map-name-link">{parts.title}</a>
+		</h3>
 		<p class="mt-0.5 min-h-[2.5rem] text-sm text-slate-600 line-clamp-2" title={map.description}>{map.description}</p>
 	</div>
 	<div class="flex flex-wrap gap-1.5 text-xs">

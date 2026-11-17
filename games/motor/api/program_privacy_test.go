@@ -2,14 +2,19 @@ package api
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
+
+	gorillaws "github.com/gorilla/websocket"
 )
 
 const (
 	sessionProgramQ   = `query($id: ID!, $t: String) { session(id: $id, ownerToken: $t) { id program { main subs } } }`
 	sessionsProgramQ  = `{ sessions(limit: 50) { id program { main subs } } }`
+	renameProgramQ    = `mutation($id: ID!, $n: String!) { renameSession(id: $id, displayName: $n) { id program { main subs } } }`
 	sessionUpdatedSub = `subscription($id: ID!, $t: String) { sessionUpdated(sessionID: $id, ownerToken: $t) { seq session { id program { main subs } } } }`
 )
 
@@ -24,8 +29,8 @@ func programOf(t *testing.T, out map[string]any, path ...string) any {
 }
 
 // A session id is public (it is the watch link), so the program must leave the
-// server only to someone who may play the session. Otherwise a watch link is an
-// answer key.
+// server only to someone who may change it. Otherwise a watch link is an answer
+// key. Driving playback is open to anyone and must not hand it out either.
 func TestTheProgramIsVisibleOnlyToPlayers(t *testing.T) {
 	srv := newAccountsServer(t, "")
 	owner, anon := newBrowser(t, srv.URL), newBrowser(t, srv.URL)
@@ -56,6 +61,12 @@ func TestTheProgramIsVisibleOnlyToPlayers(t *testing.T) {
 		if got := programOf(t, anon.gql(sessionProgramQ, vars), "data", "session"); got != nil {
 			t.Fatalf("session query (%s) leaked the program: %v", name, got)
 		}
+	}
+
+	// A guest session may be renamed by anyone with its id, so the response of
+	// that open mutation must not carry the program either.
+	if got := programOf(t, anon.gql(renameProgramQ, map[string]any{"id": id, "n": "Renamed by a spectator"}), "data", "renameSession"); got != nil {
+		t.Fatalf("renameSession leaked the program: %v", got)
 	}
 
 	// The session lists never carry programs, not even for the player.
@@ -157,4 +168,79 @@ func TestSubscriptionHidesTheProgramFromSpectators(t *testing.T) {
 			t.Fatalf("%s: subscription omitted the owner's program", c.name)
 		}
 	}
+}
+
+// The subscription is the live view, and its program gate is the caller's
+// login too: a signed-in owner must receive their own program over the
+// websocket upgrade, where the cookie (not an ownerToken) proves it. The
+// schema documents "ownerToken or the owning login" for sessionUpdated.
+func TestSubscriptionShowsTheProgramToTheSignedInOwner(t *testing.T) {
+	srv := newAccountsServer(t, "")
+	alice := newBrowser(t, srv.URL)
+	alice.signIn("alice", "/")
+	out := alice.gql(createSessionQ, map[string]any{"name": "Alice's live"})
+	id := dig(t, out, "data", "createSession", "id").(string)
+	if out := alice.gql(setProgramQ, map[string]any{"id": id, "p": winningProgram()}); out["errors"] != nil {
+		t.Fatalf("setProgram as the owner: %v", out)
+	}
+
+	u, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cookies []string
+	for _, c := range alice.client.Jar.Cookies(u) {
+		cookies = append(cookies, c.Name+"="+c.Value)
+	}
+	if len(cookies) == 0 {
+		t.Fatal("sign-in left no cookie in the jar")
+	}
+	h := http.Header{}
+	h.Set("Cookie", strings.Join(cookies, "; "))
+	h.Set("Origin", srv.URL)
+	d := gorillaws.Dialer{Subprotocols: []string{"graphql-transport-ws"}, HandshakeTimeout: 5 * time.Second}
+	c, _, err := d.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/graphql", h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	_ = c.SetReadDeadline(time.Now().Add(10 * time.Second))
+	if err := c.WriteJSON(map[string]any{"type": "connection_init"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := c.ReadMessage(); err != nil {
+		t.Fatal(err)
+	}
+	// No ownerToken: only the login cookie can authorize the program here.
+	if err := c.WriteJSON(map[string]any{"id": "1", "type": "subscribe", "payload": map[string]any{
+		"query": sessionUpdatedSub, "variables": map[string]any{"id": id},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	for range 5 {
+		_, msg, err := c.ReadMessage()
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		var env struct {
+			Type    string         `json:"type"`
+			Payload map[string]any `json:"payload"`
+		}
+		if err := json.Unmarshal(msg, &env); err != nil {
+			t.Fatalf("bad message %q", msg)
+		}
+		if env.Type == "error" {
+			t.Fatalf("subscription error %q", msg)
+		}
+		if env.Type != "next" {
+			continue
+		}
+		update, _ := env.Payload["data"].(map[string]any)["sessionUpdated"].(map[string]any)
+		session, _ := update["session"].(map[string]any)
+		if got := session["program"]; got == nil {
+			t.Fatal("the signed-in owner's program is missing from the subscription snapshot")
+		}
+		return
+	}
+	t.Fatal("no data payload")
 }

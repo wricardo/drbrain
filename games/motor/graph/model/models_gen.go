@@ -211,9 +211,9 @@ type Session struct {
 	MapID       string `json:"mapId"`
 	// Snapshot of the map taken when the session was created.
 	Map *Map `json:"map"`
-	// The robot's program. Only a caller who may play the session sees it: the ownerToken holder or
-	// the owning account's login. Spectators — a shared /watch link, the session lists — get null, so a
-	// program is never a public answer key.
+	// The robot's program. Only a caller who may change it sees it: the ownerToken holder or the owning
+	// account's login. Spectators — a shared /watch link, the session lists — get null, so a program is
+	// never a public answer key. Driving playback (run, step, pause, reset) does not reveal it either.
 	Program *Program `json:"program,omitempty"`
 	VM      *VMState `json:"vm"`
 	Playing bool     `json:"playing"`

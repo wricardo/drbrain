@@ -65,9 +65,9 @@ func TestAuthorizeSessionChange(t *testing.T) {
 	}
 }
 
-// Playing is creator-only: the agent the token was shared with can play, and
-// nobody else can, which is what makes a session the creator's.
-func TestOnlyTheCreatorCanPlayASession(t *testing.T) {
+// Editing is creator-only: the agent the token was shared with can set the
+// program, and nobody else can, which is what keeps a session the creator's.
+func TestOnlyTheCreatorCanEditASession(t *testing.T) {
 	e := newAcctEnv(t, service.Options{})
 	alice := e.signIn(t, "alice")
 	s, token, _ := e.svc.CreateOwnedSession("wide", "A", alice.ID)
@@ -75,10 +75,10 @@ func TestOnlyTheCreatorCanPlayASession(t *testing.T) {
 	// The owner's login is enough, and so is the token (that is how the run is
 	// handed to an agent or a second player).
 	asOwner := service.SessionActor{AccountID: alice.ID}
-	if err := e.svc.AuthorizeSessionPlay(s.ID, asOwner); err != nil {
+	if err := e.svc.AuthorizeSessionEdit(s.ID, asOwner); err != nil {
 		t.Fatalf("owner refused: %v", err)
 	}
-	if err := e.svc.AuthorizeSessionPlay(s.ID, service.SessionActor{OwnerToken: token}); err != nil {
+	if err := e.svc.AuthorizeSessionEdit(s.ID, service.SessionActor{OwnerToken: token}); err != nil {
 		t.Fatalf("token holder refused: %v", err)
 	}
 
@@ -88,35 +88,35 @@ func TestOnlyTheCreatorCanPlayASession(t *testing.T) {
 		"wrong token":  {OwnerToken: "nope"},
 		"other player": {AccountID: "0123456789abcdef01234567"},
 	} {
-		err := e.svc.AuthorizeSessionPlay(s.ID, actor)
+		err := e.svc.AuthorizeSessionEdit(s.ID, actor)
 		if err == nil {
 			t.Fatalf("%s: allowed", name)
 		}
 		wantCode(t, err, service.CodeForbidden)
 	}
-	if err := e.svc.AuthorizeSessionPlay("0000000000000000", asOwner); err == nil {
+	if err := e.svc.AuthorizeSessionEdit("0000000000000000", asOwner); err == nil {
 		t.Fatal("an unknown session was allowed")
 	}
 
 	// A guest's session behaves the same way: the token is the only proof.
 	guest, guestToken, _ := e.svc.CreateOwnedSession("wide", "G", "")
-	if err := e.svc.AuthorizeSessionPlay(guest.ID, service.SessionActor{OwnerToken: guestToken}); err != nil {
+	if err := e.svc.AuthorizeSessionEdit(guest.ID, service.SessionActor{OwnerToken: guestToken}); err != nil {
 		t.Fatalf("guest creator refused: %v", err)
 	}
-	if err := e.svc.AuthorizeSessionPlay(guest.ID, service.SessionActor{}); err == nil {
-		t.Fatal("a guest session was playable without its token")
+	if err := e.svc.AuthorizeSessionEdit(guest.ID, service.SessionActor{}); err == nil {
+		t.Fatal("a guest session was editable without its token")
 	}
 }
 
 // A session made before owner tokens has no hash to compare, so it stays open
-// rather than becoming unplayable for everyone.
+// rather than becoming uneditable for everyone.
 func TestSessionsWithoutAnOwnerHashStayOpen(t *testing.T) {
 	e := newAcctEnv(t, service.Options{})
 	legacy, err := e.svc.CreateSession("wide", "Old")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := e.svc.AuthorizeSessionPlay(legacy.ID, service.SessionActor{}); err != nil {
+	if err := e.svc.AuthorizeSessionEdit(legacy.ID, service.SessionActor{}); err != nil {
 		t.Fatalf("legacy session was locked: %v", err)
 	}
 	if _, err := e.svc.SetProgram(legacy.ID, wideDirect()); err != nil {

@@ -99,12 +99,14 @@ type GameService interface {
 	// always for guest sessions, only the owning account (or the owner token) for
 	// a signed-in player's. Transports call it before DeleteSession/RenameSession.
 	AuthorizeSessionChange(id string, actor SessionActor) error
-	// AuthorizeSessionPlay checks that actor may play the session (setProgram,
-	// run, step, pause, reset): the creator proves it with the owner token, or
-	// with the login of the account that owns it. Sessions that predate owner
-	// tokens have no hash to compare and stay open. Transports call it before
-	// every play method, which are otherwise unauthenticated.
-	AuthorizeSessionPlay(id string, actor SessionActor) error
+	// AuthorizeSessionEdit checks that actor may write the session's program
+	// (setProgram) and therefore read it back: the creator proves it with the
+	// owner token, or with the login of the account that owns it. Sessions that
+	// predate owner tokens have no hash to compare and stay open. Transports call
+	// it before SetProgram and before a response carries Session.program.
+	// Execution control (run, step, pause, reset) is NOT gated: the watch link is
+	// a shared playback view and those calls never reveal the program.
+	AuthorizeSessionEdit(id string, actor SessionActor) error
 
 	// SetProgram validates and stores the program and resets the VM to start.
 	// Errors: INVALID_PROGRAM, SESSION_PLAYING.

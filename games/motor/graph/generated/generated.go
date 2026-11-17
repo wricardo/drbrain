@@ -1809,9 +1809,9 @@ type Session {
   "Snapshot of the map taken when the session was created."
   map: Map!
   """
-  The robot's program. Only a caller who may play the session sees it: the ownerToken holder or
-  the owning account's login. Spectators — a shared /watch link, the session lists — get null, so a
-  program is never a public answer key.
+  The robot's program. Only a caller who may change it sees it: the ownerToken holder or the owning
+  account's login. Spectators — a shared /watch link, the session lists — get null, so a program is
+  never a public answer key. Driving playback (run, step, pause, reset) does not reveal it either.
   """
   program: Program
   vm: VMState!
@@ -1987,15 +1987,15 @@ type Query {
   maps: [Map!]!
   map(id: ID!): Map
   """
-  One session. The program is included only for a caller who may play it; pass the ownerToken
+  One session. The program is included only for a caller who may change it; pass the ownerToken
   (or be signed in as the owning account) to read it.
   """
   session(id: ID!, ownerToken: String): Session
   """
-  Whether this caller may play the session (setProgram, run, step, pause, reset): true when they
+  Whether this caller may change the session's program (setProgram) and read it back: true when they
   created it — a signed-in owner by their login, anyone else by passing the ownerToken — or when the
-  session predates owner tokens. False when it belongs to someone else, so a play page can show a
-  read-only view instead of failing on the first save.
+  session predates owner tokens. False for a spectator, even though the public id is enough to drive
+  playback at /watch; a play page uses it to decide between editing and a read-only view.
   """
   canPlaySession(id: ID!, ownerToken: String): Boolean!
   sessions(sort: SessionSort = RECENT, limit: Int = 50, mapId: ID): [Session!]!
@@ -2022,21 +2022,25 @@ type Mutation {
   that createSession returned (FORBIDDEN otherwise).
   """
   deleteSession(id: ID!, ownerToken: String): Boolean!
-  "Renames a session; the same rule as deleteSession applies."
+  "Renames a session; the same rule as deleteSession applies. Its program is included only for a caller who may change it."
   renameSession(id: ID!, displayName: String!, ownerToken: String): Session!
   """
-  Stores the program and resets the robot. Only the session's creator may play it: pass the
+  Stores the program and resets the robot. Only the session's creator may do it: pass the
   ownerToken that createSession returned, or be signed in to the account that owns the session
-  (FORBIDDEN otherwise). Sessions created before owner tokens stay open.
+  (FORBIDDEN otherwise). Sessions created before owner tokens stay open. The program is private, so
+  watching a run never grants this.
   """
   setProgram(sessionID: ID!, program: ProgramInput!, ownerToken: String): Session!
-  "Starts the program; the same creator-only rule as setProgram applies."
+  """
+  Starts the program. Anyone who knows the session id may drive playback — that is what a /watch
+  link is for — and the response carries the program only for a caller who may change it.
+  """
   run(sessionID: ID!, speedMs: Int = 500, ownerToken: String): Session!
-  "Pauses playback; the same creator-only rule as setProgram applies."
+  "Pauses playback. Open to anyone who knows the session id; the program stays hidden from spectators."
   pause(sessionID: ID!, ownerToken: String): Session!
-  "Executes one step; the same creator-only rule as setProgram applies."
+  "Executes one step. Open to anyone who knows the session id; the program stays hidden from spectators."
   step(sessionID: ID!, ownerToken: String): Session!
-  "Puts the robot back at the start; the same creator-only rule as setProgram applies."
+  "Puts the robot back at the start. Open to anyone who knows the session id; the program stays hidden from spectators."
   reset(sessionID: ID!, ownerToken: String): Session!
 
   "Signs the player out (clears the login cookie). Always true."
@@ -2076,7 +2080,7 @@ type Mutation {
 type Subscription {
   """
   Emits the current snapshot immediately, then every change. Like the session query, the payload's
-  program is null unless the caller may play the session (ownerToken or the owning login).
+  program is null unless the caller may change the program (ownerToken or the owning login).
   """
   sessionUpdated(sessionID: ID!, ownerToken: String): SessionUpdate!
 }

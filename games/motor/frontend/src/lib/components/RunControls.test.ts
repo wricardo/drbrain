@@ -125,4 +125,9 @@ describe('RunControls step back', () => {
 		setup({ canStepBack: true, finished: true });
 		expect(disabled('stepback')).toBe(false);
 	});
+
+	it('is absent on a spectator view, which has no program to replay', () => {
+		setup({ showBack: false, canStepBack: true });
+		expect(screen.queryByTestId('stepback')).toBeNull();
+	});
 });

@@ -80,10 +80,10 @@ describe('buildSessionPrompt', () => {
 		expect(buildSessionPrompt('http://h:1', { id: 'abc123', map: map() })).toBe(p);
 	});
 
-	it('carries the owner token into every play call, since playing is creator-only', () => {
+	it('carries the owner token into the play calls, since changing the program is creator-only', () => {
 		const shared = buildSessionPrompt('http://h:1', { id: 'abc123', map: map(), ownerToken: 'tok-secret' });
 		expect(shared).toContain('tok-secret');
-		// Each play mutation must pass it, or the server answers FORBIDDEN.
+		// setProgram needs it; run/step carry it too, so the agent sees the program it runs.
 		for (const call of ['setProgram(', 'run(', 'step(']) {
 			const at = shared.indexOf(call);
 			expect(at).toBeGreaterThan(-1);

@@ -256,7 +256,7 @@ func TestLLMSTxt(t *testing.T) {
 func TestIsSPARoute(t *testing.T) {
 	cases := map[string]bool{
 		"/": true, "": true, "/play": true, "/play/abc": true, "/watch/abc": true,
-		"/maps": true, "/editor": true, "/learn": true, "/sessions": true, "/multi": true,
+		"/maps": true, "/map/abc": true, "/editor": true, "/learn": true, "/sessions": true, "/multi": true,
 		"/nope": false, "/graphql/x": false, "/playground": false, "/_app/x.js": false,
 	}
 	for path, want := range cases {

@@ -25,10 +25,10 @@ type fakeService struct {
 	saved    []engine.MapConfig
 	deleted  []string
 	err      error
-	// playErr is returned by AuthorizeSessionPlay; played records the actors
+	// editErr is returned by AuthorizeSessionEdit; edited records the actors
 	// that were let through.
-	playErr error
-	played  []service.SessionActor
+	editErr error
+	edited  []service.SessionActor
 }
 
 func (f *fakeService) GetMap(id string) (*engine.Map, error) {
@@ -79,13 +79,13 @@ func (f *fakeService) SetProgram(id string, p engine.Program) (*service.Session,
 	return nil, f.err
 }
 
-// AuthorizeSessionPlay allows everything unless the test sets playErr, so the
-// resolver tests that are not about play permissions stay unaffected.
-func (f *fakeService) AuthorizeSessionPlay(id string, actor service.SessionActor) error {
-	if f.playErr != nil {
-		return f.playErr
+// AuthorizeSessionEdit allows everything unless the test sets editErr, so the
+// resolver tests that are not about edit permissions stay unaffected.
+func (f *fakeService) AuthorizeSessionEdit(id string, actor service.SessionActor) error {
+	if f.editErr != nil {
+		return f.editErr
 	}
-	f.played = append(f.played, actor)
+	f.edited = append(f.edited, actor)
 	return nil
 }
 

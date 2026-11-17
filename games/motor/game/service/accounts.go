@@ -546,8 +546,9 @@ type SessionActor struct {
 // Guest sessions stay open to anyone who knows the id, as they always were (a
 // human and an agent can share one). A session that belongs to a signed-in
 // player's account is theirs: it needs that account's login, or the secret
-// owner token (constant-time compare of hashes). Playing is gated separately, by
-// AuthorizeSessionPlay, because a shared watch link should be read-only. An
+// owner token (constant-time compare of hashes). Changing the program is gated
+// separately, by AuthorizeSessionEdit, because a shared watch link must not be
+// able to replace the run it is showing. An
 // unknown session is NOT_FOUND, as before. A link to an account that no longer
 // exists (or accounts being off) counts as a guest session.
 func (svc *gameService) AuthorizeSessionChange(id string, actor SessionActor) error {
@@ -575,18 +576,24 @@ func (svc *gameService) AuthorizeSessionChange(id string, actor SessionActor) er
 	return Errorf(CodeForbidden, "this run belongs to a signed-in player; only they can delete or rename it")
 }
 
-// AuthorizeSessionPlay decides whether actor may play a session: setProgram,
-// run, step, pause and reset. Unlike AuthorizeSessionChange the rule is the
-// same for guests and signed-in players, because the owner token is minted for
-// every session: the creator proves it with that token (the browser keeps it
-// in its own storage, so a guest needs no account) or, for a session created
-// while signed in, with the owning account's login. Whoever holds either can
-// play, which is how a session is shared with a second person or an AI agent.
+// AuthorizeSessionEdit decides whether actor may write a session's program
+// (setProgram) and, because a program is the solution, read it back. Editing is
+// creator-only: the creator proves ownership with the token createSession
+// returned (the browser keeps it in its own storage, so a guest needs no
+// account) or, for a session created while signed in, with the owning account's
+// login. Whoever holds either may edit, which is how a session is shared with a
+// second person or an AI agent.
+//
+// Execution control — run, pause, step and reset — is deliberately NOT gated
+// here. Anyone holding the public watch link may drive playback: that is how a
+// stranger (or a spectator's agent) can watch the solution run without seeing
+// it. The program is the only secret, so the responses of those calls carry it
+// only when this check also passes.
 //
 // A session without an owner hash predates owner tokens (or was made through
 // the token-less CreateSession): there is nothing to compare against, so it
-// stays open rather than becoming unplayable for everyone.
-func (svc *gameService) AuthorizeSessionPlay(id string, actor SessionActor) error {
+// stays open rather than becoming uneditable for everyone.
+func (svc *gameService) AuthorizeSessionEdit(id string, actor SessionActor) error {
 	s, err := svc.get(id)
 	if err != nil {
 		return err
@@ -601,7 +608,7 @@ func (svc *gameService) AuthorizeSessionPlay(id string, actor SessionActor) erro
 	if tokenMatches(actor.OwnerToken, hash) {
 		return nil
 	}
-	return Errorf(CodeForbidden, "this run belongs to whoever created it; only they can play it (share its owner token to let someone else play)")
+	return Errorf(CodeForbidden, "this run belongs to whoever created it; only they can change its program (share its owner token to let someone else program it)")
 }
 
 // sessionProof reads a session's ownership fields. Caller must not hold the lock.

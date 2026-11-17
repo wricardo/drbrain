@@ -5,8 +5,8 @@
 	import { getContextClient } from '@urql/svelte';
 	import { unwrap } from '$lib/api';
 	import AiPromptCard from '$lib/components/AiPromptCard.svelte';
+	import BoardPanel from '$lib/components/BoardPanel.svelte';
 	import ConnectionBadge from '$lib/components/ConnectionBadge.svelte';
-	import Grid from '$lib/components/Grid.svelte';
 	import Palette from '$lib/components/Palette.svelte';
 	import RunControls from '$lib/components/RunControls.svelte';
 	import ResultModal from '$lib/components/ResultModal.svelte';
@@ -380,24 +380,16 @@
 
 		{#if !canPlay}
 			<p class="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="read-only">
-				<strong>Read-only.</strong> This run belongs to whoever created it, so only they can play it.
-				You can still watch it live at <a class="underline" href="/watch/{session.id}">the spectator view</a>.
+				<strong>Read-only.</strong> This run belongs to whoever created it, so only they can change its program.
+				You can still run, step, pause and reset it from <a class="underline" href="/watch/{session.id}">the spectator view</a>.
 			</p>
 		{/if}
 
 		<div class="mt-4 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,28rem)]">
-			<!-- On phones the board is pinned at the top so it stays visible while you edit and run: it fills the column width, and only a very tall map is capped (50vh) so the program panel keeps room. On wide screens it sits in its own sticky column. -->
-			<section
-				aria-label="Board"
-				class="min-w-0 space-y-3 max-lg:sticky max-lg:top-0 max-lg:z-30 max-lg:-mx-4 max-lg:border-b max-lg:border-indigo-200 max-lg:px-4 max-lg:py-1 max-lg:bg-[var(--page-bg)] sm:max-lg:-mx-6 sm:max-lg:px-6 lg:sticky lg:top-4 lg:self-start"
-			>
-				<div class="mx-auto max-lg:max-w-[min(100%,calc(50vh*var(--ar)))]" style="--ar: {session.map.width / session.map.height}">
-					<Grid map={session.map} vm={session.vm} lastEvent={session.lastEvent} />
-				</div>
-				<p class="text-sm text-slate-600 max-lg:hidden">{session.map.description}</p>
-				<div class="max-lg:hidden"><TileLegend map={session.map} /></div>
+			<!-- On phones the board is pinned at the top so it stays visible while you edit and run (see BoardPanel). On wide screens it sits in its own sticky column. -->
+			<BoardPanel map={session.map} vm={session.vm} lastEvent={session.lastEvent} pinned>
 				<p class="sr-only" role="status" aria-live="polite" data-testid="result-live">{resultText}</p>
-			</section>
+			</BoardPanel>
 
 			<section aria-label="Program" class="min-w-0 space-y-3 sm:space-y-4">
 				<!-- On phones the status pill and the stats share one wrapped line: the four stat cards cost ~90px of height there. -->
@@ -426,26 +418,28 @@
 					</p>
 				{/if}
 
-				<div class="rounded-xl border border-indigo-200 bg-white p-3 space-y-3">
-					<RunControls
-						{playing}
-						finished={terminal}
-						busy={busy || !canPlay}
-						{canReset}
-						empty={emptyMain}
-						{canStepBack}
-						bind:speedMs
-						onrun={run}
-						onpause={pause}
-						onstep={stepOnce}
-						onstepback={stepBack}
-						onspeed={changeSpeed}
-						onreset={reset}
-					/>
-					{#if playing}
-						<p class="text-xs text-slate-600">Editing is locked while the program runs. Pause to edit.</p>
-					{/if}
-				</div>
+				{#if canPlay}
+					<div class="rounded-xl border border-indigo-200 bg-white p-3 space-y-3">
+						<RunControls
+							{playing}
+							finished={terminal}
+							{busy}
+							{canReset}
+							empty={emptyMain}
+							{canStepBack}
+							bind:speedMs
+							onrun={run}
+							onpause={pause}
+							onstep={stepOnce}
+							onstepback={stepBack}
+							onspeed={changeSpeed}
+							onreset={reset}
+						/>
+						{#if playing}
+							<p class="text-xs text-slate-600">Editing is locked while the program runs. Pause to edit.</p>
+						{/if}
+					</div>
+				{/if}
 
 				{#if draft}
 					<div class="rounded-xl border border-indigo-200 bg-white p-3 space-y-3">
