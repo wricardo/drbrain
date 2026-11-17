@@ -27,7 +27,7 @@
 		empty?: boolean;
 		/** The robot has taken at least one step and the program is saved, so one step can be taken back. */
 		canStepBack?: boolean;
-		/** Milliseconds per step; changed from the presets, locked while running. */
+		/** Milliseconds per step; changed with the presets, also while a run is playing. */
 		speedMs?: number;
 		onrun: () => void;
 		onpause: () => void;
@@ -140,6 +140,9 @@
 						: 'text-indigo-900 hover:bg-indigo-50 disabled:hover:bg-transparent'}"
 					disabled={busy}
 					onclick={() => {
+						// Clicking the active preset is a no-op: while playing it would pause and
+						// restart the run for a speed that is already set.
+						if (preset?.id === p.id) return;
 						speedMs = p.ms;
 						onspeed(p.ms);
 					}}>{p.label}</button
