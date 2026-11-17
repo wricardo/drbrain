@@ -68,8 +68,23 @@ describe('RunControls', () => {
 		expect(screen.getByTestId('speed-normal').getAttribute('aria-checked')).toBe('false');
 	});
 
-	it('speed is locked while running', () => {
-		setup({ playing: true });
+	it('speed can be changed while running, and reports the new speed', async () => {
+		const onspeed = vi.fn();
+		setup({ playing: true, onspeed });
+		expect((screen.getByTestId('speed-fast') as HTMLButtonElement).disabled).toBe(false);
+		await fireEvent.click(screen.getByTestId('speed-fast'));
+		expect(onspeed).toHaveBeenCalledWith(200);
+	});
+
+	it('clicking the preset that is already selected reports nothing', async () => {
+		const onspeed = vi.fn();
+		setup({ playing: true, speedMs: 200, onspeed });
+		await fireEvent.click(screen.getByTestId('speed-fast'));
+		expect(onspeed).not.toHaveBeenCalled();
+	});
+
+	it('speed is held while a request is in flight', () => {
+		setup({ busy: true });
 		expect((screen.getByTestId('speed-fast') as HTMLButtonElement).disabled).toBe(true);
 	});
 });
