@@ -429,7 +429,7 @@ type Mutation {
   "Attaches guest sessions of this browser to the signed-in account; each needs its owner token (up to 100 per call)."
   claimSessions(claims: [SessionClaimInput!]!): [SessionClaimResult!]!
 
-  "Anyone may create and validate a map."
+  "Creating a map needs a signed-in player (UNAUTHENTICATED otherwise); validateMap is open to everyone."
   createMap(map: MapInput!): Map!
   validateMap(map: MapInput!): MapValidationResult!
 

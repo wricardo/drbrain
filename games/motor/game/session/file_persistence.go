@@ -72,30 +72,11 @@ func (fp *FilePersistence) Save(s *service.Session) (err error) {
 	if s == nil {
 		return fmt.Errorf("save session: nil session")
 	}
-	if !ValidID(s.ID) {
-		return ErrInvalidID
+	ps, err := persistedFrom(s)
+	if err != nil {
+		return err
 	}
-	if s.Map == nil {
-		return fmt.Errorf("save session %s: missing map snapshot", s.ID)
-	}
-	data, err := json.Marshal(PersistedSession{
-		SchemaVersion: SchemaVersion,
-		ID:            s.ID,
-		DisplayName:   s.DisplayName,
-		Map:           s.Map.Config(),
-		Program:       s.Program,
-		VM:            s.VM,
-		SpeedMs:       s.SpeedMs,
-		Seq:           s.Seq,
-		CreatedAt:     s.CreatedAt,
-		LastActionAt:  s.LastActionAt,
-		Attempts:      s.Attempts,
-		BestSteps:     s.BestSteps,
-		FewestSlots:   s.FewestSlots,
-		FewestSteps:   s.FewestSteps,
-		AccountID:     s.AccountID,
-		OwnerHash:     s.OwnerHash,
-	})
+	data, err := json.Marshal(ps)
 	if err != nil {
 		return fmt.Errorf("marshal session %s: %w", s.ID, err)
 	}
@@ -147,6 +128,45 @@ func (fp *FilePersistence) Load(id string) (*service.Session, error) {
 	if err := json.Unmarshal(raw, &ps); err != nil {
 		return nil, fmt.Errorf("decode session %s: %w", id, err)
 	}
+	return restoreSession(id, ps)
+}
+
+// persistedFrom is the storable form of a snapshot, shared by every backend.
+func persistedFrom(s *service.Session) (PersistedSession, error) {
+	if s == nil {
+		return PersistedSession{}, fmt.Errorf("save session: nil session")
+	}
+	if !ValidID(s.ID) {
+		return PersistedSession{}, ErrInvalidID
+	}
+	if s.Map == nil {
+		return PersistedSession{}, fmt.Errorf("save session %s: missing map snapshot", s.ID)
+	}
+	return PersistedSession{
+		SchemaVersion: SchemaVersion,
+		ID:            s.ID,
+		DisplayName:   s.DisplayName,
+		Map:           s.Map.Config(),
+		Program:       s.Program,
+		VM:            s.VM,
+		SpeedMs:       s.SpeedMs,
+		Seq:           s.Seq,
+		CreatedAt:     s.CreatedAt,
+		LastActionAt:  s.LastActionAt,
+		Attempts:      s.Attempts,
+		BestSteps:     s.BestSteps,
+		FewestSlots:   s.FewestSlots,
+		FewestSteps:   s.FewestSteps,
+		AccountID:     s.AccountID,
+		OwnerHash:     s.OwnerHash,
+	}, nil
+}
+
+// restoreSession validates a stored session against its own map snapshot and
+// turns it back into a live-shaped session (never Playing). Every backend runs
+// its rows through here, so a hand-edited or corrupt record is rejected the
+// same way whether it came from a file or the database.
+func restoreSession(id string, ps PersistedSession) (*service.Session, error) {
 	if ps.SchemaVersion != SchemaVersion {
 		return nil, fmt.Errorf("session %s: unsupported schema_version %d (want %d)", id, ps.SchemaVersion, SchemaVersion)
 	}

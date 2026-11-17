@@ -28,8 +28,9 @@
 		SET_PROGRAM_MUTATION,
 		STEP_MUTATION
 	} from '$lib/queries';
-	import { ownerTokenFor, rememberSession, statusLine } from '$lib/sessions';
+	import { newSessionName, ownerTokenFor, rememberSession, statusLine } from '$lib/sessions';
 	import { serialRunner } from '$lib/serialRunner';
+	import { account } from '$lib/stores/account';
 	import { replayTo, stepBackTarget } from '$lib/stepBack';
 	import { initialSpeed, saveSpeed, savedSpeed } from '$lib/speed';
 	import { blockedCallNotice } from '$lib/recursion';
@@ -255,12 +256,16 @@
 			return s;
 		});
 
-	/** Starts a session on the next map (standard order) with the same player name. */
+	/**
+	 * Starts a session on the next map. The name is not inherited from this run: a guest keeps the
+	 * name they typed (the saved one), and a signed-in player sends none so the server uses the
+	 * account instead of an earlier guest alias.
+	 */
 	const playNext = () =>
 		act(async () => {
 			if (!next || !session) return;
 			const data = await unwrap<{ createSession: Session }>(
-				client.mutation(CREATE_SESSION_MUTATION, { mapID: next.id, displayName: session.displayName || null })
+				client.mutation(CREATE_SESSION_MUTATION, { mapID: next.id, displayName: newSessionName(!!$account.me) })
 			);
 			rememberSession(data.createSession.id, data.createSession.displayName, data.createSession.ownerToken);
 			// Full navigation: this page keeps one session store for its lifetime.

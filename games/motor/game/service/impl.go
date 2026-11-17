@@ -37,6 +37,10 @@ type Options struct {
 	// SessionTTL: on New, sessions whose LastActionAt is older than this are
 	// deleted. 0 (default) disables sweeping.
 	SessionTTL time.Duration
+	// SweepInterval, when > 0 together with SessionTTL, repeats that sweep (and
+	// drops expired logins) on this period for as long as the service runs, so
+	// idle sessions expire without a restart. Shutdown stops it.
+	SweepInterval time.Duration
 	// MaxDisplayName is the maximum display-name length in characters
 	// (default DefaultMaxDisplayName).
 	MaxDisplayName int
@@ -73,6 +77,9 @@ type gameService struct {
 	rmu     sync.Mutex // guards runners and closed
 	runners map[string]*runner
 	closed  bool
+
+	sweepStop chan struct{} // closed by Shutdown; nil without a periodic sweep
+	sweepDone chan struct{}
 }
 
 // New creates the game service. bc may be nil (no subscribers). If
@@ -85,8 +92,43 @@ func New(maps MapStore, sessions SessionStore, bc Broadcaster, opts Options) Gam
 	svc := &gameService{maps: maps, sessions: sessions, bc: bc, opts: opts, runners: make(map[string]*runner)}
 	if opts.SessionTTL > 0 {
 		svc.sweepExpired(time.Now().Add(-opts.SessionTTL))
+		if opts.SweepInterval > 0 {
+			svc.sweepStop = make(chan struct{})
+			svc.sweepDone = make(chan struct{})
+			go svc.sweepLoop(opts.SweepInterval)
+		}
 	}
 	return svc
+}
+
+// loginSweeper is implemented by account stores that keep logins in a database
+// and so need expired ones removed (the file store drops them when it starts).
+type loginSweeper interface {
+	SweepLogins(now time.Time) (int, error)
+}
+
+// sweepLoop removes idle sessions and expired logins every interval until
+// Shutdown. Sessions go through DeleteSession, so a runner is stopped and the
+// stored copy is removed with the live one.
+func (svc *gameService) sweepLoop(interval time.Duration) {
+	defer close(svc.sweepDone)
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	for {
+		select {
+		case <-svc.sweepStop:
+			return
+		case <-t.C:
+			svc.sweepExpired(time.Now().Add(-svc.opts.SessionTTL))
+			if sw, ok := svc.opts.Accounts.(loginSweeper); ok {
+				if n, err := sw.SweepLogins(time.Now()); err != nil {
+					log.Printf("service: sweep logins: %v", err)
+				} else if n > 0 {
+					log.Printf("service: removed %d expired logins", n)
+				}
+			}
+		}
+	}
 }
 
 // sweepExpired deletes sessions idle since before cutoff.
@@ -516,6 +558,9 @@ func (svc *gameService) DeleteMap(id string) error { return svc.maps.Delete(id) 
 // sessions. It is idempotent.
 func (svc *gameService) Shutdown() {
 	svc.rmu.Lock()
+	if svc.sweepStop != nil && !svc.closed {
+		close(svc.sweepStop)
+	}
 	svc.closed = true
 	rs := make([]*runner, 0, len(svc.runners))
 	for id, r := range svc.runners {
@@ -529,6 +574,9 @@ func (svc *gameService) Shutdown() {
 	}
 	for _, r := range rs {
 		r.wait()
+	}
+	if svc.sweepDone != nil {
+		<-svc.sweepDone // no sweep may delete a session while it is being persisted below
 	}
 
 	for _, s := range svc.sessions.List() {

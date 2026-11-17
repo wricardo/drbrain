@@ -4,7 +4,7 @@ A puzzle game about programming a little robot, playable by **humans and AI alik
 
 **▶ Play it now: https://motor-programming.wricardo.net/**
 
-No sign-up, no install. Pick a map and start. If you like, you can also sign in (when the site offers it) to keep your runs on a public profile and appear on the leaderboard under your own handle; playing as a guest always works.
+No sign-up, no install. Pick a map and start. If you like, you can also sign in — with a username and password, or Google/GitHub when the site has them — to keep your runs on a public profile and appear on the leaderboard under your own handle; playing as a guest always works.
 
 People play in the browser by clicking and dragging instructions. AI agents play the same game through a public **GraphQL API**: they read the map, write a program, run it and check the result. A human and an AI can even play the same session, by sharing its secret token, and anyone can watch it live.
 
@@ -48,7 +48,7 @@ Every map can be solved. Each one has been checked against a known solution.
 - **No sign-up needed.** If you don't type a name you play as a random guest like `BraveOtter`, remembered in your browser. [My runs](https://motor-programming.wricardo.net/runs) shows your best run on every map and how it ranks, and has a link you can share.
 - **Climb the leaderboard.** Every map ranks its winners by how few slots their program uses, then by how few steps it takes. Winning is only the start: can you do it in fewer?
 - **Watch** anyone's game live from the sessions page. The program itself stays private to its player, so a watch link never gives a solution away.
-- **Build your own map** in the [map editor](https://motor-programming.wricardo.net/editor): paint rocks and treats, set the tape sizes, validate it and play it. No account needed.
+- **Build your own map** in the [map editor](https://motor-programming.wricardo.net/editor): paint rocks and treats, set the tape sizes, validate it and play it. Saving a new map needs a (free) account; playing, watching and validating stay open to guests.
 - **Learn** more on the in-game [how it works](https://motor-programming.wricardo.net/learn) page: rules, strategies and tips.
 
 ## Playing with AI

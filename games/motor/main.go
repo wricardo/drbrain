@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
 	"github.com/wricardo/drbrain-motor-programming/api"
 	"github.com/wricardo/drbrain-motor-programming/auth"
@@ -25,6 +26,7 @@ import (
 	"github.com/wricardo/drbrain-motor-programming/game/config"
 	"github.com/wricardo/drbrain-motor-programming/game/service"
 	"github.com/wricardo/drbrain-motor-programming/game/session"
+	"github.com/wricardo/drbrain-motor-programming/internal/pgdb"
 	"github.com/wricardo/drbrain-motor-programming/transport/websocket"
 )
 
@@ -50,6 +52,7 @@ var (
 	sessionsDir  = flag.String("sessions-dir", "sessions", "Directory for persisted sessions")
 	accountsDir  = flag.String("accounts-dir", "accounts", "Directory for player accounts and logins (survives deploys); used unless AUTH_PASSWORD=false and no OAuth provider is configured")
 	solutionsDir = flag.String("solutions-dir", "solutions", "Directory containing reference solutions (used by `just validate`; never served)")
+	databaseURL  = flag.String("database-url", "", "PostgreSQL connection string for sessions, accounts and player maps (default $DATABASE_URL; when neither is set they are JSON files in the directories above)")
 	debug        = flag.Bool("debug", false, "Enable debug logging")
 	publicURL    = flag.String("public-url", "", "Public base URL rendered into /llms.txt (defaults to the request host)")
 )
@@ -124,17 +127,54 @@ func main() {
 
 // run wires the application and blocks until SIGINT/SIGTERM.
 func run() error {
-	maps, err := config.NewManager(config.Options{
+	// Storage: with a database URL, sessions, accounts, logins and player maps
+	// live in PostgreSQL; without one they stay JSON files (the rollback path).
+	// Shipped maps are always files. A configured but unreachable database is a
+	// startup error, never a silent fallback to files.
+	dbURL := strings.TrimSpace(*databaseURL)
+	if dbURL == "" {
+		dbURL = strings.TrimSpace(os.Getenv("DATABASE_URL"))
+	}
+	var pool *pgxpool.Pool
+	if dbURL != "" {
+		var err error
+		pool, err = pgdb.Open(context.Background(), dbURL)
+		if err != nil {
+			return fmt.Errorf("database: %w", err)
+		}
+		// Closed after svc.Shutdown below has persisted every session (defers run last-in first-out).
+		defer pool.Close()
+		log.Println("storage: PostgreSQL (sessions, accounts, player maps); shipped maps from " + *mapsDir)
+	}
+
+	// What the log lines call the storage: the same sentence names it for the
+	// listener and the sign-in banner, so an operator can tell the two modes apart.
+	accountsWhere := "files in " + *accountsDir
+	storageWhere := fmt.Sprintf("files (sessions %s, accounts %s, player maps %s)", *sessionsDir, *accountsDir, *userMapsDir)
+	if pool != nil {
+		accountsWhere, storageWhere = "PostgreSQL", "PostgreSQL"
+	}
+
+	mapOpts := config.Options{
 		Dir:         *mapsDir,
 		UserDir:     *userMapsDir,
 		MaxUserMaps: envInt("MAX_USER_MAPS", defaultMaxUserMaps),
-	})
+	}
+	var persistence session.SessionPersistence
+	if pool != nil {
+		mapOpts.UserDir = ""
+		mapOpts.UserStore = config.NewPostgresUserMaps(pool)
+		persistence = session.NewPostgresPersistence(pool)
+	} else {
+		fp, err := session.NewFilePersistence(*sessionsDir)
+		if err != nil {
+			return fmt.Errorf("session persistence: %w", err)
+		}
+		persistence = fp
+	}
+	maps, err := config.NewManager(mapOpts)
 	if err != nil {
 		return fmt.Errorf("load maps: %w", err)
-	}
-	persistence, err := session.NewFilePersistence(*sessionsDir)
-	if err != nil {
-		return fmt.Errorf("session persistence: %w", err)
 	}
 	sessions := session.NewManager(persistence, envInt("MAX_SESSIONS", defaultMaxSessions))
 	if err := sessions.LoadAll(); err != nil {
@@ -151,17 +191,24 @@ func run() error {
 		return fmt.Errorf("sign-in configuration: %w", err)
 	}
 	passwordSignIn := auth.PasswordFromEnv(os.Getenv)
-	var accounts *account.Store
-	if len(providers) > 0 || passwordSignIn || dirExists(*accountsDir) {
-		accounts, err = account.Open(*accountsDir, nil)
+	var accounts service.AccountStore
+	switch {
+	case pool != nil:
+		if len(providers) > 0 || passwordSignIn {
+			accounts = account.NewPostgresStore(pool)
+		}
+	case len(providers) > 0 || passwordSignIn || dirExists(*accountsDir):
+		fileAccounts, err := account.Open(*accountsDir, nil)
 		if err != nil {
 			return fmt.Errorf("accounts: %w", err)
 		}
+		accounts = fileAccounts
 	}
 
 	hub := websocket.NewHub()
 	svcOpts := service.Options{
 		SessionTTL:     envDuration("SESSION_TTL", 7*24*time.Hour),
+		SweepInterval:  envDuration("SESSION_SWEEP_INTERVAL", time.Hour),
 		MaxAccounts:    envInt("MAX_ACCOUNTS", defaultMaxAccounts),
 		PasswordSignIn: passwordSignIn,
 	}
@@ -183,7 +230,7 @@ func run() error {
 		for i, p := range providers {
 			names[i] = p.ID()
 		}
-		log.Printf("sign-in enabled: providers=%v password=%t (accounts=%s)", names, passwordSignIn, *accountsDir)
+		log.Printf("sign-in enabled: providers=%v password=%t (accounts: %s)", names, passwordSignIn, accountsWhere)
 		if passwordSignIn && *publicURL == "" {
 			log.Printf("warning: no -public-url: sign-in requests are only accepted on localhost hosts or origins listed in ALLOWED_ORIGINS. Set -public-url to the site's base URL in production.")
 		}
@@ -218,7 +265,7 @@ func run() error {
 
 	serveErr := make(chan error, 1)
 	go func() {
-		log.Printf("listening on %s (maps=%s user-maps=%s sessions=%s solutions=%s)", addr, *mapsDir, *userMapsDir, *sessionsDir, *solutionsDir)
+		log.Printf("listening on %s (maps=%s solutions=%s storage=%s)", addr, *mapsDir, *solutionsDir, storageWhere)
 		log.Printf("GraphQL: http://%s/graphql  llms.txt: http://%s/llms.txt", addr, addr)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serveErr <- err

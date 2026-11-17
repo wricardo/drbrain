@@ -228,11 +228,14 @@ func (r *mutationResolver) ClaimSessions(ctx context.Context, claims []*model.Se
 	return out, nil
 }
 
-// CreateMap is the resolver for the createMap field. Open to everyone: the
-// caller becomes the owner of a new map and can edit or delete it afterwards.
-// Creating a map whose id already exists is INVALID_ARGUMENT, so shipped maps
-// cannot be overwritten this way.
+// CreateMap is the resolver for the createMap field. It needs a signed-in
+// player (UNAUTHENTICATED otherwise), so anonymous callers cannot fill the map
+// list. Creating a map whose id already exists is INVALID_ARGUMENT, so shipped
+// maps cannot be overwritten this way.
 func (r *mutationResolver) CreateMap(ctx context.Context, mapArg model.MapInput) (*model.Map, error) {
+	if _, err := requireViewer(ctx); err != nil {
+		return nil, err
+	}
 	m, err := r.Service.CreateMap(fromMapInput(mapArg))
 	if err != nil {
 		return nil, toGQLError(err)

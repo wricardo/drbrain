@@ -22,7 +22,8 @@
 	} from '$lib/leaderboard';
 	import { groupMaps, isOfficial, sortMaps } from '$lib/maps';
 	import { CREATE_SESSION_MUTATION, LEADERBOARD_QUERY, MAPS_QUERY } from '$lib/queries';
-	import { ownSessionIds, rememberSession, savedDisplayName } from '$lib/sessions';
+	import { newSessionName, ownSessionIds, rememberSession } from '$lib/sessions';
+	import { account } from '$lib/stores/account';
 	import { absoluteTime, relativeTime } from '$lib/time';
 	import type { GameMap, Leaderboard, LeaderboardOrder, Session } from '$lib/types';
 
@@ -94,7 +95,7 @@
 		error = null;
 		try {
 			const data = await unwrap<{ createSession: Session }>(
-				client.mutation(CREATE_SESSION_MUTATION, { mapID: map.id, displayName: savedDisplayName().trim() || null })
+				client.mutation(CREATE_SESSION_MUTATION, { mapID: map.id, displayName: newSessionName(!!$account.me) })
 			);
 			rememberSession(data.createSession.id, undefined, data.createSession.ownerToken);
 			await goto(`/play/${data.createSession.id}`);

@@ -24,8 +24,24 @@ type Options struct {
 	// UserDir holds maps created through the API. Empty means Dir is
 	// writable and nothing is read-only.
 	UserDir string
-	// MaxUserMaps caps how many maps UserDir may hold (0 = no cap).
+	// UserStore keeps the player-created maps in a database instead of UserDir.
+	// When set, UserDir is ignored: shipped maps stay files, everything else is
+	// in the store.
+	UserStore UserStore
+	// MaxUserMaps caps how many player maps may exist (0 = no cap).
 	MaxUserMaps int
+}
+
+// UserStore persists player-created maps. Manager keeps them in memory and
+// writes through, so a store only needs these three calls.
+type UserStore interface {
+	// List returns every stored map config. The Manager validates each one and
+	// skips what does not parse.
+	List() ([]engine.MapConfig, error)
+	// Put inserts or replaces the map.
+	Put(cfg engine.MapConfig) error
+	// Delete removes the map; an unknown id is not an error.
+	Delete(id string) error
 }
 
 // Manager is a file-backed service.MapStore. All maps are held in memory and
@@ -53,13 +69,46 @@ func NewManager(opts Options) (*Manager, error) {
 	if err := m.load(opts.Dir, true); err != nil {
 		return nil, err
 	}
-	if opts.UserDir != "" {
+	switch {
+	case opts.UserStore != nil:
+		if err := m.loadStore(opts.UserStore); err != nil {
+			return nil, err
+		}
+	case opts.UserDir != "":
 		if err := m.load(opts.UserDir, false); err != nil {
 			return nil, err
 		}
 	}
 	return m, nil
 }
+
+// loadStore reads the player maps from the store. A row that does not parse, or
+// whose id is taken by a shipped map, is logged and skipped, like a bad file.
+func (m *Manager) loadStore(us UserStore) error {
+	cfgs, err := us.List()
+	if err != nil {
+		return fmt.Errorf("load player maps: %w", err)
+	}
+	for _, cfg := range cfgs {
+		parsed, err := engine.NewMap(cfg)
+		if err == nil && !engine.ValidID(cfg.ID) {
+			err = fmt.Errorf("invalid map id")
+		}
+		if err != nil {
+			log.Printf("config: skipping stored player map %q: %v", cfg.ID, err)
+			continue
+		}
+		if _, clash := m.maps[parsed.ID]; clash {
+			log.Printf("config: skipping stored player map %q: id is taken by a shipped map", parsed.ID)
+			continue
+		}
+		m.maps[parsed.ID] = parsed
+	}
+	return nil
+}
+
+// usesStore reports whether player maps live in a UserStore.
+func (m *Manager) usesStore() bool { return m.opts.UserStore != nil }
 
 // load reads every *.json in dir into m. strict reports the first bad file as
 // an error and marks the maps read-only (shipped maps); otherwise a bad file is
@@ -180,6 +229,17 @@ func (m *Manager) store(cfg engine.MapConfig, createOnly bool) (*engine.Map, err
 	if _, exists := m.maps[parsed.ID]; createOnly && exists {
 		return nil, service.Errorf(service.CodeInvalidArgument, "map %q already exists", parsed.ID)
 	}
+	if m.usesStore() && !m.builtin[parsed.ID] {
+		// A player map: the database, never a file.
+		if createOnly && m.opts.MaxUserMaps > 0 && m.userCount() >= m.opts.MaxUserMaps {
+			return nil, service.Errorf(service.CodeLimit, "%d player maps already exist; delete one before creating another", m.opts.MaxUserMaps)
+		}
+		if err := m.opts.UserStore.Put(parsed.Config()); err != nil {
+			return nil, fmt.Errorf("save map: %w", err)
+		}
+		m.maps[parsed.ID] = parsed
+		return parsed.Clone(), nil
+	}
 	// Editing a shipped map keeps it shipped; everything new goes to UserDir.
 	dir := m.opts.UserDir
 	if dir == "" || m.builtin[parsed.ID] {
@@ -212,6 +272,13 @@ func (m *Manager) Delete(id string) error {
 	defer m.mu.Unlock()
 	if _, ok := m.maps[id]; !ok {
 		return service.Errorf(service.CodeNotFound, "map %q not found", id)
+	}
+	if m.usesStore() && !m.builtin[id] {
+		if err := m.opts.UserStore.Delete(id); err != nil {
+			return fmt.Errorf("delete map: %w", err)
+		}
+		delete(m.maps, id)
+		return nil
 	}
 	dir := m.opts.Dir
 	if m.opts.UserDir != "" && !m.builtin[id] {
