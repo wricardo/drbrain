@@ -108,6 +108,17 @@ export function runTitle(mapName: string | undefined, s: { playing: boolean; sta
 	return mapName;
 }
 
+/**
+ * The tab title for the spectator page. It says "Watching" while there is nothing to report, and
+ * the run state once there is one, so a finished run does not read "✓ Won · Watching Belt Run".
+ */
+export function watchTitle(mapName: string | undefined, s: { playing: boolean; status: Status } | null): string | undefined {
+	if (!mapName) return mapName;
+	if (s && (s.status === 'WON' || s.status === 'LOST')) return runTitle(mapName, s);
+	if (s?.playing) return `▶ Watching ${mapName}`;
+	return `Watching ${mapName}`;
+}
+
 const LAST_SESSION_KEY = 'drbrain-motor-programming.lastSession';
 
 const OWN_SESSIONS_KEY = 'drbrain-motor-programming.ownSessions';

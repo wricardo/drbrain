@@ -15,7 +15,8 @@ import {
 	statusGroup,
 	runTitle,
 	statusLine,
-	statusText
+	statusText,
+	watchTitle
 } from './sessions';
 import type { SessionSummary } from './types';
 
@@ -123,6 +124,20 @@ describe('runTitle', () => {
 		expect(runTitle('Belt Run', { playing: true, status: 'WON' })).toBe('✓ Won · Belt Run');
 		expect(runTitle('Belt Run', null)).toBe('Belt Run');
 		expect(runTitle(undefined, { playing: true, status: 'RUNNING' })).toBeUndefined();
+	});
+});
+
+describe('watchTitle', () => {
+	it('says Watching while idle or playing, and the run state once it ends', () => {
+		expect(watchTitle('Belt Run', { playing: false, status: 'READY' })).toBe('Watching Belt Run');
+		expect(watchTitle('Belt Run', { playing: true, status: 'RUNNING' })).toBe('▶ Watching Belt Run');
+		expect(watchTitle('Belt Run', { playing: false, status: 'WON' })).toBe('✓ Won · Belt Run');
+		expect(watchTitle('Belt Run', { playing: false, status: 'LOST' })).toBe('✗ Lost · Belt Run');
+	});
+
+	it('tolerates a missing name or session', () => {
+		expect(watchTitle(undefined, { playing: true, status: 'RUNNING' })).toBeUndefined();
+		expect(watchTitle('Belt Run', null)).toBe('Watching Belt Run');
 	});
 });
 
