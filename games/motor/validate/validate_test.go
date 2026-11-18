@@ -258,6 +258,7 @@ func TestNestingMapsAreProvablyNeeded(t *testing.T) {
 		// ceiling comes purely from the tape sizes.
 		{"grand_star_free", 110, 1, 44},
 		{"crown", 162, 1, 96},      // spike dead ends: one nesting level runs at most 8 x 12
+		{"crown_free", 104, 1, 72}, // 6-slot main + meta wrapper: 32 actions of slack, not 8
 		{"clover", 89, 1, 56},      // four loops: one nesting level runs at most 7 x 8
 		{"zipper", 114, 1, 96},     // seven teeth: one nesting level runs at most 8 x 12
 		{"cross", 70, 1, 40},       // four arms: one nesting level runs at most 8 x 5
