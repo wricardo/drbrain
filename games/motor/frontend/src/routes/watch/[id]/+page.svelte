@@ -8,6 +8,7 @@
 	import ConnectionBadge from '$lib/components/ConnectionBadge.svelte';
 	import RunControls from '$lib/components/RunControls.svelte';
 	import Stats from '$lib/components/Stats.svelte';
+	import Tape from '$lib/components/Tape.svelte';
 	import TileLegend from '$lib/components/TileLegend.svelte';
 	import { describeError, type DescribedError } from '$lib/errors';
 	import { PAUSE_MUTATION, RESET_MUTATION, RUN_MUTATION, STEP_MUTATION } from '$lib/queries';
@@ -20,14 +21,12 @@
 
 	const sessionId = $page.params.id ?? '';
 	const client = getContextClient();
-	// No owner token here: the spectator view never receives the program, it only drives playback.
-	const store = createSessionStore(createSessionSource(client), sessionId);
-	onDestroy(() => store.destroy());
-
-	// Watching and driving playback (run, step, pause, reset) are open to everyone;
-	// editing the program is not, and this page never receives it. Only a browser
-	// that created the session can offer the Take over link.
+	// This browser's owner token, if it created the session. A signed-in owner needs no
+	// token (the login cookie proves it server-side); everyone else still gets a program-less
+	// snapshot, so the watch link keeps driving playback without revealing a solution.
 	const ownerToken = ownerTokenFor(sessionId);
+	const store = createSessionStore(createSessionSource(client, ownerToken), sessionId);
+	onDestroy(() => store.destroy());
 
 	const session = $derived($store.session);
 	const status = $derived(session?.vm.status ?? 'READY');
@@ -35,6 +34,10 @@
 	const terminal = $derived(status === 'WON' || status === 'LOST');
 	const canReset = $derived(playing || (!!session && (terminal || session.vm.steps > 0)));
 	const callNotice = $derived(session ? blockedCallNotice(session.lastEvent) : null);
+	// The server includes the program only for whoever may edit the run (this browser's owner
+	// token, or the signed-in account that owns it), so its presence is the exact "this is my
+	// run" signal: it drives both the read-only tape and the Take over link.
+	const isOwner = $derived(!!session?.program);
 
 	let speedMs = $state(500);
 	let busy = $state(false);
@@ -97,7 +100,7 @@
 		<div class="flex flex-wrap items-center justify-between gap-2">
 			<div>
 				<h1 class="text-2xl font-semibold text-indigo-950">Watching: {session.map.name}</h1>
-				<p class="text-sm text-slate-600">{session.displayName || 'Anonymous'} · spectator view</p>
+				<p class="text-sm text-slate-600">{session.displayName || 'Anonymous'} · {isOwner ? 'owner view' : 'spectator view'}</p>
 			</div>
 			<ConnectionBadge state={$store.connection} />
 		</div>
@@ -134,6 +137,18 @@
 						{callNotice}
 					</p>
 				{/if}
+				{#if session.program}
+					<div class="rounded-xl border border-indigo-200 bg-white p-3 space-y-3" data-testid="watch-program">
+						<h2 class="text-xs font-semibold uppercase tracking-widest text-indigo-900">Program</h2>
+						<Tape
+							program={session.program}
+							disabled
+							callStack={session.vm.callStack}
+							lastEvent={session.lastEvent}
+							{status}
+						/>
+					</div>
+				{/if}
 				<div class="rounded-xl border border-indigo-200 bg-white p-3 space-y-3" data-testid="watch-controls">
 					<RunControls
 						{playing}
@@ -149,11 +164,15 @@
 						onreset={reset}
 					/>
 					<p class="text-xs text-slate-600">
-						Anyone with this link can run, step, pause and reset the robot — the program itself stays private.
+						{#if isOwner}
+							You own this run, so its program is shown above; anyone with the link can still run, step, pause and reset it.
+						{:else}
+							Anyone with this link can run, step, pause and reset the robot — the program itself stays private.
+						{/if}
 					</p>
 				</div>
 				<div class="lg:hidden"><TileLegend map={session.map} /></div>
-				{#if ownerToken}
+				{#if isOwner}
 					<a href="/play/{session.id}" class="inline-block rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700" data-testid="take-over">Take over</a>
 				{/if}
 			</section>
