@@ -1,18 +1,18 @@
 {
   "id": "mountain_range",
   "name": "Recursion 4 - Mountain Range",
-  "description": "A ridge of five peaks. Recurse one up-and-over step: the robot climbs a peak, then drops back to the valley.",
+  "description": "A ridge of five peaks with a one-slot main: the only instruction is CALL_SUB_1, so without recursion the 9-slot tape can execute 9 actions while the route needs 12.",
   "difficulty": "medium",
   "layout": [
     "..........",
     ".*.*.*.*.*",
     ">........."
   ],
-  "main_tape_length": 3,
+  "main_tape_length": 1,
   "sub_tape_lengths": [
     9
   ],
-  "max_steps": 50,
+  "max_steps": 40,
   "max_call_depth": 7,
   "allow_recursion": true
 }

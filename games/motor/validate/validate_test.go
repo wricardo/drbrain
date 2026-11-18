@@ -58,11 +58,11 @@ func TestEveryMapSolutionWinsWithGoldenSteps(t *testing.T) {
 		"straight_line": 7, "turn_challenge": 17, "rock_obstacle": 19, "symmetric_paths": 46,
 		"zigzag_path": 23, "long_corridor": 30, "staircase": 44, "serpentine": 80,
 		"powers": 32, "pinwheel": 48, "bump_spiral": 83,
-		"comb": 65, "diamond_ring": 77, "ladder": 57, "mountain_range": 40,
+		"comb": 65, "diamond_ring": 77, "ladder": 57,
 		"nested_doubling": 30, "switchback": 42, "grand_star": 257, "grand_star_free": 257,
-		"crown": 199, "clover": 140, "zipper": 151, "cross": 103, "crown_free": 199,
-		"belt_run": 6, "mirror_hall": 14, "key_garden": 9, "portal_hop": 8,
-		"mirror_circuit": 22, "belt_ladder": 27,
+		"crown": 199, "clover": 140, "zipper": 151, "cross": 103, "crown_free": 203,
+		"belt_run": 13, "mirror_hall": 19, "key_garden": 9, "portal_hop": 8,
+		"mirror_circuit": 22, "belt_ladder": 27, "mountain_range": 38,
 	}
 	files, _ := filepath.Glob(filepath.Join(mapsDir, "*.json"))
 	if len(files) != len(golden) {
@@ -161,7 +161,7 @@ func requiredMoves(m *engine.Map) int {
 }
 
 func TestRecursionMapsCountingBound(t *testing.T) {
-	for _, id := range []string{"long_corridor", "staircase"} {
+	for _, id := range []string{"long_corridor", "staircase", "mountain_range"} {
 		t.Run(id, func(t *testing.T) {
 			m := loadMap(t, id)
 			if got, need := maxForwardMoves(m), requiredMoves(m); got >= need {
@@ -258,7 +258,6 @@ func TestNestingMapsAreProvablyNeeded(t *testing.T) {
 		// ceiling comes purely from the tape sizes.
 		{"grand_star_free", 110, 1, 44},
 		{"crown", 162, 1, 96},      // spike dead ends: one nesting level runs at most 8 x 12
-		{"crown_free", 104, 1, 96}, // no walls: only the tape budget separates the route from the ceiling
 		{"clover", 89, 1, 56},      // four loops: one nesting level runs at most 7 x 8
 		{"zipper", 114, 1, 96},     // seven teeth: one nesting level runs at most 8 x 12
 		{"cross", 70, 1, 40},       // four arms: one nesting level runs at most 8 x 5

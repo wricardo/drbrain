@@ -36,9 +36,9 @@ func TestTerrainMapsNeedTheirTiles(t *testing.T) {
 		need int // instructions a tile-free route needs at minimum
 	}{
 		{"belt_run", func(m *engine.Map) bool { return len(m.Conveyors) > 0 },
-			"a plain walk needs 11 MOVEs", 11},
+			"belts halve the top run; tile-free the route is 16 actions", 16},
 		{"mirror_hall", func(m *engine.Map) bool { return len(m.Mirrors) > 0 },
-			"turning by hand adds two TURN slots", 16},
+			"turning by hand adds four TURN slots", 23},
 		{"key_garden", func(m *engine.Map) bool { return len(m.Keys) > 0 && len(m.Doors) > 0 },
 			"the door blocks until the key is taken", 0},
 		{"portal_hop", func(m *engine.Map) bool { return len(m.Portals) == 2 },
@@ -57,6 +57,48 @@ func TestTerrainMapsNeedTheirTiles(t *testing.T) {
 				t.Fatalf("tape has %d slots, tile-free route needs %d: the map does not force the tile", m.TotalSlots(), c.need)
 			}
 		})
+	}
+}
+
+// TestBeltRunStraightRunStalls guards Terrain 1's trick: the upper belt hands
+// the robot to belts pointing back, so a program of nothing but MOVEs oscillates
+// between two cells and never reaches the treat.
+func TestBeltRunStraightRunStalls(t *testing.T) {
+	m := loadTerrainMap(t, "belt_run")
+	main := make([]engine.Instruction, m.MainTapeLength)
+	for i := range main {
+		main[i] = engine.MoveForward
+	}
+	p := engine.Program{Main: main}
+	st := engine.Run(m, p)
+	if st.Status == engine.StatusWon {
+		t.Fatalf("a straight run of MOVEs won in %d steps: the belt never sends the robot back", st.Steps)
+	}
+	if st.TreatsLeft != len(m.Treats) {
+		t.Fatalf("straight run collected %d treats, want 0: it should not get near them", len(m.Treats)-st.TreatsLeft)
+	}
+	if end := st.Visited[len(st.Visited)-1]; end.Y != 0 {
+		t.Fatalf("straight run ended at %v, want it stuck on the belt row", end)
+	}
+}
+
+// TestMirrorHallForcesMirrors guards Terrain 2: the route has four corners and
+// the tape has exactly the MOVEs, so every TURN a tile-free program pays pushes
+// it over the slot count.
+func TestMirrorHallForcesMirrors(t *testing.T) {
+	m := loadTerrainMap(t, "mirror_hall")
+	if res := Check(m.Config()); !res.Valid {
+		t.Fatalf("map is not valid: %v", res.Issues)
+	}
+	if len(m.Mirrors) != 4 {
+		t.Fatalf("mirrors = %d, want 4 (one per corner)", len(m.Mirrors))
+	}
+	const tileFree = 23 // 19 MOVEs along the snake + one TURN per corner
+	if got := minActions(m); got != tileFree {
+		t.Fatalf("tile-free minimum actions = %d, want %d", got, tileFree)
+	}
+	if slots := m.TotalSlots(); slots >= tileFree {
+		t.Fatalf("tape has %d slots, the tile-free route needs %d: the maps does not force the mirrors", slots, tileFree)
 	}
 }
 

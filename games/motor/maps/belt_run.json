@@ -1,16 +1,16 @@
 {
   "id": "belt_run",
   "name": "Terrain 1 - Belt Run",
-  "description": "One strip of one-way belts. A move onto a belt carries you one cell further, so half the corridor fits in the tape.",
+  "description": "One strip of one-way belts carries you to the point where the belts turn back, so a straight run of MOVEs just oscillates in place. Turn down into the bottom row and walk around instead.",
   "difficulty": "medium",
   "layout": [
-    ">RRRRRRRRRR*",
-    "############",
+    ">RRRRRR.LLL*",
+    "#######.....",
     "############"
   ],
-  "main_tape_length": 6,
+  "main_tape_length": 13,
   "sub_tape_lengths": [],
-  "max_steps": 120,
+  "max_steps": 40,
   "max_call_depth": 16,
   "allow_recursion": false
 }
