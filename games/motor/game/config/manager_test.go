@@ -151,8 +151,8 @@ func TestRepoMapsLoad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := len(m.List()); n != 28 {
-		t.Fatalf("want 28 maps, got %d", n)
+	if n := len(m.List()); n != 30 {
+		t.Fatalf("want 30 maps, got %d", n)
 	}
 }
 
