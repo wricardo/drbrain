@@ -16,6 +16,7 @@ frontend/.svelte-kit/
 
 # local run state (justfile: pid + server log)
 /.run/
+/maps-gen/
 
 # coverage / OS
 *.out

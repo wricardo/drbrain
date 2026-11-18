@@ -19,6 +19,7 @@ just db-up / just test-db                  # PostgreSQL in Docker / Go tests inc
 just dev-db                                # just dev against the compose PostgreSQL
 go test -race -run TestName ./game/engine  # single Go test
 just validate                              # maps + reference solutions (needs local solutions/)
+just mapgen 5 1                            # random solvable map + solution into maps-gen/ (scratch)
 just verify                                # gofmt, vet, lint (golangci-lint 2.15+), Go tests, UI check (skips without frontend/node_modules)
 just generate                              # gqlgen after editing graph/schema.graphqls
 just build-ui                              # build UI into static/ (committed)

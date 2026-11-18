@@ -197,6 +197,13 @@ test-db: db-up
 validate:
     go run ./cmd/validate -maps-dir maps -solutions-dir solutions
 
+# Generate a small solvable map and its reference solution into maps-gen/.
+# maps-gen/ is scratch: move a keeper into maps/ + solutions/ and add its
+# golden step count to validate/validate_test.go.
+mapgen size="5" seed="1":
+    go run ./cmd/mapgen -size {{size}} -seed {{seed}} -out maps-gen/maps/{{size}}x{{size}}_s{{seed}}.json -solution maps-gen/solutions/{{size}}x{{size}}_s{{seed}}.json
+    go run ./cmd/validate -maps-dir maps-gen/maps -solutions-dir maps-gen/solutions
+
 # gofmt every Go file.
 fmt:
     #!/usr/bin/env bash

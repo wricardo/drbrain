@@ -277,6 +277,8 @@ Only the eleven bounds asserted in `TestNestingMapsAreProvablyNeeded` (serpentin
 3. Run `just validate`: it checks structure, that every treat is reachable, and that the reference solution wins.
 4. Add its golden step count to the table in `validate/validate_test.go`.
 
+`just mapgen [size] [seed]` (`cmd/mapgen`) writes a random layout (4–32 per side; the treat count scales with the board, 3 up to 6) plus a matching reference solution into `maps-gen/` (gitignored) and validates them. The reference solution is the shortest literal run with one repeated block factored into a sub, and `main_tape_length` is set below the run length, so a program without subs cannot fit; subs hold literal instructions only (no nested calls) and `max_steps` covers the calls plus the run. A starting point, not a shipped puzzle: move a keeper into `maps/` + `solutions/` and add its golden count.
+
 Maps can also be created in `/editor` or with the `createMap` mutation by a signed-in player. Built-in maps (`maps/*.json`) can only be changed or deleted with the admin key; a new map lands in `maps-user/<id>.json` and is playable immediately.
 
 ## API for humans and AI agents
@@ -626,6 +628,7 @@ Three rules keep the set honest, because re-reading prose does not catch drift:
 just test                                        # go test -race ./...
 go test -race -run TestName ./game/engine        # one Go test
 just validate                                    # maps + reference solutions
+just mapgen 5 1                                  # random 5x5 map + solution into maps-gen/
 just lint                                        # golangci-lint (needs 2.15+, matching the Go toolchain)
 just verify                                      # gofmt, vet, lint, test
 cd frontend && npm run check && npm test
