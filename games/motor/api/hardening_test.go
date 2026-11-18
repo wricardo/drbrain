@@ -24,7 +24,7 @@ import (
 // Creating a map needs a signed-in player, and the []-vs-omitted distinction
 // for subTapeLengths must survive the whole HTTP path.
 func TestCreateMapSubTapeLengthsOverHTTP(t *testing.T) {
-	ts := newPasswordServer(t)
+	ts := newPasswordServer(t, Options{})
 	guest, signedIn := newBrowser(t, ts.URL), newBrowser(t, ts.URL)
 	if _, out := signedIn.pwSignIn(true, "map_maker", "tangerine-ladder-42", nil); firstErrCode(out) != "" {
 		t.Fatalf("sign in: %v", out)

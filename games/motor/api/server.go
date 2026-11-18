@@ -61,6 +61,12 @@ type Options struct {
 	// PublicURL overrides the base URL rendered into /llms.txt; empty derives
 	// it from the request.
 	PublicURL string
+	// AdminKey is ADMIN_API_KEY: changing or deleting a shipped map requires
+	// it as X-Admin-Key.
+	AdminKey string
+	// AllowUnauthenticatedAdmin permits those writes while AdminKey is empty
+	// (ALLOW_UNAUTHENTICATED_ADMIN; local development only).
+	AllowUnauthenticatedAdmin bool
 	// LLMSTemplate is the text/template source for /llms.txt.
 	LLMSTemplate string
 	// WSInitTimeout is how long a websocket may stay open without sending
@@ -118,6 +124,7 @@ func newGraphQLServer(svc service.GameService, hub *websocket.Hub, opts Options)
 		initTimeout = wsInitTimeout
 	}
 	resolver := graph.NewResolver(svc, hub)
+	resolver.Admin = graph.Admin{Key: opts.AdminKey, AllowUnauthenticated: opts.AllowUnauthenticatedAdmin}
 	if opts.Auth != nil {
 		resolver.Passwords = opts.Auth
 		for _, p := range opts.Auth.Providers() {

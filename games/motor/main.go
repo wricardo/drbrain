@@ -26,6 +26,7 @@ import (
 	"github.com/wricardo/drbrain-motor-programming/game/config"
 	"github.com/wricardo/drbrain-motor-programming/game/service"
 	"github.com/wricardo/drbrain-motor-programming/game/session"
+	"github.com/wricardo/drbrain-motor-programming/internal/appconfig"
 	"github.com/wricardo/drbrain-motor-programming/internal/pgdb"
 	"github.com/wricardo/drbrain-motor-programming/transport/websocket"
 )
@@ -33,12 +34,7 @@ import (
 const (
 	appName = "drbrain-motor-programming"
 
-	defaultMaxSessions = 1000
-	// defaultMaxUserMaps caps player-created maps (MAX_USER_MAPS).
-	defaultMaxUserMaps = 200
-	// defaultMaxAccounts caps player accounts (MAX_ACCOUNTS).
-	defaultMaxAccounts = service.DefaultMaxAccounts
-	shutdownTimeout    = 10 * time.Second
+	shutdownTimeout = 10 * time.Second
 )
 
 //go:embed llms.txt.tmpl
@@ -57,50 +53,6 @@ var (
 	publicURL    = flag.String("public-url", "", "Public base URL rendered into /llms.txt (defaults to the request host)")
 )
 
-// envBool reads a boolean env var. Unset returns def. It is deliberately as
-// forgiving as the auth flags (which lowercase and trim before comparing), so
-// GRAPHQL_INTROSPECTION=TRUE cannot silently mean false: an operator who
-// capitalises a flag must not turn a feature off by accident. Recognised true
-// values are true/1/yes/on; unset returns the default, anything else is false.
-func envBool(key string, def bool) bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv(key))) {
-	case "":
-		return def
-	case "true", "1", "yes", "on":
-		return true
-	}
-	return false
-}
-
-// envInt reads a positive integer env var; unset or invalid returns def.
-func envInt(key string, def int) int {
-	v := os.Getenv(key)
-	if v == "" {
-		return def
-	}
-	n, err := strconv.Atoi(v)
-	if err != nil || n <= 0 {
-		log.Printf("ignoring invalid %s=%q, using %d", key, v, def)
-		return def
-	}
-	return n
-}
-
-// envDuration reads a Go duration env var (e.g. "168h"); unset or invalid
-// returns def.
-func envDuration(key string, def time.Duration) time.Duration {
-	v := os.Getenv(key)
-	if v == "" {
-		return def
-	}
-	d, err := time.ParseDuration(v)
-	if err != nil || d < 0 {
-		log.Printf("ignoring invalid %s=%q, using %s", key, v, def)
-		return def
-	}
-	return d
-}
-
 // dirExists reports whether path is an existing directory.
 func dirExists(path string) bool {
 	info, err := os.Stat(path)
@@ -117,23 +69,27 @@ func main() {
 	}
 	flag.Parse()
 
+	cfg, err := appconfig.Load()
+	if err != nil {
+		log.Fatalf("%s: configuration: %v", appName, err)
+	}
 	if *debug {
 		log.SetFlags(log.LstdFlags | log.Lshortfile)
 	}
-	if err := run(); err != nil {
+	if err := run(cfg); err != nil {
 		log.Fatalf("%s: %v", appName, err)
 	}
 }
 
 // run wires the application and blocks until SIGINT/SIGTERM.
-func run() error {
+func run(cfg appconfig.Config) error {
 	// Storage: with a database URL, sessions, accounts, logins and player maps
 	// live in PostgreSQL; without one they stay JSON files (the rollback path).
 	// Shipped maps are always files. A configured but unreachable database is a
 	// startup error, never a silent fallback to files.
 	dbURL := strings.TrimSpace(*databaseURL)
 	if dbURL == "" {
-		dbURL = strings.TrimSpace(os.Getenv("DATABASE_URL"))
+		dbURL = cfg.DatabaseURL
 	}
 	var pool *pgxpool.Pool
 	if dbURL != "" {
@@ -158,7 +114,7 @@ func run() error {
 	mapOpts := config.Options{
 		Dir:         *mapsDir,
 		UserDir:     *userMapsDir,
-		MaxUserMaps: envInt("MAX_USER_MAPS", defaultMaxUserMaps),
+		MaxUserMaps: cfg.MaxUserMaps.Int(),
 	}
 	var persistence session.SessionPersistence
 	if pool != nil {
@@ -176,7 +132,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("load maps: %w", err)
 	}
-	sessions := session.NewManager(persistence, envInt("MAX_SESSIONS", defaultMaxSessions))
+	sessions := session.NewManager(persistence, cfg.MaxSessions.Int())
 	if err := sessions.LoadAll(); err != nil {
 		log.Printf("warning: loading persisted sessions: %v", err)
 	}
@@ -186,11 +142,17 @@ func run() error {
 	// providers are each on when both their id and secret are set. With neither,
 	// nothing below is created, no accounts/ directory is made, and the server
 	// behaves exactly as before.
-	providers, err := auth.ProvidersFromEnv(os.Getenv, *publicURL)
+	providers, err := auth.Providers(auth.ProvidersConfig{
+		GoogleID:     cfg.AuthGoogleClientID,
+		GoogleSecret: cfg.AuthGoogleClientSecret,
+		GitHubID:     cfg.AuthGitHubClientID,
+		GitHubSecret: cfg.AuthGitHubClientSecret,
+		DevFake:      cfg.AuthDevFake.Bool(),
+	}, *publicURL)
 	if err != nil {
 		return fmt.Errorf("sign-in configuration: %w", err)
 	}
-	passwordSignIn := auth.PasswordFromEnv(os.Getenv)
+	passwordSignIn := cfg.AuthPassword.Bool()
 	var accounts service.AccountStore
 	switch {
 	case pool != nil:
@@ -207,9 +169,9 @@ func run() error {
 
 	hub := websocket.NewHub()
 	svcOpts := service.Options{
-		SessionTTL:     envDuration("SESSION_TTL", 7*24*time.Hour),
-		SweepInterval:  envDuration("SESSION_SWEEP_INTERVAL", time.Hour),
-		MaxAccounts:    envInt("MAX_ACCOUNTS", defaultMaxAccounts),
+		SessionTTL:     cfg.SessionTTL.Duration(),
+		SweepInterval:  cfg.SessionSweepInterval.Duration(),
+		MaxAccounts:    cfg.MaxAccounts.Int(),
 		PasswordSignIn: passwordSignIn,
 	}
 	if accounts != nil {
@@ -220,7 +182,7 @@ func run() error {
 	var authHandler *auth.Auth
 	if len(providers) > 0 || passwordSignIn {
 		authHandler, err = auth.New(auth.Config{
-			Providers: providers, Accounts: svc, PublicURL: *publicURL, AllowedOrigins: os.Getenv("ALLOWED_ORIGINS"),
+			Providers: providers, Accounts: svc, PublicURL: *publicURL, AllowedOrigins: cfg.AllowedOrigins,
 			Password: passwordSignIn,
 		})
 		if err != nil {
@@ -236,17 +198,19 @@ func run() error {
 		}
 	}
 
-	introspection := envBool("GRAPHQL_INTROSPECTION", true)
-	playground := envBool("GRAPHQL_PLAYGROUND", true)
+	introspection := cfg.GraphQLIntrospection.Bool()
+	playground := cfg.GraphQLPlayground.Bool()
 	log.Printf("GraphQL introspection: %t, playground: %t", introspection, playground)
 
 	apiServer, err := api.NewServer(svc, hub, api.Options{
-		Introspection:  introspection,
-		Playground:     playground,
-		AllowedOrigins: os.Getenv("ALLOWED_ORIGINS"),
-		PublicURL:      *publicURL,
-		LLMSTemplate:   llmsTxtSource,
-		Auth:           authHandler,
+		Introspection:             introspection,
+		Playground:                playground,
+		AllowedOrigins:            cfg.AllowedOrigins,
+		PublicURL:                 *publicURL,
+		AdminKey:                  cfg.AdminKey,
+		AllowUnauthenticatedAdmin: cfg.AllowUnauthenticatedAdmin.Bool(),
+		LLMSTemplate:              llmsTxtSource,
+		Auth:                      authHandler,
 	})
 	if err != nil {
 		return err

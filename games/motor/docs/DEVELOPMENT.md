@@ -546,9 +546,9 @@ Call tiles cycle through `CALL_TONES` in `lib/instructions.ts` (violet, fuchsia,
 
 ## Configuration
 
-`.env` (loaded at startup; see `.env.example`):
+`.env` (loaded at startup; see `.env.example`) is read into one config struct by `internal/appconfig` (envconfig), which also owns the parsing rules and their tests. An unset variable, or one set to an empty value, keeps its default.
 
-Boolean flags are read slightly differently, so trust the table below rather than a single rule. `GRAPHQL_INTROSPECTION` and `GRAPHQL_PLAYGROUND` accept `true`, `1`, `yes` or `on` in any case (surrounding spaces ignored) and treat anything else as off, with an unset flag keeping its default. `ALLOW_UNAUTHENTICATED_ADMIN` must be exactly `true`. `AUTH_DEV_FAKE` accepts `true`, `1` or `yes` in any case. `AUTH_PASSWORD` stays on unless it is `false`, `0` or `no` — so `AUTH_PASSWORD=off` does **not** turn it off.
+Boolean flags are read slightly differently, so trust the table below rather than a single rule. `GRAPHQL_INTROSPECTION`, `GRAPHQL_PLAYGROUND` and `AUTH_DEV_FAKE` accept `true`, `1`, `yes` or `on` in any case (surrounding spaces ignored) and treat anything else as off. `ALLOW_UNAUTHENTICATED_ADMIN` must be exactly `true`. `AUTH_PASSWORD` stays on unless it is `false`, `0` or `no` — so `AUTH_PASSWORD=off` does **not** turn it off. A non-positive or malformed `MAX_*` value, or a malformed/negative duration, is logged and ignored, keeping the default.
 
 | Variable | Default | Purpose |
 |---|---|---|

@@ -12,11 +12,12 @@ Applies to `drbrain-motor-programming` (Go server + committed SvelteKit `static/
 A previously-optional gate going default-on **silently promotes every startup validation that gate triggers into a boot requirement**. Before touching the default, grep for what the gate unlocks:
 
 ```sh
-rg -n 'PasswordFromEnv|ProvidersFromEnv'        # the gate and its consumers
+rg -n 'AuthPassword|AUTH_PASSWORD' internal/appconfig   # the gate, parsed once
+rg -n 'ProvidersConfig|auth.Providers'                  # what it unlocks
 rg -n 'public-url|PublicURL' --glob '*.go'      # hard requirements it now pulls in
 ```
 
-In this repo, `AUTH_PASSWORD` being on made `ProvidersFromEnv` demand `-public-url`, which `go run .`, the `justfile` recipes and `scripts/smoke.sh` did not pass — every local run would fail to boot.
+In this repo, `AUTH_PASSWORD` being on once made the provider setup demand `-public-url`, which `go run .`, the `justfile` recipes and `scripts/smoke.sh` did not pass — every local run would fail to boot. Gates now live in `internal/appconfig`; `auth.Providers` still validates `-public-url` for redirect providers.
 
 ## Separate the requirements
 

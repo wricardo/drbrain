@@ -19,7 +19,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -291,40 +290,47 @@ func IsLocalHost(hostport string) bool {
 	return false
 }
 
-// ---- configuration from the environment ------------------------------------
+// ---- provider configuration ------------------------------------------------
 
-// ProvidersFromEnv builds the enabled providers. A provider is enabled when both
-// its client id and secret are set; one without the other is an error. publicURL
-// (the -public-url flag) is required as soon as sign-in is on at all, since OAuth
-// callbacks must be exact, registered URLs and the login cookie and same-origin
-// check key off the site's own origin. AUTH_DEV_FAKE=true adds the dev provider
-// and is refused unless publicURL is a localhost URL.
-func ProvidersFromEnv(getenv func(string) string, publicURL string) ([]Provider, error) {
-	if getenv == nil {
-		getenv = os.Getenv
-	}
+// ProvidersConfig is the provider half of the configuration (the AUTH_*
+// variables), already parsed from the environment by internal/appconfig.
+type ProvidersConfig struct {
+	// GoogleID and GoogleSecret enable Google sign-in; both or neither.
+	GoogleID, GoogleSecret string
+	// GitHubID and GitHubSecret enable GitHub sign-in; both or neither.
+	GitHubID, GitHubSecret string
+	// DevFake adds the local development provider (AUTH_DEV_FAKE).
+	DevFake bool
+}
+
+// Providers builds the enabled providers. A provider is enabled when both its
+// client id and secret are set; one without the other is an error. publicURL
+// (the -public-url flag) is required as soon as sign-in is on at all, since
+// OAuth callbacks must be exact, registered URLs and the login cookie and
+// same-origin check key off the site's own origin. The dev provider is refused
+// unless publicURL is a localhost URL.
+func Providers(cfg ProvidersConfig, publicURL string) ([]Provider, error) {
 	var out []Provider
-	pair := func(prefix string) (id, secret string, on bool, err error) {
-		id, secret = strings.TrimSpace(getenv(prefix+"_CLIENT_ID")), strings.TrimSpace(getenv(prefix+"_CLIENT_SECRET"))
+	pair := func(prefix, id, secret string) (bool, error) {
 		switch {
 		case id == "" && secret == "":
-			return "", "", false, nil
+			return false, nil
 		case id == "" || secret == "":
-			return "", "", false, fmt.Errorf("%s_CLIENT_ID and %s_CLIENT_SECRET must both be set", prefix, prefix)
+			return false, fmt.Errorf("%s_CLIENT_ID and %s_CLIENT_SECRET must both be set", prefix, prefix)
 		}
-		return id, secret, true, nil
+		return true, nil
 	}
-	if id, secret, on, err := pair("AUTH_GOOGLE"); err != nil {
+	if on, err := pair("AUTH_GOOGLE", cfg.GoogleID, cfg.GoogleSecret); err != nil {
 		return nil, err
 	} else if on {
-		out = append(out, NewGoogle(GoogleConfig{ClientID: id, ClientSecret: secret}))
+		out = append(out, NewGoogle(GoogleConfig{ClientID: cfg.GoogleID, ClientSecret: cfg.GoogleSecret}))
 	}
-	if id, secret, on, err := pair("AUTH_GITHUB"); err != nil {
+	if on, err := pair("AUTH_GITHUB", cfg.GitHubID, cfg.GitHubSecret); err != nil {
 		return nil, err
 	} else if on {
-		out = append(out, NewGitHub(GitHubConfig{ClientID: id, ClientSecret: secret}))
+		out = append(out, NewGitHub(GitHubConfig{ClientID: cfg.GitHubID, ClientSecret: cfg.GitHubSecret}))
 	}
-	if v := strings.ToLower(strings.TrimSpace(getenv("AUTH_DEV_FAKE"))); v == "true" || v == "1" || v == "yes" {
+	if cfg.DevFake {
 		u, err := ParseBaseURL(publicURL)
 		if err != nil || !IsLocalHost(u.Host) {
 			return nil, errors.New("AUTH_DEV_FAKE=true is only allowed when -public-url is a localhost URL (for example http://localhost:8000)")
@@ -337,20 +343,6 @@ func ProvidersFromEnv(getenv func(string) string, publicURL string) ([]Provider,
 		}
 	}
 	return out, nil
-}
-
-// PasswordFromEnv reports whether AUTH_PASSWORD enables username/password accounts.
-// It is on by default (unset or empty), because it needs nothing registered
-// anywhere; AUTH_PASSWORD=false (or 0/no) turns it off.
-func PasswordFromEnv(getenv func(string) string) bool {
-	if getenv == nil {
-		getenv = os.Getenv
-	}
-	switch strings.ToLower(strings.TrimSpace(getenv("AUTH_PASSWORD"))) {
-	case "false", "0", "no":
-		return false
-	}
-	return true
 }
 
 // ParseBaseURL parses an absolute http(s) base URL without path, query or user info.

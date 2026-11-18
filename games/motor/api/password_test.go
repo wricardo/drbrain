@@ -21,7 +21,7 @@ import (
 
 // newPasswordServer serves the real stack with username/password sign-in only
 // (no OAuth provider, which is what a deployment that wants no third party does).
-func newPasswordServer(t *testing.T) *httptest.Server {
+func newPasswordServer(t *testing.T, opts Options) *httptest.Server {
 	t.Helper()
 	mapsDir := t.TempDir()
 	const wide = `{"id":"wide","name":"Wide","layout":["........",">......*","........"],"main_tape_length":8,"sub_tape_lengths":[4],"max_steps":40,"max_call_depth":8}`
@@ -46,7 +46,11 @@ func newPasswordServer(t *testing.T) *httptest.Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	s, err := NewServer(svc, hub, Options{Auth: a, UIDirs: []string{filepath.Join(t.TempDir(), "missing")}})
+	opts.Auth = a
+	if opts.UIDirs == nil {
+		opts.UIDirs = []string{filepath.Join(t.TempDir(), "missing")}
+	}
+	s, err := NewServer(svc, hub, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +88,7 @@ const (
 )
 
 func TestPasswordAccountsEndToEnd(t *testing.T) {
-	ts := newPasswordServer(t)
+	ts := newPasswordServer(t, Options{})
 	alice, laptop, evil := newBrowser(t, ts.URL), newBrowser(t, ts.URL), newBrowser(t, ts.URL)
 
 	// The only way in is the password form.
@@ -191,7 +195,7 @@ func TestPasswordAccountsEndToEnd(t *testing.T) {
 // response to set a cookie on: signing in over a subscription is refused rather
 // than handing out a login the browser could never send back.
 func TestPasswordSignInRefusedOverWebsocket(t *testing.T) {
-	ts := newPasswordServer(t)
+	ts := newPasswordServer(t, Options{})
 	d := gorillaws.Dialer{Subprotocols: []string{"graphql-transport-ws"}, HandshakeTimeout: 5 * time.Second}
 	c, _, err := d.Dial("ws"+strings.TrimPrefix(ts.URL, "http")+"/graphql", nil)
 	if err != nil {

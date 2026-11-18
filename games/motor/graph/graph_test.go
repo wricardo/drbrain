@@ -134,29 +134,27 @@ func TestAdminGate(t *testing.T) {
 	cases := []struct {
 		name      string
 		adminKey  string
-		allowOpen string
+		allowOpen bool
 		ctx       context.Context
 		wantCode  string // code for writes to a shipped map
 	}{
-		{"no key configured, not opted out", "", "", ctxWithKey(""), service.CodeForbidden},
-		{"no key configured, opted out", "", "true", ctxWithKey(""), ""},
-		{"key configured, header missing", "secret", "", ctxWithKey(""), service.CodeForbidden},
-		{"key configured, wrong header", "secret", "", ctxWithKey("nope"), service.CodeForbidden},
-		{"key configured, correct header", "secret", "", ctxWithKey("secret"), ""},
-		{"key configured, no request in ctx", "secret", "", context.Background(), service.CodeForbidden},
-		{"opt-out ignored when key configured", "secret", "true", ctxWithKey("nope"), service.CodeForbidden},
-		{"key is prefix of header", "secret", "", ctxWithKey("secret-and-more"), service.CodeForbidden},
-		{"header is prefix of key", "secret", "", ctxWithKey("secre"), service.CodeForbidden},
+		{"no key configured, not opted out", "", false, ctxWithKey(""), service.CodeForbidden},
+		{"no key configured, opted out", "", true, ctxWithKey(""), ""},
+		{"key configured, header missing", "secret", false, ctxWithKey(""), service.CodeForbidden},
+		{"key configured, wrong header", "secret", false, ctxWithKey("nope"), service.CodeForbidden},
+		{"key configured, correct header", "secret", false, ctxWithKey("secret"), ""},
+		{"key configured, no request in ctx", "secret", false, context.Background(), service.CodeForbidden},
+		{"opt-out ignored when key configured", "secret", true, ctxWithKey("nope"), service.CodeForbidden},
+		{"key is prefix of header", "secret", false, ctxWithKey("secret-and-more"), service.CodeForbidden},
+		{"header is prefix of key", "secret", false, ctxWithKey("secre"), service.CodeForbidden},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("ADMIN_API_KEY", tc.adminKey)
-			t.Setenv("ALLOW_UNAUTHENTICATED_ADMIN", tc.allowOpen)
 			fs := &fakeService{
 				maps:    map[string]*engine.Map{"existing": mustMap(t, "existing"), "mine": mustMap(t, "mine")},
 				builtin: map[string]bool{"existing": true},
 			}
-			m := &mutationResolver{&Resolver{Service: fs}}
+			m := &mutationResolver{&Resolver{Service: fs, Admin: Admin{Key: tc.adminKey, AllowUnauthenticated: tc.allowOpen}}}
 
 			check := func(op string, err error) {
 				t.Helper()
@@ -217,8 +215,6 @@ func TestAdminGate(t *testing.T) {
 // stored. An existing id (including a shipped one) is a conflict, so creation
 // cannot overwrite anything.
 func TestCreateMapNeedsSignIn(t *testing.T) {
-	t.Setenv("ADMIN_API_KEY", "secret")
-	t.Setenv("ALLOW_UNAUTHENTICATED_ADMIN", "")
 	layout := testMapConfig("x").Layout
 	fs := &fakeService{maps: map[string]*engine.Map{"shipped": mustMap(t, "shipped")}, builtin: map[string]bool{"shipped": true}}
 	m := &mutationResolver{&Resolver{Service: fs}}
@@ -245,7 +241,6 @@ func TestCreateMapNeedsSignIn(t *testing.T) {
 }
 
 func TestCreateUpdateMapSemantics(t *testing.T) {
-	t.Setenv("ADMIN_API_KEY", "secret")
 	fs := &fakeService{maps: map[string]*engine.Map{"existing": mustMap(t, "existing")}}
 	m := &mutationResolver{&Resolver{Service: fs}}
 	ctx := withViewer(context.Background())

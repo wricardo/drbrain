@@ -372,35 +372,18 @@ func TestPasswordSignInWithoutPublicURLRefusesPublicHosts(t *testing.T) {
 	}
 }
 
-func TestProvidersFromEnvPassword(t *testing.T) {
-	env := func(kv ...string) func(string) string {
-		m := map[string]string{}
-		for i := 0; i+1 < len(kv); i += 2 {
-			m[kv[i]] = kv[i+1]
-		}
-		return func(k string) string { return m[k] }
+// Password sign-in needs no callback URL (it redirects nowhere), so it starts
+// without -public-url; a redirect provider still refuses to start without one.
+func TestProvidersNeedPublicURLOnlyWithRedirects(t *testing.T) {
+	if _, err := Providers(ProvidersConfig{}, ""); err != nil {
+		t.Fatalf("provider-less sign-in needs -public-url: %v", err)
 	}
-	if !PasswordFromEnv(env()) || !PasswordFromEnv(env("AUTH_PASSWORD", "")) || !PasswordFromEnv(env("AUTH_PASSWORD", "true")) {
-		t.Fatal("password sign-in is not on by default")
-	}
-	for _, v := range []string{"false", "0", "no", "FALSE"} {
-		if PasswordFromEnv(env("AUTH_PASSWORD", v)) {
-			t.Errorf("AUTH_PASSWORD=%s did not turn password sign-in off", v)
-		}
-	}
-	// A redirect provider still needs the public URL (its callback is registered).
-	if _, err := ProvidersFromEnv(env("AUTH_GOOGLE_CLIENT_ID", "a", "AUTH_GOOGLE_CLIENT_SECRET", "b"), ""); err == nil || !strings.Contains(err.Error(), "-public-url") {
+	google := ProvidersConfig{GoogleID: "a", GoogleSecret: "b"}
+	if _, err := Providers(google, ""); err == nil || !strings.Contains(err.Error(), "-public-url") {
 		t.Fatalf("err = %v", err)
 	}
-	// Password sign-in alone needs no callback URL, so it starts without one.
-	if _, err := ProvidersFromEnv(env(), ""); err != nil {
-		t.Fatalf("password-only sign-in needs -public-url: %v", err)
-	}
-	if _, err := ProvidersFromEnv(env("AUTH_GOOGLE_CLIENT_ID", "a", "AUTH_GOOGLE_CLIENT_SECRET", "b"), "https://x.example"); err != nil {
+	if _, err := Providers(google, "https://x.example"); err != nil {
 		t.Fatal(err)
-	}
-	if _, err := ProvidersFromEnv(env("AUTH_PASSWORD", "false", "AUTH_GOOGLE_CLIENT_ID", "a", "AUTH_GOOGLE_CLIENT_SECRET", "b"), ""); err == nil || !strings.Contains(err.Error(), "-public-url") {
-		t.Fatalf("err = %v", err)
 	}
 }
 

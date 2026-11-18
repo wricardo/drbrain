@@ -18,12 +18,12 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
 
+	"github.com/wricardo/drbrain-motor-programming/internal/appconfig"
 	"github.com/wricardo/drbrain-motor-programming/internal/jsonmigrate"
 	"github.com/wricardo/drbrain-motor-programming/internal/pgdb"
 )
@@ -44,7 +44,11 @@ func main() {
 
 	url := strings.TrimSpace(*dbURL)
 	if url == "" {
-		url = strings.TrimSpace(os.Getenv("DATABASE_URL"))
+		cfg, err := appconfig.Load()
+		if err != nil {
+			log.Fatalf("import-json: configuration: %v", err)
+		}
+		url = cfg.DatabaseURL
 	}
 	if url == "" {
 		log.Fatal("import-json: set -database-url or DATABASE_URL")

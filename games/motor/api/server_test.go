@@ -131,9 +131,7 @@ func TestMapsQueryOverHTTP(t *testing.T) {
 // UNAUTHENTICATED and nothing is stored), a player-created map stays open to
 // everyone for edits and deletes, and a shipped map needs the admin key.
 func TestMapMutationsOverHTTP(t *testing.T) {
-	t.Setenv("ADMIN_API_KEY", "secret")
-	t.Setenv("ALLOW_UNAUTHENTICATED_ADMIN", "")
-	ts := newPasswordServer(t) // serves the shipped map "wide"
+	ts := newPasswordServer(t, Options{AdminKey: "secret"}) // serves the shipped map "wide"
 	guest, signedIn := newBrowser(t, ts.URL), newBrowser(t, ts.URL)
 	if _, out := signedIn.pwSignIn(true, "map_maker", "tangerine-ladder-42", nil); firstErrCode(out) != "" {
 		t.Fatalf("sign in: %v", out)

@@ -9,7 +9,6 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/vektah/gqlparser/v2/gqlerror"
@@ -33,6 +32,18 @@ type Resolver struct {
 	// Passwords serves the username/password mutations; nil when sign-in is
 	// off (the schema then answers FORBIDDEN).
 	Passwords Passwords
+	// Admin gates writes to shipped content.
+	Admin Admin
+}
+
+// Admin is the built-in map gate (ADMIN_API_KEY and
+// ALLOW_UNAUTHENTICATED_ADMIN), parsed once at startup.
+type Admin struct {
+	// Key is ADMIN_API_KEY. When set, a write must carry it as X-Admin-Key.
+	Key string
+	// AllowUnauthenticated permits those writes while no key is configured
+	// (local development only; ignored once Key is set).
+	AllowUnauthenticated bool
 }
 
 // Passwords is the username/password sign-in of the auth package. The mutations
@@ -142,21 +153,20 @@ func requireViewer(ctx context.Context) (*service.Account, error) {
 // must be configured and sent as X-Admin-Key; local development can opt out
 // explicitly with ALLOW_UNAUTHENTICATED_ADMIN=true (only honoured while no key
 // is configured).
-func checkAdminKey(ctx context.Context) error {
-	required := os.Getenv("ADMIN_API_KEY")
-	if required == "" {
-		if os.Getenv("ALLOW_UNAUTHENTICATED_ADMIN") == "true" {
+func (r *Resolver) checkAdminKey(ctx context.Context) error {
+	if r.Admin.Key == "" {
+		if r.Admin.AllowUnauthenticated {
 			return nil
 		}
 		return codedError(service.CodeForbidden, "admin operation disabled: set ADMIN_API_KEY and send X-Admin-Key")
 	}
-	r, _ := ctx.Value(HTTPRequestKey{}).(*http.Request)
-	if r == nil {
+	req, _ := ctx.Value(HTTPRequestKey{}).(*http.Request)
+	if req == nil {
 		return codedError(service.CodeForbidden, "admin operation requires X-Admin-Key header")
 	}
 	// Compare fixed-length digests so the key length is not leaked.
-	got := sha256.Sum256([]byte(r.Header.Get("X-Admin-Key")))
-	want := sha256.Sum256([]byte(required))
+	got := sha256.Sum256([]byte(req.Header.Get("X-Admin-Key")))
+	want := sha256.Sum256([]byte(r.Admin.Key))
 	if subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
 		return codedError(service.CodeForbidden, "forbidden: invalid or missing X-Admin-Key")
 	}
@@ -165,11 +175,11 @@ func checkAdminKey(ctx context.Context) error {
 
 // checkMapAdmin gates a write to an existing map: player-created maps are open
 // to everyone, shipped maps need the admin key.
-func checkMapAdmin(ctx context.Context, builtin bool) error {
+func (r *Resolver) checkMapAdmin(ctx context.Context, builtin bool) error {
 	if !builtin {
 		return nil
 	}
-	return checkAdminKey(ctx)
+	return r.checkAdminKey(ctx)
 }
 
 // codedError builds a gqlerror carrying extensions.code.

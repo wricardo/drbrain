@@ -832,39 +832,33 @@ func TestDevProvider(t *testing.T) {
 	}
 }
 
-func TestProvidersFromEnv(t *testing.T) {
-	env := func(kv ...string) func(string) string {
-		m := map[string]string{}
-		for i := 0; i+1 < len(kv); i += 2 {
-			m[kv[i]] = kv[i+1]
-		}
-		return func(k string) string { return m[k] }
-	}
+func TestProviders(t *testing.T) {
+	google := ProvidersConfig{GoogleID: "a", GoogleSecret: "b"}
 	tests := []struct {
 		name      string
-		env       func(string) string
+		cfg       ProvidersConfig
 		publicURL string
 		wantIDs   []string
 		wantErr   string
 	}{
-		{"nothing configured: sign-in off, no URL needed", env(), "", nil, ""},
-		{"nothing configured with a URL", env(), "https://x.example", nil, ""},
-		{"google only", env("AUTH_GOOGLE_CLIENT_ID", "a", "AUTH_GOOGLE_CLIENT_SECRET", "b"), "https://x.example", []string{"google"}, ""},
-		{"both, in a stable order", env("AUTH_GITHUB_CLIENT_ID", "a", "AUTH_GITHUB_CLIENT_SECRET", "b", "AUTH_GOOGLE_CLIENT_ID", "a", "AUTH_GOOGLE_CLIENT_SECRET", "b"), "https://x.example/", []string{"google", "github"}, ""},
-		{"id without secret", env("AUTH_GOOGLE_CLIENT_ID", "a"), "https://x.example", nil, "AUTH_GOOGLE_CLIENT_ID and AUTH_GOOGLE_CLIENT_SECRET must both be set"},
-		{"secret without id", env("AUTH_GITHUB_CLIENT_SECRET", "b"), "https://x.example", nil, "AUTH_GITHUB"},
-		{"provider without public URL", env("AUTH_GOOGLE_CLIENT_ID", "a", "AUTH_GOOGLE_CLIENT_SECRET", "b"), "", nil, "-public-url"},
-		{"public URL with a path", env("AUTH_GOOGLE_CLIENT_ID", "a", "AUTH_GOOGLE_CLIENT_SECRET", "b"), "https://x.example/app", nil, "-public-url"},
-		{"dev fake on localhost", env("AUTH_DEV_FAKE", "true"), "http://localhost:8000", []string{"dev"}, ""},
-		{"dev fake on 127.0.0.1", env("AUTH_DEV_FAKE", "true"), "http://127.0.0.1:8000", []string{"dev"}, ""},
-		{"dev fake on a public host: refuse to start", env("AUTH_DEV_FAKE", "true"), "https://motor-programming.wricardo.net", nil, "AUTH_DEV_FAKE"},
-		{"dev fake with no public URL: refuse to start", env("AUTH_DEV_FAKE", "true"), "", nil, "AUTH_DEV_FAKE"},
-		{"dev fake on a lookalike host", env("AUTH_DEV_FAKE", "true"), "http://localhost.evil.example", nil, "AUTH_DEV_FAKE"},
-		{"dev fake off", env("AUTH_DEV_FAKE", "false"), "https://x.example", nil, ""},
+		{"nothing configured: sign-in off, no URL needed", ProvidersConfig{}, "", nil, ""},
+		{"nothing configured with a URL", ProvidersConfig{}, "https://x.example", nil, ""},
+		{"google only", google, "https://x.example", []string{"google"}, ""},
+		{"both, in a stable order", ProvidersConfig{GoogleID: "a", GoogleSecret: "b", GitHubID: "a", GitHubSecret: "b"}, "https://x.example/", []string{"google", "github"}, ""},
+		{"id without secret", ProvidersConfig{GoogleID: "a"}, "https://x.example", nil, "AUTH_GOOGLE_CLIENT_ID and AUTH_GOOGLE_CLIENT_SECRET must both be set"},
+		{"github secret without id", ProvidersConfig{GitHubSecret: "b"}, "https://x.example", nil, "AUTH_GITHUB"},
+		{"provider without public URL", google, "", nil, "-public-url"},
+		{"public URL with a path", google, "https://x.example/app", nil, "-public-url"},
+		{"dev fake on localhost", ProvidersConfig{DevFake: true}, "http://localhost:8000", []string{"dev"}, ""},
+		{"dev fake on 127.0.0.1", ProvidersConfig{DevFake: true}, "http://127.0.0.1:8000", []string{"dev"}, ""},
+		{"dev fake on a public host: refuse to start", ProvidersConfig{DevFake: true}, "https://motor-programming.wricardo.net", nil, "AUTH_DEV_FAKE"},
+		{"dev fake with no public URL: refuse to start", ProvidersConfig{DevFake: true}, "", nil, "AUTH_DEV_FAKE"},
+		{"dev fake on a lookalike host", ProvidersConfig{DevFake: true}, "http://localhost.evil.example", nil, "AUTH_DEV_FAKE"},
+		{"dev fake off", ProvidersConfig{}, "https://x.example", nil, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ps, err := ProvidersFromEnv(tc.env, tc.publicURL)
+			ps, err := Providers(tc.cfg, tc.publicURL)
 			if tc.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
 					t.Fatalf("err = %v, want containing %q", err, tc.wantErr)

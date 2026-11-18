@@ -255,7 +255,7 @@ func (r *mutationResolver) UpdateMap(ctx context.Context, mapArg model.MapInput)
 	if _, err := r.Service.GetMap(mapArg.ID); err != nil {
 		return nil, toGQLError(err)
 	}
-	if err := checkMapAdmin(ctx, r.Service.IsBuiltinMap(mapArg.ID)); err != nil {
+	if err := r.checkMapAdmin(ctx, r.Service.IsBuiltinMap(mapArg.ID)); err != nil {
 		return nil, err
 	}
 	m, err := r.Service.SaveMap(fromMapInput(mapArg))
@@ -271,7 +271,7 @@ func (r *mutationResolver) DeleteMap(ctx context.Context, id string) (bool, erro
 	if _, err := r.Service.GetMap(id); err != nil {
 		return false, toGQLError(err)
 	}
-	if err := checkMapAdmin(ctx, r.Service.IsBuiltinMap(id)); err != nil {
+	if err := r.checkMapAdmin(ctx, r.Service.IsBuiltinMap(id)); err != nil {
 		return false, err
 	}
 	if err := r.Service.DeleteMap(id); err != nil {
