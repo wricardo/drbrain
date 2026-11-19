@@ -18,7 +18,7 @@ import type {
 
 export * from './api-types';
 
-const ENDPOINT = '/graphql';
+const ENDPOINT = '/delivery/graphql';
 
 /** ApiError carries the server's machine-readable code, not just prose. */
 export class ApiError extends Error {

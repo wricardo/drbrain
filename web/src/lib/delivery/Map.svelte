@@ -1,6 +1,6 @@
 <script lang="ts">
-	import type { CarView, CityView, ClosureView } from '$lib/api';
-	import { carGlyphStyle, carIndex, glyphStyle } from '$lib/glyphs';
+	import type { CarView, CityView, ClosureView } from '$lib/delivery/api';
+	import { carGlyphStyle, carIndex, glyphStyle } from '$lib/delivery/glyphs';
 
 	interface Props {
 		city: CityView;

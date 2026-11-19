@@ -1,7 +1,7 @@
 <script lang="ts">
-	import type { OrderState, OrderView } from '$lib/api';
-	import { deadlineTone } from '$lib/glyphs';
-	import Panel from '$lib/Panel.svelte';
+	import type { OrderState, OrderView } from '$lib/delivery/api';
+	import { deadlineTone } from '$lib/delivery/glyphs';
+	import Panel from '$lib/delivery/Panel.svelte';
 
 	interface Props {
 		orders: OrderView[];

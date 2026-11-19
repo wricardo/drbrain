@@ -51,7 +51,7 @@ export function subscribeToSession(
 	void (async () => {
 		let res: Response;
 		try {
-			res = await fetch('/graphql', {
+			res = await fetch('/delivery/graphql', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
 				body: JSON.stringify({ query: SUBSCRIPTION(fields), variables: { id } }),

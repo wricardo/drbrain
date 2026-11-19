@@ -1,7 +1,7 @@
 <script lang="ts">
-	import type { CarState, CarView } from '$lib/api';
-	import { batteryTone } from '$lib/glyphs';
-	import Panel from '$lib/Panel.svelte';
+	import type { CarState, CarView } from '$lib/delivery/api';
+	import { batteryTone } from '$lib/delivery/glyphs';
+	import Panel from '$lib/delivery/Panel.svelte';
 
 	interface Props {
 		cars: CarView[];

@@ -1,6 +1,6 @@
 <script lang="ts">
-	import type { AchievementView, BuildView, UnlockView } from '$lib/api';
-	import Panel from '$lib/Panel.svelte';
+	import type { AchievementView, BuildView, UnlockView } from '$lib/delivery/api';
+	import Panel from '$lib/delivery/Panel.svelte';
 
 	interface Props {
 		achievements: AchievementView[];

@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import { api, ApiError, SNAPSHOT_FIELDS, type Direction, type SessionSummary, type Snapshot } from '$lib/api';
-	import { subscribeToSession } from '$lib/subscribe';
-	import Map from '$lib/Map.svelte';
-	import Panel from '$lib/Panel.svelte';
-	import FleetPanel from '$lib/FleetPanel.svelte';
-	import OrdersPanel from '$lib/OrdersPanel.svelte';
-	import ProgressPanel from '$lib/ProgressPanel.svelte';
+	import { api, ApiError, SNAPSHOT_FIELDS, type Direction, type SessionSummary, type Snapshot } from '$lib/delivery/api';
+	import { subscribeToSession } from '$lib/delivery/subscribe';
+	import Map from '$lib/delivery/Map.svelte';
+	import Panel from '$lib/delivery/Panel.svelte';
+	import FleetPanel from '$lib/delivery/FleetPanel.svelte';
+	import OrdersPanel from '$lib/delivery/OrdersPanel.svelte';
+	import ProgressPanel from '$lib/delivery/ProgressPanel.svelte';
 
 	// --- state ---------------------------------------------------------------
 
