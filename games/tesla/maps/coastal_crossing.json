@@ -1,0 +1,31 @@
+{
+  "name": "Coastal Crossing",
+  "description": "Florida coastline crossing with a single bridge, side islands, and limited charging.",
+  "grid_size": 14,
+  "max_battery": 18,
+  "starting_battery": 18,
+  "layout": [
+    "WWWWWWWWWWWWWW",
+    "WWWWWWWWWWWWWW",
+    "WWWWWWWWWWWWWW",
+    "WWWWWWWWWWWWWW",
+    "WWWWWWWWWWWSRR",
+    "WWWWWWWWWWWWRP",
+    "WWWWWWWWWWWRRR",
+    "BHRRRRPRRSRRPB",
+    "WWWWWRWRRRRRWW",
+    "WWWWWRWWWWWWWW",
+    "WWWWWRRRRWWWWW",
+    "WWWWWWWWWWWWWW",
+    "WWWWWWWWWWWWWW",
+    "WWWWWWWWWWWWWW"
+  ],
+  "legend": {
+    "B": "building",
+    "H": "home",
+    "P": "park",
+    "R": "road",
+    "S": "supercharger",
+    "W": "water"
+  }
+}

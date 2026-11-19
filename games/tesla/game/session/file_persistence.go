@@ -1,0 +1,250 @@
+package session
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/wricardo/tesla-road-trip-game/game/engine"
+	"github.com/wricardo/tesla-road-trip-game/game/service"
+)
+
+// FilePersistence implements SessionPersistence using file system storage
+type FilePersistence struct {
+	sessionsDir   string
+	configManager service.ConfigManager
+}
+
+// NewFilePersistence creates a new file-based session persistence layer
+func NewFilePersistence(sessionsDir string, configManager service.ConfigManager) (*FilePersistence, error) {
+	// Create sessions directory if it doesn't exist
+	if err := os.MkdirAll(sessionsDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create sessions directory: %w", err)
+	}
+
+	return &FilePersistence{
+		sessionsDir:   sessionsDir,
+		configManager: configManager,
+	}, nil
+}
+
+// Save persists a session to a JSON file
+func (fp *FilePersistence) Save(session *service.Session) error {
+	if session == nil {
+		return fmt.Errorf("session cannot be nil")
+	}
+	if err := validateSessionID(session.ID); err != nil {
+		return err
+	}
+
+	// Get config ID from display name
+	configID, err := fp.getConfigIDFromName(session.Config.Name)
+	if err != nil {
+		return fmt.Errorf("failed to get config ID: %w", err)
+	}
+
+	data := PersistedSessionData{
+		ID:           session.ID,
+		DisplayName:  session.DisplayName,
+		MapName:      configID,
+		CreatedAt:    session.CreatedAt,
+		LastActionAt: session.LastActionAt,
+		FogEnabled:   session.FogEnabled,
+		FogRadius:    session.FogRadius,
+		GridPassword: session.GridPassword,
+		MoveDelayMs:  intPtr(session.MoveDelayMs),
+		GameState:    session.Engine.GetState(),
+	}
+
+	// Marshal to JSON with indentation for readability
+	jsonData, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal session data: %w", err)
+	}
+
+	// Write to file
+	filePath := fp.getFilePath(session.ID)
+	if err := os.WriteFile(filePath, jsonData, 0644); err != nil {
+		return fmt.Errorf("failed to write session file: %w", err)
+	}
+
+	return nil
+}
+
+// Load retrieves a session from a JSON file
+func (fp *FilePersistence) Load(id string) (*service.Session, error) {
+	if err := validateSessionID(id); err != nil {
+		return nil, err
+	}
+	filePath := fp.getFilePath(id)
+
+	// Check if file exists
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return nil, ErrSessionNotFound
+	}
+
+	// Read file
+	jsonData, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read session file: %w", err)
+	}
+
+	// Unmarshal JSON
+	var data PersistedSessionData
+	if err := json.Unmarshal(jsonData, &data); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal session data: %w", err)
+	}
+
+	gameConfig, err := fp.configManager.LoadConfig(data.MapName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load map '%s': %w", data.MapName, err)
+	}
+
+	// Create the engine without re-proving winnability: the map was validated
+	// when it was saved, and the proof is too expensive to repeat per session.
+	gameEngine, err := engine.NewEngineForLoad(gameConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create game engine: %w", err)
+	}
+
+	// Restore game state
+	gameStateJSON, err := json.Marshal(data.GameState)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal game state: %w", err)
+	}
+
+	var gameState engine.GameState
+	if err := json.Unmarshal(gameStateJSON, &gameState); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal game state: %w", err)
+	}
+
+	// Set the restored state to the engine
+	if err := gameEngine.SetState(&gameState); err != nil {
+		return nil, fmt.Errorf("failed to set game state: %w", err)
+	}
+
+	// Create session
+	fogRadius := data.FogRadius
+	if fogRadius <= 0 {
+		fogRadius = 1
+	}
+
+	lastActionAt := data.LastActionAt
+	if lastActionAt.IsZero() {
+		lastActionAt = data.LastAccessedAtLegacy
+	}
+	if lastActionAt.IsZero() {
+		lastActionAt = data.CreatedAt
+	}
+
+	session := &service.Session{
+		ID:           data.ID,
+		DisplayName:  data.DisplayName,
+		Engine:       gameEngine,
+		Config:       gameConfig,
+		CreatedAt:    data.CreatedAt,
+		LastActionAt: lastActionAt,
+		FogEnabled:   data.FogEnabled,
+		FogRadius:    fogRadius,
+		GridPassword: data.GridPassword,
+		MoveDelayMs:  loadMoveDelay(data.MoveDelayMs, data.BulkMoveDelayMs),
+	}
+
+	return session, nil
+}
+
+// Delete removes a session file
+func (fp *FilePersistence) Delete(id string) error {
+	if err := validateSessionID(id); err != nil {
+		return err
+	}
+	filePath := fp.getFilePath(id)
+
+	// Check if file exists
+	if !fp.Exists(id) {
+		return ErrSessionNotFound
+	}
+
+	// Remove file
+	if err := os.Remove(filePath); err != nil {
+		return fmt.Errorf("failed to remove session file: %w", err)
+	}
+
+	return nil
+}
+
+// ListAll returns all persisted session IDs
+func (fp *FilePersistence) ListAll() ([]string, error) {
+	entries, err := os.ReadDir(fp.sessionsDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read sessions directory: %w", err)
+	}
+
+	var sessionIDs []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		name := entry.Name()
+		if strings.HasSuffix(name, ".json") {
+			// Remove .json extension to get session ID
+			sessionID := strings.TrimSuffix(name, ".json")
+			sessionIDs = append(sessionIDs, sessionID)
+		}
+	}
+
+	return sessionIDs, nil
+}
+
+// Exists checks if a session file exists
+func (fp *FilePersistence) Exists(id string) bool {
+	if err := validateSessionID(id); err != nil {
+		return false
+	}
+	filePath := fp.getFilePath(id)
+	_, err := os.Stat(filePath)
+	return err == nil
+}
+
+// getFilePath returns the full file path for a session ID
+func (fp *FilePersistence) getFilePath(id string) string {
+	return filepath.Join(fp.sessionsDir, fmt.Sprintf("%s.json", id))
+}
+
+// getConfigIDFromName returns the map ID (filename without extension) from display name
+func (fp *FilePersistence) getConfigIDFromName(displayName string) (string, error) {
+	maps, err := fp.configManager.ListConfigs()
+	if err != nil {
+		return "", fmt.Errorf("failed to list maps: %w", err)
+	}
+
+	for _, m := range maps {
+		if m.Name == displayName {
+			return m.MapID, nil
+		}
+	}
+
+	// If not found, assume displayName is already the map ID
+	return displayName, nil
+}
+
+func intPtr(v int) *int {
+	return &v
+}
+
+func loadMoveDelay(primary *int, legacy *int) int {
+	v := primary
+	if v == nil {
+		v = legacy
+	}
+	if v == nil {
+		return service.DefaultMoveDelayMs
+	}
+	if *v < 0 {
+		return 0
+	}
+	return *v
+}

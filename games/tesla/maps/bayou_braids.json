@@ -1,0 +1,33 @@
+{
+  "name": "Bayou Braids",
+  "description": "Braided bayou roads with alternating bridges and narrow timing windows.",
+  "grid_size": 16,
+  "max_battery": 20,
+  "starting_battery": 20,
+  "layout": [
+    "WWWWWWWWWWWWWWWW",
+    "WHRRRRRPWWWWWWWW",
+    "WWWWWWWSWWWWWWWW",
+    "WSRPRRRRWWWWWWWW",
+    "WRWWWWWWWWWWWWWW",
+    "WRRPRSRRWWWWWWWW",
+    "WWWWWWWRWWWWWWWW",
+    "WRRRRSRPWWWWWWWW",
+    "WPWWWWWWWWWWWWWW",
+    "WSRRRRRRWWWWWWWW",
+    "WWWWWWWRWWWWWWWW",
+    "WWWWWWWRRRRRRWWW",
+    "WWWWWWWWWWWWWWWW",
+    "WWWWWWWWWWWWWWWW",
+    "WWWWWWWWWWWWWWWW",
+    "WWWWWWWWWWWWWWWW"
+  ],
+  "legend": {
+    "B": "building",
+    "H": "home",
+    "P": "park",
+    "R": "road",
+    "S": "supercharger",
+    "W": "water"
+  }
+}

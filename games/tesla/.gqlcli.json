@@ -1,0 +1,11 @@
+{
+  "default": "local",
+  "environments": {
+    "local": {
+      "url": "http://localhost:8000/graphql"
+    },
+    "prod": {
+      "url": "http://tesla.wricardo.net/graphql"
+    }
+  }
+}

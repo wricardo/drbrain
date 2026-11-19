@@ -1,0 +1,34 @@
+{
+  "name": "Island Chain",
+  "description": "A chain of islands connected by narrow bridges over water.",
+  "grid_size": 17,
+  "max_battery": 24,
+  "starting_battery": 24,
+  "layout": [
+    "WWWWWWWWWWWWWWWWW",
+    "WWWWWWWWWWWWWWWWW",
+    "WWHPPWPRSWRSRWRWW",
+    "WWRWRWRWRWRWRWRWW",
+    "WWSRSRRWRRPWPRRWW",
+    "WWWWWWWWWWWWWWWWW",
+    "WWWWWWWWWWWWWWWWW",
+    "WWWWWWWWWWWWWWWWW",
+    "WWWWWWWWWWWWWWWWW",
+    "WWWWWWWWWWWWWWWWW",
+    "WWWWWWWWWWWWWWWWW",
+    "WWWWWWWWWWWWWWWWW",
+    "WWWWWWWWWWWWWWWWW",
+    "WWWWWWWWWWWWWWWWW",
+    "WWWWWWWWWWWWWWWWW",
+    "WWWWWWWWWWWWWWWWW",
+    "WWWWWWWWWWWWWWWWW"
+  ],
+  "legend": {
+    "B": "building",
+    "H": "home",
+    "P": "park",
+    "R": "road",
+    "S": "supercharger",
+    "W": "water"
+  }
+}

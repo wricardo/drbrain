@@ -1,0 +1,37 @@
+{
+  "name": "Keys Run",
+  "description": "A narrow Keys-style peninsula with a risky run to the final island.",
+  "grid_size": 20,
+  "max_battery": 22,
+  "starting_battery": 22,
+  "layout": [
+    "WWWWWWWWWWWWWWWWWWWW",
+    "WWWWWWWWWHWWWWWWWWWW",
+    "WWWWWWWWWRWWWWWWWWWW",
+    "WWWWWWWWWRWWWWWWWWWW",
+    "WWWWWWWWWRWWWWWWWWWW",
+    "WWWWWWWWWPRRRSWWWWWW",
+    "WWWWWWWWWWWWWRWWWWWW",
+    "WWWWWWWWWWWWWRWWWWWW",
+    "WWWWWWWWWWWWWPWWWWWW",
+    "WWWWWWWWWWWRRRWWWWWW",
+    "WWWWWWWWWWWRWWWWWWWW",
+    "WWWWWWWWWWWSRPRRWWWW",
+    "WWWWWWWWWWWWWWRRRWWW",
+    "WWWWWWWWWWWWWWWSRPWW",
+    "WWWWWWWWWWWWWWRRRWWW",
+    "WWWWWWWWWWWWWWRWWWWW",
+    "WWWWWWWWWWWWWWRRRWWW",
+    "WWWWWWWWWWWWWWWWWWWW",
+    "WWWWWWWWWWWWWWWWWWWW",
+    "WWWWWWWWWWWWWWWWWWWW"
+  ],
+  "legend": {
+    "B": "building",
+    "H": "home",
+    "P": "park",
+    "R": "road",
+    "S": "supercharger",
+    "W": "water"
+  }
+}

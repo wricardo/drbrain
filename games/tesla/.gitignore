@@ -1,0 +1,79 @@
+# Binaries
+statefullgame
+tesla-desktop
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+
+# Output of go coverage
+*.out
+coverage.html
+
+# Environment variables — never commit real credentials
+.env
+.env.local
+.env.*.local
+# belt-and-suspenders: explicit frontend env coverage at root level
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+
+# Go build cache
+/vendor/
+/dist/
+
+# IDE specific files
+.idea/
+*.swp
+*.swo
+*~
+.vscode/
+*.sublime-*
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Save files (local game data)
+saves/
+sessions/
+test_sessions/
+
+# User-created maps (edit tokens live here too — never commit)
+maps/custom/
+
+# Temporary files
+tmp/
+temp/
+node_modules/
+settings.local.json
+.claude/*.local.md
+
+# Browser/Playwright screenshots captured by MCP tools
+.playwright-mcp/
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+tesla-road-trip
+
+# Local build artifacts
+/tesla-road-trip-tui
+/tui
+
+# Local server PID written by make restart
+.server.pid
+
+# ML training environment and checkpoints (local only)
+.venv-ml/
+ml/runs/
+__pycache__/

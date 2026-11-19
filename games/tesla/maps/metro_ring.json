@@ -1,0 +1,33 @@
+{
+  "name": "Metro Ring",
+  "description": "Urban ring road with a few shortcuts and parks at high-value corners.",
+  "grid_size": 16,
+  "max_battery": 20,
+  "starting_battery": 20,
+  "layout": [
+    "BBBBBBBBBBBBBBBB",
+    "BHRRRSRRRPRRRRRB",
+    "BRBBBBBRBBBBBBRB",
+    "BPBBBBBRBBBBBBRB",
+    "BRBBBBBRBBBBBBSB",
+    "BRBBBBBRRRRRBBRB",
+    "BRBBBBBBBBBRBBRB",
+    "BRBBBBBBBRRRBBRB",
+    "BRBBBBBBBBBBBBRB",
+    "BSBBBBBBBBBBBBRB",
+    "BRBBBBBBBBBBBBPB",
+    "BRBBBBBBBBBBBBRB",
+    "BRBBBBBBBBBBBBRB",
+    "BRBBBBBBBBBBBBRB",
+    "BRRRPRRRRRSRRRRB",
+    "BBBBBBBBBBBBBBBB"
+  ],
+  "legend": {
+    "B": "building",
+    "H": "home",
+    "P": "park",
+    "R": "road",
+    "S": "supercharger",
+    "W": "water"
+  }
+}

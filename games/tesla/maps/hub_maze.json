@@ -1,0 +1,37 @@
+{
+  "name": "Hub Maze",
+  "description": "A central hub maze with spokes and a costly outer loop.",
+  "grid_size": 20,
+  "max_battery": 22,
+  "starting_battery": 22,
+  "layout": [
+    "BBBBBBBBBBBBBBBBBBBB",
+    "BBBBBBBBBBBBBBBBBBBB",
+    "BBHRRPRRRRRRSRRRRRBB",
+    "BBRBBBBBBRBBBBBBBRBB",
+    "BBSBBBBBBRBBBBBBBRBB",
+    "BBRBBBBBBRBBBBBBBRBB",
+    "BBRBBBBBBRRRRBBBBRBB",
+    "BBRBBBBBBBBBPBBBBPBB",
+    "BBRBBBBBBBBBRBBBBRBB",
+    "BBRBBBBBBBBBRBBBBRBB",
+    "BBRBBBBBBRRRRBBBBRBB",
+    "BBRBBBBBBRBBBBBBBRBB",
+    "BBRBBBBBBRBBBBBBBRBB",
+    "BBRBBBBBBRBBBBBBBRBB",
+    "BBRBBBRRRRBBBBBBBRBB",
+    "BBRBBBBBBBBBBBBBBRBB",
+    "BBRBBBBBBBBBBBBBBRBB",
+    "BBPRRRRRRRRRRRSRRRBB",
+    "BBBBBBBBBBBBBBBBBBBB",
+    "BBBBBBBBBBBBBBBBBBBB"
+  ],
+  "legend": {
+    "B": "building",
+    "H": "home",
+    "P": "park",
+    "R": "road",
+    "S": "supercharger",
+    "W": "water"
+  }
+}

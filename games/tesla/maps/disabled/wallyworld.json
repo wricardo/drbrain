@@ -1,0 +1,27 @@
+{
+  "name": "wallyworld",
+  "description": "wally",
+  "grid_size": 10,
+  "max_battery": 15,
+  "starting_battery": 15,
+  "layout": [
+    "HRBRRRRRRR",
+    "RRBRRRBRRR",
+    "RRBRRRBRRR",
+    "RRBRRRBSRR",
+    "RRBRRRBRRR",
+    "RRBRRRBRRR",
+    "RRBRRRBRRR",
+    "RRBRRRBRRR",
+    "RRRRRRBRRR",
+    "RRRRRRBRRP"
+  ],
+  "legend": {
+    "B": "building",
+    "H": "home",
+    "P": "park",
+    "R": "road",
+    "S": "supercharger",
+    "W": "water"
+  }
+}

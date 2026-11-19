@@ -1,0 +1,33 @@
+{
+  "name": "Strategic",
+  "description": "The 16x16 Strategic Maze with 5 parks - our main challenge puzzle",
+  "grid_size": 16,
+  "max_battery": 22,
+  "starting_battery": 22,
+  "layout": [
+    "BBBBBBBBBBBBBBBB",
+    "BPRRRSBBBBRRRRRB",
+    "BRBBRRBBBBRRBBRB",
+    "BRBBRRRRRRRRBBRB",
+    "BRBBBBBRRBBBBBRB",
+    "BRRRRRRRRRRRRRRB",
+    "BBBRBBBRRBBBRBBB",
+    "BPRRBBRHHBBRRRSB",
+    "BBRRBBRHHBBRRBBB",
+    "BBRRBBRRRBBRRBBB",
+    "BRRRRRRRRRRRRRRB",
+    "BRBBBBBRRBBBBBRB",
+    "BRBBRRRRRRRRBBRB",
+    "BRBBRRBSSBRRBBRB",
+    "BPRRRRBBBBRRRRRB",
+    "BBBBBBBBBBBBBBBB"
+  ],
+  "legend": {
+    "B": "building",
+    "H": "home",
+    "P": "park",
+    "R": "road",
+    "S": "supercharger",
+    "W": "water"
+  }
+}

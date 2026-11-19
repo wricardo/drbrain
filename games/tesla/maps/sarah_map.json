@@ -1,0 +1,32 @@
+{
+  "name": "Sarah's Circuit",
+  "description": "A retro neon circuit board. Trace copper paths through IC blocks to activate all 10 data nodes. The chips won't let you cut corners.",
+  "grid_size": 15,
+  "max_battery": 20,
+  "starting_battery": 20,
+  "layout": [
+    "BBBBBBBBBBBBBBB",
+    "BSRRRPRSRPRRRSB",
+    "BRBBBBBRBBBBBRB",
+    "BPBBBBBRBBBBBPB",
+    "BRBBBBBRBBBBBRB",
+    "BRRRRRRSRRRRRRB",
+    "BRBBBBBPBBBBBRB",
+    "BHRRRRRSRRRRRSB",
+    "BRBBBBBPBBBBBRB",
+    "BRRRRRRSRRRRRRB",
+    "BRBBBBBRBBBBBRB",
+    "BPBBBBBRBBBBBPB",
+    "BRBBBBBRBBBBBRB",
+    "BSRRRPRSRPRRRSB",
+    "BBBBBBBBBBBBBBB"
+  ],
+  "legend": {
+    "B": "building",
+    "H": "home",
+    "P": "park",
+    "R": "road",
+    "S": "supercharger",
+    "W": "water"
+  }
+}

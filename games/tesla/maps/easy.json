@@ -1,0 +1,27 @@
+{
+  "name": "Easy Mode",
+  "description": "Beginner-friendly layout with more superchargers",
+  "grid_size": 10,
+  "max_battery": 15,
+  "starting_battery": 15,
+  "layout": [
+    "BBBBBBBBBB",
+    "BRRRRSRRRB",
+    "BRPRRRRPRB",
+    "BRRRRRRRRB",
+    "BSRHHHRRBB",
+    "BRRHHHRRBB",
+    "BRRRRRRRBB",
+    "BRPRRRRPRB",
+    "BRRRRSRRRB",
+    "BBBBBBBBBB"
+  ],
+  "legend": {
+    "B": "building",
+    "H": "home",
+    "P": "park",
+    "R": "road",
+    "S": "supercharger",
+    "W": "water"
+  }
+}
