@@ -28,6 +28,17 @@ import (
 // stream affordable. Streams are excluded — see gzipHandler — because buffering
 // is what makes the encoding possible and a stream never ends.
 func Handler(mgr *session.Manager) http.Handler {
+	return gzipHandler(newServer(mgr))
+}
+
+// UncompressedHandler is Handler without its buffering gzip layer. The platform
+// host gzips game responses at the mount and streams (SSE, websocket) bypass
+// that layer, so a game mounted there must not compress again.
+func UncompressedHandler(mgr *session.Manager) http.Handler {
+	return newServer(mgr)
+}
+
+func newServer(mgr *session.Manager) http.Handler {
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{
 		Resolvers: &Resolver{Mgr: mgr},
 	}))
@@ -61,10 +72,13 @@ func Handler(mgr *session.Manager) http.Handler {
 		Cache: lru.New[string](100),
 	})
 
-	return gzipHandler(srv)
+	return srv
 }
 
 // Playground serves an interactive query editor at /graphql/playground.
-func Playground() http.Handler {
-	return playground.Handler("DrBrain Delivery", "/graphql")
+func Playground() http.Handler { return PlaygroundAt("/graphql") }
+
+// PlaygroundAt targets endpoint, e.g. /delivery/graphql behind the platform.
+func PlaygroundAt(endpoint string) http.Handler {
+	return playground.Handler("DrBrain Delivery", endpoint)
 }

@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"text/tabwriter"
 
+	"github.com/wricardo/drbrain/games/delivery"
 	"github.com/wricardo/drbrain/games/mazes"
 	"github.com/wricardo/drbrain/games/motor"
 	"github.com/wricardo/drbrain/games/tesla"
@@ -32,6 +33,7 @@ func builtinGames() []platform.Game {
 	return []platform.Game{
 		mazes.New(),
 		motor.New(),
+		delivery.New(),
 		tesla.New(),
 	}
 }
