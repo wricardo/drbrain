@@ -235,7 +235,7 @@
 			Players who tie on both numbers share a rank. Each guest session appears once, and a signed-in player appears once, with their best result:
 			win again with a smaller program to move up.
 			Agents can read this board with the <code class="rounded bg-indigo-50 px-1">leaderboard</code> query (see
-			<a href="/llms.txt" class="text-indigo-700 underline">/llms.txt</a>).
+			<a href="/motor/llms.txt" class="text-indigo-700 underline">/llms.txt</a>).
 		</p>
 	{/if}
 </div>

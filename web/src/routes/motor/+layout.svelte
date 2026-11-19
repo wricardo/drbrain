@@ -130,14 +130,14 @@
 				<h2 class="text-xs font-semibold uppercase tracking-widest text-indigo-900">Docs</h2>
 				<ul class="mt-2 space-y-1">
 					<li><a href="/motor/learn" class={footerLink}>How it works</a></li>
-					<li><a href="/llms.txt" target="_blank" rel="noreferrer" class={footerLink}>/llms.txt</a></li>
+					<li><a href="/motor/llms.txt" target="_blank" rel="noreferrer" class={footerLink}>/llms.txt</a></li>
 					<li><a href="/graphql" target="_blank" rel="noreferrer" class={footerLink}>GraphQL endpoint</a></li>
 				</ul>
 			</nav>
 			<nav aria-label="Tools">
 				<h2 class="text-xs font-semibold uppercase tracking-widest text-indigo-900">Tools</h2>
 				<ul class="mt-2 space-y-1">
-					<li><a href="/playground" target="_blank" rel="noreferrer" class={footerLink}>GraphQL Playground</a></li>
+					<li><a href="/motor/graphql/playground" target="_blank" rel="noreferrer" class={footerLink}>GraphQL Playground</a></li>
 				</ul>
 			</nav>
 		</div>

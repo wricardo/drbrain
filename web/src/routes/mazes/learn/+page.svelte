@@ -152,7 +152,7 @@
 	<section id="connect" class="scroll-mt-6" aria-labelledby="connect-h">
 		<h2 id="connect-h" class="text-xl font-semibold text-indigo-950">Let an AI play</h2>
 		<p class="mt-3 text-sm leading-relaxed text-slate-800">
-			Everything an agent needs is in one page: <a href="/llms.txt" target="_blank" rel="noreferrer" class="font-medium underline">llms.txt</a>
+			Everything an agent needs is in one page: <a href="/mazes/llms.txt" target="_blank" rel="noreferrer" class="font-medium underline">llms.txt</a>
 			(rules, connection details, and working GraphQL examples). To hand a <em>specific</em> session to an AI, open it and use the
 			<strong>“Play with an AI”</strong> card — the copied prompt includes the session id, the level the miner is on (the only one it may see), the fog rules and the exact calls to make.
 			To let an agent pick a map and create its own session, copy this prompt:
@@ -164,7 +164,7 @@
 				blurb="Paste it into an AI chat that can make HTTP requests; it will read llms.txt, create a session and play to win."
 			/>
 		</div>
-		<p class="mt-3 text-sm"><a href="/llms.txt" target="_blank" rel="noreferrer" class="inline-block rounded-full bg-indigo-600 px-5 py-2 font-semibold text-white hover:bg-indigo-700">Open llms.txt</a></p>
+		<p class="mt-3 text-sm"><a href="/mazes/llms.txt" target="_blank" rel="noreferrer" class="inline-block rounded-full bg-indigo-600 px-5 py-2 font-semibold text-white hover:bg-indigo-700">Open llms.txt</a></p>
 	</section>
 
 	<section id="tips" class="scroll-mt-6" aria-labelledby="tips-h">
