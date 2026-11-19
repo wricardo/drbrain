@@ -1,0 +1,210 @@
+@import "tailwindcss";
+
+/* Dark mode is class based: src/app.html and lib/theme.ts put `dark` on <html>. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+/*
+ * Board colours (Grid.svelte, Cookie.svelte). Light values are the original ones; the dark
+ * block below overrides them.
+ */
+:root {
+  --board-tile-a: #eef2ff;
+  --board-tile-b: #e0e7ff;
+  --board-trail: #6366f1;
+  --board-trail-opacity: 0.35;
+  --board-rock: #64748b;
+  --board-rock-shine: #94a3b8;
+  --board-robot: #4338ca;
+  --board-robot-outline: #fff;
+  --board-bump: #e11d48;
+  /* Tile effects: conveyor carry, mirror reflection, keys/doors and portal pairs. */
+  --board-conveyor: #0d9488;
+  --board-mirror: #c2410c;
+  --board-portal: #7c3aed;
+  /* One tone per key letter: a key and the door it opens share it (lib/tiles.ts). */
+  --board-lock-a: #0369a1;
+  --board-lock-a-ink: #fff;
+  --board-lock-b: #6d28d9;
+  --board-lock-b-ink: #fff;
+  --board-lock-c: #047857;
+  --board-lock-c-ink: #fff;
+  --board-door-frame: #334155;
+  --board-door-recess: #b8c2d9;
+  --board-door-recess-lip: #99a6c4;
+  --board-lock-body: #1e293b;
+  --board-lock-shackle: #cbd5e1;
+  /* Ink for the remaining tile letters, chosen to keep >= 4.5:1 contrast. */
+  --board-portal-ink: #fff;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #f5f6ff;
+  color: #1e1b4b;
+}
+
+/*
+ * Dark palette. Instead of `dark:` on every element, the dark theme re-points the Tailwind
+ * colour variables the UI already uses, so each existing class gets a dark value:
+ *   - light fills and borders (50-300 steps) become deep indigo-tinted fills and borders;
+ *   - dark text steps (800-950, and slate 600-700) become light text;
+ *   - solid fills (400-700: buttons, progress bars, rocks) and the instruction border colours
+ *     keep their light-mode values, which already read well on dark.
+ * Utilities that mean "text" on a step that is also used as a solid fill (e.g. text-indigo-700
+ * vs hover:bg-indigo-700) are handled by the class overrides below.
+ */
+.dark {
+  color-scheme: dark;
+
+  /* Surfaces: page #0e0f24, cards #171936, panels indigo-50, hovers indigo-100. */
+  --color-indigo-50: #1e2149;
+  --color-indigo-100: #272b5e;
+  --color-indigo-200: #343a78;
+  --color-indigo-300: #4b53a6;
+  --color-indigo-800: #c7d2fe;
+  --color-indigo-900: #e0e7ff;
+  --color-indigo-950: #eef2ff;
+
+  /* Neutrals are tinted towards indigo so they sit in the same family. */
+  --color-slate-50: #181a35;
+  --color-slate-100: #1f2244;
+  --color-slate-200: #2b2f5c;
+  --color-slate-300: #3b4180;
+  --color-slate-600: #b4bcdc;
+  --color-slate-700: #c8cee8;
+  --color-slate-800: #dde1f3;
+  --color-slate-900: #eef0fb;
+
+  --color-sky-100: #0c3a58;
+  --color-sky-800: #bae6fd;
+  --color-sky-900: #e0f2fe;
+
+  --color-amber-50: #2b2108;
+  --color-amber-100: #3d2d0a;
+  --color-amber-300: #8a6a12;
+  --color-amber-800: #fde68a;
+  --color-amber-900: #fef3c7;
+
+  /* Third place on the leaderboard. */
+  --color-orange-100: #3a2410;
+  --color-orange-300: #8a4a14;
+  --color-orange-900: #ffedd5;
+
+  --color-emerald-50: #0d2a22;
+  --color-emerald-100: #0f3a2d;
+  --color-emerald-300: #1f7a5b;
+  --color-emerald-800: #a7f3d0;
+  --color-emerald-900: #d1fae5;
+
+  --color-violet-100: #2e2468;
+  --color-violet-800: #ddd6fe;
+  --color-violet-900: #ede9fe;
+
+  --color-fuchsia-100: #4a1a52;
+  --color-fuchsia-900: #fae8ff;
+
+  --color-rose-50: #2b1220;
+  --color-rose-100: #3b1426;
+  --color-rose-300: #8a2a48;
+  --color-rose-800: #fecdd3;
+  --color-rose-900: #ffe4e6;
+
+  /* The board. */
+  --board-tile-a: #1b1e46;
+  --board-tile-b: #23275a;
+  --board-trail: #818cf8;
+  --board-trail-opacity: 0.45;
+  --board-rock: #7c86ad;
+  --board-rock-shine: #b9c1e2;
+  --board-robot: #6366f1;
+  --board-robot-outline: #fff;
+  --board-bump: #fb7185;
+  --board-conveyor: #2dd4bf;
+  --board-mirror: #fdba74;
+  --board-portal: #c4b5fd;
+  --board-lock-a: #38bdf8;
+  --board-lock-a-ink: #0b1020;
+  --board-lock-b: #a78bfa;
+  --board-lock-b-ink: #0b1020;
+  --board-lock-c: #34d399;
+  --board-lock-c-ink: #0b1020;
+  --board-door-frame: #94a3b8;
+  --board-door-recess: #12152f;
+  --board-door-recess-lip: #1c2046;
+  --board-lock-body: #0f172a;
+  --board-lock-shackle: #94a3b8;
+  --board-portal-ink: #171936;
+}
+
+.dark body {
+  background-color: #0e0f24;
+  color: #e0e7ff;
+}
+
+/* Same fill as the page, for elements that pin over scrolling content (the board on phones): bg-(--page-bg). */
+:root {
+  --page-bg: #f5f6ff;
+}
+.dark {
+  --page-bg: #0e0f24;
+}
+
+/* White surfaces (cards, header, modals) become the card colour; text-white stays white. */
+.dark .bg-white,
+.dark .focus\:bg-white:focus {
+  background-color: #171936;
+}
+
+/* Text on steps that are also used as solid fills, so the variables above can't remap them. */
+.dark .text-indigo-600 {
+  color: #818cf8;
+}
+.dark .text-indigo-700 {
+  color: #a5b4fc;
+}
+.dark .text-emerald-700 {
+  color: #6ee7b7;
+}
+.dark .text-rose-700 {
+  color: #fda4af;
+}
+.dark .text-slate-500 {
+  color: #9aa3c7;
+}
+.dark .hover\:text-slate-800:hover,
+.dark .hover\:text-slate-900:hover,
+.dark .hover\:text-indigo-900:hover {
+  color: #fff;
+}
+
+/* Form controls: keep the native widgets dark but let the card colour show through. */
+.dark input:not([type='checkbox'], [type='radio'], [type='range'], [type='color']),
+.dark select,
+.dark textarea {
+  background-color: #12142e;
+  color: inherit;
+}
+
+/* Visible keyboard focus everywhere (many controls remove the default outline). */
+:focus-visible {
+  outline: 2px solid #4f46e5;
+  outline-offset: 2px;
+}
+.dark :focus-visible {
+  outline-color: #a5b4fc;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

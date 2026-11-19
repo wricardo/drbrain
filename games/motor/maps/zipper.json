@@ -1,0 +1,30 @@
+{
+  "id": "zipper",
+  "name": "Patterns 11 - Zipper",
+  "description": "One spine and seven teeth, alternating up and down. The same tooth tape works both ways; the new idea is only the turn into a tooth and the turn back out.",
+  "difficulty": "hard",
+  "layout": [
+    "################################",
+    "###*#######*#######*#######*####",
+    "###.#######.#######.#######.####",
+    "###.#######.#######.#######.####",
+    "###.#######.#######.#######.####",
+    ">..............................*",
+    "#######.#######.#######.########",
+    "#######.#######.#######.########",
+    "#######.#######.#######.########",
+    "#######*#######*#######*########",
+    "################################"
+  ],
+  "main_tape_length": 8,
+  "sub_tape_lengths": [
+    12,
+    4,
+    4,
+    4,
+    3
+  ],
+  "max_steps": 170,
+  "max_call_depth": 3,
+  "allow_recursion": false
+}

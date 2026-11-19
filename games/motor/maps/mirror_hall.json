@@ -1,0 +1,18 @@
+{
+  "id": "mirror_hall",
+  "name": "Terrain 2 - Mirror Hall",
+  "description": "A one-cell snake with four mirrors at the corners: every corner turns for free, so the whole 19-move route is MOVE_FORWARD and the 19-slot tape has no room for a single TURN.",
+  "difficulty": "medium",
+  "layout": [
+    ">....\\",
+    "#####.",
+    "/..../",
+    ".#####",
+    "\\....*"
+  ],
+  "main_tape_length": 19,
+  "sub_tape_lengths": [],
+  "max_steps": 60,
+  "max_call_depth": 16,
+  "allow_recursion": false
+}

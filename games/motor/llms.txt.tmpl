@@ -1,0 +1,274 @@
+# Dr Brain - Motor Programming — LLM Guide
+
+Dr Brain - Motor Programming (the first game in the Dr Brain collection) is a robot programming puzzle for humans and AI agents. A robot stands on a grid with
+rocks and treats. You fill a main tape and a few subroutine tapes with instructions; the robot
+runs them one step at a time. Collect every treat to win.
+
+Humans: open {{.BaseURL}}/ , pick a map and press Run. Tutorial: {{.BaseURL}}/learn
+Spectate a session live: {{.BaseURL}}/watch/SESSION_ID (anyone can run, step, pause and reset it there; the program stays private unless you own the run)
+
+GraphQL endpoint:       POST {{.BaseURL}}/graphql
+GraphQL subscriptions:  {{.WSURL}}/graphql  (graphql-ws protocol)
+Playground:             GET  {{.BaseURL}}/playground  (only when the operator enabled it)
+Introspection:          enabled unless the operator disabled it — query __schema/__type
+
+Every example below is valid against the live schema. Replace SESSION_ID with an id returned by
+createSession and MAP_ID with an id from the `maps` query.
+
+---
+
+## Rules
+
+- A session is one run of one map. The map is snapshotted when the session is created.
+- A program is one `main` tape plus N `subs` tapes. Tape lengths are fixed per map
+  (`mainTapeLength`, `subTapeLengths`); `setProgram` requires exactly those lengths. Pad with
+  EMPTY.
+- Execution is one instruction per step. EMPTY slots are skipped for free (not a step). When a
+  sub tape ends, control returns to the caller. When the main tape ends the program is over.
+- The robot wins the moment the last treat is collected (a win beats the step limit on the same
+  step). Otherwise it loses with a `lossReason`:
+  - STEP_LIMIT      — `steps` reached the map's `maxSteps`
+  - CALL_DEPTH      — more than `maxCallDepth` calls in flight
+  - PROGRAM_ENDED   — main tape finished with treats left
+- MOVE_FORWARD into a rock or off the map is a silent no-op (still a step, `blocked: true`).
+- Collecting happens on arrival; the start cell never holds a treat.
+- A CALL_SUB_k that targets an already active sub (or one anywhere on the call stack) does
+  nothing (still counts as a step) unless the map has `allowRecursion: true`. That step reports
+  `callBlocked: true`; `blocked` is only about moves.
+- `setProgram` and `reset` put the robot back at the start. `setProgram` is rejected while the
+  session is playing (`SESSION_PLAYING`). Terminal sessions (WON/LOST) refuse run/step until
+  `reset` (`SESSION_TERMINAL`).
+
+### Tiles (some maps)
+
+A map may use tile glyphs. They fire when a MOVE lands on them, in the same step (never an extra
+step), and they are reported in `lastEvent` / the subscription's `event`:
+
+| glyph        | effect |
+|--------------|--------|
+| `U D L R`    | conveyor: carried one extra cell in that direction. If that cell is a rock, the edge or a closed door the robot stays on the tile (`pushBlocked: true`). `pushed: true` when it moved. |
+| `/` `\`      | mirror: facing reflects 90° (`/`: right→up, up→right, down→left, left→down; `\`: right→down, down→right, up→left, left→up). `mirrored: true`. |
+| `a b c`      | key: collected on arrival (`collectedKey: "a"`), opens every matching door `A B C` for the run. `vm.openDoors` lists the letters already open. |
+| `A B C`      | door: impassable, like a rock, until its key is collected (`blocked: true`). |
+| `1` … `9`    | portal: exactly two tiles per digit; landing on one teleports to the twin (`teleported: {x, y}`). |
+
+Key collection happens first, then at most one tile effect (portal, then mirror, then conveyor),
+and effects never chain: a push does not fire the tile it lands on, and a teleport does not fire
+the twin's tile. Treats and keys are collected on the cell the robot ends the step on. The map
+query exposes the tiles per kind (`conveyors`, `mirrors`, `keys`, `doors`, `portals`), but `layout`
+alone is enough to plan a route.
+
+### Instructions
+
+| value        | effect                                             |
+|--------------|----------------------------------------------------|
+| EMPTY        | skipped, costs nothing                             |
+| TURN_LEFT    | rotate 90 degrees counter-clockwise                |
+| TURN_RIGHT   | rotate 90 degrees clockwise                        |
+| MOVE_FORWARD | move one cell in the facing direction              |
+| CALL_SUB_1   | run subroutine tape 1 (`subs[0]`), then come back  |
+| CALL_SUB_2   | run subroutine tape 2 (`subs[1]`)                  |
+| ...          | ...                                                |
+| CALL_SUB_10  | run subroutine tape 10 (`subs[9]`)                 |
+
+CALL_SUB_k is only valid when the map has at least k sub tapes (k = 1..10).
+
+### Coordinates
+
+- `x` is the column, `y` is the row. Row 0 is the TOP row of `layout`; `y` grows DOWNWARD.
+- Facing: UP = y-1, RIGHT = x+1, DOWN = y+1, LEFT = x-1.
+- `layout` glyphs: `.` empty, `#` rock, `*` treat, `^ > v <` start cell and initial facing, plus
+  the optional `U D L R` / `/` `\` / `a b c` / `A B C` / `1`–`9` tiles described above.
+- Frame `tape: -1` is the main tape; `pc` is the index of the next instruction on that tape.
+  The last entry of `callStack` is the active tape.
+
+### Errors
+
+Errors carry `extensions.code`: NOT_FOUND, INVALID_PROGRAM, SESSION_PLAYING, SESSION_TERMINAL,
+INVALID_ARGUMENT, FORBIDDEN, LIMIT_REACHED, UNAUTHENTICATED, and INTERNAL for anything the server
+did not classify.
+
+---
+
+## Quick start
+
+1. List maps:
+
+```graphql
+query { maps { id name difficulty width height layout mainTapeLength subTapeLengths maxSteps allowRecursion } }
+```
+
+2. Create a session. The response also carries a secret `ownerToken`: keep it, because it is
+what lets you store (and read back) the program.
+
+```graphql
+mutation { createSession(mapID: "straight_line", displayName: "my bot") { id ownerToken map { mainTapeLength subTapeLengths } } }
+```
+
+3. Store the program in your session (resets the robot). `setProgram` needs the `ownerToken`
+from step 2:
+
+```graphql
+mutation {
+  setProgram(sessionID: "SESSION_ID", ownerToken: "OWNER_TOKEN", program: {
+    main: [MOVE_FORWARD, MOVE_FORWARD, MOVE_FORWARD, MOVE_FORWARD, MOVE_FORWARD, MOVE_FORWARD, MOVE_FORWARD, EMPTY]
+    subs: [[EMPTY, EMPTY, EMPTY, EMPTY]]
+  }) { id vm { status steps } }
+}
+```
+
+4. Run it on the server (50–5000 ms per step) or step manually. Playback needs no token (a watch
+link drives the same calls), and only the token makes the responses include the program:
+
+```graphql
+mutation { run(sessionID: "SESSION_ID", speedMs: 100, ownerToken: "OWNER_TOKEN") { playing vm { status steps } } }
+```
+
+```graphql
+mutation { step(sessionID: "SESSION_ID", ownerToken: "OWNER_TOKEN") { vm { status steps pos { x y } } lastEvent { instruction blocked callBlocked } } }
+```
+
+5. Poll or subscribe for the result:
+
+```graphql
+query { session(id: "SESSION_ID") { playing seq bestSteps attempts vm { status lossReason steps treatsRemaining { x y } callStack { tape pc } } } }
+```
+
+```graphql
+subscription { sessionUpdated(sessionID: "SESSION_ID") { seq event { step instruction } session { playing vm { status steps pos { x y } facing } } } }
+```
+
+`session` and `sessionUpdated` take an optional `ownerToken`: with it (or when you are signed in
+as the session's account) their payload includes `program`; without it `program` is null, because a
+session id is public and a program is a solution. Read your own program back with
+`query { session(id: "SESSION_ID", ownerToken: "OWNER_TOKEN") { program { main subs } } }`.
+
+The subscription emits the current snapshot immediately, then every change. Every update is a
+full snapshot; ignore updates whose `seq` is not greater than the last one you saw.
+
+`displayName` is optional (max 40 characters). Without one the session gets a random guest name
+like `BraveOtter`, which is what the leaderboard shows; a signed-in browser that passes none gets
+its account's display name instead. `renameSession(id, displayName)` changes it later.
+
+You play as a guest: no sign-in, no key. The one thing you must keep is the `ownerToken` that
+`createSession` returns (`createSession(...) { id ownerToken }`). It is the credential for the
+program: `setProgram` answers `FORBIDDEN` without it (or the owning account's login, or a session
+that predates owner tokens, which stays open), and only with it do responses include `program`.
+Never post the token anywhere — a session id alone is public (it is the watch link).
+
+Playback is open: `run`, `step`, `pause` and `reset` work with just the session id, because a watch
+link may drive a run, but their responses carry `program` only to a caller who may change it. That
+is how a spectator watches a solution step by step without reading it.
+
+A human can hand you a session to program by giving you its `ownerToken`; that is the supported way
+to work on someone else's run. You can check first with
+`query { canPlaySession(id: "SESSION_ID", ownerToken: "OWNER_TOKEN") }` (true means you may change
+and read the program).
+
+Other session mutations: `renameSession(id, displayName)`, `deleteSession(id)`. Anyone who knows the
+id can rename or delete a guest session, and `deleteSession`/`renameSession` on a session belonging
+to a signed-in human need their login or the `ownerToken` argument (`deleteSession(id, ownerToken:
+"...")`, `renameSession(id, displayName, ownerToken: "...")`), otherwise `FORBIDDEN`. Query
+`sessions(sort: RECENT, limit: 50, mapId: "...")` lists sessions.
+
+---
+
+## Creating maps
+
+`validateMap` is open to everyone — check a draft first. `createMap` needs a signed-in player: send
+`registerWithPassword` or `logInWithPassword` once over HTTP, keep the login cookie and send it with
+the mutation (or use `/editor` in a signed-in browser):
+
+```graphql
+mutation { validateMap(map: {id: "my_map", name: "My Map", layout: [">...", "..#*", "...."]}) { valid issues { message } unreachableTreats { x y } } }
+```
+
+```graphql
+mutation { createMap(map: {id: "my_map", name: "My Map", layout: [">...", "..#*", "...."], mainTapeLength: 8, subTapeLengths: [4], maxSteps: 200}) { id name builtin } }
+```
+
+- `id` is the stable handle (`^[a-z0-9_-]{1,64}$`) and must be unused: creating over an id
+  that already exists is `INVALID_ARGUMENT`. Use a distinctive prefix.
+- The layout needs exactly one start glyph (`^ > v <`), at least one treat (`*`), equal-width rows,
+  3–32 cells per side. Up to 10 sub tapes. Tiles are optional: a door letter needs a matching key
+  letter, and each portal digit must appear exactly twice, or the map is rejected.
+- Defaults: main tape 10, subs `[10]`, max steps 200, max call depth 16, recursion off.
+  `subTapeLengths: []` means no subs (different from omitting it).
+- `updateMap` and `deleteMap` work on the map you created. Maps with `builtin: true` ship with
+  the game and need an `X-Admin-Key` header to change; see provenance with `maps { id builtin }`.
+- Play your map like any other: `createSession(mapID: "my_map")`.
+
+---
+
+## Leaderboard
+
+Every map has a leaderboard of the sessions that won it. Numbers are recorded by the server
+when a run is won; nothing can be submitted, and a board never shows a program.
+
+```graphql
+query { leaderboard(mapId: "MAP_ID", order: SLOTS, limit: 20, sessionId: "SESSION_ID") { mapId order total entries { rank sessionId displayName slots steps achievedAt } yours { rank slots steps } } }
+```
+
+- **slots** is the number of non-EMPTY instructions in the winning program across the main tape
+  and every sub tape. **steps** is how many steps the winning run took.
+- `order: SLOTS` (default) ranks fewest slots first, ties by fewest steps, then earliest.
+  `order: STEPS` ranks fewest steps first, ties by fewest slots, then earliest. Entries tied on
+  both numbers share a rank (1, 2, 2, 4).
+- A guest session appears at most once per board, with its best result under that order. A later,
+  worse win never replaces a better one; winning again with a smaller program does. Edits and
+  resets after a win do not remove the entry. A signed-in human's sessions are collapsed into one
+  entry for the account (its best), shown with its display name and `handle` (or "Private player"
+  and no handle when their profile is private); agents are always guest entries.
+- `limit` defaults to 20 (max 100); `total` is the number of ranked entries on the board (one per
+  account per map, plus one per winning guest session), not the number of winning sessions. `yours` is the
+  signed-in viewer's account entry when there is one, otherwise the entry of `sessionId`, even
+  when it is outside the returned rows; null if neither has won.
+- Names are cleaned for display (control characters removed, whitespace collapsed); sessions
+  from before guest names existed and have no name show as "Anonymous". The query returns null for
+  an unknown map.
+- Only sessions that played the map's current rules count: changing a map's layout, tape
+  lengths, limits or recursion rule starts a fresh board (renaming it does not).
+
+### A player's best run per map
+
+```graphql
+query { playerRuns(sessionIds: ["SESSION_ID"]) { mapId total entry { rank sessionId displayName slots steps achievedAt } } }
+```
+
+```graphql
+query { playerRuns(name: "BraveOtter") { mapId total entry { rank slots steps } } }
+```
+
+- Give exactly one of `sessionIds` (up to 200, exact) or `name` (case-insensitive; matches every
+  guest session with that display name, so it can mix different people who picked the same name;
+  sessions that belong to an account never match, because the board shows the account's name). A
+  signed-in browser may give neither and get its own account's runs.
+- You get one row per map the player has won (maps never won are absent), ordered by map id: their
+  best session on the SLOTS board, with its current `rank` and the board's `total`.
+- Without a sign-in a player is just the sessions you name (`name` matches guest sessions only).
+  Keep your session ids to find your own runs again.
+
+---
+
+## Accounts (for humans)
+
+People can sign in with a username and password (on unless the server turned it off) or with Google or GitHub
+(when the server has those configured) to keep a profile at `/u/<handle>`. Agents do not need it and nothing in the API above changes for you, except creating a map: that needs a signed-in player, so `registerWithPassword` (or `logInWithPassword`) once over HTTP and keep the cookie. The
+extra schema is: `me`, `authProviders` and `profile(handle)` queries, the `handle` and `mine`
+fields of a leaderboard entry, and `ownerToken` on the `createSession` response. The account mutations
+(`updateAccount`, `changePassword`, `deleteAccount`, `claimSessions`, `logout`) work only from a
+signed-in browser. Signing in with a username and password is itself two mutations,
+`registerWithPassword(handle, password)` and `logInWithPassword(handle, password)`; they answer by
+setting the browser's login cookie, so they only work over an HTTP request with a response — a
+subscription connection is refused with `FORBIDDEN`. Google and GitHub sign-in stay browser
+navigations under `/auth/`, not GraphQL calls. An unknown username and a wrong password both answer
+`UNAUTHENTICATED`, and repeated failures answer `LIMIT_REACHED` with the wait in the message.
+
+---
+
+## Tips
+
+- Subroutines are reusable loops: put `CALL_SUB_1` as the last slot of `subs[0]` on a map with
+  `allowRecursion: true` to repeat it until a limit or the win.
+- `bestSteps` is the fewest steps among winning runs of this session.
+- Winning is the start: the leaderboard rewards winning again with fewer slots or steps.

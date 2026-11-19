@@ -1,0 +1,36 @@
+# binary
+/drbrain-motor-programming
+/validate-bin
+
+# runtime state
+/sessions/
+/maps-user/
+/accounts/
+.env
+
+# frontend
+node_modules/
+frontend/node_modules/
+frontend/build/
+frontend/.svelte-kit/
+
+# local run state (justfile: pid + server log)
+/.run/
+/maps-gen/
+
+# coverage / OS
+*.out
+.DS_Store
+
+# reference solutions (private; kept locally for just validate)
+solutions/
+
+# production admin key (local only)
+.admin-key
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
+*.gate.lock*

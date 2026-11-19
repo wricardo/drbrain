@@ -1,0 +1,282 @@
+# Development tooling for drbrain-motor-programming.
+#
+# The everyday loop is `just restart`: it rebuilds the UI and the binary, stops
+# anything still holding the port, and serves the fresh build in the background.
+# Override the port with `just port=9000 restart` (or PORT=9000 just restart).
+
+set shell := ["bash", "-uc"]
+
+port := env("PORT", "8000")
+host := env("HOST", "0.0.0.0")
+bin := env("BIN", "drbrain-motor-programming")
+# The site's own base URL. Sign-in (username/password, on by default) uses it for
+# the same-origin check and the Secure cookie flag; override it when the server is
+# reached under another name: PUBLIC_URL=https://dev.example just restart.
+public_url := env("PUBLIC_URL", "http://localhost:" + port)
+# PostgreSQL from docker-compose.yaml (POSTGRES_PORT when 5432 is taken). The app only
+# uses a database when DATABASE_URL is set (in .env or the environment); without it,
+# sessions, accounts and player maps stay JSON files.
+pg_port := env("POSTGRES_PORT", "5432")
+database_url := env("DATABASE_URL", "postgres://drbrain:" + env("POSTGRES_PASSWORD", "drbrain_dev") + "@localhost:" + pg_port + "/drbrain?sslmode=disable")
+pidfile := ".run/drbrain-" + port + ".pid"
+logfile := ".run/drbrain-" + port + ".log"
+
+# List recipes.
+default:
+    @just --list
+
+# Rebuild the UI into static/ and the Go binary.
+build: build-ui build-go
+
+# Build the server binary (./drbrain-motor-programming).
+build-go:
+    go build -o {{bin}} .
+
+# Build the SvelteKit UI into static/ (committed; the server serves it).
+build-ui:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    test -d frontend/node_modules || (cd frontend && npm ci)
+    (cd frontend && npm run build:static)
+
+    # The server prefers ./frontend/build over ./static when both exist, so a
+    # build directory left behind here would shadow the bundle just copied into
+    # static/ and silently serve a stale UI.
+    rm -rf frontend/build
+    test ! -e frontend/build
+
+# Rebuild everything, stop whatever holds the port, and start it again.
+restart: build stop start
+
+# Rebuild and run in the foreground.
+run: build
+    ./{{bin}} -port {{port}} -host {{host}} -public-url {{public_url}}
+
+# Stop whatever serves the port, then run from source with debug logging.
+dev: stop
+    go run . -port {{port}} -host {{host}} -public-url {{public_url}} -debug
+
+# Stop the server: the port listener and/or the pid recorded by `just start`.
+stop:
+    #!/usr/bin/env bash
+    set -uo pipefail
+
+    pidfile="{{pidfile}}"
+    declare -a pids=()
+
+    add() {
+        local p="${1:-}"
+        [[ -n "$p" ]] || return 0
+        local e
+        for e in ${pids[@]+"${pids[@]}"}; do [[ "$e" == "$p" ]] && return 0; done
+        pids+=("$p")
+    }
+
+    # Only trust the recorded pid while it still belongs to our binary, so a
+    # recycled pid never kills an unrelated process.
+    if [[ -f "$pidfile" ]]; then
+        recorded=$(tr -dc '0-9' <"$pidfile")
+        if [[ -n "$recorded" ]] && ps -p "$recorded" -o command= 2>/dev/null | grep -q "{{bin}}"; then
+            add "$recorded"
+        fi
+    fi
+    for p in $(lsof -nP -ti "tcp:{{port}}" -sTCP:LISTEN 2>/dev/null || true); do
+        add "$p"
+    done
+
+    rm -f "$pidfile"
+
+    if [[ ${#pids[@]} -eq 0 ]]; then
+        echo "nothing listening on :{{port}}"
+        exit 0
+    fi
+
+    echo "stopping pid(s): ${pids[*]}"
+    kill "${pids[@]}" 2>/dev/null || true
+
+    # alive means "still running": a killed process whose parent has exited stays
+    # a zombie, and kill -0 keeps succeeding on it. Stat Z is dead for our purposes.
+    alive() {
+        kill -0 "$1" 2>/dev/null || return 1
+        [[ "$(ps -p "$1" -o stat= 2>/dev/null)" == *Z* ]] && return 1
+        return 0
+    }
+
+    for _ in $(seq 1 50); do
+        running=0
+        for p in "${pids[@]}"; do alive "$p" && running=1; done
+        [[ $running -eq 0 ]] && break
+        sleep 0.1
+    done
+    for p in "${pids[@]}"; do
+        if alive "$p"; then
+            echo "pid $p ignored SIGTERM; sending SIGKILL"
+            kill -9 "$p" 2>/dev/null || true
+        fi
+    done
+    echo "port :{{port}} free"
+
+# Serve the built binary on the port in the background.
+start:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    mkdir -p "$(dirname "{{pidfile}}")"
+    nohup ./{{bin}} -port {{port}} -host {{host}} -public-url {{public_url}} -debug >"{{logfile}}" 2>&1 &
+    pid=$!
+    echo "$pid" >"{{pidfile}}"
+
+    for _ in $(seq 1 75); do
+        if ! kill -0 "$pid" 2>/dev/null || [[ "$(ps -p "$pid" -o stat= 2>/dev/null)" == *Z* ]]; then
+            rm -f "{{pidfile}}"
+            echo "server exited during startup:" >&2
+            tail -20 "{{logfile}}" >&2 || true
+            exit 1
+        fi
+        # A listening port is not enough: another server may already hold it and
+        # answer for us while ours is still starting (or dying). Wait until the
+        # socket on the port belongs to the pid we just launched.
+        if lsof -nP -ti "tcp:{{port}}" -sTCP:LISTEN 2>/dev/null | grep -qx "$pid"; then
+            echo "serving http://localhost:{{port}} (pid $pid, log {{logfile}})"
+            exit 0
+        fi
+        sleep 0.2
+    done
+    echo "timed out waiting for :{{port}}; see {{logfile}}" >&2
+    exit 1
+
+# Show the process serving the port.
+status:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    if out=$(lsof -nP -iTCP:{{port}} -sTCP:LISTEN 2>/dev/null); then
+        echo "$out"
+    else
+        echo "nothing listening on :{{port}}"
+    fi
+
+# Follow the background server log.
+logs:
+    tail -f {{logfile}}
+
+# Start PostgreSQL in Docker and wait until it is healthy (see docker-compose.yaml).
+db-up:
+    docker compose up -d --wait postgres
+    @echo "PostgreSQL is up. To use it: DATABASE_URL='{{database_url}}'"
+
+# Stop PostgreSQL (the data stays in the pgdata volume; add -v to docker compose down to erase it).
+db-down:
+    docker compose down
+
+# Apply the schema migrations (the server also applies them at startup).
+db-migrate:
+    DATABASE_URL='{{database_url}}' go run ./cmd/import-json -migrate-only
+
+# Copy sessions/, accounts/ and maps-user/ into the database. Safe to re-run; add -dry-run to only count.
+db-import *args:
+    DATABASE_URL='{{database_url}}' go run ./cmd/import-json {{args}}
+
+# Write the database out as JSON files (the rollback copy) into fresh directories under dir.
+db-export dir="backup":
+    DATABASE_URL='{{database_url}}' go run ./cmd/import-json -export -sessions-dir {{dir}}/sessions -accounts-dir {{dir}}/accounts -user-maps-dir {{dir}}/maps-user
+
+# Like dev, but with sessions, accounts and player maps in the compose PostgreSQL.
+dev-db: db-up stop
+    DATABASE_URL='{{database_url}}' go run . -port {{port}} -host {{host}} -public-url {{public_url}} -debug
+
+# Run all Go tests with the race detector.
+test:
+    go test -race ./...
+
+# Run all Go tests, the PostgreSQL ones included, against the compose database.
+test-db: db-up
+    TEST_DATABASE_URL='{{database_url}}' go test -race ./...
+
+# Validate every map and its reference solution.
+validate:
+    go run ./cmd/validate -maps-dir maps -solutions-dir solutions
+
+# Generate a small solvable map and its reference solution into maps-gen/.
+# maps-gen/ is scratch: move a keeper into maps/ + solutions/ and add its
+# golden step count to validate/validate_test.go.
+mapgen size="5" seed="1":
+    go run ./cmd/mapgen -size {{size}} -seed {{seed}} -out maps-gen/maps/{{size}}x{{size}}_s{{seed}}.json -solution maps-gen/solutions/{{size}}x{{size}}_s{{seed}}.json
+    go run ./cmd/validate -maps-dir maps-gen/maps -solutions-dir maps-gen/solutions
+
+# gofmt every Go file.
+fmt:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    gofmt -w $(find . -name '*.go' -not -path './frontend/*' -not -path './graph/generated/*')
+
+# go vet ./...
+vet:
+    go vet ./...
+
+# golangci-lint run (requires golangci-lint 2.15+ built with this Go toolchain).
+lint:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    command -v golangci-lint >/dev/null || {
+        echo "golangci-lint not installed: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0" >&2
+        exit 1
+    }
+
+    # Too-old linters bundle an x/tools that cannot read the Go toolchain's
+    # export data and fail with "export data version N is greater than maximum
+    # supported": a confusing error that looks like a code problem.
+    lintver=$(golangci-lint --version 2>/dev/null | sed -n 's/.*version v\{0,1\}\([0-9][0-9.]*\).*/\1/p' | head -1)
+    want="2.15.0"
+    if [[ -n "$lintver" ]] && [[ "$(printf '%s\n%s\n' "$want" "$lintver" | sort -V | head -1)" != "$want" ]]; then
+        echo "golangci-lint $lintver is too old for $(go version | awk '{print $3}'); need >= $want." >&2
+        echo "Upgrade: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v$want" >&2
+        exit 1
+    fi
+
+    golangci-lint run
+
+# Regenerate gqlgen code from graph/schema.graphqls.
+generate:
+    go run github.com/99designs/gqlgen generate
+
+# Remove build artifacts.
+clean:
+    rm -rf {{bin}} coverage.out frontend/build .run
+
+# Type check and unit test the UI.
+check-ui:
+    cd frontend && npm run check && npm test
+
+# End-to-end HTTP smoke test (starts its own server on the given port).
+smoke p="9191":
+    scripts/smoke.sh {{p}}
+
+# The smoke test against PostgreSQL: a throwaway database drbrain_smoke in the compose container.
+smoke-db p="9191": db-up
+    docker compose exec -T postgres psql -U drbrain -d drbrain -c 'DROP DATABASE IF EXISTS drbrain_smoke' -c 'CREATE DATABASE drbrain_smoke'
+    SMOKE_DATABASE_URL='{{replace(database_url, "/drbrain?", "/drbrain_smoke?")}}' scripts/smoke.sh {{p}}
+
+# gofmt check, vet, lint, test and UI check — run before pushing.
+verify:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    out=$(gofmt -l $(find . -name '*.go' -not -path './frontend/*' -not -path './graph/generated/*'))
+    if [[ -n "$out" ]]; then
+        echo "gofmt needed:" >&2
+        echo "$out" >&2
+        exit 1
+    fi
+    just vet
+    just lint
+    just test
+    # The UI has its own 337 unit tests and a type check, and for a long time
+    # nothing ran them before a push: they were correct but unenforced. A missing
+    # node_modules is not a code failure, so say so loudly and continue; a real
+    # test or type failure stops the gate.
+    if [[ -d frontend/node_modules ]]; then
+        just check-ui
+    else
+        echo "SKIP UI check: frontend/node_modules is absent (run 'cd frontend && npm ci')" >&2
+    fi

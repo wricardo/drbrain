@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="text-scale" content="scale" />
+		<meta name="theme-color" content="#ffffff" />
+		<!-- Applies the saved or OS theme before first paint, so there is no flash. Mirrors src/lib/theme.ts. -->
+		<script>
+			(function () {
+				var saved = null;
+				try {
+					saved = localStorage.getItem('drbrain-motor-programming.theme');
+				} catch (e) {}
+				var dark = saved === 'dark';
+				if (saved !== 'dark' && saved !== 'light') {
+					try {
+						dark = matchMedia('(prefers-color-scheme: dark)').matches;
+					} catch (e) {}
+				}
+				var root = document.documentElement;
+				root.classList.toggle('dark', dark);
+				root.style.colorScheme = dark ? 'dark' : 'light';
+				if (dark) document.querySelector('meta[name="theme-color"]').setAttribute('content', '#171936');
+			})();
+		</script>
+		<style>
+			/* Dark canvas until the stylesheet arrives (the app is a client-rendered SPA). */
+			html.dark {
+				background-color: #0e0f24;
+			}
+		</style>
+		<link href="/_app/immutable/entry/start.Dvryqptp.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/CFiE1CWY.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/qFQH_apL.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/CU6ONQUM.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/Bcnh6N1P.js" rel="modulepreload">
+		<link href="/_app/immutable/entry/app.D8JbHvfQ.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/xihTtKlq.js" rel="modulepreload">
+		<link href="/_app/immutable/nodes/0.CZIp5MXI.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/BNf2wrj_.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/DXD0gsGG.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/CgQgDCRH.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/H3_5zlqE.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/CX2fdOv1.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/QPZR1TNz.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/7Xmz4HQn.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/Bb1EFFLm.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/Dp_0PRJN.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/CcJDN8nd.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/bKiccxzh.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/S1VTghGh.js" rel="modulepreload">
+		
+		<link href="/_app/immutable/assets/0.BLxXsUI_.css" rel="stylesheet">
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<div style="display: contents">
+			<script>
+				{
+					__sveltekit_1imm75g = {
+						base: ""
+					};
+
+					const element = document.currentScript.parentElement;
+
+					Promise.all([
+						import("/_app/immutable/entry/start.Dvryqptp.js"),
+						import("/_app/immutable/entry/app.D8JbHvfQ.js")
+					]).then(([kit, app]) => {
+						kit.start(app, element);
+					});
+				}
+			</script>
+		</div>
+	</body>
+</html>
