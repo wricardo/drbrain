@@ -1,0 +1,12 @@
+{
+  "name": "drbrain",
+  "private": true,
+  "type": "module",
+  "workspaces": ["web", "web/packages/*"],
+  "scripts": {
+    "dev": "npm --workspace web run dev",
+    "build": "npm --workspace web run build",
+    "check": "npm --workspace web run check",
+    "test": "npm --workspace web run test"
+  }
+}
