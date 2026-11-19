@@ -104,7 +104,7 @@ func TestPasswordAccountsEndToEnd(t *testing.T) {
 		t.Fatalf("register = %d %v", resp.StatusCode, reg)
 	}
 	// The cookie came back on the mutation's own response.
-	if setCookieHeader(resp, "dbmp_session") == "" {
+	if setCookieHeader(resp, auth.SessionCookie) == "" {
 		t.Fatal("registering did not set the login cookie")
 	}
 	me := dig(t, alice.gql(pwMeQ, nil), "data", "me").(map[string]any)

@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -21,9 +22,10 @@ import (
 
 const (
 	// SessionCookie holds the login token (HttpOnly; only its SHA-256 is stored server-side).
-	SessionCookie = "dbmp_session"
+	// The motor_ prefix keeps it distinct from every other game's cookie on the shared origin.
+	SessionCookie = "motor_session"
 	// flowCookie binds an in-progress sign-in to the browser that started it.
-	flowCookie = "dbmp_oauth"
+	flowCookie = "motor_oauth"
 	// flowTTL is how long a sign-in attempt may take; its state is single use.
 	flowTTL = 10 * time.Minute
 	// maxPending bounds the in-memory table of unfinished sign-ins.
@@ -63,12 +65,17 @@ type Config struct {
 	// instead of the OAuth providers. It is served by the GraphQL mutations
 	// registerWithPassword and logInWithPassword (see PasswordSignIn).
 	Password bool
+	// BasePath is the public mount prefix, e.g. "/motor". Cookies and OAuth
+	// callback URLs include it; route registration stays relative. Empty means
+	// the game owns the site root.
+	BasePath string
 }
 
 // Auth owns the sign-in routes and the login cookie.
 type Auth struct {
 	cfg       Config
 	base      *url.URL
+	basePath  string // "" or "/motor"; no trailing slash
 	providers map[string]Provider
 	order     []Provider
 	allowed   map[string]bool // explicit allowed origins (without PublicURL's)
@@ -105,8 +112,12 @@ func New(cfg Config) (*Auth, error) {
 		}
 		base = nil
 	}
+	basePath := strings.TrimRight(strings.TrimSpace(cfg.BasePath), "/")
+	if basePath != "" && !strings.HasPrefix(basePath, "/") {
+		return nil, fmt.Errorf("auth: BasePath %q must be absolute", cfg.BasePath)
+	}
 	a := &Auth{
-		cfg: cfg, base: base, providers: make(map[string]Provider), allowed: make(map[string]bool),
+		cfg: cfg, base: base, basePath: basePath, providers: make(map[string]Provider), allowed: make(map[string]bool),
 		limiter: cfg.Limiter, now: cfg.Now, pending: make(map[string]pendingFlow),
 	}
 	if a.now == nil {
@@ -191,9 +202,11 @@ func (a *Auth) secure(r *http.Request) bool {
 
 // SetSession stores the login token in an HttpOnly, SameSite=Lax cookie that
 // expires with the login (Secure unless the site is plain-http localhost).
+// The cookie is scoped to the game's mount path, never the site root, so one
+// origin can host several games without leaking the login between them.
 func (a *Auth) SetSession(w http.ResponseWriter, r *http.Request, token string, expires time.Time) {
 	http.SetCookie(w, &http.Cookie{
-		Name: SessionCookie, Value: token, Path: "/", Expires: expires, MaxAge: int(expires.Sub(a.now()).Seconds()),
+		Name: SessionCookie, Value: token, Path: a.cookiePath(), Expires: expires, MaxAge: int(expires.Sub(a.now()).Seconds()),
 		HttpOnly: true, Secure: a.secure(r), SameSite: http.SameSiteLaxMode,
 	})
 }
@@ -201,21 +214,33 @@ func (a *Auth) SetSession(w http.ResponseWriter, r *http.Request, token string, 
 // ClearSession removes the login cookie.
 func (a *Auth) ClearSession(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
-		Name: SessionCookie, Value: "", Path: "/", MaxAge: -1, Expires: time.Unix(0, 0),
+		Name: SessionCookie, Value: "", Path: a.cookiePath(), MaxAge: -1, Expires: time.Unix(0, 0),
 		HttpOnly: true, Secure: a.secure(r), SameSite: http.SameSiteLaxMode,
 	})
 }
 
+// cookiePath is the login cookie's Path attribute: the game's mount prefix,
+// or "/" for a game that owns the root.
+func (a *Auth) cookiePath() string {
+	if a.basePath == "" {
+		return "/"
+	}
+	return a.basePath
+}
+
+// flowPath scopes the in-progress sign-in cookie to the callback routes.
+func (a *Auth) flowPath() string { return a.basePath + "/auth" }
+
 func (a *Auth) setFlow(w http.ResponseWriter, r *http.Request, v string) {
 	http.SetCookie(w, &http.Cookie{
-		Name: flowCookie, Value: v, Path: "/auth", MaxAge: int(flowTTL.Seconds()),
+		Name: flowCookie, Value: v, Path: a.flowPath(), MaxAge: int(flowTTL.Seconds()),
 		HttpOnly: true, Secure: a.secure(r), SameSite: http.SameSiteLaxMode,
 	})
 }
 
 func (a *Auth) clearFlow(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
-		Name: flowCookie, Value: "", Path: "/auth", MaxAge: -1,
+		Name: flowCookie, Value: "", Path: a.flowPath(), MaxAge: -1,
 		HttpOnly: true, Secure: a.secure(r), SameSite: http.SameSiteLaxMode,
 	})
 }
@@ -296,7 +321,9 @@ func (a *Auth) Viewer(r *http.Request) (acct *service.Account, token string) {
 
 // ---- routes ------------------------------------------------------------------
 
-func (a *Auth) callbackURL(id string) string { return a.base.String() + "/auth/" + id + "/callback" }
+func (a *Auth) callbackURL(id string) string {
+	return a.base.String() + a.basePath + "/auth/" + id + "/callback"
+}
 
 func (a *Auth) handleLogin(w http.ResponseWriter, r *http.Request) {
 	p, ok := a.providers[mux.Vars(r)["provider"]]
@@ -314,7 +341,7 @@ func (a *Auth) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	params := Params{State: state, Nonce: nonce, Verifier: oauth2.GenerateVerifier(), RedirectURL: a.callbackURL(p.ID())}
 	if !a.putPending(state, pendingFlow{
-		provider: p.ID(), params: params, binding: binding, next: SafeNext(r.URL.Query().Get("next")),
+		provider: p.ID(), params: params, binding: binding, next: a.safeNext(r.URL.Query().Get("next")),
 		expires: a.now().Add(flowTTL),
 	}) {
 		http.Error(w, "too many sign-ins in progress; try again shortly", http.StatusServiceUnavailable)
@@ -517,4 +544,18 @@ func SafeNext(next string) string {
 		return "/"
 	}
 	return u.RequestURI()
+}
+
+// safeNext is SafeNext plus the game's own mount prefix: under /motor, a
+// redirect back into /motor/auth/... is refused exactly like /auth/...
+func (a *Auth) safeNext(next string) string {
+	next = SafeNext(next)
+	if a.basePath == "" {
+		return next
+	}
+	authRoot := a.basePath + "/auth"
+	if p, _, _ := strings.Cut(next, "?"); p == authRoot || strings.HasPrefix(p, authRoot+"/") {
+		return "/"
+	}
+	return next
 }

@@ -237,10 +237,18 @@ var devUserRE = regexp.MustCompile(`^[a-z0-9_-]{1,32}$`)
 // whose Host is not local. It exists so the real login, cookie, claim and
 // deletion paths can be exercised end to end; it proves nothing about Google or
 // GitHub.
-type DevProvider struct{ base string }
+type DevProvider struct {
+	base   string // absolute base URL, including the game prefix
+	prefix string // "" or "/motor"
+}
 
 // NewDev builds the dev provider for the local base URL.
-func NewDev(base string) *DevProvider { return &DevProvider{base: strings.TrimRight(base, "/")} }
+func NewDev(base string) *DevProvider { return NewDevAt(base, "") }
+
+// NewDevAt builds the dev provider for base mounted at prefix.
+func NewDevAt(base, prefix string) *DevProvider {
+	return &DevProvider{base: strings.TrimRight(base, "/"), prefix: strings.TrimRight(prefix, "/")}
+}
 
 func (d *DevProvider) ID() string   { return "dev" }
 func (d *DevProvider) Name() string { return "Dev sign-in (local only)" }
@@ -269,11 +277,11 @@ func (d *DevProvider) authorize(w http.ResponseWriter, r *http.Request) {
 <body style="font-family:system-ui;max-width:26rem;margin:3rem auto;padding:0 1rem">
 <h1>Dev sign-in</h1>
 <p>This is a fake identity provider for local development. Pick any user name; the same name always gives the same account.</p>
-<form method="get" action="/auth/dev/callback">
+<form method="get" action="%s/auth/dev/callback">
 <input type="hidden" name="state" value="%s">
 <label>User name <input name="code" value="alice" pattern="[a-z0-9_-]{1,32}" required autofocus></label>
 <button>Sign in</button>
-</form></body>`, html.EscapeString(r.URL.Query().Get("state")))
+</form></body>`, d.prefix, html.EscapeString(r.URL.Query().Get("state")))
 }
 
 // IsLocalHost reports whether a host (optionally with a port) is localhost,
@@ -301,6 +309,9 @@ type ProvidersConfig struct {
 	GitHubID, GitHubSecret string
 	// DevFake adds the local development provider (AUTH_DEV_FAKE).
 	DevFake bool
+	// BasePath is the public mount prefix (e.g. "/motor") used by the dev
+	// provider's links and callback form.
+	BasePath string
 }
 
 // Providers builds the enabled providers. A provider is enabled when both its
@@ -335,7 +346,7 @@ func Providers(cfg ProvidersConfig, publicURL string) ([]Provider, error) {
 		if err != nil || !IsLocalHost(u.Host) {
 			return nil, errors.New("AUTH_DEV_FAKE=true is only allowed when -public-url is a localhost URL (for example http://localhost:8000)")
 		}
-		out = append(out, NewDev(u.String()))
+		out = append(out, NewDevAt(u.String()+strings.TrimRight(cfg.BasePath, "/"), cfg.BasePath))
 	}
 	if len(out) > 0 {
 		if _, err := ParseBaseURL(publicURL); err != nil {

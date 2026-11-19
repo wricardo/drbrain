@@ -15,6 +15,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/wricardo/drbrain/games/mazes"
+	"github.com/wricardo/drbrain/games/motor"
 	"github.com/wricardo/drbrain/platform"
 	"github.com/wricardo/drbrain/platform/config"
 	"github.com/wricardo/drbrain/platform/host"
@@ -29,6 +30,7 @@ func main() {
 func builtinGames() []platform.Game {
 	return []platform.Game{
 		mazes.New(),
+		motor.New(),
 	}
 }
 

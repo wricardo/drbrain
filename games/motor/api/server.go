@@ -96,12 +96,12 @@ func NewServer(svc service.GameService, hub *websocket.Hub, opts Options) (*Serv
 	}
 	s := &Server{router: mux.NewRouter(), llms: llms, opts: opts}
 
-	s.router.Handle("/graphql", withCORS(opts.AllowedOrigins, withHTTPRequest(withViewer(opts.Auth, limitBody(limitWebsocketMessages(newGraphQLServer(svc, hub, opts)))))))
+	s.router.Handle("/graphql", limitWebsocketMessages(NewGraphQLHandler(svc, hub, opts)))
 	if opts.Auth != nil {
 		opts.Auth.Routes(s.router)
 	}
 	if opts.Playground {
-		s.router.Handle("/playground", playground.Handler("Dr Brain - Motor Programming GraphQL playground", "/graphql"))
+		s.router.Handle("/playground", NewPlaygroundHandler("/graphql"))
 	}
 	s.router.HandleFunc("/llms.txt", s.handleLLMS)
 	s.router.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -115,6 +115,27 @@ func NewServer(svc service.GameService, hub *websocket.Hub, opts Options) (*Serv
 // ServeHTTP implements http.Handler.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.router.ServeHTTP(w, r)
+}
+
+// NewGraphQLHandler builds the /graphql handler alone: CORS, request context,
+// viewer cookie, body limit and the gqlgen server. Websocket message limits
+// and panic recovery come from platform/httpserve at the mount.
+func NewGraphQLHandler(svc service.GameService, hub *websocket.Hub, opts Options) http.Handler {
+	return withCORS(opts.AllowedOrigins,
+		withHTTPRequest(withViewer(opts.Auth, limitBody(newGraphQLServer(svc, hub, opts)))))
+}
+
+// NewPlaygroundHandler returns the GraphQL playground, targeting endpoint.
+func NewPlaygroundHandler(endpoint string) http.Handler {
+	return playground.Handler("Dr Brain - Motor Programming GraphQL playground", endpoint)
+}
+
+// NewAuthRoutes returns the sign-in routes as a handler. The gorilla patterns
+// stay relative ("/auth/..."); the platform strips the game prefix first.
+func NewAuthRoutes(a *auth.Auth) http.Handler {
+	r := mux.NewRouter()
+	a.Routes(r)
+	return r
 }
 
 // newGraphQLServer builds the gqlgen handler with transports and guards.
