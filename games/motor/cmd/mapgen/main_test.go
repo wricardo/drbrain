@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/wricardo/drbrain-motor-programming/game/engine"
-	"github.com/wricardo/drbrain-motor-programming/validate"
+	"github.com/wricardo/drbrain/games/motor/game/engine"
+	"github.com/wricardo/drbrain/games/motor/validate"
 )
 
 func TestGenerateProducesSolvableMap(t *testing.T) {

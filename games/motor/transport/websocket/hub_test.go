@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wricardo/drbrain-motor-programming/game/service"
+	"github.com/wricardo/drbrain/games/motor/game/service"
 )
 
 func snap(id string, seq uint64) *service.Session {

@@ -14,9 +14,9 @@ import (
 	"github.com/99designs/gqlgen/complexity"
 	gorillaws "github.com/gorilla/websocket"
 	"github.com/vektah/gqlparser/v2"
-	"github.com/wricardo/drbrain-mazes/game/engine"
-	"github.com/wricardo/drbrain-mazes/graph"
-	"github.com/wricardo/drbrain-mazes/graph/generated"
+	"github.com/wricardo/drbrain/games/mazes/game/engine"
+	"github.com/wricardo/drbrain/games/mazes/graph"
+	"github.com/wricardo/drbrain/games/mazes/graph/generated"
 )
 
 // --- optional map fields through the HTTP path ---

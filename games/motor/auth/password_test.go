@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wricardo/drbrain-motor-programming/game/service"
+	"github.com/wricardo/drbrain/games/motor/game/service"
 )
 
 // Password methods of the shared fake: an in-memory username/password store with

@@ -22,12 +22,12 @@ import (
 	"github.com/99designs/gqlgen/graphql/playground"
 	"github.com/gorilla/mux"
 	gorillaws "github.com/gorilla/websocket"
-	"github.com/wricardo/drbrain-motor-programming/auth"
-	"github.com/wricardo/drbrain-motor-programming/game/service"
-	"github.com/wricardo/drbrain-motor-programming/graph"
-	"github.com/wricardo/drbrain-motor-programming/graph/generated"
-	"github.com/wricardo/drbrain-motor-programming/graph/model"
-	"github.com/wricardo/drbrain-motor-programming/transport/websocket"
+	"github.com/wricardo/drbrain/games/motor/auth"
+	"github.com/wricardo/drbrain/games/motor/game/service"
+	"github.com/wricardo/drbrain/games/motor/graph"
+	"github.com/wricardo/drbrain/games/motor/graph/generated"
+	"github.com/wricardo/drbrain/games/motor/graph/model"
+	"github.com/wricardo/drbrain/games/motor/transport/websocket"
 )
 
 const (

@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/wricardo/drbrain-delivery/game/engine"
+	"github.com/wricardo/drbrain/games/delivery/game/engine"
 )
 
 // cmdPlay is the terminal driving loop. It is deliberately crude: the point is

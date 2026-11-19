@@ -29,9 +29,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/wricardo/drbrain-delivery/api"
-	"github.com/wricardo/drbrain-delivery/game/session"
-	"github.com/wricardo/drbrain-delivery/graph"
+	"github.com/wricardo/drbrain/games/delivery/api"
+	"github.com/wricardo/drbrain/games/delivery/game/session"
+	"github.com/wricardo/drbrain/games/delivery/graph"
 )
 
 func main() {

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wricardo/tesla-road-trip-game/game/engine"
-	"github.com/wricardo/tesla-road-trip-game/transport/websocket"
+	"github.com/wricardo/drbrain/games/tesla/game/engine"
+	"github.com/wricardo/drbrain/games/tesla/transport/websocket"
 )
 
 // waitGoroutines polls until the goroutine count drops to at most want.

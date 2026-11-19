@@ -11,10 +11,10 @@ import (
 	"testing"
 
 	"github.com/99designs/gqlgen/graphql/handler"
-	"github.com/wricardo/tesla-road-trip-game/game/config"
-	"github.com/wricardo/tesla-road-trip-game/game/service"
-	"github.com/wricardo/tesla-road-trip-game/game/session"
-	"github.com/wricardo/tesla-road-trip-game/graph/generated"
+	"github.com/wricardo/drbrain/games/tesla/game/config"
+	"github.com/wricardo/drbrain/games/tesla/game/service"
+	"github.com/wricardo/drbrain/games/tesla/game/session"
+	"github.com/wricardo/drbrain/games/tesla/graph/generated"
 )
 
 type gqlResp struct {

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wricardo/tesla-road-trip-game/game/config"
+	"github.com/wricardo/drbrain/games/tesla/game/config"
 )
 
 // Reproduces production: many persisted sessions on maps with many parks.

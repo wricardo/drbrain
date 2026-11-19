@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wricardo/tesla-road-trip-game/game/config"
+	"github.com/wricardo/drbrain/games/tesla/game/config"
 )
 
 func TestManagerWithPersistence(t *testing.T) {

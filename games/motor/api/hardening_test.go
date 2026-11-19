@@ -14,9 +14,9 @@ import (
 	"github.com/99designs/gqlgen/complexity"
 	gorillaws "github.com/gorilla/websocket"
 	"github.com/vektah/gqlparser/v2"
-	"github.com/wricardo/drbrain-motor-programming/game/service"
-	"github.com/wricardo/drbrain-motor-programming/graph"
-	"github.com/wricardo/drbrain-motor-programming/graph/generated"
+	"github.com/wricardo/drbrain/games/motor/game/service"
+	"github.com/wricardo/drbrain/games/motor/graph"
+	"github.com/wricardo/drbrain/games/motor/graph/generated"
 )
 
 // --- subTapeLengths and the sign-in gate through the HTTP path ---

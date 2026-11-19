@@ -7,7 +7,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/wricardo/drbrain-motor-programming/game/engine"
+	"github.com/wricardo/drbrain/games/motor/game/engine"
 )
 
 // Leaderboard orderings.

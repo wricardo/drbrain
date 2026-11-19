@@ -3,7 +3,7 @@ package api
 import (
 	"testing"
 
-	"github.com/wricardo/drbrain-motor-programming/game/service"
+	"github.com/wricardo/drbrain/games/motor/game/service"
 )
 
 const (

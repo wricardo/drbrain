@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/wricardo/drbrain-delivery/game/session"
+	"github.com/wricardo/drbrain/games/delivery/game/session"
 )
 
 // Resolver helpers live here, NOT in schema.resolvers.go: gqlgen rewrites that

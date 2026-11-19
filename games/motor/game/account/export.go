@@ -3,7 +3,7 @@ package account
 import (
 	"sort"
 
-	"github.com/wricardo/drbrain-motor-programming/game/service"
+	"github.com/wricardo/drbrain/games/motor/game/service"
 )
 
 // Accounts returns a copy of every account the store holds, oldest first

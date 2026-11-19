@@ -7,10 +7,10 @@ package graph
 import (
 	"context"
 
-	"github.com/wricardo/drbrain-mazes/game/service"
-	"github.com/wricardo/drbrain-mazes/graph/generated"
-	"github.com/wricardo/drbrain-mazes/graph/model"
-	"github.com/wricardo/drbrain-mazes/validate"
+	"github.com/wricardo/drbrain/games/mazes/game/service"
+	"github.com/wricardo/drbrain/games/mazes/graph/generated"
+	"github.com/wricardo/drbrain/games/mazes/graph/model"
+	"github.com/wricardo/drbrain/games/mazes/validate"
 )
 
 // CreateSession is the resolver for the createSession field.

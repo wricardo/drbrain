@@ -5,7 +5,7 @@ import (
 	"log"
 	"sync"
 
-	"github.com/wricardo/drbrain-mazes/game/service"
+	"github.com/wricardo/drbrain/games/mazes/game/service"
 )
 
 // DefaultMaxSessions is used when NewManager is given maxSessions <= 0.

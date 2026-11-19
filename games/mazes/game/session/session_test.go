@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wricardo/drbrain-mazes/game/engine"
-	"github.com/wricardo/drbrain-mazes/game/service"
+	"github.com/wricardo/drbrain/games/mazes/game/engine"
+	"github.com/wricardo/drbrain/games/mazes/game/service"
 )
 
 const (

@@ -20,15 +20,15 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
-	"github.com/wricardo/drbrain-motor-programming/api"
-	"github.com/wricardo/drbrain-motor-programming/auth"
-	"github.com/wricardo/drbrain-motor-programming/game/account"
-	"github.com/wricardo/drbrain-motor-programming/game/config"
-	"github.com/wricardo/drbrain-motor-programming/game/service"
-	"github.com/wricardo/drbrain-motor-programming/game/session"
-	"github.com/wricardo/drbrain-motor-programming/internal/appconfig"
-	"github.com/wricardo/drbrain-motor-programming/internal/pgdb"
-	"github.com/wricardo/drbrain-motor-programming/transport/websocket"
+	"github.com/wricardo/drbrain/games/motor/api"
+	"github.com/wricardo/drbrain/games/motor/auth"
+	"github.com/wricardo/drbrain/games/motor/game/account"
+	"github.com/wricardo/drbrain/games/motor/game/config"
+	"github.com/wricardo/drbrain/games/motor/game/service"
+	"github.com/wricardo/drbrain/games/motor/game/session"
+	"github.com/wricardo/drbrain/games/motor/internal/appconfig"
+	"github.com/wricardo/drbrain/games/motor/internal/pgdb"
+	"github.com/wricardo/drbrain/games/motor/transport/websocket"
 )
 
 const (

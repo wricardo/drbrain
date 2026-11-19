@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	"github.com/wricardo/tesla-road-trip-game/game/engine"
-	"github.com/wricardo/tesla-road-trip-game/game/service"
+	"github.com/wricardo/drbrain/games/tesla/game/engine"
+	"github.com/wricardo/drbrain/games/tesla/game/service"
 )
 
 func TestNewClient(t *testing.T) {

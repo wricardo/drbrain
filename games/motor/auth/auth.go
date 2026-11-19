@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/wricardo/drbrain-motor-programming/game/service"
+	"github.com/wricardo/drbrain/games/motor/game/service"
 	"golang.org/x/oauth2"
 )
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/wricardo/drbrain-motor-programming/game/service"
+	"github.com/wricardo/drbrain/games/motor/game/service"
 )
 
 // subscriberBuffer is the per-subscriber channel capacity.

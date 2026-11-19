@@ -1,9 +1,9 @@
 package graph
 
 import (
-	"github.com/wricardo/drbrain-mazes/game/engine"
-	"github.com/wricardo/drbrain-mazes/game/service"
-	"github.com/wricardo/drbrain-mazes/graph/model"
+	"github.com/wricardo/drbrain/games/mazes/game/engine"
+	"github.com/wricardo/drbrain/games/mazes/game/service"
+	"github.com/wricardo/drbrain/games/mazes/graph/model"
 )
 
 var directionNames = [...]model.Direction{

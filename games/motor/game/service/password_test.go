@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wricardo/drbrain-motor-programming/game/account"
-	"github.com/wricardo/drbrain-motor-programming/game/service"
+	"github.com/wricardo/drbrain/games/motor/game/account"
+	"github.com/wricardo/drbrain/games/motor/game/service"
 )
 
 func TestValidatePassword(t *testing.T) {

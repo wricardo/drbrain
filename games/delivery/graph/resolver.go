@@ -5,7 +5,7 @@
 // about it, so every rule stays testable without a schema in the way.
 package graph
 
-import "github.com/wricardo/drbrain-delivery/game/session"
+import "github.com/wricardo/drbrain/games/delivery/game/session"
 
 // Resolver is the root resolver. It holds no state of its own: everything is
 // reached through the session manager, so a resolver call is always

@@ -3,7 +3,7 @@ package session
 import (
 	"time"
 
-	"github.com/wricardo/drbrain-delivery/game/engine"
+	"github.com/wricardo/drbrain/games/delivery/game/engine"
 )
 
 // Snapshot returns the full client view under the session lock.

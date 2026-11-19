@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/wricardo/drbrain-delivery/game/engine"
+	"github.com/wricardo/drbrain/games/delivery/game/engine"
 )
 
 // cmdSim is the pacing harness (IDEA.txt §15/S2).

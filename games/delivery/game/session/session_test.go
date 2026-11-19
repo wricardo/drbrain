@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wricardo/drbrain-delivery/game/engine"
+	"github.com/wricardo/drbrain/games/delivery/game/engine"
 )
 
 func testCity(t *testing.T) (*engine.City, *engine.CityConfig) {

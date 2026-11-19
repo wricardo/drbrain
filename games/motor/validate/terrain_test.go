@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/wricardo/drbrain-motor-programming/game/engine"
+	"github.com/wricardo/drbrain/games/motor/game/engine"
 )
 
 func loadTerrainMap(t *testing.T, id string) *engine.Map {

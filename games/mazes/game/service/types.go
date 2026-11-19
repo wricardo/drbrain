@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wricardo/drbrain-mazes/game/engine"
+	"github.com/wricardo/drbrain/games/mazes/game/engine"
 )
 
 // Session is one run of one map. The Map is a snapshot taken at creation so

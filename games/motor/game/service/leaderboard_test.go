@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wricardo/drbrain-motor-programming/game/engine"
-	"github.com/wricardo/drbrain-motor-programming/game/service"
+	"github.com/wricardo/drbrain/games/motor/game/engine"
+	"github.com/wricardo/drbrain/games/motor/game/service"
 )
 
 // wideCfg: 8x3, start (0,1) facing right, treat at (7,1): 7 forward moves win.

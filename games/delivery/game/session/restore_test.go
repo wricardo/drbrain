@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/wricardo/drbrain-delivery/game/engine"
+	"github.com/wricardo/drbrain/games/delivery/game/engine"
 )
 
 // Persistence used to drop anything the restore path did not enumerate: build

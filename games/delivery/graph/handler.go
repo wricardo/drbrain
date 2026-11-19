@@ -11,8 +11,8 @@ import (
 	"github.com/99designs/gqlgen/graphql/playground"
 	"github.com/vektah/gqlparser/v2/ast"
 
-	"github.com/wricardo/drbrain-delivery/game/session"
-	"github.com/wricardo/drbrain-delivery/graph/generated"
+	"github.com/wricardo/drbrain/games/delivery/game/session"
+	"github.com/wricardo/drbrain/games/delivery/graph/generated"
 )
 
 // Handler returns the GraphQL endpoint. GraphQL is the only transport: there is

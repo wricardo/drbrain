@@ -23,9 +23,9 @@ import (
 
 	"github.com/joho/godotenv"
 
-	"github.com/wricardo/drbrain-motor-programming/internal/appconfig"
-	"github.com/wricardo/drbrain-motor-programming/internal/jsonmigrate"
-	"github.com/wricardo/drbrain-motor-programming/internal/pgdb"
+	"github.com/wricardo/drbrain/games/motor/internal/appconfig"
+	"github.com/wricardo/drbrain/games/motor/internal/jsonmigrate"
+	"github.com/wricardo/drbrain/games/motor/internal/pgdb"
 )
 
 func main() {

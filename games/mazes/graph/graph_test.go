@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"github.com/vektah/gqlparser/v2/gqlerror"
-	"github.com/wricardo/drbrain-mazes/game/engine"
-	"github.com/wricardo/drbrain-mazes/game/service"
-	"github.com/wricardo/drbrain-mazes/graph/model"
-	"github.com/wricardo/drbrain-mazes/transport/websocket"
+	"github.com/wricardo/drbrain/games/mazes/game/engine"
+	"github.com/wricardo/drbrain/games/mazes/game/service"
+	"github.com/wricardo/drbrain/games/mazes/graph/model"
+	"github.com/wricardo/drbrain/games/mazes/transport/websocket"
 )
 
 // fakeService overrides only what the tests exercise; any other call panics

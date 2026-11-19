@@ -15,10 +15,10 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/toon-format/toon-go"
-	"github.com/wricardo/tesla-road-trip-game/appconfig"
-	"github.com/wricardo/tesla-road-trip-game/game/engine"
-	"github.com/wricardo/tesla-road-trip-game/game/service"
-	"github.com/wricardo/tesla-road-trip-game/transport/websocket"
+	"github.com/wricardo/drbrain/games/tesla/appconfig"
+	"github.com/wricardo/drbrain/games/tesla/game/engine"
+	"github.com/wricardo/drbrain/games/tesla/game/service"
+	"github.com/wricardo/drbrain/games/tesla/transport/websocket"
 )
 
 // mcpHTTPRequestKey is the context key for the incoming *http.Request.

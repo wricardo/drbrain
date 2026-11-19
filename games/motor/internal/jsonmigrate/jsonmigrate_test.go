@@ -12,12 +12,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wricardo/drbrain-motor-programming/game/account"
-	"github.com/wricardo/drbrain-motor-programming/game/config"
-	"github.com/wricardo/drbrain-motor-programming/game/engine"
-	"github.com/wricardo/drbrain-motor-programming/game/service"
-	"github.com/wricardo/drbrain-motor-programming/game/session"
-	"github.com/wricardo/drbrain-motor-programming/internal/pgdb/pgtest"
+	"github.com/wricardo/drbrain/games/motor/game/account"
+	"github.com/wricardo/drbrain/games/motor/game/config"
+	"github.com/wricardo/drbrain/games/motor/game/engine"
+	"github.com/wricardo/drbrain/games/motor/game/service"
+	"github.com/wricardo/drbrain/games/motor/game/session"
+	"github.com/wricardo/drbrain/games/motor/internal/pgdb/pgtest"
 )
 
 const (

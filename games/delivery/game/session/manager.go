@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wricardo/drbrain-delivery/game/engine"
+	"github.com/wricardo/drbrain/games/delivery/game/engine"
 )
 
 // ErrNotFound is returned when a session id has no save and is not in memory.

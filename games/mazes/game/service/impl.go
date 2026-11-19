@@ -10,7 +10,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/wricardo/drbrain-mazes/game/engine"
+	"github.com/wricardo/drbrain/games/mazes/game/engine"
 )
 
 const (

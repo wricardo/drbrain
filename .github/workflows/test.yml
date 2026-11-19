@@ -1,0 +1,37 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: Build, vet and test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: drbrain
+          POSTGRES_PASSWORD: drbrain_ci
+          POSTGRES_DB: drbrain
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U drbrain -d drbrain"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go build ./...
+      - run: go vet ./...
+      - run: go test ./...
+        env:
+          TEST_DATABASE_URL: postgres://drbrain:drbrain_ci@localhost:5432/drbrain?sslmode=disable

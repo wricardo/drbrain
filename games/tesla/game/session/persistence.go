@@ -3,7 +3,7 @@ package session
 import (
 	"time"
 
-	"github.com/wricardo/tesla-road-trip-game/game/service"
+	"github.com/wricardo/drbrain/games/tesla/game/service"
 )
 
 // SessionPersistence defines the interface for persisting sessions

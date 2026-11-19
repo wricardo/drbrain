@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/wricardo/drbrain-motor-programming/game/service"
-	"github.com/wricardo/drbrain-motor-programming/graph/model"
+	"github.com/wricardo/drbrain/games/motor/game/service"
+	"github.com/wricardo/drbrain/games/motor/graph/model"
 )
 
 // passwordSignIn is the shared body of the registerWithPassword and

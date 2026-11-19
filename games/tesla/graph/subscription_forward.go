@@ -3,8 +3,8 @@ package graph
 import (
 	"context"
 
-	"github.com/wricardo/tesla-road-trip-game/graph/model"
-	"github.com/wricardo/tesla-road-trip-game/transport/websocket"
+	"github.com/wricardo/drbrain/games/tesla/graph/model"
+	"github.com/wricardo/drbrain/games/tesla/transport/websocket"
 )
 
 // forwardStateUpdates converts hub updates into GraphQL models until ctx is

@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/wricardo/tesla-road-trip-game/game/engine"
-	"github.com/wricardo/tesla-road-trip-game/game/service"
-	"github.com/wricardo/tesla-road-trip-game/graph/model"
+	"github.com/wricardo/drbrain/games/tesla/game/engine"
+	"github.com/wricardo/drbrain/games/tesla/game/service"
+	"github.com/wricardo/drbrain/games/tesla/graph/model"
 )
 
 func timeString(t time.Time) string { return t.Format(time.RFC3339) }

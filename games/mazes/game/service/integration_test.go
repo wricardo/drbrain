@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wricardo/drbrain-mazes/game/engine"
-	"github.com/wricardo/drbrain-mazes/game/service"
-	"github.com/wricardo/drbrain-mazes/game/session"
-	"github.com/wricardo/drbrain-mazes/transport/websocket"
+	"github.com/wricardo/drbrain/games/mazes/game/engine"
+	"github.com/wricardo/drbrain/games/mazes/game/service"
+	"github.com/wricardo/drbrain/games/mazes/game/session"
+	"github.com/wricardo/drbrain/games/mazes/transport/websocket"
 )
 
 // boot builds a service on top of file persistence in dir, loading what is there.

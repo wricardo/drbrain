@@ -8,10 +8,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/wricardo/drbrain-motor-programming/game/engine"
-	"github.com/wricardo/drbrain-motor-programming/game/service"
-	"github.com/wricardo/drbrain-motor-programming/game/session"
-	"github.com/wricardo/drbrain-motor-programming/transport/websocket"
+	"github.com/wricardo/drbrain/games/motor/game/engine"
+	"github.com/wricardo/drbrain/games/motor/game/service"
+	"github.com/wricardo/drbrain/games/motor/game/session"
+	"github.com/wricardo/drbrain/games/motor/transport/websocket"
 )
 
 // boot builds a service on top of file persistence in dir, loading what is there.

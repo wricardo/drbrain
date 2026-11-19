@@ -4,7 +4,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/wricardo/tesla-road-trip-game/appconfig"
+	"github.com/wricardo/drbrain/games/tesla/appconfig"
 )
 
 func TestConstants(t *testing.T) {

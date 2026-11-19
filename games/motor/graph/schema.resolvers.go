@@ -8,10 +8,10 @@ import (
 	"context"
 	"errors"
 
-	"github.com/wricardo/drbrain-motor-programming/game/service"
-	"github.com/wricardo/drbrain-motor-programming/graph/generated"
-	"github.com/wricardo/drbrain-motor-programming/graph/model"
-	"github.com/wricardo/drbrain-motor-programming/validate"
+	"github.com/wricardo/drbrain/games/motor/game/service"
+	"github.com/wricardo/drbrain/games/motor/graph/generated"
+	"github.com/wricardo/drbrain/games/motor/graph/model"
+	"github.com/wricardo/drbrain/games/motor/validate"
 )
 
 // Builtin is the resolver for the builtin field. Provenance is not part of the

@@ -16,7 +16,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/wricardo/drbrain-motor-programming/internal/pgdb"
+	"github.com/wricardo/drbrain/games/motor/internal/pgdb"
 )
 
 // Pool returns a pool on a fresh, migrated schema of the database named by

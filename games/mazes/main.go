@@ -17,11 +17,11 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
-	"github.com/wricardo/drbrain-mazes/api"
-	"github.com/wricardo/drbrain-mazes/game/config"
-	"github.com/wricardo/drbrain-mazes/game/service"
-	"github.com/wricardo/drbrain-mazes/game/session"
-	"github.com/wricardo/drbrain-mazes/transport/websocket"
+	"github.com/wricardo/drbrain/games/mazes/api"
+	"github.com/wricardo/drbrain/games/mazes/game/config"
+	"github.com/wricardo/drbrain/games/mazes/game/service"
+	"github.com/wricardo/drbrain/games/mazes/game/session"
+	"github.com/wricardo/drbrain/games/mazes/transport/websocket"
 )
 
 const (

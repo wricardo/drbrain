@@ -3,7 +3,7 @@ package session
 import (
 	"testing"
 
-	"github.com/wricardo/drbrain-delivery/game/engine"
+	"github.com/wricardo/drbrain/games/delivery/game/engine"
 )
 
 // TestSnapshotCarriesClosures proves street works reach the client.

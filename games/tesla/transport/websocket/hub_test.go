@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/wricardo/tesla-road-trip-game/game/engine"
+	"github.com/wricardo/drbrain/games/tesla/game/engine"
 )
 
 func TestNewHub(t *testing.T) {

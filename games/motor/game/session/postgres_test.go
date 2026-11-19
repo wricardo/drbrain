@@ -10,9 +10,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/wricardo/drbrain-motor-programming/game/engine"
-	"github.com/wricardo/drbrain-motor-programming/game/service"
-	"github.com/wricardo/drbrain-motor-programming/internal/pgdb/pgtest"
+	"github.com/wricardo/drbrain/games/motor/game/engine"
+	"github.com/wricardo/drbrain/games/motor/game/service"
+	"github.com/wricardo/drbrain/games/motor/internal/pgdb/pgtest"
 )
 
 const acctID = "0123456789abcdef01234567"

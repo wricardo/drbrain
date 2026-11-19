@@ -5,7 +5,7 @@ import (
 	"log"
 	"sync"
 
-	"github.com/wricardo/drbrain-motor-programming/game/service"
+	"github.com/wricardo/drbrain/games/motor/game/service"
 )
 
 // DefaultMaxSessions is used when NewManager is given maxSessions <= 0.

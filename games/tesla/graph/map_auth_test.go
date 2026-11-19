@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wricardo/tesla-road-trip-game/appconfig"
+	"github.com/wricardo/drbrain/games/tesla/appconfig"
 )
 
 // newOwnedMapServer builds a GraphQL server over a temp maps dir where

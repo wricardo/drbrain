@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/wricardo/tesla-road-trip-game/game/engine"
+	"github.com/wricardo/drbrain/games/tesla/game/engine"
 )
 
 // CreateSessionOptions controls optional per-session behavior at creation time.

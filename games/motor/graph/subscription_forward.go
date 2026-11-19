@@ -3,8 +3,8 @@ package graph
 import (
 	"context"
 
-	"github.com/wricardo/drbrain-motor-programming/game/service"
-	"github.com/wricardo/drbrain-motor-programming/graph/model"
+	"github.com/wricardo/drbrain/games/motor/game/service"
+	"github.com/wricardo/drbrain/games/motor/graph/model"
 )
 
 // forwardSessionUpdates emits the initial snapshot, then converts hub updates

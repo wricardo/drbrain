@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wricardo/drbrain-motor-programming/internal/pgdb"
-	"github.com/wricardo/drbrain-motor-programming/internal/pgdb/pgtest"
+	"github.com/wricardo/drbrain/games/motor/internal/pgdb"
+	"github.com/wricardo/drbrain/games/motor/internal/pgdb/pgtest"
 )
 
 // An unreachable database is a clear startup error that names DATABASE_URL and

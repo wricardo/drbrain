@@ -3,7 +3,7 @@ package service
 import (
 	"time"
 
-	"github.com/wricardo/tesla-road-trip-game/game/engine"
+	"github.com/wricardo/drbrain/games/tesla/game/engine"
 )
 
 // SessionInfo provides information about a game session

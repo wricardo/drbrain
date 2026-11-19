@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wricardo/drbrain-motor-programming/game/service"
-	"github.com/wricardo/drbrain-motor-programming/internal/pgdb/pgtest"
+	"github.com/wricardo/drbrain/games/motor/game/service"
+	"github.com/wricardo/drbrain/games/motor/internal/pgdb/pgtest"
 )
 
 func newPG(t *testing.T) *PostgresStore {

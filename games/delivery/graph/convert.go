@@ -4,8 +4,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/wricardo/drbrain-delivery/game/session"
-	"github.com/wricardo/drbrain-delivery/graph/model"
+	"github.com/wricardo/drbrain/games/delivery/game/session"
+	"github.com/wricardo/drbrain/games/delivery/graph/model"
 )
 
 // Conversion between the domain view structs (game/session) and the GraphQL

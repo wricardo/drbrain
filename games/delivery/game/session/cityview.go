@@ -1,6 +1,6 @@
 package session
 
-import "github.com/wricardo/drbrain-delivery/game/engine"
+import "github.com/wricardo/drbrain/games/delivery/game/engine"
 
 // CityOnlyView describes the static city with every district revealed, for a
 // client that wants to show the world before a session exists (a map preview,

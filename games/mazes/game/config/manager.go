@@ -10,8 +10,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/wricardo/drbrain-mazes/game/engine"
-	"github.com/wricardo/drbrain-mazes/game/service"
+	"github.com/wricardo/drbrain/games/mazes/game/engine"
+	"github.com/wricardo/drbrain/games/mazes/game/service"
 )
 
 // Manager is a file-backed service.MapStore. All maps are held in memory and

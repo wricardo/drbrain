@@ -10,10 +10,10 @@ import (
 	goSort "sort"
 	"time"
 
-	"github.com/wricardo/tesla-road-trip-game/game/engine"
-	"github.com/wricardo/tesla-road-trip-game/game/service"
-	"github.com/wricardo/tesla-road-trip-game/graph/generated"
-	"github.com/wricardo/tesla-road-trip-game/graph/model"
+	"github.com/wricardo/drbrain/games/tesla/game/engine"
+	"github.com/wricardo/drbrain/games/tesla/game/service"
+	"github.com/wricardo/drbrain/games/tesla/graph/generated"
+	"github.com/wricardo/drbrain/games/tesla/graph/model"
 )
 
 // Layout is the resolver for the layout field.

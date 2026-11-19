@@ -11,7 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/wricardo/drbrain-mazes/game/engine"
+	"github.com/wricardo/drbrain/games/mazes/game/engine"
 )
 
 // Result is the structured outcome of Check.

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	"github.com/wricardo/drbrain-motor-programming/game/service"
+	"github.com/wricardo/drbrain/games/motor/game/service"
 )
 
 var guestShape = regexp.MustCompile(`^[A-Z][a-z]+[A-Z][a-z]+$`)

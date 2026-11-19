@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/gorilla/mux"
-	"github.com/wricardo/tesla-road-trip-game/game/engine"
-	"github.com/wricardo/tesla-road-trip-game/game/service"
-	"github.com/wricardo/tesla-road-trip-game/transport/websocket"
+	"github.com/wricardo/drbrain/games/tesla/game/engine"
+	"github.com/wricardo/drbrain/games/tesla/game/service"
+	"github.com/wricardo/drbrain/games/tesla/transport/websocket"
 )
 
 // MockGameService implements service.GameService for testing

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"regexp"
 
-	"github.com/wricardo/drbrain-mazes/game/service"
+	"github.com/wricardo/drbrain/games/mazes/game/service"
 )
 
 // Errors returned by persistence implementations.

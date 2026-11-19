@@ -31,8 +31,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/wricardo/drbrain-motor-programming/game/engine"
-	"github.com/wricardo/drbrain-motor-programming/validate"
+	"github.com/wricardo/drbrain/games/motor/game/engine"
+	"github.com/wricardo/drbrain/games/motor/validate"
 )
 
 const (

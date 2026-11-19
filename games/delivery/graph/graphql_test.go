@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wricardo/drbrain-delivery/game/engine"
-	"github.com/wricardo/drbrain-delivery/game/session"
+	"github.com/wricardo/drbrain/games/delivery/game/engine"
+	"github.com/wricardo/drbrain/games/delivery/game/session"
 )
 
 // testRoute plans a shortest path across rendered glyph rows and returns the

@@ -22,11 +22,11 @@ import (
 	"github.com/99designs/gqlgen/graphql/playground"
 	"github.com/gorilla/mux"
 	gorillaws "github.com/gorilla/websocket"
-	"github.com/wricardo/drbrain-mazes/game/service"
-	"github.com/wricardo/drbrain-mazes/graph"
-	"github.com/wricardo/drbrain-mazes/graph/generated"
-	"github.com/wricardo/drbrain-mazes/graph/model"
-	"github.com/wricardo/drbrain-mazes/transport/websocket"
+	"github.com/wricardo/drbrain/games/mazes/game/service"
+	"github.com/wricardo/drbrain/games/mazes/graph"
+	"github.com/wricardo/drbrain/games/mazes/graph/generated"
+	"github.com/wricardo/drbrain/games/mazes/graph/model"
+	"github.com/wricardo/drbrain/games/mazes/transport/websocket"
 )
 
 const (

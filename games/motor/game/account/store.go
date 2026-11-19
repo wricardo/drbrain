@@ -26,7 +26,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wricardo/drbrain-motor-programming/game/service"
+	"github.com/wricardo/drbrain/games/motor/game/service"
 )
 
 // SchemaVersion is the on-disk format version of an account file.

@@ -14,7 +14,7 @@ import (
 	"os"
 	"sort"
 
-	"github.com/wricardo/tesla-road-trip-game/game/engine"
+	"github.com/wricardo/drbrain/games/tesla/game/engine"
 )
 
 type trace struct {

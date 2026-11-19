@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wricardo/drbrain-delivery/game/engine"
+	"github.com/wricardo/drbrain/games/delivery/game/engine"
 )
 
 // newTestSession builds a session that is never started, so tests control the

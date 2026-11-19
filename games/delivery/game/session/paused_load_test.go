@@ -3,7 +3,7 @@ package session
 import (
 	"testing"
 
-	"github.com/wricardo/drbrain-delivery/game/engine"
+	"github.com/wricardo/drbrain/games/delivery/game/engine"
 )
 
 // A reloaded session must come back PAUSED even if it was saved running.

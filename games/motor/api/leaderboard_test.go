@@ -11,10 +11,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wricardo/drbrain-motor-programming/game/config"
-	"github.com/wricardo/drbrain-motor-programming/game/service"
-	"github.com/wricardo/drbrain-motor-programming/game/session"
-	"github.com/wricardo/drbrain-motor-programming/transport/websocket"
+	"github.com/wricardo/drbrain/games/motor/game/config"
+	"github.com/wricardo/drbrain/games/motor/game/service"
+	"github.com/wricardo/drbrain/games/motor/game/session"
+	"github.com/wricardo/drbrain/games/motor/transport/websocket"
 )
 
 // The frontend's leaderboard query (frontend/src/lib/queries.ts), kept here so

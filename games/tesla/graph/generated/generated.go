@@ -16,7 +16,7 @@ import (
 	"github.com/99designs/gqlgen/graphql/introspection"
 	gqlparser "github.com/vektah/gqlparser/v2"
 	"github.com/vektah/gqlparser/v2/ast"
-	"github.com/wricardo/tesla-road-trip-game/graph/model"
+	"github.com/wricardo/drbrain/games/tesla/graph/model"
 )
 
 // region    ************************** generated!.gotpl **************************

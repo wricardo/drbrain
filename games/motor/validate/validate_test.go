@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wricardo/drbrain-motor-programming/game/engine"
+	"github.com/wricardo/drbrain/games/motor/game/engine"
 )
 
 const (

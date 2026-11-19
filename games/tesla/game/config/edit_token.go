@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/wricardo/tesla-road-trip-game/game/engine"
+	"github.com/wricardo/drbrain/games/tesla/game/engine"
 )
 
 // editTokenSuffix is appended to a custom map's filename to store the hash of

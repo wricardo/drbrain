@@ -11,8 +11,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/wricardo/drbrain-mazes/game/engine"
-	"github.com/wricardo/drbrain-mazes/validate"
+	"github.com/wricardo/drbrain/games/mazes/game/engine"
+	"github.com/wricardo/drbrain/games/mazes/validate"
 )
 
 func main() {

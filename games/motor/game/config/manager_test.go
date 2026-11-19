@@ -11,8 +11,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/wricardo/drbrain-motor-programming/game/engine"
-	"github.com/wricardo/drbrain-motor-programming/game/service"
+	"github.com/wricardo/drbrain/games/motor/game/engine"
+	"github.com/wricardo/drbrain/games/motor/game/service"
 )
 
 func cfg(id string) engine.MapConfig {

@@ -3,7 +3,7 @@ package session
 import (
 	"sync"
 
-	"github.com/wricardo/drbrain-delivery/game/engine"
+	"github.com/wricardo/drbrain/games/delivery/game/engine"
 )
 
 // Watch is one live subscription to a session's state.

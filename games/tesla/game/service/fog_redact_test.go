@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wricardo/tesla-road-trip-game/game/engine"
+	"github.com/wricardo/drbrain/games/tesla/game/engine"
 )
 
 // Fog sessions must not leak the map through transports that serialize

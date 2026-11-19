@@ -11,7 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/wricardo/drbrain-motor-programming/game/engine"
+	"github.com/wricardo/drbrain/games/motor/game/engine"
 )
 
 // Result is the structured outcome of Check.

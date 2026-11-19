@@ -18,11 +18,11 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/wricardo/drbrain-motor-programming/game/account"
-	"github.com/wricardo/drbrain-motor-programming/game/config"
-	"github.com/wricardo/drbrain-motor-programming/game/engine"
-	"github.com/wricardo/drbrain-motor-programming/game/service"
-	"github.com/wricardo/drbrain-motor-programming/game/session"
+	"github.com/wricardo/drbrain/games/motor/game/account"
+	"github.com/wricardo/drbrain/games/motor/game/config"
+	"github.com/wricardo/drbrain/games/motor/game/engine"
+	"github.com/wricardo/drbrain/games/motor/game/service"
+	"github.com/wricardo/drbrain/games/motor/game/session"
 )
 
 // Dirs names the JSON-file layout, the same directories the server flags use.

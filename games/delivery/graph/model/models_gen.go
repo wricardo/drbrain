@@ -301,7 +301,7 @@ func (e *CarState) UnmarshalGQL(v any) error {
 }
 
 func (e CarState) MarshalGQL(w io.Writer) {
-	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+	fmt.Fprint(w, strconv.Quote(e.String()))
 }
 
 func (e *CarState) UnmarshalJSON(b []byte) error {
@@ -360,7 +360,7 @@ func (e *Direction) UnmarshalGQL(v any) error {
 }
 
 func (e Direction) MarshalGQL(w io.Writer) {
-	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+	fmt.Fprint(w, strconv.Quote(e.String()))
 }
 
 func (e *Direction) UnmarshalJSON(b []byte) error {
@@ -421,7 +421,7 @@ func (e *OrderState) UnmarshalGQL(v any) error {
 }
 
 func (e OrderState) MarshalGQL(w io.Writer) {
-	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+	fmt.Fprint(w, strconv.Quote(e.String()))
 }
 
 func (e *OrderState) UnmarshalJSON(b []byte) error {
@@ -486,7 +486,7 @@ func (e *RejectReason) UnmarshalGQL(v any) error {
 }
 
 func (e RejectReason) MarshalGQL(w io.Writer) {
-	_, _ = fmt.Fprint(w, strconv.Quote(e.String()))
+	fmt.Fprint(w, strconv.Quote(e.String()))
 }
 
 func (e *RejectReason) UnmarshalJSON(b []byte) error {
