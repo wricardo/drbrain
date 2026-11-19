@@ -1,1 +1,0 @@
-var e=`drbrain-mazes.adminKey`;function t(){return typeof sessionStorage>`u`?``:sessionStorage.getItem(e)??``}function n(t){typeof sessionStorage<`u`&&(t?sessionStorage.setItem(e,t):sessionStorage.removeItem(e))}export{n,t};

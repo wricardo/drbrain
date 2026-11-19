@@ -1,1 +1,0 @@
-var e=`Dr Brain`,t=`Mazes`,n=`${e} - ${t}`;function r(e){return e?`${e} — ${n}`:n}export{r as i,e as n,n as r,t};
