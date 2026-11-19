@@ -13,7 +13,7 @@ separate modules of the same platform:
 ## Shape
 
 ```
-cmd/drbrain/           one binary, subcommands (serve, validate, mapgen, tui, games)
+cmd/drbrain/           one binary, subcommands (serve, validate, mapgen, games)
 platform/              host lifecycle and I/O shared by every game
 games/<name>/          engine, GraphQL schema, resolvers, maps
 web/                   one SvelteKit app, routes under /<game>/

@@ -54,17 +54,13 @@ type LLMSProvider interface {
 	LLMSPublicURL() string
 }
 
-// Optional command interfaces. `drbrain validate`, `mapgen` and `tui` dispatch
-// to a game only when it implements the matching interface; games that do not
-// need one (or cannot support it) simply leave it out.
+// Optional command interfaces. `drbrain validate` and `mapgen` dispatch to a
+// game only when it implements the matching interface; games that do not need
+// one (or cannot support it) simply leave it out.
 type Validator interface {
 	Validate(ctx context.Context) error
 }
 
 type MapGenerator interface {
 	Mapgen(ctx context.Context, args []string) error
-}
-
-type TUIRunner interface {
-	TUI(ctx context.Context, args []string) error
 }
