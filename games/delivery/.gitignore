@@ -1,0 +1,29 @@
+# Build artefacts
+/bin/
+*.exe
+coverage.out
+coverage.html
+
+# Sessions / saves (runtime state, never committed)
+/sessions/
+
+# Editor / OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Frontend build output and deps
+/frontend/build/
+/frontend/node_modules/
+/frontend/.svelte-kit/
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
+*.gate.lock*
+
+# Local CLI build (make build writes bin/, but `go build` at the root lands here)
+/drbrain

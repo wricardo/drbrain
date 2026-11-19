@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "drbrain_delivery",
+  "project_id": "9a89ede1-f012-40c6-a68b-1f17489d5f5f"
+}

@@ -1,0 +1,694 @@
+================================================================================
+DRBRAIN DELIVERY — IDEA / DESIGN NOTES
+Status: draft v0.2 (pre-code). Decisions from first review folded in.
+================================================================================
+
+0. ONE-SENTENCE PITCH
+--------------------------------------------------------------------------------
+A single, hand-authored city map that grows as you succeed: you run a delivery
+company, driving cars by hand — one tile at a time, through the API — between
+restaurants (pickup) and customers (dropoff), and every accomplishment you
+unlock can be bought and built into the map itself.
+
+
+1. DECISIONS (locked)
+--------------------------------------------------------------------------------
+D1. DRIVING: manual only. No autopilot, no pathfinding-for-the-player.
+    The player issues one move per car per tick. Driving, routing and
+    exploring the map ARE the game.
+
+D2. INTERFACE-FIRST: the game is designed to be played by calling an API.
+    Query the state, read what is around a car, issue moves, watch the result.
+    A human UI is a convenience layer on top of the same API; it is not the
+    primary product. Design the API as if the only client is a program.
+
+D3. TIME: server tick loop, one per session. A session owns its own clock.
+
+D4. MULTI-CAR FROM DAY 1. The engine supports N cars with independent
+    movement from the start. Cars must be PURCHASED, so a new player still
+    starts with exactly one car and scales up as they earn. Multi-car is a
+    gameplay/economic gate, not a missing feature.
+
+D5. MAP EVOLUTION: achievements unlock an upgrade, then the player PAYS to
+    build it. Accomplishment = eligibility, money = construction. The player
+    chooses when and what to build, so the evolving map is a decision, not a
+    cutscene.
+
+
+2. STILL OPEN (answer when convenient)
+--------------------------------------------------------------------------------
+O1. MCP/AI-agent tools in v1, or v2? Given D2 the answer is probably "v1 — the
+    API is the game", but confirm.
+O2. Branding: "DrBrain City" / "DrBrain Delivery", or a flavour name like
+    "Dr. Brain's Midnight Delivery"?
+O3. Ground tiles (`G`): make them a real cost (slow / 2x battery) so opening
+    roads is a genuine upgrade, or keep them decorative? Current draft assumes
+    "ground costs more" — see §4.
+O4. Naming for a playthrough: `sessions/` (matches the reference repo) or
+    `saves/`? Cosmetic; engine treats them identically.
+
+
+3. DIFFERENCE FROM THE TESLA ROAD TRIP GAME
+--------------------------------------------------------------------------------
+Reference project (../tesla-road-trip-game):
+  - many maps, each a self-contained puzzle
+  - one player entity (a Tesla) on a static grid
+  - you steer the car; goal = visit all parks before battery dies
+
+This project:
+  - ONE map, persistent, evolving over the whole playthrough
+  - MANY cars, each driven independently by the player
+  - goal = fulfil delivery orders, earn money, unlock and build city upgrades
+  - the map you explore is the map you grew
+  - soft failure: late orders, stranded cars, lost tips — not instant game over
+
+Same DNA (keep): Go server, GraphQL (gqlgen) as the only transport,
+JSON-defined map, battery/charge mechanics, tile-based grid, SvelteKit web UI.
+
+
+4. TILES AND ENTITIES
+--------------------------------------------------------------------------------
+Terrain chars (hand-editable in the map file, diffable):
+
+  W  water       impassable            (some become bridges via built upgrades)
+  B  building    impassable (scenery)
+  R  road        passable, normal speed
+  G  ground      passable, slower / costs more battery   (see O3)
+  D  depot       passable — HQ: starting point, parks & recharges cars
+  C  charger     passable — restores battery
+  K  kitchen     pickup point (restaurant) — references an entity id
+  H  house       dropoff point (customer) — references an entity id
+
+Terrain stays chars. Everything with business data is an ENTITY:
+
+  Kitchen   { id, name, pos, menu: [item...] }
+  Customer  { id, name, pos, demands: [item...], order_interval_ticks }
+  Charger   { id, pos, capacity }
+  Depot     { id, pos, capacity }
+
+A char cannot hold a menu, a demand list, a name or a timer, so the layout
+char expresses *terrain* and the entities table expresses the *business* on
+top. Keeps the map file hand-editable and keeps the renderer trivial.
+
+Items are ids with a display name (pizza, sushi, meds, ...). One item per
+order for MVP; capacity/stacking later.
+
+
+5. CARS AND MOVEMENT (manual, per tick)
+--------------------------------------------------------------------------------
+Car {
+  id, name, class        scooter | van | truck
+  pos {x,y}
+  battery, max_battery
+  capacity               how many orders it can carry (MVP: 1 for scooter)
+  step_cost              battery per tile (road 1, ground 2 if O3 accepted)
+  cargo: [order_id...]
+  queued_move            the one direction it will attempt on the next tick
+  state                  IDLE | CARRYING | CHARGING | STRANDED
+}
+
+MOVEMENT MODEL — how manual play and a tick loop coexist:
+
+  - The world advances on a fixed tick (default 300 ms).
+  - A player command is `moveCar(carID, direction)` and it does NOT teleport
+    the car. It sets that car's `queued_move`.
+  - On the next tick, every car with a queued move takes exactly one step, in
+    a deterministic order (by car id). Then pickups/dropoffs/spawns/expiry
+    resolve.
+  - A queued move that arrives after the tick started applies to the
+    following tick. Commands are idempotent-ish: the latest command within a
+    window wins, which keeps a fast client from double-stepping.
+  - If a car has no queued move, it stands still (but still drains nothing).
+  - Rejected moves (wall, water, another car, no battery) fail without moving
+    and return a reason. Do collisions matter? MVP: cars may share a tile;
+    revisit if it feels wrong.
+    RESOLVED (drbrain-delivery-9by): revisited, and cars no longer share a tile.
+    A tile holds one car; a depot or charger holds its authored capacity, so
+    parking still works. The check is on ENTRY and evaluates last. Moves are
+    planned then resolved to a fixpoint, so a follower may enter a tile a car
+    vacated this tick while a head-on pair is refused on both sides.
+
+Why this shape: it gives every car its own input slot each tick (so N cars can
+all be driven concurrently without a global "whose turn is it" problem),
+keeps the simulation deterministic and testable, and still feels like manual
+driving because nothing moves unless the player says so.
+
+Battery: each step costs `step_cost`. Recharging happens at depot/charger and
+takes ticks — it is not instant, which forces planning. Running dry mid-route
+=> STRANDED; you pay a tow fee to bring it to the depot. Cars are never
+destroyed (friendly), but towing hurts.
+
+Exploration: the city starts mostly dark. See §8.
+
+
+6. TIME / SIMULATION
+--------------------------------------------------------------------------------
+Server-authoritative tick loop PER SESSION (D3). Each session has its own
+clock, tick counter, pause state and speed, so a slow, careful player is not
+hurried by another session's fast forward.
+
+  - tick_ms (per map, default 300 ms)
+  - each tick, in fixed order:
+      1. take queued moves for all cars
+      2. apply moves, validate, spend battery
+      3. resolve pickups / dropoffs (order state transitions)
+      4. charge cars sitting on depot/charger
+      5. spawn due orders; expire overdue orders
+      6. evaluate achievements (unlock eligibility)
+      7. emit events
+  - deterministic: no wall-clock reads inside the loop, only the tick counter.
+    RNG is seeded and stored, so a replay of the same commands reproduces the
+    same city.
+  - pause / 1x / 2x / 4x per session.
+
+Why not turn-based: with N cars a global turn is meaningless and serialises
+players out of the fun. A per-session tick loop with per-car input slots (see
+§5) gives concurrency AND determinism.
+
+
+7. ORDERS AND THE CORE LOOP
+--------------------------------------------------------------------------------
+Order {
+  id
+  item            e.g. "pizza"
+  kitchen_id      where to pick it up
+  customer_id     where to drop it off
+  created_at_tick
+  deadline_tick   soft deadline; late => reduced pay
+  reward          money if on time
+  penalty         money lost if expired (small)
+  assigned_car    which car is expected to carry it (advisory, see below)
+  state           PENDING | ASSIGNED | PICKED_UP | DELIVERING | DONE | EXPIRED
+}
+
+Core loop:
+  1. Orders appear over time (customer demands item X, kitchen Y serves it).
+  2. Player assigns an order to a car (or leaves it unassigned).
+  3. Player DRIVES that car to the kitchen; on arrival it flips to PICKED_UP.
+  4. Player drives it to the customer; on arrival it flips to DONE, pays out.
+  5. Money, reputation and achievement counters accumulate.
+  6. Achievement unlocks become buildable upgrades (§8); player pays to build.
+  7. The city grows, orders get harder, cars get bought; loop repeats.
+
+`assigned_car` is advisory only — with manual driving the player may fetch a
+pickup with any car; the assignment tells the UI (and an agent) which car is
+"meant" to do it. A pickup can only be collected by the assigned car unless
+the order is unassigned, to keep it unambiguous.
+
+7.1 WHEN DO ORDERS POP UP?
+  Orders are born on TICK boundaries — step 5 of the tick (see §6) — but there
+  is no single global "order interval". Three independent gates decide whether
+  a customer raises an order on a given tick:
+
+    GATE 1  that customer's own cooldown     (per-customer timer)
+    GATE 2  global cap                       active_orders < max_active_orders
+    GATE 3  pacing governor                  active_orders < target_active(tick)
+
+  A customer spawns an order on tick T only if all three pass.
+
+  Pseudo-code for step 5, iterated in deterministic order (by customer id):
+
+    for c in customers (sorted by id):
+        if T < c.next_eligible_tick:            continue     # GATE 1
+        if active_orders >= max_active_orders:  break        # GATE 2
+        if active_orders >= target_active(T):   break        # GATE 3
+        item = pick(c.demands, rng(c.id, T))                 # seeded
+        k = nearest kitchen by BFS whose menu contains item
+        if k is nil or k unreachable from any depot/charger: continue
+        order = new_order(c, k, item, deadline = T + estimate_ticks(...))
+        c.next_eligible_tick = T + c.order_interval_ticks
+                                 + rng_int(c.id, T, 0, jitter)
+
+  Why three gates and not one interval:
+    - GATE 1 alone is metronomic. Two customers => clockwork orders and a
+      world that feels like a timer, not a city.
+    - GATE 1 alone also cannot scale: once you unlock 8 customers, orders
+      arrive 8x faster and the queue drowns. Cooldowns are per-customer and
+      never get slower, so the flood is structural.
+    - GATE 3 is what actually shapes the difficulty curve. It targets a
+      number of open orders based on progress, so supply grows a step behind
+      the player's capacity, not with the number of customers.
+
+  target_active(tick) — driven by FLEET THROUGHPUT, not by chapter or customer
+  count:
+
+    capacity = sum(car.capacity for cars not STRANDED)
+    target   = clamp(round(capacity * 0.75), 1, max_active_orders)
+
+  So one scooter (capacity 1) => target 1; a van (3) => 2; van + truck (9) =>
+  up to max. The queue tracks what you can actually deliver, so it never
+  starves a big fleet or drowns a small one.
+
+  Plus an anti-dead-air rule (the real fix for a quiet chapter 1):
+
+    if active_orders == 0 AND no car is carrying AND
+       T >= last_spawn_tick + min_gap_ticks:
+        spawn one order immediately, bypassing GATE 1's cooldown
+        (still respects the item-reachability and stranded checks)
+
+  min_gap_ticks stops it from spamming. This means the player is never left
+  standing at the depot with nothing to do, no matter how fast they drive.
+
+  Chapters no longer gate order VOLUME; they gate which customers/items exist
+  (§8.3), which is where the growth should come from anyway.
+
+  Deadline is NOT a constant. It is computed at spawn from real path length:
+
+    estimate = dist(nearest idle car -> kitchen) + dist(kitchen -> customer)
+    deadline = T + ceil(estimate * deadline_slack)
+
+  deadline_slack starts generous (~2.0, forgiving tutorial) and tightens by
+  chapter (~1.3 late game), so lateness becomes a skill issue rather than a
+  luck issue. Rewards: reward = base(item) * chapter_multiplier
+  + distance_bonus, rounded.
+
+  Session start: the FIRST order is force-spawned on tick 0 (bypassing gates)
+  so the player has a job immediately instead of idling at the depot. If there
+  are more customers than the cap, which one gets it is seeded but biased
+  toward the customer nearest the depot.
+
+  Determinism: every roll uses the stored session rng seed, so replaying the
+  seed + command log reproduces the exact order sequence. Spawn decisions are
+  pure functions of (seed, tick, state) — never wall-clock.
+
+  Anti-softlock rules (checked before an order is emitted):
+    - never spawn from an item no reachable kitchen serves
+    - never spawn while every car is STRANDED (nobody could serve it)
+    - if the map is under-provisioned (item has no kitchen at all), do not
+      silently drop it: emit an `order_starved` event. That is a content bug
+      in city.json, and the sim harness should catch it.
+
+  Related counters: orders_spawned, orders_expired, orders_completed,
+  active_orders. All readable by achievements (§8.3).
+
+Failure is soft: late still pays (less); expired costs a little reputation.
+No hard game over in MVP (see O5-adjacent note — hard "bankrupt" state is a
+tuning option, not required).
+
+
+8. MAP EVOLUTION, EXPLORATION AND BUILDING
+--------------------------------------------------------------------------------
+8.1 EXPLORATION
+  The city is authored as districts. Undiscovered districts render as dark /
+  fog and are IMPASSABLE. Driving a car into a district's edge reveals it
+  (or a specific "scout" tile reveals a radius). This makes "explore the map"
+  literal: you find new kitchens and customers by driving to them.
+  (This is the one piece of fog-of-war worth keeping from the Tesla game.)
+
+8.2 UNLOCK -> BUILD (D5)
+  Two distinct concepts, deliberately separate:
+
+  UNLOCK  (achievement)   : "you have earned the RIGHT to build X"
+  BUILD   (spend money)   : "you paid for X; the map changes now"
+
+  Unlock {
+    id, title, description
+    requires { any counter listed in §8.3, all must hold (AND) }
+    grants_build: [build_id...]        // permission only; no cost here
+  }
+
+  Build {
+    id, title, description
+    cost
+    requires_tiles / district   (where it can go, if placement matters)
+    effects [
+      { type: "build_bridge",   tiles:[[x,y,"R"],...] },   // water -> road
+      { type: "pave_road",      tiles:[[x,y,"R"],...] },   // ground -> road
+      { type: "reveal_district", district: "harbour" },
+      { type: "add_kitchen",    entity: {...} },
+      { type: "add_customer",   entity: {...} },
+      { type: "add_charger",    entity: {...} },
+      { type: "add_depot",      entity: {...} },
+      { type: "upgrade_depot",  depot:"d_main", capacity:8, charge_slots:6 },
+      { type: "grant_car_class", class: "truck" },          // makes it buyable
+      { type: "grant_money",    amount: 200 },
+      { type: "grant_reputation", amount: 0.2 }
+    ]
+  }
+
+8.3 ACHIEVEMENTS -> UNLOCKS -> BUILDS (the full ladder)
+  Vocabulary, so nothing below is ambiguous:
+    ACHIEVEMENT  a condition on the world. Fires once. Nobody pays for it.
+    UNLOCK       the right to construct one or more BUILDS. Pure permission.
+    BUILD        costs money, has a placement, mutates the map. The player
+                 decides WHEN to spend, so the city grows on their schedule.
+
+  Progression is organised in chapters. Each chapter adds a district or a class
+  of tool, so the map genuinely changes shape as you climb.
+
+  COUNTED STATE (what all conditions are allowed to read):
+    deliveries, money_earned (lifetime, not balance), money_balance,
+    reputation, tows, expired_orders, on_time_streak, per_item{}, cars_owned,
+    tiles_explored, districts_revealed, builds_completed,
+    orders_spawned, active_orders (§7.1)
+
+  --- CHAPTER 1: DOWNTOWN (the tutorial that doesn't feel like one) ----------
+
+  A01  First Drop
+       requires: deliveries >= 1
+       build:    B01 "Corner Charger"  $150
+                 add_charger at a fixed downtown tile
+       why:      first money in, first obvious upgrade. Teaches buy-and-place.
+
+  A02  Getting Known
+       requires: deliveries >= 5
+       build:    B02 "East Bridge"  $300
+                 water -> road across the river mouth (4 tiles) + 1 charger
+       why:      the classic "the map opens a shortcut" moment. Route to the
+                 east side goes from ~14 steps to ~6.
+
+  A03  First $500
+       requires: money_earned >= 500
+       build:    B03 "Alley Pavement"  $250
+                 ground -> road on a 3-tile diagonal (ground costs 2 battery,
+                 so this is a real efficiency win, see O3)
+
+  A04  Regular Customer
+       requires: per_item.pizza.delivered >= 10
+       build:    B04 "Pizza Palace Expansion"  $400
+                 add_kitchen "Pizza Palace II" (menu: pizza, calzone)
+       why:      more supply of one item => the queue stops starving.
+
+  --- CHAPTER 2: THE HARBOUR (first district reveal) -------------------------
+
+  A05  Dockside Access
+       requires: deliveries >= 15
+       build:    B05 "Harbour Gate"  $800
+                 reveal_district "harbour" + pave the gate bridge
+       why:      the first time the world gets physically bigger.
+
+  A06  Harbour Trade
+       requires: districts_revealed >= 2
+                   AND deliveries_in_district(harbour) >= 5
+       build:    B06 "Fish Market"  $600
+                 add_kitchen (menu: sushi, fish) + add_customer x2
+       why:      a new item type enters the economy.
+
+  A07  Reliable
+       requires: reputation >= 4.0
+       build:    B07 "Harbour Charger Row"  $500
+                 add_charger x3 along the harbour road
+       why:      harbour has long dead-ends; chargers are the real unlock.
+
+  --- CHAPTER 3: FLEET (money turns into throughput) ------------------------
+
+  A08  Fleet Owner
+       requires: cars_owned >= 3
+       build:    B08 "Depot Extension"  $700
+                 upgrade_depot d_main capacity 4 -> 8, +2 charge slots
+       why:      more cars are useless without somewhere to park/recharge them.
+       (The VAN class is buyable from the start at $400. The TRUCK is the
+        reward here:)
+
+  A09  Heavy Hauler
+       requires: deliveries >= 60
+       build:    B09 "Depot Lanes"  $900
+                 grant_car_class "truck" + upgrade_depot speed
+       why:      truck unlocks multi-item capacity, i.e. batched routes.
+
+  --- CHAPTER 4: THE HILLS (long routes, big payouts) -----------------------
+
+  A10  Rainmaker
+       requires: money_earned >= 3000
+       build:    B10 "Hills Highway"  $1500
+                 reveal_district "hills" + long road span + 2 chargers
+       why:      hills orders pay 2-3x but are 20+ tiles out. The highway is
+                 the investment that makes them profitable.
+
+  A11  Perfect Week
+       requires: on_time_streak >= 20
+       build:    B11 "Express Lane"  $700
+                 pave a road that shortens the worst downtown detour
+       why:      rewards skill (no late orders), not just volume.
+
+  A12  Second Base
+       requires: deliveries >= 100
+       build:    B12 "Hills Depot"  $1200
+                 add_depot in the hills, capacity 4
+       why:      kills the long return trip; changes how you route the fleet.
+
+  --- CHAPTER 5: THE CITY (endgame) -----------------------------------------
+
+  A13  Explorer
+       requires: tiles_explored >= 90% of the map
+       build:    B13 "Survey Office"  $400
+                 reveal any remaining hidden tiles
+       why:      completionist track, cheap, satisfying.
+
+  A14  Night Owl
+       requires: deliveries >= 150 AND tows == 0
+       build:    B14 "City Center Plaza"  $2000
+                 add_kitchen + add_customer x3 + add_charger x2 + grant_money
+       why:      final hub on the richest tiles; the "full city" screenshot.
+
+  --- ACHIEVEMENTS WITH NO BUILD (pure reward / prestige) -------------------
+  These exist so the ladder isn't only a shopping list. They pay money,
+  reputation or a cosmetic, and are shown on the profile.
+
+  A50  First Tow         (tows >= 1)                 -> +1 insurance voucher
+  A51  Spotless          (expired_orders == 0, deliveries >= 25) -> +$200
+  A52  Bridge Builder    (builds_completed >= 5)     -> +0.2 reputation
+  A53  Sushi Run         (per_item.sushi >= 25)      -> truck livery unlock
+  A54  Grid Master       (districts_revealed == all) -> badge + $500
+
+  --- DESIGN RULES FOR THE LADDER ------------------------------------------
+  R1  Every build must be PLACEABLE: the map has to contain a valid tile for
+      it at the time it's offered, and its result passes reachability (below).
+  R2  Money cost must be reachable BEFORE the achievement is likely to fire,
+      otherwise the "pay to build" choice is fake. Tune with the sim harness.
+  R3  Each chapter must change the SHAPE of the map (bridge/direct/reveal),
+      not only add entities, or evolution is invisible.
+  R4  No achievement may require the thing it unlocks (no circular gates).
+  R5  Unlocks are one-shot and idempotent: re-firing after a reload is a no-op.
+
+  Every build must be validated before it lands: the resulting grid may not
+  disconnect a kitchen or customer from all depots/chargers. (Same spirit as
+  the reference repo's "winnability" validator — reuse that idea: mutate a
+  copy of the grid, BFS reachability, reject if it strands anything.)
+
+8.3 PROGRESSION FEEL
+  The map starts tiny — one depot, one kitchen, two customers, one charger,
+  one scooter. It ends a full city: bridges, new districts, restaurants,
+  chargers, a fleet. Because it is the SAME map, the player sees their own
+  history in the geography. That is the payoff vs. the Tesla game's
+  "pick another map".
+
+
+9. MAP FILE (single city.json)
+--------------------------------------------------------------------------------
+{
+  "name": "DrBrain City",
+  "grid_size": 20,
+  "tick_ms": 300,
+  "starting_money": 0,
+  "layout": [
+    "WWWWWWWWWWWWWWWWWWWW",
+    "WGGGGGGRRRRRRRRGGGGW",
+    "WGDDDGRRRKKRRRRRGGCW",
+    "WGGGGGRRRRRRRRRRGGGW"
+  ],
+  "legend": {
+    "W":"water","B":"building","R":"road","G":"ground",
+    "D":"depot","C":"charger","K":"kitchen","H":"house"
+  },
+  "items": { "pizza":"Pizza", "sushi":"Sushi", "meds":"Medicine" },
+  "kitchens":  [ {"id":"k_pizza","name":"Pizza Palace","pos":{"x":10,"y":2},
+                  "menu":["pizza"]} ],
+  "customers": [ {"id":"c_anna","name":"Anna's Flat","pos":{"x":4,"y":6},
+                  "demands":["pizza"],
+                  "order_interval_ticks":40,   // own cooldown (GATE 1)
+                  "jitter_ticks":10} ],        // +/- randomness on the cooldown
+  "depots":    [ {"id":"d_main","pos":{"x":2,"y":2},"capacity":4} ],
+  "chargers":  [ {"id":"ch_1","pos":{"x":17,"y":2},"capacity":1} ],
+  "initial_cars":[ {"class":"scooter","pos":{"x":2,"y":2}} ],
+  "car_classes": {
+     "scooter":{"speed":1,"capacity":1,"max_battery":12,"step_cost":1,"price":0},
+     "van":    {"speed":1,"capacity":3,"max_battery":20,"step_cost":1,"price":400},
+     "truck":  {"speed":1,"capacity":6,"max_battery":28,"step_cost":1,"price":900}
+  },
+  "orders": {
+     "max_active_orders": 6,        // hard cap (GATE 2)
+     "target_capacity_ratio": 0.75, // target_active = round(fleet_capacity * r)
+     "min_spawn_gap_ticks": 60,     // anti-dead-air floor between spawns
+     "deadline_slack": 2.0,         // multiplier on estimated path length
+     "deadline_slack_by_chapter": [2.0, 1.8, 1.6, 1.4, 1.3],
+     "reward_base": { "pizza": 40, "sushi": 55, "meds": 70 },
+     "chapter_reward_multiplier": [1.0, 1.1, 1.25, 1.5, 1.8],
+     "distance_bonus_per_tile": 3,
+     "expire_penalty_reputation": 0.05,
+     "late_pay_multiplier": 0.6,
+     "force_first_order_at_tick": 0
+  },
+  "districts": {"downtown":{"hidden":false}, "harbour":{"hidden":true}},
+  "unlocks":     [ ... §8.3 ladder ... ],
+  "builds":      [ ... §8.3 ladder ... ],
+  "achievements":[ ... §8.3 ladder ... ]
+}
+
+NOTE: one map file = the whole game. No maps/ gallery. Later we may allow
+"scenario" variants (same schema, different city.json) but the product is one
+city.
+
+
+10. STATE, SESSIONS, PERSISTENCE
+--------------------------------------------------------------------------------
+  - A "session" (or "save") is one playthrough; session id appears in URLs.
+  - Sessions are persisted as sessions/<id>.json: cars, orders, money,
+    reputation, counters, unlocked ids, built ids, the evolved grid (only the
+    deltas vs. city.json), tick counter, rng seed, paused/speed.
+  - Determinism => replaying seed + command log reproduces the city.
+
+Engine layout (mirrors the reference repo so patterns transfer):
+  game/config   map loading, validation, unlock/build schema
+  game/engine   world state, tick advance, movement, order rules, builds
+  game/service  facade used by GraphQL / HTTP / WS (and later MCP)
+  game/session  save/load, in-memory registry, tick loop ownership
+  graph/        GraphQL schema + resolvers (gqlgen)
+  api/          HTTP routes + SPA serving
+  transport/ws  event hub
+  frontend/     SvelteKit + Tailwind UI
+  maps/         city.json (single file)
+
+
+11. API SKETCH (GraphQL) — DESIGN AS THE PRIMARY INTERFACE (D2)
+--------------------------------------------------------------------------------
+Query
+  city(sessionID) -> CityState {
+     grid                       // full known map (revealed tiles)
+     cars, orders, kitchens, customers, depots, chargers
+     money, reputation
+     counters { deliveries, moneyEarned, moneyBalance, reputation, tows,
+                expiredOrders, onTimeStreak, perItem, carsOwned,
+                tilesExplored, districtsRevealed, buildsCompleted }
+     achievements { id, title, description, progress, target, done }
+     unlocks { id, title, description, earned, builds:[buildID] }
+     builds  { id, title, description, cost, affordable, applicable,
+               placementTiles }        // applicable = valid placement exists
+     tick, speed, paused
+  }
+  carView(sessionID, carID, radius) -> local window around one car
+     // cheap polling for agents: terrain + entities + adjacent orders
+  orders(sessionID, state) -> [Order]
+  events(sessionID, sinceTick) -> [Event]
+
+Mutation
+  newSession(mapName)                    -> session id + initial state
+  moveCar(sessionID, carID, direction)   -> queued + tick-at-which-it-applies
+  assignOrder(sessionID, carID, orderID) -> advisory assignment + reroute hint
+  unassignOrder(sessionID, orderID)
+  buyCar(sessionID, class)               -> new car at depot (if affordable)
+  recallCar(sessionID, carID)            // mark car to return; player still drives
+  claimOrder / pick / drop handled by stepping onto tiles, not by mutation
+  build(sessionID, buildID)              -> pays, mutates grid, returns diff
+  setSpeed(sessionID, speed) / pause(sessionID)
+  tow(sessionID, carID)                  // pay to rescue a stranded car
+
+Subscription
+  sessionUpdated(sessionID) -> CityState | event stream
+
+Notes on API shape for agents:
+  - every mutation returns the new tick number so a client knows what it saw
+  - `events(sinceTick)` gives an incremental delta instead of a full state
+  - all errors carry a machine-readable code + short human message
+  - the same moves an agent makes must be reproducible in the web UI
+
+
+12. UI SKETCH
+--------------------------------------------------------------------------------
+Single dashboard page (canvas or CSS-grid), a layer over the API:
+  - city grid, cars as coloured dots with cargo badge, buildings with icons
+  - order queue panel: item, kitchen -> customer, reward, timer bar
+  - car panel: battery bar, state, cargo, selection, WASD/arrow driving
+  - top bar: money, reputation, tick + speed controls
+  - build panel: unlocked upgrades the player can afford, with placement
+  - event feed: "Delivered pizza to Anna +$42", "Bridge built!", "Harbour found"
+  - unlock modal: celebration moment ("East Bridge unlocked — $300 to build")
+Design language borrows the Tesla frontend shell (SvelteKit + Tailwind), but
+this is a fleet dashboard, not a puzzle board.
+
+
+13. BUILD PLAN (milestones)
+--------------------------------------------------------------------------------
+M0  Scaffold: copy structure/patterns from ../tesla-road-trip-game (go.mod,
+    gqlgen, Makefile, session persistence, SvelteKit shell). Load + render
+    city.json. `newSession` + `city` query working.
+M1  Manual driving: 1 car, moveCar + per-session tick loop, battery drain,
+    recharge at depot/charger, stranded + tow. Reachability/rejection reasons.
+M2  Orders + deliveries: kitchens, customers, order generation, pickup/dropoff
+    on tile entry, money, event feed. Now genuinely playable.
+M3  Multi-car + economy: buyCar, several cars driven concurrently, car panel,
+    order assignment. The "scale up" phase begins.
+M4  Map evolution: achievement unlocks, buildable upgrades with cost +
+    placement, tile mutation, district reveal, reachability validation.
+M5  Persistence + polish: saves, pause/speed, replay from seed, balance pass.
+M6  (v2) MCP/AI-agent tools, leaderboards, scenarios, sound.
+
+MVP = M0-M4.
+
+Testing strategy:
+  - engine unit tests: tick determinism, movement ordering/validation,
+    order state machine, charging, build application + reachability guard
+  - order-spawn tests: gates 1/2/3 each block correctly; per-customer
+    cooldowns never flood the queue when customers are added; the same
+    (seed, tick, state) always yields the same order; no spawn for an item
+    with no reachable kitchen
+  - golden-file tests: a fixed command log + seed produces a fixed final grid
+  - a headless "sim harness" that plays a scripted session fast, to tune
+    economy/pacing without clicking through the UI. Its first job is answering
+    "is the queue starved or drowning in chapter 2?" — print active_orders and
+    idle-car ratio per 100 ticks.
+
+
+14. RISKS / WATCH-OUTS
+--------------------------------------------------------------------------------
+  - Manual driving + N cars + a tick loop: the queued-move-per-tick model (§5)
+    is the linchpin. Get it right and everything else is bookkeeping.
+  - Map evolution can break reachability (island kitchens). Every build must
+    be validated on a copy of the grid before it lands.
+  - Scope creep: manual play + fleet + economy + evolution is a lot. MVP ends
+    at M4; do not gold-plate the UI before the loop is fun.
+  - Economy tuning is where "is it fun" lives. Build the sim harness early.
+  - API-first means the schema is the product: version it, keep mutations
+    returning the tick, and never make the web UI the only way to do a thing.
+  - Pacing is the sneakiest risk: a queue sized by chapter count starves in
+    ch.1 and floods in ch.5. Solved by sizing it off fleet capacity plus an
+    anti-dead-air spawn rule (§7.1). Do not "fix" it by lowering cooldowns —
+    that reintroduces the flood at scale.
+
+15. MY RECOMMENDATION ON WHAT TO DO NEXT
+--------------------------------------------------------------------------------
+Two changes I'd make to the plan before writing any game code:
+
+S1. REORDER THE MILESTONES: engine + CLI harness BEFORE GraphQL and UI.
+    The loop is manual driving + a tick clock + orders. All three are pure
+    engine concerns. Build them behind a tiny CLI (`drbrain play` printing an
+    ASCII city, `drbrain sim` for scripted runs) and get "is this fun?"
+    answered in a terminal. GraphQL, Svelte and MCP all become adapters over
+    an engine that already works. Doing the schema first risks designing a
+    beautiful API around a loop that turns out to be dull.
+
+    Revised order:
+      P0  go mod init, engine skeleton, city.json loader + ASCII renderer
+      P1  tick loop + queued-move manual driving + battery/chargers
+      P2  orders + deliveries + economy + the sim harness
+      P3  tune pacing with the harness (this is where the design is proven)
+      P4  GraphQL adapter (thin, mechanical). WS deferred: the client polls
+          and every mutation returns the full snapshot, so push buys
+          nothing until there is a spectator feature that needs it.
+      P5  builds/unlocks/district reveal
+      P6  SvelteKit dashboard
+      P7  MCP tools (v2)
+
+S2. BUILD THE SIM HARNESS IN P2, NOT LATER.
+    A scripted bot that plays N thousand ticks and prints a table per 100
+    ticks: active_orders, idle_car_ratio, avg_delivery_ticks, late_pct,
+    money curve, unlocks hit. Without it every pacing number in this doc is a
+    guess. With it, tuning becomes an experiment instead of an opinion.
+
+On the two open questions I'd not spend more design time on:
+  - O3 (ground costs 2x): yes, keep it. It is what makes B03/B05 build-ups
+    feel like upgrades rather than decoration, and it is one constant.
+  - O4 (sessions/ vs saves/): call the directory `sessions`, keep the GraphQL
+    term `sessionID`. Matches the reference repo, costs nothing to change
+    later, and "save" is a presentation word the UI can use.
+================================================================================

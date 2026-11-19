@@ -1,0 +1,66 @@
+@import 'tailwindcss';
+
+@theme {
+	/* Dark dashboard palette: this is a fleet console, not a marketing page.
+	   Colours are chosen so the map glyphs stay readable against the chrome. */
+	--color-ink-950: #0b0e14;
+	--color-ink-900: #11151d;
+	--color-ink-800: #171c26;
+	--color-ink-700: #1f2633;
+	--color-ink-600: #2b3444;
+	--color-ink-500: #3d4859;
+
+	--color-fog-500: #8b95a7;
+	--color-fog-400: #a9b3c2;
+	--color-fog-300: #cbd3de;
+
+	/* Roads are the LIGHT surface and buildings the dark one. A street grid only
+	   reads when the streets are clearly lighter ribbons between dark blocks.
+	   Measured: this pair is a 3.1:1 luminance ratio, against 1.9:1 for the
+	   previous (#5c6779 / #333d4d) which read as a checkerboard. The gap
+	   between tiles on the map is also 2px, so adjacent road tiles still read as
+	   a continuous street rather than a dotted line. */
+	--color-road: #6b7688;
+	--color-ground: #6b5c42;
+	--color-water: #163d50;
+	/* Deliberately close to the panel background (#11151d): buildings are the
+	   negative space the streets run between. */
+	--color-building: #232b36;
+	--color-depot: #3b82f6;
+	--color-charger: #22d3ee;
+	--color-kitchen: #f59e0b;
+	--color-customer: #a78bfa;
+	--color-money: #34d399;
+	--color-danger: #f87171;
+	--color-warn: #fbbf24;
+}
+
+html,
+body {
+	height: 100%;
+	background-color: var(--color-ink-950);
+	color: var(--color-fog-300);
+	font-family:
+		ui-sans-serif,
+		system-ui,
+		-apple-system,
+		'Segoe UI',
+		sans-serif;
+	font-variant-numeric: tabular-nums;
+}
+
+/* A visible focus ring everywhere: this UI is driven by keyboard as much as
+   the mouse, and the map is the primary surface. */
+:focus-visible {
+	outline: 2px solid var(--color-charger);
+	outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
+	}
+}
