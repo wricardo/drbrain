@@ -449,12 +449,7 @@ func TestManager_CachingBehavior(t *testing.T) {
 // Add missing test-only methods to Manager
 
 func (m *Manager) ReloadConfig(name string) error {
-	m.mu.Lock()
-	// Remove from cache to force reload
-	delete(m.configs, name)
-	m.mu.Unlock()
-
-	// Load fresh from disk (without holding the lock)
+	m.store.Refresh()
 	_, err := m.LoadConfig(name)
 	return err
 }
@@ -464,7 +459,9 @@ func (m *Manager) ValidateConfig(config *engine.GameConfig) error {
 }
 
 func (m *Manager) Count() int {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return len(m.configs)
+	entries, err := m.store.List()
+	if err != nil {
+		return 0
+	}
+	return len(entries)
 }
