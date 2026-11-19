@@ -221,7 +221,10 @@ type UnlockView struct {
 	ID          string   `json:"id"`
 	Title       string   `json:"title"`
 	Description string   `json:"description"`
+	Requires    string   `json:"requires"`
 	Earned      bool     `json:"earned"`
+	Progress    int      `json:"progress"`
+	Target      int      `json:"target"`
 	Builds      []string `json:"builds"`
 }
 
@@ -377,7 +380,9 @@ func BuildSnapshot(w *engine.World) Snapshot {
 	for _, u := range w.Unlocks() {
 		snap.Unlocks = append(snap.Unlocks, UnlockView{
 			ID: u.ID, Title: u.Title, Description: u.Description,
-			Earned: u.Earned, Builds: nonNilStrings(u.Builds),
+			Requires: u.Requires, Earned: u.Earned,
+			Progress: u.Progress, Target: u.Target,
+			Builds: nonNilStrings(u.Builds),
 		})
 	}
 	for _, b := range w.Builds() {

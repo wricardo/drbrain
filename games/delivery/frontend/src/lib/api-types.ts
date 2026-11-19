@@ -286,7 +286,13 @@ export interface UnlockView {
 	id: string;
 	title: string;
 	description: string;
+	/** The gate in words, e.g. "5 deliveries" or "earn $2000". */
+	requires: string;
 	earned: boolean;
+	/** Progress toward the strictest requirement, in that requirement's own units. */
+	progress: number;
+	/** The target that progress is measured against. */
+	target: number;
 	/** The build ids this unlock makes purchasable. */
 	builds: string[];
 }

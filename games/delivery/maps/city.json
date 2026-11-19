@@ -322,9 +322,9 @@
     "charger_rate": 2
   },
   "fleet": {
-    "upkeep_interval_ticks": 40,
-    "upkeep_per_box_per_interval": 4,
-    "default_upkeep_per_interval": 4,
+    "upkeep_interval_ticks": 120,
+    "upkeep_per_box_per_interval": 1,
+    "default_upkeep_per_interval": 1,
     "tow_fee_per_tile": 2,
     "tow_fee_min": 25
   },

@@ -208,6 +208,22 @@ func (c *City) ChargingAt(p Position) bool {
 	return t.Charges()
 }
 
+// ChargeSlotsAt reports how many cars may charge at p simultaneously.
+//
+// Only depots carry the distinction between parking spaces (Capacity) and
+// charging bays (ChargeSlots); a standalone charger's Capacity already bounds
+// how many cars can be on the tile, so it needs no separate number and reports
+// zero. Zero or negative means "no slot limit", which keeps a map authored
+// before charge slots existed charging exactly as it did.
+func (c *City) ChargeSlotsAt(p Position) int {
+	for _, d := range c.Depots {
+		if d.Pos == p {
+			return d.ChargeSlots
+		}
+	}
+	return 0
+}
+
 // NewCity builds a City from a config, validating as it goes. It returns the
 // first structural problem rather than accumulating them, because a map that
 // fails validation is not partially usable.
@@ -372,15 +388,20 @@ func (c *City) Validate() error {
 	if len(c.Depots) == 0 {
 		return fmt.Errorf("city has no depot; cars would have nowhere to start")
 	}
-	for i, d := range c.Depots {
+	seenDepots := map[string]bool{}
+	for _, d := range c.Depots {
+		if d.ID == "" {
+			return fmt.Errorf("depot with empty id")
+		}
+		if seenDepots[d.ID] {
+			return fmt.Errorf("duplicate depot id %q", d.ID)
+		}
+		seenDepots[d.ID] = true
 		if err := c.checkEntityTile(d.ID, d.Pos, DepotTile, "depot"); err != nil {
 			return err
 		}
 		if d.Capacity <= 0 {
 			return fmt.Errorf("depot %q has non-positive capacity", d.ID)
-		}
-		if i > 0 && c.Depots[i-1].ID == d.ID {
-			return fmt.Errorf("duplicate depot id %q", d.ID)
 		}
 	}
 

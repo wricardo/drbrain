@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { CarState, CarView } from '$lib/api';
 	import { batteryTone } from '$lib/glyphs';
+	import Panel from '$lib/Panel.svelte';
 
 	interface Props {
 		cars: CarView[];
@@ -30,12 +31,7 @@
 	};
 </script>
 
-<section class="rounded-lg border border-ink-600 bg-ink-900">
-	<header class="flex items-center justify-between border-b border-ink-700 px-3 py-2">
-		<h2 class="text-xs font-semibold tracking-wide text-fog-400 uppercase">Fleet</h2>
-		<span class="text-xs text-fog-500">{cars.length} vehicle{cars.length === 1 ? '' : 's'}</span>
-	</header>
-
+<Panel title="Fleet" summary="{cars.length} vehicle{cars.length === 1 ? '' : 's'}">
 	<ul class="divide-y divide-ink-800">
 		{#each cars as car, i (car.id)}
 			<li>
@@ -82,11 +78,6 @@
 						</span>
 					</div>
 
-					{#if car.queuedMove}
-						<div class="text-xs text-[var(--color-charger)]">
-							queued: {car.queuedMove} — applies next tick
-						</div>
-					{/if}
 					{#if car.lastReject}
 						<div class="text-xs text-[var(--color-warn)]">
 							last move rejected: {car.lastReject}
@@ -150,4 +141,4 @@
 			</ul>
 		</div>
 	{/if}
-</section>
+</Panel>

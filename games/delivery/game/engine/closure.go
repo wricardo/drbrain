@@ -54,7 +54,11 @@ type ClosureConfig struct {
 	// EveryTicks is the base gap between closures. Each closure lasts
 	// DurationTicks, so the street works are on the road roughly
 	// Duration/Every of the time.
-	EveryTicks    int `json:"every_ticks"`
+	EveryTicks int `json:"every_ticks"`
+
+	// DurationTicks is how long one closure stays in effect. The window is
+	// half-open: the street is closed on the start tick and already reopened
+	// on start+DurationTicks.
 	DurationTicks int `json:"duration_ticks"`
 
 	// MaxConcurrent caps how many closures can be live at once. At 1 (what
@@ -493,7 +497,7 @@ func (w *World) stepClosures() {
 // closed tile may drive off, so DistanceAvoiding treats the origin as passable.
 // Keeping those two rules aligned is what stops a closure that happens under a
 // car from shortening the deadline it was already quoted (measured 16 ticks
-// either side; this was `drbrain-delivery-bic`).
+// either side).
 //
 // Callers that sum legs should still handle -1 explicitly rather than adding it,
 // because -1 means "no route", not "zero distance".

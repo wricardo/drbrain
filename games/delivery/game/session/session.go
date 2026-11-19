@@ -57,6 +57,11 @@ type Session struct {
 
 	// dir is where this session is persisted.
 	dir string
+
+	// hub fans state changes out to live subscribers. It has its own lock and
+	// is never held together with mu, so publishing cannot stall the tick loop
+	// behind a slow reader.
+	hub *watchHub
 }
 
 // Speed values accepted by SetSpeed.
@@ -79,9 +84,19 @@ func ValidID(id string) bool { return validID.MatchString(id) }
 // function rather than Lock/Unlock so a caller cannot forget to unlock, and so
 // the critical section is obvious in review.
 func (s *Session) Do(fn func(w *engine.World)) {
+	// The unlock is deferred so a panicking callback cannot wedge the session
+	// forever; the notify runs after the lock is released by unwrapping into a
+	// closure rather than returning early.
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	fn(s.world)
+	func() {
+		defer s.mu.Unlock()
+		fn(s.world)
+	}()
+	// Every mutating entry point goes through here (the resolvers all do), so
+	// this is the one place that guarantees a subscriber hears about a manual
+	// step, a queued move or a purchase. It is outside the lock so a reader
+	// woken by it can immediately take the lock to build its snapshot.
+	s.notify()
 }
 
 // New creates a session from a city config. The ticker is not started; call
@@ -108,6 +123,7 @@ func New(id string, city *engine.City, cfg *engine.CityConfig, seed uint64, dir 
 		stop:  make(chan struct{}),
 		done:  make(chan struct{}),
 		dir:   dir,
+		hub:   newWatchHub(),
 	}, nil
 }
 
@@ -162,19 +178,31 @@ func (s *Session) loop() {
 			return
 		case <-time.After(interval):
 			s.mu.Lock()
+			advanced := false
 			if s.speed != SpeedPaused {
 				s.world.Advance()
+				advanced = true
 			}
 			s.mu.Unlock()
+			// Publish outside the lock: a subscriber that reads the snapshot
+			// immediately must not deadlock against the world lock.
+			if advanced {
+				s.notify()
+			}
 		}
 	}
 }
 
 // Close stops the ticker and waits for the goroutine to exit.
+//
+// It also ends every live subscription. Without that, a client watching a
+// session that gets evicted or deleted would sit blocked on a watch nobody will
+// ever publish to, holding its connection open until the browser gives up.
 func (s *Session) Close() {
 	s.mu.Lock()
 	if !s.running {
 		s.mu.Unlock()
+		s.hub.closeAll()
 		return
 	}
 	s.running = false
@@ -182,6 +210,7 @@ func (s *Session) Close() {
 
 	close(s.stop)
 	<-s.done
+	s.hub.closeAll()
 }
 
 // Speed returns the current multiplier (0 when paused).
@@ -202,6 +231,9 @@ func (s *Session) SetSpeed(speed int) error {
 	s.mu.Lock()
 	s.speed = speed
 	s.mu.Unlock()
+	// A speed change is a state change: subscribers must see `paused` flip even
+	// though no tick occurred.
+	s.notify()
 	return nil
 }
 

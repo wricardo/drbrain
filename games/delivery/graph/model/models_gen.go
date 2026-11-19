@@ -241,11 +241,20 @@ type Snapshot struct {
 	Closures []*ClosureView `json:"closures"`
 }
 
+type Subscription struct {
+}
+
 type UnlockView struct {
 	ID          string `json:"id"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
-	Earned      bool   `json:"earned"`
+	// The gate in words, e.g. "5 deliveries" or "earn $2000".
+	Requires string `json:"requires"`
+	Earned   bool   `json:"earned"`
+	// Progress toward the strictest requirement, in that requirement's own units.
+	Progress int `json:"progress"`
+	// The target that progress is measured against.
+	Target int `json:"target"`
 	// The build ids this unlock makes purchasable.
 	Builds []string `json:"builds"`
 }

@@ -352,13 +352,63 @@ func (r *queryResolver) Events(ctx context.Context, id string, sinceTick int) ([
 	return out, nil
 }
 
+// Session is the resolver for the session field.
+//
+// It returns a channel immediately and does the waiting in a goroutine, which
+// is what gqlgen expects of a subscription: the transport reads frames off the
+// channel and blocks on it, so nothing here may block before returning.
+//
+// The first value is sent eagerly. A subscriber that waited for the next tick
+// would show an empty screen for a full tick on a running clock — and forever
+// on a paused one, which is the default state.
+func (r *subscriptionResolver) Session(ctx context.Context, id string) (<-chan *model.Snapshot, error) {
+	sess, err := r.load(id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Buffered so the first send (the eager snapshot) cannot block before the
+	// transport has started reading.
+	out := make(chan *model.Snapshot, 1)
+	watch := sess.Watch()
+
+	go func() {
+		defer close(out)
+		defer sess.Unwatch(watch)
+
+		for {
+			snap := sess.StreamSnapshot()
+			select {
+			case out <- snapshotFrom(snap):
+			case <-ctx.Done():
+				return
+			}
+			// Wait for the next change. Next() also returns false when the
+			// session is closed, so an evicted session ends the stream instead
+			// of hanging the client forever.
+			if !watch.Next() {
+				return
+			}
+			if ctx.Err() != nil {
+				return
+			}
+		}
+	}()
+
+	return out, nil
+}
+
 // Mutation returns generated.MutationResolver implementation.
 func (r *Resolver) Mutation() generated.MutationResolver { return &mutationResolver{r} }
 
 // Query returns generated.QueryResolver implementation.
 func (r *Resolver) Query() generated.QueryResolver { return &queryResolver{r} }
 
+// Subscription returns generated.SubscriptionResolver implementation.
+func (r *Resolver) Subscription() generated.SubscriptionResolver { return &subscriptionResolver{r} }
+
 type (
-	mutationResolver struct{ *Resolver }
-	queryResolver    struct{ *Resolver }
+	mutationResolver     struct{ *Resolver }
+	queryResolver        struct{ *Resolver }
+	subscriptionResolver struct{ *Resolver }
 )

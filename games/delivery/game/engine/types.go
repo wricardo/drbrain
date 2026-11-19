@@ -49,7 +49,10 @@ func (t CellType) Charges() bool {
 // Position is a grid coordinate. X is the column (east+), Y is the row
 // (south+), matching the row-major layout strings in city.json.
 type Position struct {
+	// X is the column, east positive.
 	X int `json:"x"`
+
+	// Y is the row, south positive.
 	Y int `json:"y"`
 }
 

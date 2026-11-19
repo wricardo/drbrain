@@ -1,9 +1,11 @@
 // Command drbrain-server serves the GraphQL API, and the web UI when one has
 // been built.
 //
-// Startup order is deliberate: the city file is loaded and validated before the
-// listener binds, so a bad map is a startup error rather than a runtime failure
-// on the first request. Sessions are loaded from -sessions-dir on demand; a
+// Startup order is deliberate. The city file is checked and the session manager
+// built before the listener binds, and the listener binds before any "listening"
+// line is logged, so the first thing an operator sees is the real problem: a bad
+// map, or a port already held by an earlier run that is still answering with the
+// previous build's schema. Sessions are loaded from -sessions-dir on demand; a
 // session appears in `sessions` whether or not it is in memory, and `loaded`
 // says which.
 //
@@ -53,6 +55,17 @@ func run() int {
 		return 1
 	}
 
+	// Bind before building the handler or announcing anything, so a port
+	// conflict is the first and only thing reported: a "serving web UI from …"
+	// line followed by a bind failure reads as a partial success, and the
+	// process that already owns the port is the one still serving the previous
+	// build's schema, which is exactly what the operator needs to know.
+	ln, err := bind(*addr)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		return 1
+	}
+
 	// GraphQL is the only game transport. The web UI is an optional static
 	// bundle served alongside it; without it the server is API-only, which is a
 	// complete game.
@@ -95,7 +108,7 @@ func run() int {
 	}()
 
 	log.Printf("DrBrain Delivery listening on http://%s (graphql at /graphql)", *addr)
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		fmt.Fprintf(os.Stderr, "listen: %v\n", err)
 		return 1
 	}

@@ -37,6 +37,18 @@ export function carIndex(ch: string): number | null {
 }
 
 /**
+ * A digit means the server overlaid a car on this tile.
+ *
+ * `rows` is a *rendered* view: a car replaces the terrain character, so the
+ * tile underneath is not recoverable from it. The map draws cars as their own
+ * layer, which covers the tile exactly, so a car glyph is styled as a neutral
+ * base rather than being reported as unknown scenery.
+ */
+export function carGlyphStyle(): GlyphStyle {
+	return { cls: 'bg-[var(--color-road)]', label: 'Car', passable: true };
+}
+
+/**
  * Battery colour band. The thresholds match the engine's intent: under 25% you
  * may not reach a charger, so it reads as danger rather than decoration.
  */

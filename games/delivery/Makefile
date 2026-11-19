@@ -1,6 +1,10 @@
 # DrBrain Delivery — engine & tooling.
 GO      ?= go
 BINARY  ?= bin/drbrain
+# Port for the HTTP server. Override when :8080 is already taken by another
+# project, which is common enough locally that it is a supported case rather
+# than an error: `make serve PORT=8081`.
+PORT    ?= 8080
 
 .PHONY: help
 help: ## list targets
@@ -19,8 +23,8 @@ play: ## drive a car in the terminal
 	$(GO) run ./cmd/drbrain play
 
 .PHONY: serve
-serve: ## run the HTTP API on :8080
-	$(GO) run ./cmd/drbrain-server -addr localhost:8080
+serve: ## run the HTTP API on :8080 (PORT=... to override)
+	$(GO) run ./cmd/drbrain-server -addr localhost:$(PORT)
 
 .PHONY: sim
 sim: ## run the pacing harness (3000 ticks)
@@ -35,9 +39,9 @@ build-frontend: ## build the web UI into frontend/build
 	cd frontend && npm install && npm run build
 
 .PHONY: serve-ui
-serve-ui: ## build the UI and serve API + UI on :8080
+serve-ui: ## build the UI and serve API + UI on :8080 (PORT=... to override)
 	cd frontend && npm run build
-	cd $(CURDIR) && $(GO) run ./cmd/drbrain-server -addr localhost:8080
+	cd $(CURDIR) && $(GO) run ./cmd/drbrain-server -addr localhost:$(PORT)
 
 .PHONY: verify-ui
 verify-ui: ## headless-Chrome smoke test of the UI (needs a built UI)

@@ -67,6 +67,26 @@ type Health {
   status: String!
 }
 
+type Subscription {
+  """
+  Every state change of one session, pushed as it happens.
+
+  Emitted once per tick while the clock runs, and once per mutation otherwise
+  (a manual step, a queued move, a speed change, a purchase). Sessions start
+  paused, so a client that subscribed only to the clock would never see a
+  hand-played game move.
+
+  This replaces polling: the payload is the same Snapshot the query returns,
+  except that finished orders are trimmed to the most recent few. Order history
+  is ~96% of a late-game snapshot and never shrinks, so streaming all of it per
+  tick would cost more than polling did.
+
+  Coalesced, not queued: if the client cannot keep up, it receives the next
+  snapshot once it can, rather than a backlog of every intermediate tick.
+  """
+  session(id: ID!): Snapshot!
+}
+
 type SessionSummary {
   id: ID!
   createdAt: Time!
@@ -280,7 +300,13 @@ type UnlockView {
   id: ID!
   title: String!
   description: String!
+  "The gate in words, e.g. \"5 deliveries\" or \"earn $2000\"."
+  requires: String!
   earned: Boolean!
+  "Progress toward the strictest requirement, in that requirement's own units."
+  progress: Int!
+  "The target that progress is measured against."
+  target: Int!
   "The build ids this unlock makes purchasable."
   builds: [ID!]!
 }

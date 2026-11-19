@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { OrderState, OrderView } from '$lib/api';
 	import { deadlineTone } from '$lib/glyphs';
+	import Panel from '$lib/Panel.svelte';
 
 	interface Props {
 		orders: OrderView[];
@@ -34,18 +35,16 @@
 	};
 </script>
 
-<section class="flex min-h-0 flex-col rounded-lg border border-ink-600 bg-ink-900">
-	<header class="flex items-center justify-between border-b border-ink-700 px-3 py-2">
-		<h2 class="text-xs font-semibold tracking-wide text-fog-400 uppercase">Orders</h2>
-		<span class="text-xs text-fog-500">{open.length} open</span>
-	</header>
-
-	<div class="min-h-0 flex-1 overflow-y-auto">
-		{#if open.length === 0}
-			<p class="p-3 text-xs text-fog-500">
-				No open orders. The next customer request arrives on its own schedule.
-			</p>
-		{/if}
+<Panel
+	title="Orders"
+	summary="{open.length} open"
+	bodyClass="max-h-72 overflow-y-auto"
+>
+	{#if open.length === 0}
+		<p class="p-3 text-xs text-fog-500">
+			No open orders. The next customer request arrives on its own schedule.
+		</p>
+	{/if}
 
 		<ul class="divide-y divide-ink-800">
 			{#each open as o (o.id)}
@@ -136,5 +135,4 @@
 				</ul>
 			</details>
 		{/if}
-	</div>
-</section>
+</Panel>

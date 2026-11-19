@@ -69,7 +69,9 @@ func snapshotFrom(s session.Snapshot) *model.Snapshot {
 	for _, u := range s.Unlocks {
 		out.Unlocks = append(out.Unlocks, &model.UnlockView{
 			ID: u.ID, Title: u.Title, Description: u.Description,
-			Earned: u.Earned, Builds: nonNil(u.Builds),
+			Requires: u.Requires, Earned: u.Earned,
+			Progress: u.Progress, Target: u.Target,
+			Builds: nonNil(u.Builds),
 		})
 	}
 	for _, b := range s.Builds {

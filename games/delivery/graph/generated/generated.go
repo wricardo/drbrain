@@ -31,6 +31,7 @@ type Config = graphql.Config[ResolverRoot, DirectiveRoot, ComplexityRoot]
 type ResolverRoot interface {
 	Mutation() MutationResolver
 	Query() QueryResolver
+	Subscription() SubscriptionResolver
 }
 
 type DirectiveRoot struct {
@@ -236,11 +237,18 @@ type ComplexityRoot struct {
 		Unlocks      func(childComplexity int) int
 	}
 
+	Subscription struct {
+		Session func(childComplexity int, id string) int
+	}
+
 	UnlockView struct {
 		Builds      func(childComplexity int) int
 		Description func(childComplexity int) int
 		Earned      func(childComplexity int) int
 		ID          func(childComplexity int) int
+		Progress    func(childComplexity int) int
+		Requires    func(childComplexity int) int
+		Target      func(childComplexity int) int
 		Title       func(childComplexity int) int
 	}
 }
@@ -270,6 +278,9 @@ type QueryResolver interface {
 	Session(ctx context.Context, id string) (*model.Snapshot, error)
 	CarView(ctx context.Context, id string, carID string, radius int) (*model.CarWindow, error)
 	Events(ctx context.Context, id string, sinceTick int) ([]*model.EventView, error)
+}
+type SubscriptionResolver interface {
+	Session(ctx context.Context, id string) (<-chan *model.Snapshot, error)
 }
 
 // endregion ************************** generated!.gotpl **************************
@@ -1271,6 +1282,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.ComplexityRoot.Snapshot.Unlocks(childComplexity), true
 
+	case "Subscription.session":
+		if e.ComplexityRoot.Subscription.Session == nil {
+			break
+		}
+
+		args, err := ec.field_Subscription_session_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.ComplexityRoot.Subscription.Session(childComplexity, args["id"].(string)), true
+
 	case "UnlockView.builds":
 		if e.ComplexityRoot.UnlockView.Builds == nil {
 			break
@@ -1295,6 +1318,24 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.ComplexityRoot.UnlockView.ID(childComplexity), true
+	case "UnlockView.progress":
+		if e.ComplexityRoot.UnlockView.Progress == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UnlockView.Progress(childComplexity), true
+	case "UnlockView.requires":
+		if e.ComplexityRoot.UnlockView.Requires == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UnlockView.Requires(childComplexity), true
+	case "UnlockView.target":
+		if e.ComplexityRoot.UnlockView.Target == nil {
+			break
+		}
+
+		return e.ComplexityRoot.UnlockView.Target(childComplexity), true
 	case "UnlockView.title":
 		if e.ComplexityRoot.UnlockView.Title == nil {
 			break
@@ -1354,6 +1395,23 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 			ctx = graphql.WithLazyInputUnmarshalerIndex(ctx, inputUnmarshalers)
 			data := ec._Mutation(ctx, opCtx.Operation.SelectionSet)
 			var buf bytes.Buffer
+			data.MarshalGQL(&buf)
+
+			return &graphql.Response{
+				Data: buf.Bytes(),
+			}
+		}
+	case ast.Subscription:
+		next := ec._Subscription(ctx, opCtx.Operation.SelectionSet)
+
+		var buf bytes.Buffer
+		return func(ctx context.Context) *graphql.Response {
+			buf.Reset()
+			data := next(ctx)
+
+			if data == nil {
+				return nil
+			}
 			data.MarshalGQL(&buf)
 
 			return &graphql.Response{
@@ -1453,6 +1511,26 @@ enum Direction {
 
 type Health {
   status: String!
+}
+
+type Subscription {
+  """
+  Every state change of one session, pushed as it happens.
+
+  Emitted once per tick while the clock runs, and once per mutation otherwise
+  (a manual step, a queued move, a speed change, a purchase). Sessions start
+  paused, so a client that subscribed only to the clock would never see a
+  hand-played game move.
+
+  This replaces polling: the payload is the same Snapshot the query returns,
+  except that finished orders are trimmed to the most recent few. Order history
+  is ~96% of a late-game snapshot and never shrinks, so streaming all of it per
+  tick would cost more than polling did.
+
+  Coalesced, not queued: if the client cannot keep up, it receives the next
+  snapshot once it can, rather than a backlog of every intermediate tick.
+  """
+  session(id: ID!): Snapshot!
 }
 
 type SessionSummary {
@@ -1668,7 +1746,13 @@ type UnlockView {
   id: ID!
   title: String!
   description: String!
+  "The gate in words, e.g. \"5 deliveries\" or \"earn $2000\"."
+  requires: String!
   earned: Boolean!
+  "Progress toward the strictest requirement, in that requirement's own units."
+  progress: Int!
+  "The target that progress is measured against."
+  target: Int!
   "The build ids this unlock makes purchasable."
   builds: [ID!]!
 }
@@ -2083,8 +2167,14 @@ func (ec *executionContext) childFields_UnlockView(ctx context.Context, field gr
 		return ec.fieldContext_UnlockView_title(ctx, field)
 	case "description":
 		return ec.fieldContext_UnlockView_description(ctx, field)
+	case "requires":
+		return ec.fieldContext_UnlockView_requires(ctx, field)
 	case "earned":
 		return ec.fieldContext_UnlockView_earned(ctx, field)
+	case "progress":
+		return ec.fieldContext_UnlockView_progress(ctx, field)
+	case "target":
+		return ec.fieldContext_UnlockView_target(ctx, field)
 	case "builds":
 		return ec.fieldContext_UnlockView_builds(ctx, field)
 	}
@@ -2538,6 +2628,20 @@ func (ec *executionContext) field_Query_events_args(ctx context.Context, rawArgs
 }
 
 func (ec *executionContext) field_Query_session_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id",
+		func(ctx context.Context, v any) (string, error) {
+			return ec.unmarshalNID2string(ctx, v)
+		})
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Subscription_session_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id",
@@ -6618,6 +6722,50 @@ func (ec *executionContext) fieldContext_Snapshot_closures(_ context.Context, fi
 	return fc, nil
 }
 
+func (ec *executionContext) _Subscription_session(ctx context.Context, field graphql.CollectedField) (ret func(ctx context.Context) graphql.Marshaler) {
+	return graphql.ResolveFieldStream(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_Subscription_session(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.Resolvers.Subscription().Session(ctx, fc.Args["id"].(string))
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v *model.Snapshot) graphql.Marshaler {
+			return ec.marshalNSnapshot2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑdeliveryᚋgraphᚋmodelᚐSnapshot(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_Subscription_session(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Subscription",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.childFields_Snapshot(ctx, field)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Subscription_session_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _UnlockView_id(ctx context.Context, field graphql.CollectedField, obj *model.UnlockView) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -6687,6 +6835,29 @@ func (ec *executionContext) fieldContext_UnlockView_description(_ context.Contex
 	return graphql.NewScalarFieldContext("UnlockView", field, false, false, "String")
 }
 
+func (ec *executionContext) _UnlockView_requires(ctx context.Context, field graphql.CollectedField, obj *model.UnlockView) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UnlockView_requires(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Requires, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v string) graphql.Marshaler {
+			return ec.marshalNString2string(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UnlockView_requires(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("UnlockView", field, false, false, "String")
+}
+
 func (ec *executionContext) _UnlockView_earned(ctx context.Context, field graphql.CollectedField, obj *model.UnlockView) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -6708,6 +6879,52 @@ func (ec *executionContext) _UnlockView_earned(ctx context.Context, field graphq
 }
 func (ec *executionContext) fieldContext_UnlockView_earned(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	return graphql.NewScalarFieldContext("UnlockView", field, false, false, "Boolean")
+}
+
+func (ec *executionContext) _UnlockView_progress(ctx context.Context, field graphql.CollectedField, obj *model.UnlockView) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UnlockView_progress(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Progress, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UnlockView_progress(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("UnlockView", field, false, false, "Int")
+}
+
+func (ec *executionContext) _UnlockView_target(ctx context.Context, field graphql.CollectedField, obj *model.UnlockView) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return ec.fieldContext_UnlockView_target(ctx, field)
+		},
+		func(ctx context.Context) (any, error) {
+			return obj.Target, nil
+		},
+		nil,
+		func(ctx context.Context, selections ast.SelectionSet, v int) graphql.Marshaler {
+			return ec.marshalNInt2int(ctx, selections, v)
+		},
+		true,
+		true,
+	)
+}
+func (ec *executionContext) fieldContext_UnlockView_target(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	return graphql.NewScalarFieldContext("UnlockView", field, false, false, "Int")
 }
 
 func (ec *executionContext) _UnlockView_builds(ctx context.Context, field graphql.CollectedField, obj *model.UnlockView) (ret graphql.Marshaler) {
@@ -9090,6 +9307,26 @@ func (ec *executionContext) _Snapshot(ctx context.Context, sel ast.SelectionSet,
 	return out
 }
 
+var subscriptionImplementors = []string{"Subscription"}
+
+func (ec *executionContext) _Subscription(ctx context.Context, sel ast.SelectionSet) func(ctx context.Context) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, subscriptionImplementors)
+	ctx = graphql.WithFieldContext(ctx, &graphql.FieldContext{
+		Object: "Subscription",
+	})
+	if len(fields) != 1 {
+		graphql.AddErrorf(ctx, "must subscribe to exactly one stream")
+		return nil
+	}
+
+	switch fields[0].Name {
+	case "session":
+		return ec._Subscription_session(ctx, fields[0])
+	default:
+		panic("unknown field " + strconv.Quote(fields[0].Name))
+	}
+}
+
 var unlockViewImplementors = []string{"UnlockView"}
 
 func (ec *executionContext) _UnlockView(ctx context.Context, sel ast.SelectionSet, obj *model.UnlockView) graphql.Marshaler {
@@ -9116,8 +9353,23 @@ func (ec *executionContext) _UnlockView(ctx context.Context, sel ast.SelectionSe
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "requires":
+			out.Values[i] = ec._UnlockView_requires(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "earned":
 			out.Values[i] = ec._UnlockView_earned(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "progress":
+			out.Values[i] = ec._UnlockView_progress(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "target":
+			out.Values[i] = ec._UnlockView_target(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}

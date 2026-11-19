@@ -418,9 +418,12 @@ func (w *World) estimateTicks(kitchenPos, customerPos Position) int64 {
 // Neither leg can be -1 merely because the car stands on a closed tile: a
 // closure blocks ENTRY, so DistanceAvoiding treats the origin as passable.
 // That is what keeps this window identical either side of a closure closing
-// under the car (measured 16 ticks both ways on the shipped map). Before that
-// was fixed this function skipped a negative first leg and quoted a SHORTER
-// deadline, which is `drbrain-delivery-bic` in docs/known-issues.md.
+// under the car (measured 16 ticks both ways on the shipped map).
+//
+// The older shape skipped a negative first leg instead of substituting +20,
+// which quoted a SHORTER deadline for exactly that case — the opposite of what
+// a closure should do. Keep the two legs symmetric: any special case applied to
+// one must be applied to the other.
 //
 // Slack comes from OrderConfig.DeadlineSlack and tightens by chapter. Note the
 // zero-value fallback is 2.0, not the 1.8 the shipped map uses, so a map that

@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
-	import { api, ApiError, type Direction, type SessionSummary, type Snapshot } from '$lib/api';
+	import { api, ApiError, SNAPSHOT_FIELDS, type Direction, type SessionSummary, type Snapshot } from '$lib/api';
+	import { subscribeToSession } from '$lib/subscribe';
 	import Map from '$lib/Map.svelte';
+	import Panel from '$lib/Panel.svelte';
 	import FleetPanel from '$lib/FleetPanel.svelte';
 	import OrdersPanel from '$lib/OrdersPanel.svelte';
 	import ProgressPanel from '$lib/ProgressPanel.svelte';
@@ -14,7 +16,6 @@
 	/** Which order's route is highlighted on the map. */
 	let selectedOrderId = $state<string | null>(null);
 	let busy = $state(false);
-	let feedOpen = $state(true);
 
 	const SESSION_KEY = 'drbrain:session';
 
@@ -102,22 +103,164 @@
 
 	// --- networking ----------------------------------------------------------
 
-	/** Poll cadence: the clock runs on the server, so this is the display lag. */
-	const RUNNING_POLL_MS = 400;
-	const PAUSED_POLL_MS = 1200;
+	/**
+	 * How long a car takes to glide one tile when the clock is paused, i.e. when
+	 * the player is driving by hand.
+	 *
+	 * This must not be zero. Sessions start paused (the game is manual driving),
+	 * so a paused step is the *normal* way a car moves — and `moveMs` used to be
+	 * derived from the poll interval, which is 0 while paused because "nothing
+	 * moves". The result was that every keystroke teleported the car a whole
+	 * tile and only a running clock ever animated. A manual step is a single
+	 * discrete event, so it needs its own fixed duration rather than a cadence:
+	 * long enough to read as driving, short enough that the next keystroke does
+	 * not queue behind it.
+	 */
+	const STEP_GLIDE_MS = 160;
+
+	/*
+	 * History note: this page used to poll. It kept a `pollMs` cadence of one
+	 * tick (tickMs / speed) because a fixed 400 ms sampled an interval that does
+	 * not divide the tick — at 1x it skipped alternately one and two ticks, and
+	 * at 4x it skipped five or six, which is why cars used to jump. The live
+	 * subscription below makes that moot: the server pushes exactly one frame
+	 * per tick, so the cadence question cannot arise. The glide timing still
+	 * derives from the tick length, which is why tickMs is still read here.
+	 */
+
+	/**
+	 * The id of the session being watched, or null on the picker screen.
+	 *
+	 * A derived value rather than reading `snap?.id` inside the effect below.
+	 * That distinction is load-bearing: an effect that reads `snap` re-runs on
+	 * every assignment to it, and since every pushed frame reassigns `snap`,
+	 * such an effect would tear down and reopen the stream on every tick — a
+	 * reconnect storm (measured: 1204 requests in 6 seconds). A derived value
+	 * compares by value, so the effect runs only when the id really changes.
+	 */
+	const watchedId = $derived(snap?.id ?? null);
+
+	// --- live updates --------------------------------------------------------
+
+	/**
+	 * Stop function for the current subscription, if any.
+	 */
+	let unsubscribe: (() => void) | null = null;
+	/** Reconnect timer, used only after a stream drops unexpectedly. */
+	let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+	/** Consecutive failures, for exponential backoff on reconnect. */
+	let streamFailures = 0;
+	/**
+	 * True when the server refused the stream or streams keep failing.
+	 */
+	let streamUnavailable = $state(false);
+
+	/**
+	 * Highest tick this tab has rendered.
+	 *
+	 * A frame that would move the clock backwards is dropped. Frames are ordered
+	 * on one connection, but a mutation's own response can land between two
+	 * frames, so a late frame describing an older tick must not rewind the map.
+	 * Same-tick frames are kept: a mutation like `assignOrder` changes state
+	 * without advancing the clock, and that state change is exactly what the
+	 * next frame carries.
+	 */
+	let renderedTick = 0;
+
+	/**
+	 * How long a car takes to slide from the tile it was on to the tile the
+	 * latest snapshot puts it on.
+	 *
+	 * A running clock pushes once per tick, so the glide lasts exactly one tick
+	 * and the next frame lands just as the car arrives: continuous motion with
+	 * no interpolation needed.
+	 *
+	 * A paused clock is the default state and the normal way the game is
+	 * played, and it still has to animate. Deriving this from the poll interval
+	 * gave 0 while paused (a paused city "has nothing to animate"), so every
+	 * manual step teleported the car a whole tile — the bug this used to cause.
+	 * A step is a discrete event with no cadence to match, so it gets a fixed
+	 * duration instead: a running clock keeps the tick-synced glide, a paused
+	 * one glides for STEP_GLIDE_MS.
+	 */
+	const moveMs = $derived.by(() => {
+		if (!snap) return 0;
+		if (!snap.paused && snap.speed > 0) return Math.max(50, Math.floor(snap.tickMs / snap.speed));
+		return STEP_GLIDE_MS;
+	});
+
+	/**
+	 * Opens the live stream for the current session.
+	 *
+	 * This replaces polling entirely. The server pushes a frame on every tick
+	 * and on every mutation, so a paused city updates the instant a key is
+	 * pressed and a running one updates once per tick with no request per
+	 * frame. Only the transport is different from the old poll loop: the
+	 * snapshot shape is identical, so every consumer downstream is unchanged.
+	 */
+	function startStream(id: string) {
+		stopStream();
+
+		unsubscribe = subscribeToSession(id, SNAPSHOT_FIELDS, {
+			next(next) {
+				// Ignore frames for a session the player already left, and frames
+				// that would rewind the clock (see renderedTick).
+				if (snap?.id !== id) return;
+				if (next.tick < renderedTick) return;
+				streamFailures = 0;
+				streamUnavailable = false;
+				renderedTick = next.tick;
+				snap = next;
+			},
+			closed(reason) {
+				unsubscribe = null;
+				if (snap?.id !== id) return;
+				// Back off rather than hot-looping: the usual cause is the server
+				// restarting or the session being evicted.
+				const delay = Math.min(8000, 250 * 2 ** streamFailures);
+				streamFailures++;
+				if (streamFailures >= 3) streamUnavailable = true;
+				runtimeLog(reason);
+				reconnectTimer = setTimeout(() => {
+					reconnectTimer = undefined;
+					// Reconnect only if the player is still on this session.
+					// Guarded by watchedId rather than snap so a frame arriving
+					// meanwhile cannot spawn a second stream.
+					if (watchedId === id) startStream(id);
+				}, delay);
+			}
+		});
+	}
+
+	function stopStream() {
+		unsubscribe?.();
+		unsubscribe = null;
+		if (reconnectTimer) clearTimeout(reconnectTimer);
+		reconnectTimer = undefined;
+	}
+
+	/**
+	 * runtimeLog records a stream problem without spamming the console.
+	 *
+	 * A dropped stream is recoverable and the UI shows its own indicator, so
+	 * this is a debug-level note rather than an error the player must act on.
+	 */
+	function runtimeLog(reason: string) {
+		if (typeof console !== 'undefined') console.debug('[drbrain] live stream:', reason);
+	}
 
 	/**
 	 * Every mutation returns the full snapshot, so the UI never needs a
 	 * follow-up read. That keeps the client a pure renderer of server truth.
 	 *
-	 * `version` is bumped so an in-flight poll cannot overwrite this result
-	 * with state it read before the mutation landed.
+	 * `renderedTick` is advanced here too, so a frame built before this mutation
+	 * landed cannot rewind the clock when it arrives just after.
 	 */
 	async function apply(fn: () => Promise<Snapshot>) {
 		busy = true;
 		try {
 			snap = await fn();
-			version++;
+			renderedTick = snap.tick;
 			error = null;
 		} catch (e) {
 			error = e instanceof ApiError ? `${e.message} (${e.code})` : String(e);
@@ -182,10 +325,10 @@
 		busy = true;
 		try {
 			await api.moveCar(id, carId, dir);
-			// Two round trips, so a poll may land between them; only the final
-			// snapshot is authoritative, and version bump discards stale polls.
+			// Two round trips, so a frame may describe the state in between;
+			// only the tick's own response is authoritative for this step.
 			snap = await api.tick(id, 1);
-			version++;
+			renderedTick = snap.tick;
 			error = null;
 		} catch (e) {
 			error = e instanceof ApiError ? `${e.message} (${e.code})` : String(e);
@@ -295,81 +438,39 @@
 		}
 	}
 
-	// --- polling -------------------------------------------------------------
-
-	let timer: ReturnType<typeof setTimeout> | undefined;
-	let pollingActive = false;
-	/** Guards against overlapping polls piling up behind a slow request. */
-	let polling = false;
+	// --- lifecycle -----------------------------------------------------------
 
 	/**
-	 * Bumped whenever this tab applies a snapshot it caused. A poll that
-	 * started before a mutation must not overwrite the newer state when it
-	 * lands, or the UI flickers backwards for one interval.
-	 */
-	let version = 0;
-
-	/**
-	 * The server owns the clock, so the client polls rather than simulating.
+	 * Keeps exactly one live stream open for the current session.
 	 *
-	 * Poll whenever a session is open, paused or not. A paused session still
-	 * changes under this tab: the CLI, an agent or a second browser can step
-	 * it, and those mutations return their snapshot to the caller only. Gating
-	 * on `paused` left this tab frozen at its own last read.
+	 * Keyed on the session id rather than called from each of the seven places
+	 * that assign `snap` (resume, open, create, leave, mutations): missing one
+	 * would leave the page silently frozen, which is exactly the class of bug
+	 * that made polling fragile. An effect on the id cannot be missed.
 	 *
-	 * A paused session changes only on outside input, so it is polled at a
-	 * slower cadence: fast enough to feel live, cheap enough for a dashboard
-	 * left open on a still city.
+	 * It also closes the stream when the player leaves the city, so a background
+	 * tab is not holding a connection to a session nobody is watching.
 	 */
-	function startPolling() {
-		pollingActive = true;
-		schedule(0);
-	}
-
-	function schedule(delay: number) {
-		if (timer) clearTimeout(timer);
-		if (!pollingActive) return;
-		timer = setTimeout(async () => {
-			await poll();
-			schedule(snap?.paused ? PAUSED_POLL_MS : RUNNING_POLL_MS);
-		}, delay);
-	}
-
-	async function poll() {
-		if (!snap || busy || polling) return;
-		// A hidden tab needs no fresh pixels; the next tick runs on return.
-		if (typeof document !== 'undefined' && document.hidden) return;
-
-		const id = snap.id;
-		const startedAt = version;
-		polling = true;
-		try {
-			const next = await api.session(id);
-			// Discard if the player left the city or switched, or if a local
-			// mutation has already applied something newer.
-			if (snap?.id === id && version === startedAt) snap = next;
-		} catch {
-			// Transient: the next poll retries.
-		} finally {
-			polling = false;
+	$effect(() => {
+		// Read ONLY watchedId here. Touching `snap` would restart the stream on
+		// every frame, because each frame reassigns it.
+		const id = watchedId;
+		if (!id) {
+			stopStream();
+			return;
 		}
-	}
-
-	function stopPolling() {
-		pollingActive = false;
-		if (timer) clearTimeout(timer);
-		timer = undefined;
-	}
+		startStream(id);
+		return () => stopStream();
+	});
 
 	onMount(() => {
 		void resume();
 		void loadSaves();
-		startPolling();
 		window.addEventListener('keydown', onKey);
 	});
 
 	onDestroy(() => {
-		stopPolling();
+		stopStream();
 		window.removeEventListener('keydown', onKey);
 	});
 </script>
@@ -479,6 +580,21 @@
 				{#if snap.ledger.onTimeStreak > 0}
 					<span class="text-[var(--color-money)]">streak {snap.ledger.onTimeStreak}</span>
 				{/if}
+				<!--
+					The live stream can drop (a server restart, or the session being
+					evicted). Without a marker the page would simply stop updating,
+					which looks like a frozen game rather than a transport problem —
+					exactly the silent failure the old poll loop had.
+				-->
+				{#if streamUnavailable}
+					<span
+						class="text-[var(--color-warn)]"
+						data-stream="reconnecting"
+						title="Live updates stopped. Retrying; the state shown may be stale."
+					>
+						reconnecting…
+					</span>
+				{/if}
 			</div>
 
 			<div class="ml-auto flex items-center gap-2">
@@ -541,14 +657,12 @@
 						highlightKitchen={highlightedOrder?.kitchenId ?? null}
 						highlightCustomer={highlightedOrder?.customerId ?? null}
 						closures={snap.closures}
+						{moveMs}
 						onSelectCar={(id) => (selectedCarId = id)}
 					/>
 				</div>
 
-				<div class="rounded-lg border border-ink-600 bg-ink-900">
-					<header class="border-b border-ink-700 px-3 py-2">
-						<h2 class="text-xs font-semibold tracking-wide text-fog-400 uppercase">Controls</h2>
-					</header>
+				<Panel title="Controls" summary={selectedCar ? `driving ${selectedCar.name}` : ''}>
 					<div class="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2 text-xs text-fog-400">
 						<!-- A D-pad, because keyboard-only excludes mouse and touch. -->
 						<div class="grid grid-cols-3 gap-1" role="group" aria-label="Drive">
@@ -609,33 +723,21 @@
 							{/if}
 						</div>
 					{/if}
-				</div>
+				</Panel>
 
-				<div class="rounded-lg border border-ink-600 bg-ink-900">
-					<header class="flex items-center justify-between border-b border-ink-700 px-3 py-2">
-						<h2 class="text-xs font-semibold tracking-wide text-fog-400 uppercase">Activity</h2>
-						<button
-							type="button"
-							class="text-xs text-fog-500 hover:text-fog-300"
-							onclick={() => (feedOpen = !feedOpen)}
-						>
-							{feedOpen ? 'hide' : 'show'}
-						</button>
-					</header>
-					{#if feedOpen}
-						<ul class="max-h-44 overflow-y-auto px-3 py-1">
-							{#each feed as e, i (i)}
-								<li class="py-0.5 text-xs text-fog-400">
-									<span class="text-fog-500">t{e.tick}</span>
-									{e.message}
-								</li>
-							{/each}
-							{#if feed.length === 0}
-								<li class="py-0.5 text-xs text-fog-500">Nothing has happened yet.</li>
-							{/if}
-						</ul>
-					{/if}
-				</div>
+				<Panel title="Activity" summary="{feed.length} event{feed.length === 1 ? '' : 's'}">
+					<ul class="max-h-44 overflow-y-auto px-3 py-1">
+						{#each feed as e, i (i)}
+							<li class="py-0.5 text-xs text-fog-400">
+								<span class="text-fog-500">t{e.tick}</span>
+								{e.message}
+							</li>
+						{/each}
+						{#if feed.length === 0}
+							<li class="py-0.5 text-xs text-fog-500">Nothing has happened yet.</li>
+						{/if}
+					</ul>
+				</Panel>
 			</div>
 
 			<div class="flex min-h-0 flex-col gap-3 overflow-y-auto">

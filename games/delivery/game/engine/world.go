@@ -291,9 +291,13 @@ func (w *World) Advance() []Event {
 
 	// 3. Charging. A car on a charging tile regains charge over ticks rather
 	// than instantly, which is what forces planning instead of teleporting
-	// home for free.
+	// home for free. A depot with fewer charge slots than parking spaces serves
+	// only the first slots drivers in car id order; the rest stay put and gain
+	// nothing this tick, so a crowded yard drains in id order instead of all at
+	// once. Cars already full take no slot, so they never block a charge.
+	charged := make(map[Position]int)
 	for _, car := range ordered {
-		w.chargeCar(car)
+		w.chargeCar(car, charged)
 	}
 
 	// 4-5. Order lifecycle.
@@ -574,14 +578,24 @@ func (w *World) blockReason(p Position, t CellType) string {
 }
 
 // chargeCar tops a car up by the tile's charge rate when it sits on a charging
-// tile.
-func (w *World) chargeCar(car *Car) {
+// tile, subject to the tile's simultaneous-charging limit.
+//
+// charged counts, per position, how many cars have already taken a charge this
+// tick. The caller iterates cars in id order, which is what makes the answer
+// deterministic when a depot has more cars than slots. A car that is already
+// full returns before touching that count, so parking a charged car does not
+// consume a bay.
+func (w *World) chargeCar(car *Car, charged map[Position]int) {
 	if !w.City.ChargingAt(car.Pos) || car.Full() {
+		return
+	}
+	if slots := w.City.ChargeSlotsAt(car.Pos); slots > 0 && charged[car.Pos] >= slots {
 		return
 	}
 	before := car.Battery
 	car.Battery = min(car.Battery+w.chargeRate(car.Pos), car.Class.MaxBattery)
 	if car.Battery != before {
+		charged[car.Pos]++
 		w.emit(EventCharged, car,
 			fmt.Sprintf("%s charging %d/%d", car.Name, car.Battery, car.Class.MaxBattery))
 	}
@@ -704,7 +718,7 @@ func (w *World) Tow(carID string) error {
 	fallback := w.City.Depots[0]
 	fallbackBest := -1
 	for _, d := range w.City.Depots {
-		dist := w.City.Distance(car.Pos, d.Pos)
+		dist := w.towDistance(car.Pos, d.Pos)
 		if dist >= 0 && (fallbackBest < 0 || dist < fallbackBest) {
 			fallbackBest = dist
 			fallback = d

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { AchievementView, BuildView, UnlockView } from '$lib/api';
+	import Panel from '$lib/Panel.svelte';
 
 	interface Props {
 		achievements: AchievementView[];
@@ -28,14 +29,10 @@
 </script>
 
 <section class="flex min-h-0 flex-col gap-3">
-	<div class="rounded-lg border border-ink-600 bg-ink-900">
-		<header class="flex items-center justify-between border-b border-ink-700 px-3 py-2">
-			<h2 class="text-xs font-semibold tracking-wide text-fog-400 uppercase">City growth</h2>
-			<span class="text-xs text-fog-500">
-				{unlocks.filter((u) => u.earned).length}/{unlocks.length} unlocked
-			</span>
-		</header>
-
+	<Panel
+		title="City growth"
+		summary="{unlocks.filter((u) => u.earned).length}/{unlocks.length} unlocked"
+	>
 		<ul class="divide-y divide-ink-800">
 			{#each unlocks as u (u.id)}
 				{@const b = buildFor(u)}
@@ -55,6 +52,21 @@
 					</div>
 
 					<p class="mt-0.5 text-xs text-fog-500">{u.description}</p>
+
+					{#if !u.earned && u.target > 0}
+						<div class="mt-1 flex items-baseline justify-between gap-2">
+							<span class="text-[11px] text-fog-500">{u.requires}</span>
+							<span class="text-[11px] text-fog-500">{u.progress}/{u.target}</span>
+						</div>
+						<div class="mt-1 h-1 overflow-hidden rounded-full bg-ink-700">
+							<div
+								class="h-full rounded-full bg-[var(--color-charger)]"
+								style="width: {Math.min(100, (u.progress / u.target) * 100)}%"
+							></div>
+						</div>
+					{:else}
+						<p class="mt-0.5 text-[11px] text-fog-500">{u.requires}</p>
+					{/if}
 
 					{#if b && u.earned && !b.completed}
 						<div class="mt-2 flex items-center justify-between gap-2">
@@ -80,12 +92,12 @@
 				</li>
 			{/each}
 		</ul>
-	</div>
+	</Panel>
 
-	<div class="rounded-lg border border-ink-600 bg-ink-900">
-		<header class="border-b border-ink-700 px-3 py-2">
-			<h2 class="text-xs font-semibold tracking-wide text-fog-400 uppercase">Achievements</h2>
-		</header>
+	<Panel
+		title="Achievements"
+		summary="{achievements.filter((a) => a.done).length}/{achievements.length} done"
+	>
 		<ul class="divide-y divide-ink-800">
 			{#each achievements as a (a.id)}
 				<li class="px-3 py-1.5">
@@ -108,5 +120,5 @@
 				</li>
 			{/each}
 		</ul>
-	</div>
+	</Panel>
 </section>

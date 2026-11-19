@@ -111,7 +111,7 @@ query {
     ledger { money moneyEarned reputation deliveries lateDeliveries expiredOrders ordersSpawned onTimeStreak tows buildsCompleted deliveriesByItem { item count } upkeepPaid towFees upkeepDue }
     carClasses { className price capacity maxBattery stepCost unlocked affordable }
     achievements { id title description done progress target }
-    unlocks { id title description earned builds }
+    unlocks { id title description requires earned progress target builds }
     builds { id title description cost unlocked completed affordable applicable problem }
     closures { id reason startTick endTick ticksLeft minX minY maxX maxY tiles { x y } }
     events { tick type message carId x y }
@@ -122,6 +122,11 @@ query {
 `closures` is the street works live right now — empty in the common case. A
 closed tile renders `X` and rejects entry with `CLOSED`, but a car already
 standing on it may drive off.
+
+`unlocks[].requires` is the gate in words (`5 deliveries`, `earn $2000`) and
+`progress`/`target` measure the strictest condition in its own units, which is
+what the City growth panel draws its bar from. A gate with two conditions names
+both in `requires`, while the bar tracks only the one furthest from satisfied.
 
 `capacity`, `load` and `freeBoxes` are measured in **boxes**, not orders. A
 customer can ask for forty pizzas; whether that fits is a property of the
@@ -227,10 +232,15 @@ Three limits matter when you draw the map yourself:
 The car *data* is authoritative; `rows` is a convenience view. If you need to
 show more than nine cars, or a tile holding a fleet, render from `cars`.
 
-### `carView` — the cheap poll
+### `carView` — a window instead of the whole map
 
 For an agent or a client watching a large map, fetching the whole snapshot every
 step is wasteful. `carView` returns a window around one car:
+
+Note this is a **query**, not a live feed: it is one read per call. For
+push-based updates use the `Subscription` below — it always carries the full
+snapshot, so `carView` remains the right choice only when the payload size
+matters more than freshness.
 
 ```graphql
 query {
@@ -335,6 +345,54 @@ needs a follow-up read to know the new state. The two exceptions are
 `evictSession` and `deleteSession`, which return a bare `Boolean` because the
 session they would have described no longer exists — verified live (`true` for
 each, with no snapshot in the payload).
+
+## Subscription — live updates instead of polling
+
+```graphql
+subscription { session(id: "demo") { tick paused cars { id x y } } }
+```
+
+The UI opens this instead of polling. The server pushes one frame per tick while
+the clock runs, **and** one frame per mutation otherwise (a manual step, a queued
+move, a speed change, a purchase). That second half is not a nicety: sessions
+start paused, so a stream that only fired on ticks would never move a
+hand-played game.
+
+Coalesced, not queued. If the client cannot keep up it misses intermediate
+frames and gets the newest state once, rather than a backlog: a paused tab must
+not bank thousands of 1 MB snapshots. Measured against a live server — a paused
+session idle for 3 s makes **zero** requests, and 1.5 s at 4x delivers every tick
+with zero requests:
+
+| situation | requests from the page |
+|---|---|
+| 3 s idle, paused | 0 |
+| 5 external ticks while paused | 0 (5 frames pushed) |
+| 1.5 s at 4x (19 ticks) | 0 (19 frames pushed) |
+
+Transports: **SSE** (`Accept: text/event-stream`, a POST whose response never
+ends) and **WebSocket** for agents and the playground. SSE is what the browser
+uses, because `fetch` + `ReadableStream` reads it without adding a GraphQL
+client library to a dependency-free bundle.
+
+A `: ping` comment every 15 s keeps an idle stream alive — a paused city can
+legitimately go minutes without a change.
+
+**The payload is not the same as the query's.** `subscription.session` trims
+finished orders to the most recent 20 (`streamHistory` in
+`game/session/watch.go`); `query.session` keeps the full history. Order history
+is ~96% of a late-game snapshot and never shrinks — a 42k-tick session carries
+~4,500 orders, of which most are DONE or EXPIRED — so streaming all of it every
+tick would cost more than polling did. Measured on that session: 1.4 MB on the
+query path versus 63 KB per stream frame.
+
+That asymmetry is deliberate and worth knowing before substituting one for the
+other: agents and the CLI treat `session(id:)` as the complete record, and a
+client that needs full order history must use the query, not the stream.
+
+Streams are **not** gzipped. `graph/gzip.go` buffers the whole response so it can
+encode once, which a response that never ends can never satisfy; `isStreaming`
+routes SSE and WebSocket upgrades around the wrapper.
 
 ## Errors
 

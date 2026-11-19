@@ -222,13 +222,30 @@ try {
 		const tiles = document.querySelectorAll('button[aria-label*="at "]').length;
 		// Clipping check: every panel that should be on screen must end above the
 		// viewport bottom. This is what catches "activity panel cut off".
+		//
+		// Anchored on the panel element itself, not on a class name: the panels
+		// were a div with class "rounded-lg" until they became a shared
+		// collapsible component rendered as a section, and a class-based
+		// closest() silently returned null instead of failing. A -1 here is a
+		// broken assertion, not a passing layout, so it is reported as a problem
+		// below.
 		const activity = [...document.querySelectorAll('h2')].find((h) =>
 			h.textContent.toLowerCase().includes('activity')
 		);
-		const activityCard = activity ? activity.closest('div.rounded-lg') : null;
+		const activityCard = activity ? activity.closest('section') : null;
 		const activityBottom = activityCard
 			? Math.round(activityCard.getBoundingClientRect().bottom)
 			: -1;
+		// Every locked upgrade must say what it is waiting for. A card that only
+		// says "locked" is a dead end, and the client's GraphQL selection is
+		// hand-written, so a new criteria field can reach the schema and the Go
+		// types while this panel still renders an empty line.
+		const growth = [...document.querySelectorAll('h2')].find((h) =>
+			h.textContent.toLowerCase().includes('city growth')
+		);
+		const growthCards = growth ? [...growth.closest('section').querySelectorAll('li')] : [];
+		const gated = growthCards.filter((li) => li.textContent.includes('locked'));
+		const silent = gated.filter((li) => !/\\d/.test(li.textContent.replace(/^.*?locked/s, '')));
 		return {
 			tiles,
 			hasTick: /tick\\s*\\d+/.test(lower),
@@ -236,6 +253,8 @@ try {
 			hasFleet: lower.includes('fleet'),
 			hasOrders: lower.includes('orders'),
 			hasGrowth: lower.includes('city growth'),
+			gatedCards: gated.length,
+			silentCards: silent.map((li) => li.textContent.trim().split('\\n')[0]),
 			hasDpad: !!document.querySelector('button[aria-label="Move north"]'),
 			viewportH: window.innerHeight,
 			activityBottom,
@@ -255,7 +274,14 @@ try {
 	// before and after.
 	const carPos = () =>
 		page.eval(`(() => {
-			const el = document.querySelector('button[aria-label^="Car"]');
+			// Match the label Map.svelte actually emits. It reads
+			// "N cars at x,y, names" (or "1 car at x,y, name" for a single
+			// car), so a prefix match on "Car" silently stopped working when
+			// the label was reworded for co-located cars. Match the shape, not
+			// the first letter.
+			const el =
+				document.querySelector('button[aria-label*=" car at "]') ||
+				document.querySelector('button[aria-label*=" cars at "]');
 			if (!el) return null;
 			const m = /at (\\d+),(\\d+)/.exec(el.getAttribute('aria-label') || '');
 			return m ? [Number(m[1]), Number(m[2])] : null;
@@ -331,11 +357,16 @@ try {
 	if (!report.hasFleet) problems.push('fleet panel missing');
 	if (!report.hasOrders) problems.push('orders panel missing');
 	if (!report.hasGrowth) problems.push('city growth panel missing');
+	if (report.gatedCards === 0) problems.push('no locked upgrade cards: the criteria check did not run');
+	if (report.silentCards?.length)
+		problems.push(`locked upgrades with no criteria shown: ${report.silentCards.join(', ')}`);
 	if (report.tiles < 100) problems.push(`only ${report.tiles} tiles rendered`);
 	if (!report.hasDpad) problems.push('drive D-pad missing');
 	// The activity panel is the bottom-most element; if it runs past the
 	// viewport the dashboard is clipped and the player cannot see their feed.
-	if (report.activityBottom > report.viewportH) {
+	if (report.activityBottom === -1) {
+		problems.push('could not locate the activity panel: the clipping check did not run');
+	} else if (report.activityBottom > report.viewportH) {
 		problems.push(
 			`layout clipped: activity panel ends at ${report.activityBottom}px but viewport is ${report.viewportH}px`
 		);

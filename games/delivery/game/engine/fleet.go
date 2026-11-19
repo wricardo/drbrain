@@ -25,6 +25,32 @@ import "fmt"
 // only gates purchases. On the shipped map the depot holds 4 and grows to 8 with
 // b06_depot_yard, so a fleet larger than the yard cannot all be mothballed. That
 // constraint is what makes the choice real.
+//
+// THE RATE IS A MEASURED CLIFF, NOT A FREE KNOB. Upkeep is a fixed cost per car
+// against variable income, and this game has no credit, loan or sell action to
+// absorb a bad patch. The consequence, measured over 8 seeds x 3000 ticks with
+// cmd/drbrain (see the table in README §"Fleet running cost"):
+//
+//	120 ticks/1 per box (0.008 money per car-tick)  mean 222.6 deliveries, no seed collapses
+//	 40 ticks/1 per box (0.021)                     mean 210.5, seed 6 collapses to rep 0.00
+//	 40 ticks/4 per box (0.083)                     mean 207.9, seed 6 collapses to rep 0.00
+//
+// The transition is bistable rather than gradual: seed 6 finishes at 238
+// deliveries / rep 4.81 at 45 ticks and at 139 / rep 0.00 at 40, deterministically.
+// Money stalls near $5k around tick 800, the next build becomes unaffordable,
+// and the run never recovers.
+//
+// Two consequences worth stating plainly, because both were learned the hard way:
+//
+//   - At the shipped rate this mechanic is close to inert (-1.1 deliveries vs
+//     off). That is the deliberate trade: "occasionally destroys a run" is worse
+//     than "barely noticeable".
+//   - A literal idle-only variant (charge nothing while carrying or assigned)
+//     does NOT remove the cliff — 40/2 idle-only still collapses seed 6. The
+//     rate is what breaks a run, not the choice of which cars are billed.
+//
+// TestShippedUpkeepRateDoesNotCollapseTheCanarySeed in upkeep_pacing_test.go
+// guards this. Do not raise the rate without re-running seed 6.
 
 // EventUpkeep is emitted when upkeep could not be paid in full.
 const EventUpkeep = "fleet_upkeep"
@@ -137,13 +163,37 @@ func (w *World) TowFee(car *Car, dest Position) int {
 	if w.fleet.TowFeePerTile <= 0 && w.fleet.TowFeeMin <= 0 {
 		return 0
 	}
-	dist := w.City.Distance(car.Pos, dest)
-	if dist < 0 {
-		dist = 0
-	}
-	fee := dist * w.fleet.TowFeePerTile
+	fee := w.towDistance(car.Pos, dest) * w.fleet.TowFeePerTile
 	if fee < w.fleet.TowFeeMin {
 		fee = w.fleet.TowFeeMin
 	}
 	return fee
+}
+
+// towDistance is the distance a tow is priced on, and the distance used to pick
+// which depot is nearest.
+//
+// It is the ROUTE the car would have had to drive, not City.Distance, because
+// the fee is meant to price the recovery the player is buying. Every other
+// player-facing distance in the engine (deadlines, rewards, nearest-kitchen, the
+// harness bot) already goes through routeDistance; using the closure-blind
+// primitive here undercharged a tow that had to be routed around street works.
+// Measured case on the shipped map with a closure at [(7,3)(8,3)(9,3)]: a car at
+// (3,16) is 13 tiles away as the crow flies but 23 by road, so the old fee was
+// $26 against a fair $46.
+//
+// The fallback matters and is deliberate: routeDistance returns -1 when no route
+// exists at all — a car sealed in by works, which is exactly when a player tows.
+// Charging $0 for that would make the worst case the cheapest, so an unreachable
+// car is priced on the straight-line distance instead. A tow is a teleport and
+// does not need a route; the fee is a fairness heuristic, not a pathfinding
+// proof, and it must never be zero just because the map is temporarily broken.
+func (w *World) towDistance(from, to Position) int {
+	if d := w.routeDistance(from, to); d > 0 {
+		return d
+	}
+	if d := w.City.Distance(from, to); d > 0 {
+		return d
+	}
+	return 0
 }

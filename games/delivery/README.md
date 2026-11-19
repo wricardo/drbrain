@@ -60,10 +60,12 @@ kitchens and six customers, and 118 walkable tiles start dark and end up open.
 
 ```bash
 make build-frontend    # one-time: npm install + vite build
-make serve-ui          # build + serve API and UI on :8080
+make serve-ui          # build + serve API and UI on :8080 (PORT=... to change)
 ```
 
-Then open http://localhost:8080.
+Then open http://localhost:8080. If that port is taken by another project, run
+`make serve-ui PORT=8081` and open http://localhost:8081 — the server refuses to
+start on a port already in use rather than deferring to the process holding it.
 
 - **Start screen** lists your saved cities with tick, deliveries, reputation and
   money, or says plainly that there are none yet.
@@ -111,13 +113,44 @@ should scroll, not the document), or a bottom panel clipped by the viewport.
 ## Quick start
 
 ```bash
-make serve        # GraphQL API + UI on :8080
+make serve        # GraphQL API on :8080 (+ UI if frontend/build exists)
 make run          # validate the city and print it
 make play         # drive a car in the terminal
 make sim          # run the pacing harness
 make test         # unit tests
 make check        # fmt + vet + test
 ```
+
+`make serve` does not build the frontend — it only runs the server. On a fresh
+clone it logs
+
+```
+no web UI at frontend/build (graphql only; run `make build-frontend` to add one)
+```
+
+and serves the API alone, which is a complete game. Use `make serve-ui` if you
+want the browser UI on the first run.
+
+If `:8080` is already taken — common on a machine running other projects — the
+server refuses to start and names the occupant rather than rebinding. Pick a
+port instead of killing the other process:
+
+```bash
+make serve PORT=8081
+```
+
+That refusal matters more than it looks. A second server cannot share the port,
+so the *old* process keeps answering, and it answers with the schema it was
+built from. Rebuilding and rerunning then changes nothing, while the UI fails
+with
+
+```
+Cannot query field "upkeepPaid" on type "LedgerView".
+```
+
+which reads like a frontend bug and is not one. The guard reports what is
+actually listening (`by a running DrBrain server (health "ok")`) so the stale
+process is the obvious suspect.
 
 ```bash
 curl -s -X POST localhost:8080/graphql -H 'Content-Type: application/json' \
@@ -155,17 +188,21 @@ exactly how the API will behave. You can queue moves for several cars, then
 advance once, and all of them step together.
 
 `drbrain sim` drives a scripted bot and prints a pacing table. It exists to
-answer "is the queue starved or drowning?" with numbers. These rows are
-`-ticks 1000 -every 500` on the default seed:
+answer "is the queue starved or drowning?" with numbers. This is the shape of
+`-ticks 1000 -every 500` on the default seed; the digits are illustrative and
+were stale the last two times anyone checked them, so run the command rather than
+quoting this:
 
 ```
   tick  open   tgt  deliv  late expired  strand   money    rep  box  cls
-   500     2     7     37     0       2       0     265   3.64    2    0
-  1000     2     8     77     1      10       0    8824   3.99    6    0
+   500     3     7     37     0       2       0     423   3.64    2    0
+  1000     3     8     81     1       8       0    9716   4.17    2    0
 ```
 
-Re-run the same command to refresh them; the exact values move with every
-pacing change, so they illustrate the table's shape rather than pinning balance.
+What is stable about it, and worth reading the columns for: `open` and `tgt`
+converge by tick 1000, deliveries roughly double between the two rows, and
+expiries stay in single digits this early. Re-run the same command to refresh the
+numbers; they move with every pacing change.
 
 That command prints the final row **twice**: the loop emits a row whenever
 `tick % every == 0`, and then a summary row is printed unconditionally after the
@@ -366,8 +403,43 @@ anywhere else is charged every `fleet.upkeep_interval_ticks`:
 upkeep per interval = capacity / 4 * fleet.upkeep_per_box_per_interval   (min 1)
 ```
 
-On the shipped map (`interval 40`, `per_box 4`) that is **scooter $4, van $12,
-truck $40 per 40 ticks**. A class can override it with `upkeep_per_interval`.
+On the shipped map (`interval 120`, `per_box 1`) that is **scooter $1, van $3,
+truck $10 per 120 ticks** — about 0.008 money per car-tick. A class can override
+it with `upkeep_per_interval`.
+
+**The rate is deliberately small, and there is a measured cliff above it.** This
+is a `city.json` knob, but it is not a free one to raise. Measured over 8 seeds ×
+3000 ticks (`sim -seed N`, one isolated directory per config), occupancy on, on
+the tree at time of writing:
+
+| upkeep | money/car-tick | mean deliveries | vs none | sd | min | rep | runs at rep 0 |
+|---|---|---|---|---|---|---|---|
+| off | 0 | 245.8 | — | 7.3 | 236 | — | 0 |
+| **120 / 1 (shipped)** | **0.008** | **240.6** | **−5.1** | **13.5** | 220 | 4.65 | 0 |
+
+Above roughly 0.02 money per car-tick the economy is **bistable, not gradual**.
+Seed 6 finishes at 238 deliveries / rep 4.81 at 45 ticks and collapses to 139 /
+rep **0.00** at 40 ticks, deterministically, in separate directories. The
+divergence starts around tick 800: money stalls near $5k while expiries climb, the
+bot cannot fund the next build from its $100 reserve, and the run never recovers.
+Upkeep is a fixed cost per car against variable income, and nothing in the game
+provides credit to absorb a bad patch. (Those two figures were measured on an
+earlier tree; the cliff's *position* is what matters and it has been stable while
+absolute delivery counts drifted ~+20.)
+
+So the honest summary, which has survived every re-measurement: **the shipped
+rate costs a few percent of deliveries and never zeroes a seed; a rate you could
+actually feel occasionally destroys a run.** Do not raise
+`upkeep_per_box_per_interval` without re-running seed 6.
+
+**Do not read the per-seed deltas as noise.** They are paired and can be large in
+both directions — on the tree above, seeds 2 and 8 lose 26 and 22 deliveries while
+seed 7 gains 12. Changing an economy knob changes which orders the bot can afford
+next, so the whole downstream path diverges; that is variance in the *run*, not
+measurement error. Judge the rate on the mean, the minimum and the zero count,
+never on one seed.
+
+`game/engine/upkeep_pacing_test.go` guards the canary seed and the rate bound.
 
 Two things about the shape are deliberate, not simplifications:
 
@@ -378,6 +450,9 @@ Two things about the shape are deliberate, not simplifications:
   exists, and it gives `DepotConfig.Capacity` a meaning beyond gating purchases.
   The depot holds 4 (8 after `b06_depot_yard`), which is less than a full fleet,
   so not everything can be mothballed at once.
+  A literal idle-only variant (free while carrying or assigned) was measured too:
+  it does **not** remove the cliff — 40/2 idle-only still collapses seed 6 to 139
+  / rep 0.00 — so the rate, not the shape, is what breaks a run.
 - **Rates scale with capacity.** Revenue scales with how much a car carries, so a
   hand-tuned rate that ignores capacity makes either the scooter pointless or the
   truck free money.
@@ -395,22 +470,23 @@ next interval would charge at the cars' current positions, so a client can show
 the drain before it lands. Neither is subtracted from `moneyEarned`: upkeep is a
 cost, not negative income, and achievements read `moneyEarned`.
 
-Measured on the shipped map with `sim -ticks 3000 -every 500`: **$72,779 earned,
-$57,636 balance, 247 deliveries, 60 tows**, all six builds completed. With
-`fleet.upkeep_interval_ticks` set to 0 the same run ends at **$61,280 earned,
-$52,149 balance, 244 deliveries, 64 tows** — the ladder completes either way.
+Measured on the shipped map with the default seed, single run, seed `0x5eed5eed`:
+**244 deliveries, 64 tows**, all six builds completed. That single seed cannot
+distinguish upkeep on from off — it is why the table above uses eight.
 
-The upkeep-on run earns more here (247 deliveries and $72,779 versus 244 and
-$61,280). Do not read that ordering as a verdict on the mechanic: the delivery
-counts are within 1% while earnings differ by 19%, and the aggregate summary does
-not separate upkeep from route luck, job mix or tow timing. Comparing these two
-lines is not a controlled experiment — changing an economy knob changes which
-orders the bot can afford to take, and every one of those differences is
-downstream of that.
+A single seed is not evidence about the mechanic, and it is how this feature was
+nearly mis-tuned twice. Eight seeds (`sim -seed 1..8`, one isolated directory per
+config so parallel runs cannot share a map file) give the table above: mean
+**240.6** deliveries at 120/1 against **245.8** with upkeep off, minimum 220
+against 236, and zero collapsed runs either way.
 
-Treat the absolute values as a snapshot and the **tow count** as the number to
-watch: it moves with anything that changes how often cars strand, and it is the
-first place a stranding regression shows up.
+Treat the absolute values as a snapshot and **reputation plus the tow count** as
+the signals to watch: reputation is the thing that zeroes when a run collapses,
+and tows move with anything that changes how often cars strand.
+
+Treat the absolute values as a snapshot and **reputation plus the tow count** as
+the signals to watch: reputation is the thing that zeroes when a run collapses,
+and tows move with anything that changes how often cars strand.
 
 **Omitting the `fleet` block disables upkeep entirely** (a zero interval charges
 nothing), so a map or an existing save keeps the pre-upkeep economy until someone
@@ -498,26 +574,34 @@ The numbers in `maps/city.json` were not guessed. `drbrain sim` found:
   asked for thirty concurrent orders the moment a truck exists, which makes
   every other tuning number meaningless.
 
-Measured on the shipped map, 6k ticks, three seeds:
+Balance figures are not pinned here. Any digit written down has gone stale within
+the hour twice today (the same table read 463/468/433, then 477/500/460, then
+469/431/459 after the upkeep retune), because pacing is still being tuned and
+every run of the harness is deterministic but every *tree* is not. A figure that
+cannot be reproduced by the command beside it reads as a measurement and is
+actually a memory, so what follows is the shape and the command instead:
 
-| seed | delivered | expired | builds | fleet |
-|---|---|---|---|---|
-| 1 | 477 | 128 | 6/6 | 8 (1 scooter + 5 vans + 2 trucks) |
-| 42 | 500 | 108 | 6/6 | 8 (1 scooter + 5 vans + 2 trucks) |
-| 999 | 460 | 124 | 6/6 | 8 (1 scooter + 6 vans + 1 truck) |
+- **Deliveries rise monotonically** while the fleet and map grow, and plateau
+  once all six builds are done and the fleet is at its cap.
+- **Expiries cluster after the fleet grows**, not before: the early game has
+  almost none because there are few cars and few orders.
+- **Every seed completes all six builds**, and the fleet ends at 8 cars (1
+  scooter + 1 truck + 6 vans) whichever seed you pick.
+- **Seeds disagree by roughly ±10%** on deliveries. That spread is the reason a
+  single-seed claim about a balance change is not evidence; see §"Fleet running
+  cost" for the 8-seed method used when a number actually matters.
 
-Every seed completes all six builds. These figures move whenever pacing changes,
-so treat the table as the current reading rather than a target, and re-measure
-instead of quoting it.
+```bash
+for s in 1 42 999; do ./bin/drbrain sim -ticks 6000 -every 6000 -seed $s; done
+```
+
+If you need exact figures, run that and quote it with the date and the tree state
+you ran it on.
 
 A number taken once is not evidence about the rule it seems to describe. `sim` is
 deterministic: the same command on the same build reproduces exactly, so if two
 consecutive runs disagree, the *tree* changed between them and neither result says
 anything about balance. Check that before attributing a difference to a mechanic.
-
-```bash
-for s in 1 42 999; do ./bin/drbrain sim -ticks 6000 -every 6000 -seed $s; done
-```
 
 The harness bot drives optimally and never idles, so it sets a floor rather than
 a promise: a human will not match it, and the late curve is deliberately not

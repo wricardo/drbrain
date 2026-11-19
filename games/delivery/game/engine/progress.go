@@ -28,8 +28,14 @@ type UnlockStatus struct {
 	ID          string
 	Title       string
 	Description string
-	Earned      bool
-	Builds      []string
+	// Requires is the gate in words, e.g. "5 deliveries". The UI shows it
+	// beside Progress/Target so a locked card says what it is waiting for
+	// instead of only that it is locked.
+	Requires string
+	Earned   bool
+	Progress int // coarse progress toward the strictest requirement
+	Target   int // the target that Progress is measured against
+	Builds   []string
 }
 
 // BuildStatus is the per-build view the API exposes.
@@ -227,12 +233,88 @@ func (w *World) progressFor(r Requirement) (progress, target int) {
 func (w *World) Unlocks() []UnlockStatus {
 	out := make([]UnlockStatus, 0, len(w.unlocks))
 	for _, u := range w.unlocks {
-		out = append(out, UnlockStatus{
+		st := UnlockStatus{
 			ID: u.ID, Title: u.Title, Description: u.Description,
-			Earned: u.Earned, Builds: u.GrantsBuild,
-		})
+			Requires: w.describeRequires(u.Requires),
+			Earned:   u.Earned, Builds: u.GrantsBuild,
+		}
+		st.Progress, st.Target = w.progressFor(u.Requires)
+		out = append(out, st)
 	}
 	return out
+}
+
+// describeRequires renders a requirement in the units the player thinks in,
+// because a locked upgrade card that only says "locked" tells them nothing
+// about what to do next. Pairs are joined in declaration order and every part
+// is included: a gate of "5 deliveries AND reputation 4.0" must not hide half
+// of itself behind the strictest-progress bar.
+func (w *World) describeRequires(r Requirement) string {
+	parts := make([]string, 0, 4)
+	if r.Deliveries != nil {
+		parts = append(parts, plural(*r.Deliveries, "delivery", "deliveries"))
+	}
+	if r.MoneyEarned != nil {
+		parts = append(parts, fmt.Sprintf("earn $%d", *r.MoneyEarned))
+	}
+	if r.MoneyBalance != nil {
+		parts = append(parts, fmt.Sprintf("hold $%d", *r.MoneyBalance))
+	}
+	if r.Reputation != nil {
+		parts = append(parts, fmt.Sprintf("reputation %.1f", *r.Reputation))
+	}
+	if r.Tows != nil {
+		parts = append(parts, plural(*r.Tows, "tow", "tows"))
+	}
+	if r.ExpiredOrders != nil {
+		parts = append(parts, plural(*r.ExpiredOrders, "expired order", "expired orders"))
+	}
+	if r.OnTimeStreak != nil {
+		parts = append(parts, fmt.Sprintf("%s on time in a row", itoa(*r.OnTimeStreak)))
+	}
+	if r.ItemDelivered != nil {
+		if r.ItemDelivered.Delivered != nil {
+			parts = append(parts, fmt.Sprintf("%s %s delivered",
+				itoa(*r.ItemDelivered.Delivered), w.itemName(r.ItemDelivered.Item)))
+		}
+	}
+	if r.CarsOwned != nil {
+		parts = append(parts, plural(*r.CarsOwned, "car", "cars"))
+	}
+	if r.TilesExploredPct != nil {
+		parts = append(parts, fmt.Sprintf("%d%% of the map explored", *r.TilesExploredPct))
+	}
+	if r.DistrictsRevealed != nil {
+		parts = append(parts, plural(*r.DistrictsRevealed, "district", "districts"))
+	}
+	if r.BuildsCompleted != nil {
+		parts = append(parts, plural(*r.BuildsCompleted, "build", "builds"))
+	}
+	if len(parts) == 0 {
+		return "no requirement"
+	}
+	joined := parts[0]
+	for _, p := range parts[1:] {
+		joined += " and " + p
+	}
+	return joined
+}
+
+// itemName is the display name for an item id, falling back to the id so an
+// unknown item still reads as something rather than an empty string.
+func (w *World) itemName(id string) string {
+	if name, ok := w.City.Items[id]; ok && name != "" {
+		return name
+	}
+	return id
+}
+
+// plural renders a count with the right word form.
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return itoa(n) + " " + one
+	}
+	return itoa(n) + " " + many
 }
 
 // Builds returns the build list with availability.

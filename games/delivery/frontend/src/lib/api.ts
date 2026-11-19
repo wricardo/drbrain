@@ -91,7 +91,14 @@ const ORDER_FIELDS = `
 	reward paid late
 `;
 
-const SNAPSHOT_FIELDS = `
+/**
+ * SNAPSHOT_FIELDS is the field selection for one session snapshot.
+ *
+ * Exported because the subscription must ask for exactly the same shape as the
+ * query: a stream that omitted a field the page renders would leave that field
+ * undefined only after the first pushed frame replaced the fetched snapshot.
+ */
+export const SNAPSHOT_FIELDS = `
 	id createdAt tick speed paused tickMs
 	city {
 		name gridSize rows hiddenTiles
@@ -111,7 +118,7 @@ const SNAPSHOT_FIELDS = `
 	}
 	carClasses { className price capacity maxBattery stepCost unlocked affordable }
 	achievements { id title description done progress target }
-	unlocks { id title description earned builds }
+	unlocks { id title description requires earned progress target builds }
 	builds { id title description cost unlocked completed affordable applicable problem }
 	events { tick type message carId x y }
 	closures { id reason startTick endTick ticksLeft minX minY maxX maxY tiles { x y } }
