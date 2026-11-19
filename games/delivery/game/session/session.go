@@ -23,13 +23,12 @@ package session
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"sync"
 	"time"
 
 	"github.com/wricardo/drbrain/games/delivery/game/engine"
+	"github.com/wricardo/drbrain/platform/sessionstore"
 )
 
 // Session is one playthrough with its own clock.
@@ -56,7 +55,7 @@ type Session struct {
 	running bool
 
 	// dir is where this session is persisted.
-	dir string
+	store sessionstore.Store
 
 	// hub fans state changes out to live subscribers. It has its own lock and
 	// is never held together with mu, so publishing cannot stall the tick loop
@@ -102,6 +101,19 @@ func (s *Session) Do(fn func(w *engine.World)) {
 // New creates a session from a city config. The ticker is not started; call
 // Start.
 func New(id string, city *engine.City, cfg *engine.CityConfig, seed uint64, dir string) (*Session, error) {
+	var st sessionstore.Store
+	if dir != "" {
+		var err error
+		st, err = sessionstore.Open(sessionstore.Options{Dir: dir, Summary: summarizePayload})
+		if err != nil {
+			return nil, err
+		}
+	}
+	return newWithStore(id, city, cfg, seed, st)
+}
+
+// newWithStore builds a session sharing the manager's store.
+func newWithStore(id string, city *engine.City, cfg *engine.CityConfig, seed uint64, st sessionstore.Store) (*Session, error) {
 	if !ValidID(id) {
 		return nil, fmt.Errorf("invalid session id %q", id)
 	}
@@ -122,7 +134,7 @@ func New(id string, city *engine.City, cfg *engine.CityConfig, seed uint64, dir 
 		speed: SpeedPaused,
 		stop:  make(chan struct{}),
 		done:  make(chan struct{}),
-		dir:   dir,
+		store: st,
 		hub:   newWatchHub(),
 	}, nil
 }
@@ -263,11 +275,8 @@ type persisted struct {
 // The write goes to a temp file and is renamed into place, so a crash mid-write
 // cannot leave a half-serialised save that fails to load later.
 func (s *Session) Save(cityFile string) error {
-	if s.dir == "" {
+	if s.store == nil {
 		return nil
-	}
-	if err := os.MkdirAll(s.dir, 0o755); err != nil {
-		return fmt.Errorf("create sessions dir: %w", err)
 	}
 
 	s.mu.Lock()
@@ -284,24 +293,20 @@ func (s *Session) Save(cityFile string) error {
 	if err != nil {
 		return fmt.Errorf("marshal session: %w", err)
 	}
+	return s.store.Persist(sessionstore.Meta{
+		ID: s.ID, MapID: cityFile, CreatedAt: s.CreatedAt, LastActionAt: s.CreatedAt,
+		Seq: uint64(data.World.Tick),
+	}, blob)
+}
 
-	final := filepath.Join(s.dir, s.ID+".json")
-	tmp, err := os.CreateTemp(s.dir, s.ID+".*.tmp")
-	if err != nil {
-		return fmt.Errorf("create temp save: %w", err)
+// summarizePayload derives the platform Meta from a delivery save.
+func summarizePayload(raw []byte) (sessionstore.Meta, error) {
+	var p persisted
+	if err := json.Unmarshal(raw, &p); err != nil {
+		return sessionstore.Meta{}, err
 	}
-	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }()
-
-	if _, err := tmp.Write(blob); err != nil {
-		tmp.Close()
-		return fmt.Errorf("write temp save: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close temp save: %w", err)
-	}
-	if err := os.Rename(tmpName, final); err != nil {
-		return fmt.Errorf("commit save: %w", err)
-	}
-	return nil
+	return sessionstore.Meta{
+		ID: p.ID, MapID: p.CityFile, CreatedAt: p.CreatedAt, LastActionAt: p.CreatedAt,
+		Seq: uint64(p.World.Tick),
+	}, nil
 }

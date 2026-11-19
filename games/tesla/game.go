@@ -67,7 +67,7 @@ func (g *Game) Mount(mux *http.ServeMux, deps platform.Deps) error {
 	if err != nil {
 		return fmt.Errorf("create config manager: %w", err)
 	}
-	persistence, err := session.NewFilePersistence(cfg.SessionsDir, configManager)
+	persistence, err := session.NewStorePersistence(cfg.SessionsDir, configManager, 0)
 	if err != nil {
 		return fmt.Errorf("create session persistence: %w", err)
 	}

@@ -110,6 +110,10 @@ func (g *Game) Mount(mux *http.ServeMux, deps platform.Deps) error {
 		g.pool = pool
 	}
 
+	maxSessions := env.MaxSessions
+	if maxSessions <= 0 {
+		maxSessions = cfg.MaxSessions.Int()
+	}
 	mapOpts := motorconfig.Options{
 		Dir:         env.MapsDir,
 		UserDir:     env.UserMapsDir,
@@ -121,7 +125,7 @@ func (g *Game) Mount(mux *http.ServeMux, deps platform.Deps) error {
 		mapOpts.UserStore = motorconfig.NewPostgresUserMaps(g.pool)
 		persistence = session.NewPostgresPersistence(g.pool)
 	} else {
-		fp, err := session.NewFilePersistence(env.SessionsDir)
+		fp, err := session.NewStorePersistence(env.SessionsDir, maxSessions)
 		if err != nil {
 			return fmt.Errorf("session persistence: %w", err)
 		}
@@ -130,10 +134,6 @@ func (g *Game) Mount(mux *http.ServeMux, deps platform.Deps) error {
 	maps, err := motorconfig.NewManager(mapOpts)
 	if err != nil {
 		return fmt.Errorf("load maps: %w", err)
-	}
-	maxSessions := env.MaxSessions
-	if maxSessions <= 0 {
-		maxSessions = cfg.MaxSessions.Int()
 	}
 	sessions := session.NewManager(persistence, maxSessions)
 	if err := sessions.LoadAll(); err != nil {

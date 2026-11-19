@@ -78,7 +78,7 @@ func (g *Game) Mount(mux *http.ServeMux, deps platform.Deps) error {
 	if err != nil {
 		return fmt.Errorf("load maps: %w", err)
 	}
-	persistence, err := session.NewFilePersistence(env.SessionsDir)
+	persistence, err := session.NewStorePersistence(env.SessionsDir, env.MaxSessions)
 	if err != nil {
 		return fmt.Errorf("session persistence: %w", err)
 	}

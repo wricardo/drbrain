@@ -7,11 +7,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/wricardo/drbrain/games/delivery/game/engine"
+	"github.com/wricardo/drbrain/platform/sessionstore"
 )
 
 // ErrNotFound is returned when a session id has no save and is not in memory.
@@ -22,7 +22,8 @@ var ErrNotFound = errors.New("session not found")
 // Manager owns the live sessions and their persistence directory.
 type Manager struct {
 	cityFile string
-	dir      string
+	dir      string // sessions directory, for callers that inspect it
+	store    sessionstore.Store
 
 	mu       sync.RWMutex
 	sessions map[string]*Session
@@ -34,12 +35,14 @@ func NewManager(cityFile, dir string) (*Manager, error) {
 	if _, err := os.Stat(cityFile); err != nil {
 		return nil, fmt.Errorf("city file %s: %w", cityFile, err)
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, fmt.Errorf("create sessions dir: %w", err)
+	store, err := sessionstore.Open(sessionstore.Options{Dir: dir, Summary: summarizePayload})
+	if err != nil {
+		return nil, err
 	}
 	return &Manager{
 		cityFile: cityFile,
 		dir:      dir,
+		store:    store,
 		sessions: map[string]*Session{},
 	}, nil
 }
@@ -58,7 +61,7 @@ func (m *Manager) Create(id string, seed uint64) (*Session, error) {
 		return nil, fmt.Errorf("session %q already exists", id)
 	}
 
-	s, err := New(id, city, cfg, seed, m.dir)
+	s, err := newWithStore(id, city, cfg, seed, m.store)
 	if err != nil {
 		return nil, err
 	}
@@ -111,10 +114,9 @@ func (m *Manager) GetOrLoad(id string) (*Session, error) {
 
 // load rebuilds a session from its save file.
 func (m *Manager) load(id string) (*Session, error) {
-	path := filepath.Join(m.dir, id+".json")
-	blob, err := os.ReadFile(path)
+	_, blob, err := m.store.Load(id)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, sessionstore.ErrNotFound) {
 			return nil, fmt.Errorf("session %q: %w", id, ErrNotFound)
 		}
 		return nil, fmt.Errorf("read save: %w", err)
@@ -128,7 +130,7 @@ func (m *Manager) load(id string) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	s, err := New(id, city, cfg, p.World.Seed, m.dir)
+	s, err := newWithStore(id, city, cfg, p.World.Seed, m.store)
 	if err != nil {
 		return nil, err
 	}
@@ -175,18 +177,13 @@ func (m *Manager) List() []Summary {
 		out = append(out, s.Summary())
 	}
 
-	entries, err := os.ReadDir(m.dir)
+	metas, err := m.store.List()
 	if err == nil {
-		for _, e := range entries {
-			name := e.Name()
-			if !strings.HasSuffix(name, ".json") {
+		for _, meta := range metas {
+			if seen[meta.ID] || !ValidID(meta.ID) {
 				continue
 			}
-			id := strings.TrimSuffix(name, ".json")
-			if seen[id] || !ValidID(id) {
-				continue
-			}
-			if sum, err := m.summaryFromDisk(id); err == nil {
+			if sum, err := m.summaryFromDisk(meta.ID); err == nil {
 				out = append(out, sum)
 			}
 		}
@@ -204,7 +201,7 @@ func (m *Manager) List() []Summary {
 // summaryFromDisk reads just enough of a save to describe it without loading
 // the whole world into memory.
 func (m *Manager) summaryFromDisk(id string) (Summary, error) {
-	blob, err := os.ReadFile(filepath.Join(m.dir, id+".json"))
+	_, blob, err := m.store.Load(id)
 	if err != nil {
 		return Summary{}, err
 	}
@@ -251,8 +248,7 @@ func (m *Manager) Delete(id string) error {
 		return fmt.Errorf("invalid session id %q", id)
 	}
 	m.Evict(id)
-	path := filepath.Join(m.dir, id+".json")
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+	if err := m.store.Delete(id); err != nil && !errors.Is(err, sessionstore.ErrNotFound) {
 		return fmt.Errorf("delete save: %w", err)
 	}
 	return nil

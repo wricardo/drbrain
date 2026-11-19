@@ -50,7 +50,7 @@ Flags: `-port 8000 -host 0.0.0.0 -maps-dir -sessions-dir -solutions-dir -debug -
 ## Code Conventions & Common Patterns
 - Standard `gofmt`; domain-noun types (`GameService`, `MapStore`), concrete impls usually `Manager`; GraphQL camelCase, enums/codes `UPPER_SNAKE`.
 - Mutating service method pattern: lock session → mutate → `touch` (Seq++, LastActionAt) → `Clone` → unlock → persist → broadcast the clone. A blocked move bumps Seq and broadcasts but does not persist.
-- Persistence: temp file + rename (`game/session/file_persistence.go`, `game/config/manager.go`); load-time validation replays the stored path against the map snapshot.
+- Persistence: temp file + rename (`game/session/store_persistence.go` over `platform/sessionstore`, `game/config/manager.go`); load-time validation replays the stored path against the map snapshot.
 - Schema change flow: edit `graph/schema.graphqls` → `make generate` → update `graph/convert.go` + resolvers → mirror by hand in `frontend/src/lib/{queries,types}.ts` → `llms.txt.tmpl`, `prompt.ts`, `api/hardening_test.go`.
 - Frontend: Svelte 5 runes only (`$state/$derived/$effect/$props`), `onclick` attributes, keyed `{#each}`; urql (network-only, POST) + lazy shared `graphql-ws`; `unwrap()` turns urql failures into exceptions. **Gotcha**: explicit `onchange/oninput` handlers run *before* `bind:value` updates — read `event.currentTarget.value`, not the bound var.
 - New top-level route → also add to `spaRoutes` in `api/server.go`.

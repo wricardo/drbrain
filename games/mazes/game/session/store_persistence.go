@@ -2,20 +2,17 @@ package session
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/wricardo/drbrain/games/mazes/game/engine"
 	"github.com/wricardo/drbrain/games/mazes/game/service"
+	"github.com/wricardo/drbrain/platform/sessionstore"
 )
 
 // SchemaVersion is the current on-disk format version of a session file.
 const SchemaVersion = 1
-
-const fileExt = ".json"
 
 // PersistedSession is the JSON form of a session (sessions/<id>.json).
 //
@@ -33,23 +30,47 @@ type PersistedSession struct {
 	BestMoves     *int             `json:"best_moves"` // null until the first win
 }
 
-// FilePersistence stores one JSON file per session in a directory.
-type FilePersistence struct {
-	dir string
+// StorePersistence adapts platform/sessionstore to this game: the store owns
+// files, limits and listing; mazes keeps its JSON shape and validation.
+type StorePersistence struct {
+	store sessionstore.Store
 }
 
-var _ SessionPersistence = (*FilePersistence)(nil)
+// FilePersistence is the pre-monorepo name, kept so existing call sites and
+// tests keep compiling while the store does the I/O.
+type FilePersistence = StorePersistence
 
-// NewFilePersistence creates the sessions directory if needed.
-func NewFilePersistence(dir string) (*FilePersistence, error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, fmt.Errorf("create sessions directory: %w", err)
+var _ SessionPersistence = (*StorePersistence)(nil)
+
+// NewStorePersistence opens the file-backed store for dir.
+func NewStorePersistence(dir string, maxSessions int) (*StorePersistence, error) {
+	store, err := sessionstore.Open(sessionstore.Options{Dir: dir, MaxSessions: maxSessions, Summary: summarize})
+	if err != nil {
+		return nil, err
 	}
-	return &FilePersistence{dir: dir}, nil
+	return &StorePersistence{store: store}, nil
 }
 
-func (fp *FilePersistence) path(id string) string {
-	return filepath.Join(fp.dir, id+fileExt)
+// NewFilePersistence keeps the old constructor signature; mazes has no limit
+// here (the Manager enforces MaxSessions before persisting).
+func NewFilePersistence(dir string) (*StorePersistence, error) {
+	return NewStorePersistence(dir, 0)
+}
+
+// summarize derives the platform Meta from a saved mazes payload.
+func summarize(raw []byte) (sessionstore.Meta, error) {
+	var ps PersistedSession
+	if err := json.Unmarshal(raw, &ps); err != nil {
+		return sessionstore.Meta{}, err
+	}
+	last := ps.LastActionAt
+	if last.IsZero() {
+		last = ps.CreatedAt
+	}
+	return sessionstore.Meta{
+		ID: ps.ID, DisplayName: ps.DisplayName, MapID: ps.Map.ID,
+		CreatedAt: ps.CreatedAt, LastActionAt: last, Seq: ps.Seq,
+	}, nil
 }
 
 // Save atomically writes the snapshot to <dir>/<id>.json (temp file in the
@@ -80,35 +101,10 @@ func (fp *FilePersistence) Save(s *service.Session) (err error) {
 	if err != nil {
 		return fmt.Errorf("marshal session %s: %w", s.ID, err)
 	}
-
-	// The temp name never ends in ".json", so ListAll cannot mistake a partial
-	// write for a session.
-	tmp, err := os.CreateTemp(fp.dir, ".tmp-"+s.ID+"-*")
-	if err != nil {
-		return fmt.Errorf("create temp file for session %s: %w", s.ID, err)
-	}
-	defer func() {
-		if err != nil {
-			_ = tmp.Close()
-			_ = os.Remove(tmp.Name())
-		}
-	}()
-	if _, err = tmp.Write(data); err != nil {
-		return fmt.Errorf("write session %s: %w", s.ID, err)
-	}
-	if err = tmp.Sync(); err != nil {
-		return fmt.Errorf("sync session %s: %w", s.ID, err)
-	}
-	if err = tmp.Close(); err != nil {
-		return fmt.Errorf("close session %s: %w", s.ID, err)
-	}
-	if err = os.Rename(tmp.Name(), fp.path(s.ID)); err != nil {
-		return fmt.Errorf("replace session file %s: %w", s.ID, err)
-	}
-	if err = syncDir(fp.dir); err != nil {
-		return fmt.Errorf("sync dir for session %s: %w", s.ID, err)
-	}
-	return nil
+	return fp.store.Persist(sessionstore.Meta{
+		ID: s.ID, DisplayName: s.DisplayName, MapID: s.Map.ID,
+		CreatedAt: s.CreatedAt, LastActionAt: s.LastActionAt, Seq: s.Seq,
+	}, data)
 }
 
 // Load reads and fully validates <dir>/<id>.json.
@@ -116,9 +112,9 @@ func (fp *FilePersistence) Load(id string) (*service.Session, error) {
 	if !ValidID(id) {
 		return nil, ErrInvalidID
 	}
-	raw, err := os.ReadFile(fp.path(id))
+	_, raw, err := fp.store.Load(id)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, sessionstore.ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, fmt.Errorf("read session %s: %w", id, err)
@@ -162,45 +158,26 @@ func (fp *FilePersistence) Delete(id string) error {
 	if !ValidID(id) {
 		return ErrInvalidID
 	}
-	if err := os.Remove(fp.path(id)); err != nil {
-		if os.IsNotExist(err) {
+	if err := fp.store.Delete(id); err != nil {
+		if errors.Is(err, sessionstore.ErrNotFound) {
 			return ErrNotFound
 		}
 		return fmt.Errorf("remove session %s: %w", id, err)
 	}
-	if err := syncDir(fp.dir); err != nil {
-		return fmt.Errorf("sync dir after removing session %s: %w", id, err)
-	}
 	return nil
-}
-
-// syncDir fsyncs a directory so renames/removals in it are durable.
-func syncDir(dir string) error {
-	d, err := os.Open(dir)
-	if err != nil {
-		return err
-	}
-	if err := d.Sync(); err != nil {
-		_ = d.Close()
-		return err
-	}
-	return d.Close()
 }
 
 // ListAll returns the ids of every <id>.json file with a valid id; other
 // files (temp files, strays) are ignored.
 func (fp *FilePersistence) ListAll() ([]string, error) {
-	entries, err := os.ReadDir(fp.dir)
+	metas, err := fp.store.List()
 	if err != nil {
-		return nil, fmt.Errorf("read sessions directory: %w", err)
+		return nil, err
 	}
-	var ids []string
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), fileExt) {
-			continue
-		}
-		if id := strings.TrimSuffix(e.Name(), fileExt); ValidID(id) {
-			ids = append(ids, id)
+	ids := make([]string, 0, len(metas))
+	for _, m := range metas {
+		if ValidID(m.ID) {
+			ids = append(ids, m.ID)
 		}
 	}
 	return ids, nil

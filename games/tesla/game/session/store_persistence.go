@@ -2,31 +2,53 @@ package session
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"strings"
 
 	"github.com/wricardo/drbrain/games/tesla/game/engine"
 	"github.com/wricardo/drbrain/games/tesla/game/service"
+	"github.com/wricardo/drbrain/platform/sessionstore"
 )
 
-// FilePersistence implements SessionPersistence using file system storage
-type FilePersistence struct {
-	sessionsDir   string
+// StorePersistence adapts platform/sessionstore to this game. The store owns
+// files, limits and listing; tesla keeps its JSON shape and map rehydration.
+type StorePersistence struct {
+	store         sessionstore.Store
 	configManager service.ConfigManager
 }
 
-// NewFilePersistence creates a new file-based session persistence layer
-func NewFilePersistence(sessionsDir string, configManager service.ConfigManager) (*FilePersistence, error) {
-	// Create sessions directory if it doesn't exist
-	if err := os.MkdirAll(sessionsDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create sessions directory: %w", err)
-	}
+// FilePersistence is the pre-monorepo name, kept so existing call sites and
+// tests keep compiling.
+type FilePersistence = StorePersistence
 
-	return &FilePersistence{
-		sessionsDir:   sessionsDir,
-		configManager: configManager,
+// NewStorePersistence opens the file-backed store and keeps configManager for
+// rehydrating the engine on Load.
+func NewStorePersistence(sessionsDir string, configManager service.ConfigManager, maxSessions int) (*StorePersistence, error) {
+	store, err := sessionstore.Open(sessionstore.Options{Dir: sessionsDir, MaxSessions: maxSessions, Summary: summarize})
+	if err != nil {
+		return nil, err
+	}
+	return &StorePersistence{store: store, configManager: configManager}, nil
+}
+
+// NewFilePersistence keeps the old constructor signature.
+func NewFilePersistence(sessionsDir string, configManager service.ConfigManager) (*StorePersistence, error) {
+	return NewStorePersistence(sessionsDir, configManager, 0)
+}
+
+// summarize derives the platform Meta from a saved tesla payload.
+func summarize(raw []byte) (sessionstore.Meta, error) {
+	var data PersistedSessionData
+	if err := json.Unmarshal(raw, &data); err != nil {
+		return sessionstore.Meta{}, err
+	}
+	last := data.LastActionAt
+	if last.IsZero() {
+		last = data.CreatedAt
+	}
+	return sessionstore.Meta{
+		ID: data.ID, DisplayName: data.DisplayName, MapID: data.MapName,
+		CreatedAt: data.CreatedAt, LastActionAt: last,
 	}, nil
 }
 
@@ -64,13 +86,10 @@ func (fp *FilePersistence) Save(session *service.Session) error {
 		return fmt.Errorf("failed to marshal session data: %w", err)
 	}
 
-	// Write to file
-	filePath := fp.getFilePath(session.ID)
-	if err := os.WriteFile(filePath, jsonData, 0644); err != nil {
-		return fmt.Errorf("failed to write session file: %w", err)
-	}
-
-	return nil
+	return fp.store.Persist(sessionstore.Meta{
+		ID: session.ID, DisplayName: session.DisplayName, MapID: configID,
+		CreatedAt: session.CreatedAt, LastActionAt: session.LastActionAt,
+	}, jsonData)
 }
 
 // Load retrieves a session from a JSON file
@@ -78,16 +97,11 @@ func (fp *FilePersistence) Load(id string) (*service.Session, error) {
 	if err := validateSessionID(id); err != nil {
 		return nil, err
 	}
-	filePath := fp.getFilePath(id)
-
-	// Check if file exists
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		return nil, ErrSessionNotFound
-	}
-
-	// Read file
-	jsonData, err := os.ReadFile(filePath)
+	_, jsonData, err := fp.store.Load(id)
 	if err != nil {
+		if errors.Is(err, sessionstore.ErrNotFound) {
+			return nil, ErrSessionNotFound
+		}
 		return nil, fmt.Errorf("failed to read session file: %w", err)
 	}
 
@@ -160,42 +174,27 @@ func (fp *FilePersistence) Delete(id string) error {
 	if err := validateSessionID(id); err != nil {
 		return err
 	}
-	filePath := fp.getFilePath(id)
-
-	// Check if file exists
-	if !fp.Exists(id) {
-		return ErrSessionNotFound
-	}
-
-	// Remove file
-	if err := os.Remove(filePath); err != nil {
+	if err := fp.store.Delete(id); err != nil {
+		if errors.Is(err, sessionstore.ErrNotFound) {
+			return ErrSessionNotFound
+		}
 		return fmt.Errorf("failed to remove session file: %w", err)
 	}
-
 	return nil
 }
 
 // ListAll returns all persisted session IDs
 func (fp *FilePersistence) ListAll() ([]string, error) {
-	entries, err := os.ReadDir(fp.sessionsDir)
+	metas, err := fp.store.List()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read sessions directory: %w", err)
 	}
-
 	var sessionIDs []string
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-
-		name := entry.Name()
-		if strings.HasSuffix(name, ".json") {
-			// Remove .json extension to get session ID
-			sessionID := strings.TrimSuffix(name, ".json")
-			sessionIDs = append(sessionIDs, sessionID)
+	for _, m := range metas {
+		if validateSessionID(m.ID) == nil {
+			sessionIDs = append(sessionIDs, m.ID)
 		}
 	}
-
 	return sessionIDs, nil
 }
 
@@ -204,14 +203,16 @@ func (fp *FilePersistence) Exists(id string) bool {
 	if err := validateSessionID(id); err != nil {
 		return false
 	}
-	filePath := fp.getFilePath(id)
-	_, err := os.Stat(filePath)
-	return err == nil
-}
-
-// getFilePath returns the full file path for a session ID
-func (fp *FilePersistence) getFilePath(id string) string {
-	return filepath.Join(fp.sessionsDir, fmt.Sprintf("%s.json", id))
+	metas, err := fp.store.List()
+	if err != nil {
+		return false
+	}
+	for _, m := range metas {
+		if m.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // getConfigIDFromName returns the map ID (filename without extension) from display name
