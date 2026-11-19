@@ -4,13 +4,13 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { getContextClient } from '@urql/svelte';
-	import { unwrap } from '$lib/mazes/api';
-	import AiPromptCard from '$lib/mazes/components/AiPromptCard.svelte';
+	import { unwrap } from '@drbrain/ui/graphql';
+	import AiPromptCard from '@drbrain/ui/components/AiPromptCard.svelte';
 	import Board from '$lib/mazes/components/Board.svelte';
-	import ConnectionBadge from '$lib/mazes/components/ConnectionBadge.svelte';
+	import ConnectionBadge from '@drbrain/ui/components/ConnectionBadge.svelte';
 	import Dpad from '$lib/mazes/components/Dpad.svelte';
 	import ResultModal from '$lib/mazes/components/ResultModal.svelte';
-	import ShortcutsDialog from '$lib/mazes/components/ShortcutsDialog.svelte';
+	import ShortcutsDialog from '@drbrain/ui/components/ShortcutsDialog.svelte';
 	import Stats from '$lib/mazes/components/Stats.svelte';
 	import StatusLine from '$lib/mazes/components/StatusLine.svelte';
 	import Tower from '$lib/mazes/components/Tower.svelte';
@@ -19,8 +19,8 @@
 	import { nextMap } from '$lib/mazes/maps';
 	import { startSession } from '$lib/mazes/start';
 	import { buildSessionPrompt } from '$lib/mazes/prompt';
-	import { isTypingTarget, keyToAction } from '$lib/mazes/shortcuts';
-	import { createSessionStore } from '$lib/mazes/stores/session';
+	import { SHORTCUTS, isTypingTarget, keyToAction } from '$lib/mazes/shortcuts';
+	import { createSessionStore } from '@drbrain/ui/session';
 	import { createSessionSource } from '$lib/mazes/stores/source';
 	import { knownLevels, rememberView, shownLevel, type SeenLevels } from '$lib/mazes/fog';
 	import { describeEvent, levelName } from '$lib/mazes/tower';
@@ -277,7 +277,13 @@
 			/>
 		{/if}
 		{#if showHelp}
-			<ShortcutsDialog onclose={() => (showHelp = false)} />
+			<ShortcutsDialog
+				items={SHORTCUTS.map(([k, d]) => ({ keys: [k], action: d }))}
+				closeOnQuestion
+				onclose={() => (showHelp = false)}
+			>
+				{#snippet footer()}You can also click a tile next to the miner or use the d-pad.{/snippet}
+			</ShortcutsDialog>
 		{/if}
 	{/if}
 </div>

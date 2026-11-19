@@ -3,9 +3,9 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { getContextClient } from '@urql/svelte';
-	import { unwrap } from '$lib/motor/api';
+	import { unwrap } from '@drbrain/ui/graphql';
 	import MapCard from '$lib/motor/components/MapCard.svelte';
-	import { describeError, type DescribedError } from '$lib/motor/errors';
+	import { describeError, type DescribedError } from '@drbrain/ui/errors';
 	import { DIFFICULTY_FILTERS, countByDifficulty, filterMaps, groupMaps, isOfficial, sortMaps, type DifficultyFilter } from '$lib/motor/maps';
 	import { CREATE_SESSION_MUTATION, MAPS_QUERY } from '$lib/motor/queries';
 	import { newSessionName, rememberSession } from '$lib/motor/sessions';

@@ -4,9 +4,9 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { getContextClient } from '@urql/svelte';
-	import { unwrap } from '$lib/motor/api';
+	import { unwrap } from '@drbrain/ui/graphql';
 	import { getAdminKey, setAdminKey } from '$lib/motor/admin';
-	import { describeError, type DescribedError } from '$lib/motor/errors';
+	import { describeError, type DescribedError } from '@drbrain/ui/errors';
 	import {
 		CONVEYOR_GLYPHS,
 		DOOR_GLYPHS,
@@ -35,7 +35,7 @@
 	import type { Facing, GameMap, MapInput, MapValidationResult } from '$lib/motor/types';
 	import { MAX_SUBS } from '$lib/motor/instructions';
 	import { account } from '$lib/motor/stores/account';
-	import Cookie from '$lib/motor/components/Cookie.svelte';
+	import Cookie from '@drbrain/ui/components/Cookie.svelte';
 	import SignInDialog from '$lib/motor/components/SignInDialog.svelte';
 
 	/**

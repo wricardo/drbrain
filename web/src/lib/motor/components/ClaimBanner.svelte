@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { getContextClient } from '@urql/svelte';
-	import { unwrap } from '$lib/motor/api';
+	import { unwrap } from '@drbrain/ui/graphql';
 	import { claimOffer, claimResultText, summarizeClaims } from '$lib/motor/account';
-	import { describeError } from '$lib/motor/errors';
+	import { describeError } from '@drbrain/ui/errors';
 	import { CLAIM_SESSIONS_MUTATION } from '$lib/motor/queries';
 	import { claimableSessions, forgetOwnerTokens } from '$lib/motor/sessions';
 	import { account } from '$lib/motor/stores/account';

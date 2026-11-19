@@ -1,4 +1,4 @@
-import { lossReasonText } from './errors';
+import { lossReasonText } from '@drbrain/ui/errors';
 import type { GameMap, LossReason, SessionSummary, Status } from './types';
 
 export type SessionStatus = 'running' | 'ready' | 'paused' | 'won' | 'lost';

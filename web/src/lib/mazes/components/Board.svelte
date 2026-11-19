@@ -12,7 +12,7 @@
 		tileKind,
 		trailOnLevel
 	} from '$lib/mazes/tower';
-	import Cookie from './Cookie.svelte';
+	import Cookie from '@drbrain/ui/components/Cookie.svelte';
 
 	let {
 		view,

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { GAME, pageTitle } from '$lib/mazes/brand';
-	import AiPromptCard from '$lib/mazes/components/AiPromptCard.svelte';
-	import Cookie from '$lib/mazes/components/Cookie.svelte';
+	import AiPromptCard from '@drbrain/ui/components/AiPromptCard.svelte';
+	import Cookie from '@drbrain/ui/components/Cookie.svelte';
 	import { PORTAL_COLORS } from '$lib/mazes/tower';
 	import { buildGenericPrompt } from '$lib/mazes/prompt';
 	import { SHORTCUTS } from '$lib/mazes/shortcuts';

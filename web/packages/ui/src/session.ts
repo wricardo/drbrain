@@ -1,40 +1,42 @@
 import { readable, type Readable } from 'svelte/store';
-import { describeError, type DescribedError } from '../errors';
-import type { ConnectionState, Session, SessionUpdate } from '../types';
+import { describeError, type DescribedError } from './errors';
 
-/**
- * Merges an incoming snapshot into the current one. Snapshots are full, so the
- * newest wins; anything with seq <= the last seen seq is stale or a duplicate
- * (broadcasts can be delivered out of order) and is ignored.
- */
-export function mergeSession(current: Session | null, incoming: Session): Session {
-	if (current && incoming.seq <= current.seq) return current;
-	return incoming;
+/** Live-update transport state shared by every game's session badge. */
+export type ConnectionState = 'connecting' | 'live' | 'reconnecting' | 'offline';
+
+/** Every session snapshot carries a monotonically increasing sequence number. */
+export interface SequencedSession {
+	seq: number;
+}
+
+/** Subscription payload; each game extends its session type. */
+export interface SessionUpdateOf<S> {
+	session: S;
 }
 
 /** Transport used by the store; the real one wraps urql + graphql-ws. */
-export interface SessionSource {
+export interface SessionSource<S extends SequencedSession, U extends SessionUpdateOf<S>> {
 	/** Fetches the current snapshot; null when the session does not exist. */
-	fetch(id: string): Promise<Session | null>;
+	fetch(id: string): Promise<S | null>;
 	/** Starts a subscription; the returned function stops it. */
 	subscribe(
 		id: string,
-		sink: { next(update: SessionUpdate): void; error(err: unknown): void; complete(): void }
+		sink: { next(update: U): void; error(err: unknown): void; complete(): void }
 	): () => void;
 	/** Optional connection-state feed. Returns an unsubscribe function. */
 	onConnection?(cb: (state: ConnectionState) => void): () => void;
 }
 
-export interface SessionState {
-	session: Session | null;
+export interface SessionState<S> {
+	session: S | null;
 	loading: boolean;
 	error: DescribedError | null;
 	connection: ConnectionState;
 }
 
-export interface SessionStore extends Readable<SessionState> {
+export interface SessionStore<S, U> extends Readable<SessionState<S>> {
 	/** Applies a snapshot from a mutation result; same seq rules as subscription updates. */
-	apply(session: Session): void;
+	apply(session: S): void;
 	/** Re-fetches the snapshot (merged by seq). */
 	refresh(): Promise<void>;
 	/** Stops the subscription and timers. Safe to call more than once. */
@@ -48,21 +50,31 @@ export interface SessionStoreOptions {
 }
 
 /**
+ * Merges an incoming snapshot into the current one. Snapshots are full, so the
+ * newest wins; anything with seq <= the last seen seq is stale or a duplicate
+ * (broadcasts can be delivered out of order) and is ignored.
+ */
+export function mergeSession<S extends SequencedSession>(current: S | null, incoming: S): S {
+	if (current && incoming.seq <= current.seq) return current;
+	return incoming;
+}
+
+/**
  * Creates a store of one session combining the initial query with the live
  * subscription. If the subscription ends or errors it is re-established with
  * backoff and the snapshot re-fetched, so a reconnecting client always resyncs.
  * The store is live from creation until destroy().
  */
-export function createSessionStore(
-	source: SessionSource,
+export function createSessionStore<S extends SequencedSession, U extends SessionUpdateOf<S>>(
+	source: SessionSource<S, U>,
 	id: string,
 	options: SessionStoreOptions = {}
-): SessionStore {
+): SessionStore<S, U> {
 	const baseRetry = options.retryMs ?? 1000;
 	const maxRetry = options.maxRetryMs ?? 10000;
 
-	let state: SessionState = { session: null, loading: true, error: null, connection: 'connecting' };
-	const listeners = new Set<(s: SessionState) => void>();
+	let state: SessionState<S> = { session: null, loading: true, error: null, connection: 'connecting' };
+	const listeners = new Set<(s: SessionState<S>) => void>();
 	let destroyed = false;
 	let fatal = false;
 	let unsub: (() => void) | null = null;
@@ -70,12 +82,12 @@ export function createSessionStore(
 	let retryTimer: ReturnType<typeof setTimeout> | null = null;
 	let failures = 0;
 
-	function set(patch: Partial<SessionState>) {
+	function set(patch: Partial<SessionState<S>>) {
 		state = { ...state, ...patch };
 		for (const l of listeners) l(state);
 	}
 
-	function accept(session: Session) {
+	function accept(session: S) {
 		const merged = mergeSession(state.session, session);
 		set({ session: merged, loading: false, error: null });
 	}
@@ -152,7 +164,7 @@ export function createSessionStore(
 		refresh,
 		destroy() {
 			destroyed = true;
-			if (retryTimer) clearTimeout(retryTimer);
+			clearTimeout(retryTimer ?? undefined);
 			retryTimer = null;
 			unsub?.();
 			unsub = null;
@@ -164,9 +176,6 @@ export function createSessionStore(
 }
 
 /** A store that never emits; handy for components rendered without a live session. */
-export const emptySessionState: Readable<SessionState> = readable({
-	session: null,
-	loading: false,
-	error: null,
-	connection: 'offline'
-});
+export function emptySessionState<S>(): Readable<SessionState<S>> {
+	return readable({ session: null, loading: false, error: null, connection: 'offline' as const });
+}

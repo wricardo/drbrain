@@ -2,14 +2,14 @@ import type { Client } from '@urql/svelte';
 import { getWsClient } from '../graphql';
 import { SESSION_QUERY, SESSION_UPDATED_SUBSCRIPTION } from '../queries';
 import type { ConnectionState, Session, SessionUpdate } from '../types';
-import type { SessionSource } from './session';
+import type { SessionSource } from '@drbrain/ui/session';
 
 /**
  * Real session transport: urql for the snapshot query, graphql-ws for the subscription.
  * The owner token is what makes the server include the program; without it the session is a
  * spectator view and its `program` is null.
  */
-export function createSessionSource(client: Client, ownerToken?: string | null): SessionSource {
+export function createSessionSource(client: Client, ownerToken?: string | null): SessionSource<Session, SessionUpdate> {
 	const token = ownerToken ?? null;
 	return {
 		async fetch(id) {

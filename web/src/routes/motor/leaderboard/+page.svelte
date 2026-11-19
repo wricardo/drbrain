@@ -4,8 +4,8 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { getContextClient } from '@urql/svelte';
-	import { unwrap } from '$lib/motor/api';
-	import { describeError, type DescribedError } from '$lib/motor/errors';
+	import { unwrap } from '@drbrain/ui/graphql';
+	import { describeError, type DescribedError } from '@drbrain/ui/errors';
 	import {
 		ORDER_OPTIONS,
 		PAGE_LIMIT,
@@ -24,7 +24,7 @@
 	import { CREATE_SESSION_MUTATION, LEADERBOARD_QUERY, MAPS_QUERY } from '$lib/motor/queries';
 	import { newSessionName, ownSessionIds, rememberSession } from '$lib/motor/sessions';
 	import { account } from '$lib/motor/stores/account';
-	import { absoluteTime, relativeTime } from '$lib/motor/time';
+	import { absoluteTime, relativeTime } from '@drbrain/ui/time';
 	import type { GameMap, Leaderboard, LeaderboardOrder, Session } from '$lib/motor/types';
 
 	const REFRESH_MS = 15_000;

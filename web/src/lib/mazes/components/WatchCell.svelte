@@ -2,10 +2,10 @@
 	import { onDestroy, untrack } from 'svelte';
 	import type { Client } from '@urql/svelte';
 	import Board from './Board.svelte';
-	import ConnectionBadge from './ConnectionBadge.svelte';
+	import ConnectionBadge from '@drbrain/ui/components/ConnectionBadge.svelte';
 	import Stats from './Stats.svelte';
 	import StatusLine from './StatusLine.svelte';
-	import { createSessionStore } from '$lib/mazes/stores/session';
+	import { createSessionStore } from '@drbrain/ui/session';
 	import { createSessionSource } from '$lib/mazes/stores/source';
 	import { rememberView, type SeenLevels } from '$lib/mazes/fog';
 	import { createReplay, prefersReducedMotion, replayFrame } from '$lib/mazes/replay';

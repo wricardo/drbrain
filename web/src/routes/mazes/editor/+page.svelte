@@ -4,7 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { getContextClient } from '@urql/svelte';
-	import { unwrap } from '$lib/mazes/api';
+	import { unwrap } from '@drbrain/ui/graphql';
 	import { getAdminKey, setAdminKey } from '$lib/mazes/admin';
 	import Tower from '$lib/mazes/components/Tower.svelte';
 	import { describeError, type DescribedError } from '$lib/mazes/errors';

@@ -1,18 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createSessionStore, mergeSession, type SessionSource } from './session';
-import type { Session, SessionUpdate } from '../types';
+import { createSessionStore, mergeSession, type SessionSource, type SequencedSession } from './session';
 
-function snap(seq: number, steps = seq): Session {
-	return { id: 's1', seq, vm: { steps } } as unknown as Session;
+/** The store only requires `seq`; games extend this with their own snapshots. */
+interface TestSession extends SequencedSession {
+	id: string;
+	vm: { steps: number };
 }
 
-type Sink = Parameters<SessionSource['subscribe']>[1];
+interface TestUpdate {
+	session: TestSession;
+}
 
-function fakeSource(initial: Session | null) {
+function snap(seq: number, steps = seq): TestSession {
+	return { id: 's1', seq, vm: { steps } };
+}
+
+type Sink = Parameters<SessionSource<TestSession, TestUpdate>['subscribe']>[1];
+
+function fakeSource(initial: TestSession | null) {
 	const sinks: Sink[] = [];
 	let unsubscribed = 0;
 	let fetches = 0;
-	const source: SessionSource = {
+	const source: SessionSource<TestSession, TestUpdate> = {
 		async fetch() {
 			fetches++;
 			return initial;
@@ -27,7 +36,7 @@ function fakeSource(initial: Session | null) {
 	return { source, sinks, stats: () => ({ unsubscribed, fetches }) };
 }
 
-const update = (s: Session): SessionUpdate => ({ seq: s.seq, session: s, event: null });
+const update = (s: TestSession): TestUpdate => ({ session: s });
 
 describe('mergeSession', () => {
 	it('keeps the newest snapshot and ignores seq <= last seen', () => {

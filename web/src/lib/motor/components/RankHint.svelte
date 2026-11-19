@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getContextClient } from '@urql/svelte';
-	import { unwrap } from '$lib/motor/api';
+	import { unwrap } from '@drbrain/ui/graphql';
 	import { boardHref, rankSummary } from '$lib/motor/leaderboard';
 	import { LEADERBOARD_QUERY } from '$lib/motor/queries';
 	import type { Leaderboard } from '$lib/motor/types';

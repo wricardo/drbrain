@@ -2,8 +2,8 @@
 	import { pageTitle } from '$lib/motor/brand';
 	import { onDestroy, onMount } from 'svelte';
 	import { getContextClient } from '@urql/svelte';
-	import { unwrap } from '$lib/motor/api';
-	import { describeError, type DescribedError } from '$lib/motor/errors';
+	import { unwrap } from '@drbrain/ui/graphql';
+	import { describeError, type DescribedError } from '@drbrain/ui/errors';
 	import { groupMaps, isOfficial, sortMaps } from '$lib/motor/maps';
 	import { MAPS_QUERY, SESSIONS_QUERY } from '$lib/motor/queries';
 	import {
@@ -20,7 +20,7 @@
 		type SessionSort,
 		type StatusFilter
 	} from '$lib/motor/sessions';
-	import { absoluteTime, relativeTime } from '$lib/motor/time';
+	import { absoluteTime, relativeTime } from '@drbrain/ui/time';
 	import type { GameMap, SessionSummary } from '$lib/motor/types';
 
 	/** Server-side maximum for the sessions query. */

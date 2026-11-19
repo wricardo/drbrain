@@ -2,10 +2,10 @@ import type { Client } from '@urql/svelte';
 import { getWsClient } from '../graphql';
 import { SESSION_QUERY, SESSION_UPDATED_SUBSCRIPTION } from '../queries';
 import type { ConnectionState, Session, SessionUpdate } from '../types';
-import type { SessionSource } from './session';
+import type { SessionSource } from '@drbrain/ui/session';
 
 /** Real session transport: urql for the snapshot query, graphql-ws for the subscription. */
-export function createSessionSource(client: Client): SessionSource {
+export function createSessionSource(client: Client): SessionSource<Session, SessionUpdate> {
 	return {
 		async fetch(id) {
 			const res = await client.query<{ session: Session | null }>(SESSION_QUERY, { id }, { requestPolicy: 'network-only' }).toPromise();

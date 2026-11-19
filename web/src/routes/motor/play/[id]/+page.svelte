@@ -3,18 +3,18 @@
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/stores';
 	import { getContextClient } from '@urql/svelte';
-	import { unwrap } from '$lib/motor/api';
-	import AiPromptCard from '$lib/motor/components/AiPromptCard.svelte';
+	import { unwrap } from '@drbrain/ui/graphql';
+	import AiPromptCard from '@drbrain/ui/components/AiPromptCard.svelte';
 	import BoardPanel from '$lib/motor/components/BoardPanel.svelte';
-	import ConnectionBadge from '$lib/motor/components/ConnectionBadge.svelte';
+	import ConnectionBadge from '@drbrain/ui/components/ConnectionBadge.svelte';
 	import Palette from '$lib/motor/components/Palette.svelte';
 	import RunControls from '$lib/motor/components/RunControls.svelte';
 	import ResultModal from '$lib/motor/components/ResultModal.svelte';
-	import ShortcutsDialog from '$lib/motor/components/ShortcutsDialog.svelte';
+	import ShortcutsDialog from '@drbrain/ui/components/ShortcutsDialog.svelte';
 	import Stats from '$lib/motor/components/Stats.svelte';
 	import Tape from '$lib/motor/components/Tape.svelte';
 	import TileLegend from '$lib/motor/components/TileLegend.svelte';
-	import { describeError, lossReasonText, type DescribedError } from '$lib/motor/errors';
+	import { describeError, lossReasonText, type DescribedError } from '@drbrain/ui/errors';
 		import { editKeyAction, globalKeyAction } from '$lib/motor/globalKeys';
 	import { canRedo, canUndo, emptyHistory, recordEdit, redo, undo, type EditHistory } from '$lib/motor/history';
 	import { nextMap } from '$lib/motor/maps';
@@ -37,7 +37,7 @@
 	import { blockedCallNotice } from '$lib/motor/recursion';
 	import { cloneProgram, programsEqual, setSlot } from '$lib/motor/program';
 	import { buildSessionPrompt } from '$lib/motor/prompt';
-	import { createSessionStore } from '$lib/motor/stores/session';
+	import { createSessionStore } from '@drbrain/ui/session';
 	import { createSessionSource } from '$lib/motor/stores/source';
 	import type { GameMap, Instruction, Program, Session, StepEvent } from '$lib/motor/types';
 
@@ -512,7 +512,7 @@
 			/>
 		{/if}
 		{#if showShortcuts}
-			<ShortcutsDialog keys={shortcutKeys} onclose={() => (showShortcuts = false)} />
+			<ShortcutsDialog items={shortcutKeys.map(([k, d]) => ({ keys: [k], action: d }))} onclose={() => (showShortcuts = false)} />
 		{/if}
 	{/if}
 </div>

@@ -1,6 +1,6 @@
 import { writable, type Readable } from 'svelte/store';
 import type { Client } from '@urql/svelte';
-import { unwrap } from '$lib/motor/api';
+import { unwrap } from '@drbrain/ui/graphql'
 import { ACCOUNT_QUERY, LOGOUT_MUTATION } from '$lib/motor/queries';
 import type { Account, AuthProvider } from '$lib/motor/types';
 

@@ -4,8 +4,8 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { getContextClient } from '@urql/svelte';
-	import { unwrap } from '$lib/motor/api';
-	import { describeError, type DescribedError } from '$lib/motor/errors';
+	import { unwrap } from '@drbrain/ui/graphql';
+	import { describeError, type DescribedError } from '@drbrain/ui/errors';
 	import { boardHref, rankBadgeClass, rankLabel } from '$lib/motor/leaderboard';
 	import { isOfficial } from '$lib/motor/maps';
 	import { CREATE_SESSION_MUTATION, MAPS_QUERY, PLAYER_RUNS_QUERY } from '$lib/motor/queries';
@@ -22,7 +22,7 @@
 	} from '$lib/motor/runs';
 	import { newSessionName, ownSessionIds, rememberSession, savedDisplayName } from '$lib/motor/sessions';
 	import { account } from '$lib/motor/stores/account';
-	import { absoluteTime, relativeTime } from '$lib/motor/time';
+	import { absoluteTime, relativeTime } from '@drbrain/ui/time';
 	import type { GameMap, PlayerRun, Session } from '$lib/motor/types';
 
 	const client = getContextClient();

@@ -3,7 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { getContextClient } from '@urql/svelte';
-	import { unwrap } from '$lib/motor/api';
+	import { unwrap } from '@drbrain/ui/graphql';
 	import {
 		HANDLE_RE,
 		MAX_DISPLAY_NAME,
@@ -16,7 +16,7 @@
 		profileHref,
 		summarizeClaims
 	} from '$lib/motor/account';
-	import { describeError } from '$lib/motor/errors';
+	import { describeError } from '@drbrain/ui/errors';
 	import { CHANGE_PASSWORD_MUTATION, CLAIM_SESSIONS_MUTATION, DELETE_ACCOUNT_MUTATION, UPDATE_ACCOUNT_MUTATION } from '$lib/motor/queries';
 	import { claimableSessions, forgetAllOwnerTokens, forgetOwnerTokens } from '$lib/motor/sessions';
 	import { account, setMe } from '$lib/motor/stores/account';

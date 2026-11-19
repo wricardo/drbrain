@@ -3,7 +3,7 @@
 	import type { Facing, GameMap, StepEvent, VMState } from '$lib/motor/types';
 	import { nextAngle } from '$lib/motor/grid';
 	import { isUnlocked, lockPairText, lockPairs } from '$lib/motor/tiles';
-	import Cookie from './Cookie.svelte';
+	import Cookie from '@drbrain/ui/components/Cookie.svelte';
 	import DoorGlyph from './DoorGlyph.svelte';
 	import KeyGlyph from './KeyGlyph.svelte';
 

@@ -3,14 +3,14 @@
 	import { onDestroy, untrack } from 'svelte';
 	import { page } from '$app/stores';
 	import { getContextClient } from '@urql/svelte';
-	import AiPromptCard from '$lib/mazes/components/AiPromptCard.svelte';
+	import AiPromptCard from '@drbrain/ui/components/AiPromptCard.svelte';
 	import Board from '$lib/mazes/components/Board.svelte';
-	import ConnectionBadge from '$lib/mazes/components/ConnectionBadge.svelte';
+	import ConnectionBadge from '@drbrain/ui/components/ConnectionBadge.svelte';
 	import Stats from '$lib/mazes/components/Stats.svelte';
 	import StatusLine from '$lib/mazes/components/StatusLine.svelte';
 	import Tower from '$lib/mazes/components/Tower.svelte';
 	import { buildSessionPrompt } from '$lib/mazes/prompt';
-	import { createSessionStore } from '$lib/mazes/stores/session';
+	import { createSessionStore } from '@drbrain/ui/session';
 	import { createSessionSource } from '$lib/mazes/stores/source';
 	import { knownLevels, rememberView, shownLevel, type SeenLevels } from '$lib/mazes/fog';
 	import { describeEvent, levelName } from '$lib/mazes/tower';

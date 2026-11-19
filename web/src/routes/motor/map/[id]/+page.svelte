@@ -3,11 +3,11 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { getContextClient } from '@urql/svelte';
-	import { unwrap } from '$lib/motor/api';
+	import { unwrap } from '@drbrain/ui/graphql';
 	import BoardPanel from '$lib/motor/components/BoardPanel.svelte';
 	import Stats from '$lib/motor/components/Stats.svelte';
 	import TileLegend from '$lib/motor/components/TileLegend.svelte';
-	import { describeError, type DescribedError } from '$lib/motor/errors';
+	import { describeError, type DescribedError } from '@drbrain/ui/errors';
 	import { recursionChip } from '$lib/motor/recursion';
 	import { CREATE_SESSION_MUTATION, MAP_QUERY } from '$lib/motor/queries';
 	import { newSessionName, rememberSession, statusLine } from '$lib/motor/sessions';

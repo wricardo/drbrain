@@ -1,10 +1,10 @@
 <script lang="ts">
 	import { onDestroy, untrack } from 'svelte';
 	import { getContextClient } from '@urql/svelte';
-	import ConnectionBadge from './ConnectionBadge.svelte';
+	import ConnectionBadge from '@drbrain/ui/components/ConnectionBadge.svelte';
 	import Grid from './Grid.svelte';
 	import { statusLine } from '$lib/motor/sessions';
-	import { createSessionStore } from '$lib/motor/stores/session';
+	import { createSessionStore } from '@drbrain/ui/session';
 	import { createSessionSource } from '$lib/motor/stores/source';
 
 	/** Compact live board for the multi-watch grid; one subscription per tile. */

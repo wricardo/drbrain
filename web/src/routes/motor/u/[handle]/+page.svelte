@@ -3,14 +3,14 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { getContextClient } from '@urql/svelte';
-	import { unwrap } from '$lib/motor/api';
+	import { unwrap } from '@drbrain/ui/graphql';
 	import { summarizeProfile, tallyText } from '$lib/motor/account';
-	import { describeError, type DescribedError } from '$lib/motor/errors';
+	import { describeError, type DescribedError } from '@drbrain/ui/errors';
 	import { boardHref, rankBadgeClass, rankLabel } from '$lib/motor/leaderboard';
 	import { MAPS_QUERY, PROFILE_QUERY } from '$lib/motor/queries';
 	import { runText } from '$lib/motor/runs';
 	import { account } from '$lib/motor/stores/account';
-	import { absoluteTime, relativeTime } from '$lib/motor/time';
+	import { absoluteTime, relativeTime } from '@drbrain/ui/time';
 	import type { GameMap, Profile } from '$lib/motor/types';
 
 	const client = getContextClient();

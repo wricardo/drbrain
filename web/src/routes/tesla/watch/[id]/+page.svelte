@@ -8,10 +8,11 @@
 	import { mapLabel, nextMap as nextMapAfter, type MapSummary } from '$lib/tesla/maps';
 	import { crashDirections, crashWarning } from '$lib/tesla/crash';
 	import { createGameSession } from '$lib/tesla/createSession';
-	import AiPromptCard from '$lib/tesla/components/AiPromptCard.svelte';
-	import ConnectionBadge, { type ConnectionState } from '$lib/tesla/components/ConnectionBadge.svelte';
+	import AiPromptCard from '@drbrain/ui/components/AiPromptCard.svelte';
+	import ConnectionBadge from '@drbrain/ui/components/ConnectionBadge.svelte';
+	import type { ConnectionState } from '@drbrain/ui/session';
 	import ResultModal from '$lib/tesla/components/ResultModal.svelte';
-	import ShortcutsDialog from '$lib/tesla/components/ShortcutsDialog.svelte';
+	import ShortcutsDialog from '@drbrain/ui/components/ShortcutsDialog.svelte';
 
 	const GAME_STATE_QUERY = `
 		query GameState($sessionID: ID!) {
@@ -858,7 +859,7 @@ ${gameState?.fogEnabled
 				>{sessionId}</button>
 			</p>
 		</div>
-		<ConnectionBadge state={connection} />
+		<ConnectionBadge state={connection} tone="tesla" />
 	</header>
 
 	<div class={`grid grid-cols-1 gap-4 xl:gap-6 items-start ${isLargeMap ? '' : 'lg:grid-cols-[minmax(0,1fr)_22rem] xl:grid-cols-[minmax(0,1fr)_26rem]'}`}>
@@ -1050,7 +1051,7 @@ ${gameState?.fogEnabled
 			{/if}
 
 			<!-- 5. play with an AI -->
-			<AiPromptCard prompt={llmPrompt} blurb={`Copy the prompt into an AI chat to let it drive session ${sessionId}.`} />
+			<AiPromptCard prompt={llmPrompt} blurb={`Copy the prompt into an AI chat to let it drive session ${sessionId}.`} tone="tesla" />
 
 			{#if gameState?.fogEnabled}
 				<div class="rounded-2xl bg-white border border-[#e8e8e8] shadow-sm p-4">
@@ -1126,7 +1127,9 @@ ${gameState?.fogEnabled
 {/if}
 
 {#if showShortcuts}
-	<ShortcutsDialog {shortcuts} onclose={() => (showShortcuts = false)} />
+	<ShortcutsDialog items={shortcuts} tone="tesla" onclose={() => (showShortcuts = false)}>
+		{#snippet footer()}Esc closes this dialog.{/snippet}
+	</ShortcutsDialog>
 {/if}
 
 <style>

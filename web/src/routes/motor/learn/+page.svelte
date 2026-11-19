@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { GAME, pageTitle } from '$lib/motor/brand';
-	import AiPromptCard from '$lib/motor/components/AiPromptCard.svelte';
-	import Cookie from '$lib/motor/components/Cookie.svelte';
+	import AiPromptCard from '@drbrain/ui/components/AiPromptCard.svelte';
+	import Cookie from '@drbrain/ui/components/Cookie.svelte';
 	import { instructionMeta } from '$lib/motor/instructions';
 	import { buildGenericPrompt } from '$lib/motor/prompt';
 	import type { Instruction } from '$lib/motor/types';

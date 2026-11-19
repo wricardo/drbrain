@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { lossReasonText } from '$lib/motor/errors';
+	import { lossReasonText } from '@drbrain/ui/errors';
 	import RankHint from '$lib/motor/components/RankHint.svelte';
 	import type { LossReason, Status } from '$lib/motor/types';
 

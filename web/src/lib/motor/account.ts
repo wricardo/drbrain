@@ -1,7 +1,7 @@
 import { isOfficial } from './maps';
 import { buildRunRows, type RunRow } from './runs';
-import { unwrap } from './api';
-import { describeError } from './errors';
+import { unwrap } from '@drbrain/ui/graphql';
+import { describeError } from '@drbrain/ui/errors';
 import { LOG_IN_WITH_PASSWORD_MUTATION, REGISTER_WITH_PASSWORD_MUTATION } from './queries';
 import type { Client } from '@urql/svelte';
 import type { Account, GameMap, PlayerRun, SessionClaimResult } from './types';

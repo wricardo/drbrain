@@ -1,5 +1,5 @@
 import type { Client } from '@urql/svelte';
-import { unwrap } from './api';
+import { unwrap } from '@drbrain/ui/graphql';
 import { CREATE_SESSION_MUTATION } from './queries';
 import { rememberSession } from './sessions';
 import type { Session } from './types';

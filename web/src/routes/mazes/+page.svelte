@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { getContextClient } from '@urql/svelte';
-	import { unwrap } from '$lib/mazes/api';
+	import { unwrap } from '@drbrain/ui/graphql';
 	import MapCard from '$lib/mazes/components/MapCard.svelte';
 	import { GAME, SITE, pageTitle } from '$lib/mazes/brand';
 	import MiniGrid from '$lib/mazes/components/MiniGrid.svelte';

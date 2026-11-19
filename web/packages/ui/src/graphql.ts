@@ -1,5 +1,13 @@
-import { createClient, cacheExchange, fetchExchange, subscriptionExchange, type Client } from '@urql/svelte';
+import { createClient, cacheExchange, fetchExchange, subscriptionExchange, type Client, type OperationResult } from '@urql/svelte';
 import { createClient as createWsClient, type Client as WsClient } from 'graphql-ws';
+
+/** Awaits an urql operation and returns its data, throwing the CombinedError on failure. */
+export async function unwrap<T>(op: { toPromise(): Promise<OperationResult<T>> }): Promise<T> {
+	const res = await op.toPromise();
+	if (res.error) throw res.error;
+	if (!res.data) throw new Error('Empty response from server');
+	return res.data;
+}
 
 export interface GraphQLUrls {
 	http: string;

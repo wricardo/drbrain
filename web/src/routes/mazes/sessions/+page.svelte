@@ -3,7 +3,7 @@
 	import { onDestroy, onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { getContextClient } from '@urql/svelte';
-	import { unwrap } from '$lib/mazes/api';
+	import { unwrap } from '@drbrain/ui/graphql';
 	import { describeError, type DescribedError } from '$lib/mazes/errors';
 	import { sortMapsByDifficulty } from '$lib/mazes/maps';
 	import { MAPS_QUERY, SESSIONS_QUERY } from '$lib/mazes/queries';

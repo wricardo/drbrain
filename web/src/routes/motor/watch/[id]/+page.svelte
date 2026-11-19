@@ -3,19 +3,19 @@
 	import { onDestroy } from 'svelte';
 	import { page } from '$app/stores';
 	import { getContextClient } from '@urql/svelte';
-	import { unwrap } from '$lib/motor/api';
+	import { unwrap } from '@drbrain/ui/graphql';
 	import BoardPanel from '$lib/motor/components/BoardPanel.svelte';
-	import ConnectionBadge from '$lib/motor/components/ConnectionBadge.svelte';
+	import ConnectionBadge from '@drbrain/ui/components/ConnectionBadge.svelte';
 	import RunControls from '$lib/motor/components/RunControls.svelte';
 	import Stats from '$lib/motor/components/Stats.svelte';
 	import Tape from '$lib/motor/components/Tape.svelte';
 	import TileLegend from '$lib/motor/components/TileLegend.svelte';
-	import { describeError, type DescribedError } from '$lib/motor/errors';
+	import { describeError, type DescribedError } from '@drbrain/ui/errors';
 	import { PAUSE_MUTATION, RESET_MUTATION, RUN_MUTATION, STEP_MUTATION } from '$lib/motor/queries';
 	import { blockedCallNotice } from '$lib/motor/recursion';
 	import { ownerTokenFor, statusLine, watchTitle } from '$lib/motor/sessions';
 	import { initialSpeed, saveSpeed, savedSpeed } from '$lib/motor/speed';
-	import { createSessionStore } from '$lib/motor/stores/session';
+	import { createSessionStore } from '@drbrain/ui/session';
 	import { createSessionSource } from '$lib/motor/stores/source';
 	import type { Session } from '$lib/motor/types';
 
