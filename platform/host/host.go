@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"text/template"
 	"time"
 
 	"github.com/wricardo/drbrain/platform"
@@ -135,10 +136,23 @@ func (h *Host) mount(enabled []platform.Game) (http.Handler, error) {
 		if err := g.Mount(mux, deps); err != nil {
 			return nil, fmt.Errorf("game %s: mount: %w", g.Name(), err)
 		}
+		api := append([]string(nil), g.API()...)
+		if lp, ok := g.(platform.LLMSProvider); ok {
+			tmpl, err := template.New(g.Name() + "-llms").Parse(lp.LLMSTemplate())
+			if err != nil {
+				return nil, fmt.Errorf("game %s: llms template: %w", g.Name(), err)
+			}
+			publicURL := lp.LLMSPublicURL()
+			if publicURL == "" {
+				publicURL = h.cfg.PublicURL
+			}
+			mux.Handle("/llms.txt", llmsHandler(tmpl, g.Prefix(), publicURL))
+			api = append(api, "/llms.txt")
+		}
 		if err := router.Mount(httpserve.Mount{
 			Game:    g.Name(),
 			Prefix:  g.Prefix(),
-			API:     g.API(),
+			API:     api,
 			Handler: mux,
 		}); err != nil {
 			return nil, err

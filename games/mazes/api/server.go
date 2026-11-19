@@ -80,9 +80,9 @@ func NewServer(svc service.GameService, hub *websocket.Hub, opts Options) (*Serv
 	}
 	s := &Server{router: mux.NewRouter(), llms: llms, opts: opts}
 
-	s.router.Handle("/graphql", withCORS(opts.AllowedOrigins, withHTTPRequest(limitBody(limitWebsocketMessages(newGraphQLServer(svc, hub, opts))))))
+	s.router.Handle("/graphql", NewGraphQLHandler(svc, hub, opts))
 	if opts.Playground {
-		s.router.Handle("/playground", playground.Handler("Dr Brain - Mazes GraphQL playground", "/graphql"))
+		s.router.Handle("/playground", NewPlaygroundHandler("/graphql"))
 	}
 	s.router.HandleFunc("/llms.txt", s.handleLLMS)
 	s.router.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -91,6 +91,19 @@ func NewServer(svc service.GameService, hub *websocket.Hub, opts Options) (*Serv
 	})
 	s.router.PathPrefix("/").Handler(spaHandler(opts.UIDirs))
 	return s, nil
+}
+
+// NewGraphQLHandler builds the /graphql handler alone: CORS, request context,
+// body and websocket limits around the gqlgen server. The platform game mounts
+// it on its own mux; NewServer keeps using it for the standalone server.
+func NewGraphQLHandler(svc service.GameService, hub *websocket.Hub, opts Options) http.Handler {
+	return withCORS(opts.AllowedOrigins,
+		withHTTPRequest(limitBody(limitWebsocketMessages(newGraphQLServer(svc, hub, opts)))))
+}
+
+// NewPlaygroundHandler returns the GraphQL playground, targeting endpoint.
+func NewPlaygroundHandler(endpoint string) http.Handler {
+	return playground.Handler("Dr Brain - Mazes GraphQL playground", endpoint)
 }
 
 // ServeHTTP implements http.Handler.

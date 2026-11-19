@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"text/tabwriter"
 
+	"github.com/wricardo/drbrain/games/mazes"
 	"github.com/wricardo/drbrain/platform"
 	"github.com/wricardo/drbrain/platform/config"
 	"github.com/wricardo/drbrain/platform/host"
@@ -26,7 +27,9 @@ func main() {
 // builtinGames is the compiled-in registry. Games are appended here as they
 // migrate to platform.Game.
 func builtinGames() []platform.Game {
-	return nil
+	return []platform.Game{
+		mazes.New(),
+	}
 }
 
 func run(args []string, games []platform.Game, stdout, stderr io.Writer) int {

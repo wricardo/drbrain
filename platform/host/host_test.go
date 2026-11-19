@@ -256,3 +256,38 @@ func freeAddr(t *testing.T) string {
 	ln.Close()
 	return addr
 }
+
+// llmsGame adds the optional platform.LLMSProvider surface.
+type llmsGame struct {
+	*fakeGame
+	template  string
+	publicURL string
+}
+
+func (g *llmsGame) LLMSTemplate() string  { return g.template }
+func (g *llmsGame) LLMSPublicURL() string { return g.publicURL }
+
+func TestLLMSRenderedByHost(t *testing.T) {
+	cfg := testConfig(t)
+	g := &llmsGame{
+		fakeGame: &fakeGame{name: "alpha", prefix: "/alpha"},
+		template: "base={{.BaseURL}} ws={{.WSURL}}",
+	}
+	h, cancel, done := startHost(t, cfg, g)
+	defer cancel()
+
+	resp, err := http.Get("http://" + h.Addr() + "/alpha/llms.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	want := "base=http://" + h.Addr() + "/alpha ws=ws://" + h.Addr() + "/alpha"
+	if string(body) != want {
+		t.Errorf("llms body = %q, want %q", body, want)
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("run: %v", err)
+	}
+}

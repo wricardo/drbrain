@@ -45,6 +45,15 @@ type Deps struct {
 	Logger *slog.Logger
 }
 
+// LLMSProvider lets a game supply its agent guide. The platform renders it at
+// /<prefix>/llms.txt; the game never registers that route itself. The template
+// receives {BaseURL, WSURL}, where BaseURL already includes the game prefix.
+type LLMSProvider interface {
+	LLMSTemplate() string
+	// LLMSPublicURL is the game-specific base URL, empty to use the platform's.
+	LLMSPublicURL() string
+}
+
 // Optional command interfaces. `drbrain validate`, `mapgen` and `tui` dispatch
 // to a game only when it implements the matching interface; games that do not
 // need one (or cannot support it) simply leave it out.
