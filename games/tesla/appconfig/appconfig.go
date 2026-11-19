@@ -94,10 +94,12 @@ func Default() Config {
 	}
 }
 
-// Load returns the defaults overlaid with the process environment.
+// Load returns the defaults overlaid with the process environment. Every
+// variable is prefixed TESLA_ (TESLA_CONFIG_DIR, TESLA_MCP_ENABLED, ...), so
+// the game cannot read or be configured by another game's section.
 func Load() (Config, error) {
 	cfg := Default()
-	if err := envconfig.Process("", &cfg); err != nil {
+	if err := envconfig.Process("TESLA", &cfg); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil

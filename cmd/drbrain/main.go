@@ -16,6 +16,7 @@ import (
 
 	"github.com/wricardo/drbrain/games/mazes"
 	"github.com/wricardo/drbrain/games/motor"
+	"github.com/wricardo/drbrain/games/tesla"
 	"github.com/wricardo/drbrain/platform"
 	"github.com/wricardo/drbrain/platform/config"
 	"github.com/wricardo/drbrain/platform/host"
@@ -31,6 +32,7 @@ func builtinGames() []platform.Game {
 	return []platform.Game{
 		mazes.New(),
 		motor.New(),
+		tesla.New(),
 	}
 }
 
@@ -48,6 +50,9 @@ func run(args []string, games []platform.Game, stdout, stderr io.Writer) int {
 		return runGameCommand("validate", args[1:], games, stdout, stderr)
 	case "mapgen":
 		return runGameCommand("mapgen", args[1:], games, stdout, stderr)
+	case "stdio-mcp", "mcp-stdio", "mcp":
+		fmt.Fprintln(stderr, "drbrain: stdio MCP is disabled: the MCP transport runs over HTTP at /<game>/mcp (set TESLA_MCP_ENABLED=true)")
+		return 1
 	case "help", "-h", "--help":
 		usage(stdout)
 		return 0

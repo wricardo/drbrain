@@ -30,7 +30,7 @@ func TestLoadDefaults(t *testing.T) {
 func TestFlagsAcceptForgivingTrue(t *testing.T) {
 	for _, value := range []string{"true", "1", "yes"} {
 		t.Run(value, func(t *testing.T) {
-			t.Setenv("MCP_ENABLED", value)
+			t.Setenv("TESLA_MCP_ENABLED", value)
 			cfg, err := Load()
 			if err != nil {
 				t.Fatalf("Load: %v", err)
@@ -45,7 +45,7 @@ func TestFlagsAcceptForgivingTrue(t *testing.T) {
 func TestFlagsRejectAnythingElse(t *testing.T) {
 	for _, value := range []string{"false", "0", "no", "on", "TRUE"} {
 		t.Run(value, func(t *testing.T) {
-			t.Setenv("MCP_ENABLED", value)
+			t.Setenv("TESLA_MCP_ENABLED", value)
 			cfg, err := Load()
 			if err != nil {
 				t.Fatalf("Load: %v", err)
@@ -58,7 +58,7 @@ func TestFlagsRejectAnythingElse(t *testing.T) {
 }
 
 func TestEmptyValueKeepsDefault(t *testing.T) {
-	t.Setenv("GRAPHQL_PLAYGROUND", "")
+	t.Setenv("TESLA_GRAPHQL_PLAYGROUND", "")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -71,7 +71,7 @@ func TestEmptyValueKeepsDefault(t *testing.T) {
 func TestAllowUnauthenticatedAdminIsStrict(t *testing.T) {
 	for _, value := range []string{"1", "yes", "TRUE", "True"} {
 		t.Run(value, func(t *testing.T) {
-			t.Setenv("ALLOW_UNAUTHENTICATED_ADMIN", value)
+			t.Setenv("TESLA_ALLOW_UNAUTHENTICATED_ADMIN", value)
 			cfg, err := Load()
 			if err != nil {
 				t.Fatalf("Load: %v", err)
@@ -82,7 +82,7 @@ func TestAllowUnauthenticatedAdminIsStrict(t *testing.T) {
 		})
 	}
 
-	t.Setenv("ALLOW_UNAUTHENTICATED_ADMIN", "true")
+	t.Setenv("TESLA_ALLOW_UNAUTHENTICATED_ADMIN", "true")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -100,7 +100,7 @@ func TestOriginsParsing(t *testing.T) {
 	}
 	for raw, want := range cases {
 		t.Run(raw, func(t *testing.T) {
-			t.Setenv("ALLOWED_ORIGINS", raw)
+			t.Setenv("TESLA_ALLOWED_ORIGINS", raw)
 			cfg, err := Load()
 			if err != nil {
 				t.Fatalf("Load: %v", err)
