@@ -1,0 +1,124 @@
+name: Deploy
+
+# One artifact, one unit, one vhost. Pushing to main builds the web app and the
+# linux/arm64 binary together, swaps the release symlink and restarts drbrain.service.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Test, build and deploy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Backend checks
+        run: |
+          go build ./...
+          go vet ./...
+          go test ./...
+
+      - name: Build web app
+        run: |
+          npm ci
+          npm run check
+          npm test
+          npm run build
+
+      - name: Build binary (linux/arm64)
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o /tmp/drbrain ./cmd/drbrain
+
+      - name: Package release
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/pkg
+          mkdir -p /tmp/pkg/web /tmp/pkg/deploy
+          cp /tmp/drbrain /tmp/pkg/drbrain
+          cp -r web/build/. /tmp/pkg/web/
+          cp deploy/smoke.sh deploy/rollback.sh /tmp/pkg/deploy/
+          chmod +x /tmp/pkg/drbrain /tmp/pkg/deploy/smoke.sh /tmp/pkg/deploy/rollback.sh
+          # Built-in maps ship with the release; sessions/accounts/user maps never do.
+          for game in mazes motor tesla delivery; do
+            mkdir -p "/tmp/pkg/games/$game"
+            cp -r "games/$game/maps" "/tmp/pkg/games/$game/maps"
+          done
+          tar czf /tmp/deploy.tgz -C /tmp/pkg .
+          tar tzf /tmp/deploy.tgz | head -20
+
+      - name: Setup SSH
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_KNOWN_HOSTS: ${{ secrets.EC2_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          : "${EC2_HOST:?missing EC2_HOST secret}"
+          : "${EC2_SSH_KEY:?missing EC2_SSH_KEY secret}"
+          : "${EC2_KNOWN_HOSTS:?missing EC2_KNOWN_HOSTS secret}"
+          mkdir -p ~/.ssh
+          printf '%s\n' "$EC2_SSH_KEY" | tr -d '\r' > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$EC2_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host deploy
+            HostName $EC2_HOST
+            User ${{ vars.EC2_SSH_USER || 'ubuntu' }}
+            Port ${{ vars.EC2_PORT || 22 }}
+            IdentityFile ~/.ssh/deploy_key
+            BatchMode yes
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+          EOF
+
+      - name: Upload
+        run: scp /tmp/deploy.tgz deploy:/tmp/drbrain-deploy.tgz
+
+      - name: Install release and restart (single SSH step)
+        env:
+          RELEASE: ${{ github.sha }}
+        run: |
+          ssh deploy "
+            set -euo pipefail
+            release=/opt/drbrain/releases/${RELEASE:0:7}
+            sudo mkdir -p \"\$release\"
+            sudo tar xzf /tmp/drbrain-deploy.tgz -C \"\$release\"
+            rm -f /tmp/drbrain-deploy.tgz
+            sudo chown -R drbrain:drbrain \"\$release\"
+            sudo ln -sfn \"\$release\" /opt/drbrain/current.new
+            sudo mv -Tf /opt/drbrain/current.new /opt/drbrain/current
+            sudo systemctl restart drbrain.service
+            systemctl is-active drbrain.service
+          "
+
+      - name: Smoke test
+        run: |
+          ssh deploy '
+            for attempt in $(seq 1 12); do
+              if BASE_URL=http://127.0.0.1:8080 /opt/drbrain/current/deploy/smoke.sh; then
+                exit 0
+              fi
+              sleep 5
+            done
+            echo "smoke failed; unit state:" >&2
+            systemctl status drbrain.service --no-pager -l | head -40 >&2 || true
+            sudo journalctl -u drbrain.service -n 80 --no-pager >&2 || true
+            exit 1
+          '

@@ -2,7 +2,7 @@
 
 A puzzle game about programming a little robot, playable by **humans and AI alike**.
 
-**▶ Play it now: https://motor-programming.wricardo.net/**
+**▶ Play it now: https://drbrain.wricardo.net/motor/**
 
 No sign-up, no install. Pick a map and start. If you like, you can also sign in — with a username and password, or Google/GitHub when the site has them — to keep your runs on a public profile and appear on the leaderboard under your own handle; playing as a guest always works.
 
@@ -45,11 +45,11 @@ Every map can be solved. Each one has been checked against a known solution.
 
 ## More to do
 
-- **No sign-up needed.** If you don't type a name you play as a random guest like `BraveOtter`, remembered in your browser. [My runs](https://motor-programming.wricardo.net/runs) shows your best run on every map and how it ranks, and has a link you can share.
+- **No sign-up needed.** If you don't type a name you play as a random guest like `BraveOtter`, remembered in your browser. [My runs](https://drbrain.wricardo.net/motor/runs) shows your best run on every map and how it ranks, and has a link you can share.
 - **Climb the leaderboard.** Every map ranks its winners by how few slots their program uses, then by how few steps it takes. Winning is only the start: can you do it in fewer?
 - **Watch** anyone's game live from the sessions page. The program itself stays private to its player, so a watch link never gives a solution away.
-- **Build your own map** in the [map editor](https://motor-programming.wricardo.net/editor): paint rocks and treats, set the tape sizes, validate it and play it. Saving a new map needs a (free) account; playing, watching and validating stay open to guests.
-- **Learn** more on the in-game [how it works](https://motor-programming.wricardo.net/learn) page: rules, strategies and tips.
+- **Build your own map** in the [map editor](https://drbrain.wricardo.net/motor/editor): paint rocks and treats, set the tape sizes, validate it and play it. Saving a new map needs a (free) account; playing, watching and validating stay open to guests.
+- **Learn** more on the in-game [how it works](https://drbrain.wricardo.net/motor/learn) page: rules, strategies and tips.
 
 ## Playing with AI
 
@@ -57,9 +57,9 @@ There are two ways to get an AI to play.
 
 **1. Copy the prompt from the game (easiest).** Start a game in the browser and click **Play with an AI**. It copies a ready-made prompt with the session, the map and the API calls the AI needs. Paste it into an AI assistant that can make web requests (for example a coding agent like Claude Code). Then open the game's watch page and see if the AI can win.
 
-**2. Point an agent at the API.** The game publishes a guide written for AI agents at [/llms.txt](https://motor-programming.wricardo.net/llms.txt). It has the rules, the endpoints and examples for every call. Give your agent this link and ask it to beat a map.
+**2. Point an agent at the API.** The game publishes a guide written for AI agents at [/llms.txt](https://drbrain.wricardo.net/motor/llms.txt). It has the rules, the endpoints and examples for every call. Give your agent this link and ask it to beat a map.
 
-The API is plain GraphQL at `https://motor-programming.wricardo.net/graphql`. A game takes four calls:
+The API is plain GraphQL at `https://drbrain.wricardo.net/motor/graphql` (the old `motor-programming.wricardo.net` host redirects there). A game takes four calls:
 
 ```graphql
 query    { maps { id name difficulty layout mainTapeLength subTapeLengths } }   # 1. pick a map

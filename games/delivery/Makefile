@@ -83,7 +83,7 @@ generate: ## run gqlgen (Go types from the schema)
 	$(GO) run github.com/99designs/gqlgen generate
 
 .PHONY: types
-types: ## regenerate frontend/src/lib/api-types.ts from the GraphQL schema
+types: ## regenerate ../../web/src/lib/delivery/api-types.ts from the GraphQL schema
 	$(GO) run ./cmd/gentypes
 
 .PHONY: types-check

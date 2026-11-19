@@ -1,0 +1,132 @@
+# Canonical vhost and legacy-domain cutover for the Dr Brain monorepo.
+#
+# Render with deploy/install-host.sh. envsubst substitutes only the variables
+# named there; nginx's own $host/$request_uri stay literal.
+#
+# One certificate for all five names (cert-name = canonical host), so every
+# server block uses ${TLS_DIR}/${CANONICAL_HOST}/. deploy/install-host.sh starts
+# with the HTTP-only bootstrap vhost, obtains the certificate, then installs this
+# file and reloads.
+#
+# Every game is served by one upstream; nginx does not route by path.
+#
+# ACME challenges are answered over plain HTTP for renewals even though the
+# canonical host redirects everything else to HTTPS.
+
+map $http_upgrade $connection_upgrade {
+	default upgrade;
+	''      close;
+}
+
+server {
+	listen 80;
+	listen [::]:80;
+	server_name ${CANONICAL_HOST};
+
+	location /.well-known/acme-challenge/ {
+		root /var/www/certbot;
+	}
+	location / {
+		return 301 https://$host$request_uri;
+	}
+}
+
+server {
+	listen 443 ssl http2;
+	listen [::]:443 ssl http2;
+	server_name ${CANONICAL_HOST};
+
+	ssl_certificate     ${TLS_DIR}/${CANONICAL_HOST}/fullchain.pem;
+	ssl_certificate_key ${TLS_DIR}/${CANONICAL_HOST}/privkey.pem;
+
+	# GraphQL bodies and websocket frames are small; this only bounds abuse.
+	client_max_body_size 10m;
+
+	location / {
+		proxy_pass http://127.0.0.1:8080;
+		proxy_http_version 1.1;
+		proxy_set_header Host $host;
+		proxy_set_header X-Real-IP $remote_addr;
+		proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		proxy_set_header Upgrade $http_upgrade;
+		proxy_set_header Connection $connection_upgrade;
+		# Live game subscriptions are long-lived.
+		proxy_read_timeout 3600s;
+		proxy_send_timeout 3600s;
+		proxy_buffering off;
+	}
+}
+
+# Legacy host -> canonical path. $request_uri keeps the path and query string:
+# https://mazes.wricardo.net/a/b?x=1 -> https://drbrain.wricardo.net/mazes/a/b?x=1.
+# The game hostnames stay resolvable and redirect forever; no game is served
+# from them after this cutover.
+
+server {
+	listen 80;
+	listen [::]:80;
+	server_name ${MAZES_HOST};
+	location /.well-known/acme-challenge/ { root /var/www/certbot; }
+	location / { return 301 https://${CANONICAL_HOST}/mazes$request_uri; }
+}
+
+server {
+	listen 443 ssl http2;
+	listen [::]:443 ssl http2;
+	server_name ${MAZES_HOST};
+	ssl_certificate     ${TLS_DIR}/${CANONICAL_HOST}/fullchain.pem;
+	ssl_certificate_key ${TLS_DIR}/${CANONICAL_HOST}/privkey.pem;
+	return 301 https://${CANONICAL_HOST}/mazes$request_uri;
+}
+
+server {
+	listen 80;
+	listen [::]:80;
+	server_name ${MOTOR_HOST};
+	location /.well-known/acme-challenge/ { root /var/www/certbot; }
+	location / { return 301 https://${CANONICAL_HOST}/motor$request_uri; }
+}
+
+server {
+	listen 443 ssl http2;
+	listen [::]:443 ssl http2;
+	server_name ${MOTOR_HOST};
+	ssl_certificate     ${TLS_DIR}/${CANONICAL_HOST}/fullchain.pem;
+	ssl_certificate_key ${TLS_DIR}/${CANONICAL_HOST}/privkey.pem;
+	return 301 https://${CANONICAL_HOST}/motor$request_uri;
+}
+
+server {
+	listen 80;
+	listen [::]:80;
+	server_name ${TESLA_HOST};
+	location /.well-known/acme-challenge/ { root /var/www/certbot; }
+	location / { return 301 https://${CANONICAL_HOST}/tesla$request_uri; }
+}
+
+server {
+	listen 443 ssl http2;
+	listen [::]:443 ssl http2;
+	server_name ${TESLA_HOST};
+	ssl_certificate     ${TLS_DIR}/${CANONICAL_HOST}/fullchain.pem;
+	ssl_certificate_key ${TLS_DIR}/${CANONICAL_HOST}/privkey.pem;
+	return 301 https://${CANONICAL_HOST}/tesla$request_uri;
+}
+
+server {
+	listen 80;
+	listen [::]:80;
+	server_name ${DELIVERY_HOST};
+	location /.well-known/acme-challenge/ { root /var/www/certbot; }
+	location / { return 301 https://${CANONICAL_HOST}/delivery$request_uri; }
+}
+
+server {
+	listen 443 ssl http2;
+	listen [::]:443 ssl http2;
+	server_name ${DELIVERY_HOST};
+	ssl_certificate     ${TLS_DIR}/${CANONICAL_HOST}/fullchain.pem;
+	ssl_certificate_key ${TLS_DIR}/${CANONICAL_HOST}/privkey.pem;
+	return 301 https://${CANONICAL_HOST}/delivery$request_uri;
+}

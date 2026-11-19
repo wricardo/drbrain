@@ -48,6 +48,8 @@ type Router struct {
 
 	mounts []*mount
 	routes []route
+	// disabled holds prefixes of compiled-in games excluded by DRBRAIN_GAMES.
+	disabled []string
 }
 
 // DefaultMaxWebsocketMessageBytes matches the games' GraphQL body cap.
@@ -132,6 +134,37 @@ func (r *Router) Mount(m Mount) error {
 	return nil
 }
 
+// Disable reserves a compiled-in game's whole prefix with 404 responses. Games
+// left out of DRBRAIN_GAMES must fail loudly instead of serving the SPA shell or
+// an empty API, and must not appear in /healthz.
+func (r *Router) Disable(game, prefix string) error {
+	if err := validatePrefix(prefix); err != nil {
+		return fmt.Errorf("httpserve: game %q: %w", game, err)
+	}
+	for _, p := range r.disabled {
+		if p == prefix {
+			return nil
+		}
+	}
+	for _, m := range r.mounts {
+		if m.Prefix == prefix {
+			return fmt.Errorf("httpserve: game %q: cannot disable mounted prefix %q", game, prefix)
+		}
+	}
+	r.disabled = append(r.disabled, prefix)
+	return nil
+}
+
+// disabledPath reports whether path belongs to a disabled game.
+func (r *Router) disabledPath(path string) bool {
+	for _, p := range r.disabled {
+		if path == p || strings.HasPrefix(path, p+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 func validatePrefix(prefix string) error {
 	if prefix == "" {
 		return errors.New("empty prefix")
@@ -213,6 +246,10 @@ func (r *Router) Handler() http.Handler {
 		path := req.URL.Path
 		if path == "/healthz" {
 			r.serveHealth(w)
+			return
+		}
+		if r.disabledPath(path) {
+			http.NotFound(w, req)
 			return
 		}
 		if m := r.match(path); m != nil {

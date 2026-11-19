@@ -6,9 +6,10 @@
 // it. Neither side hand-maintains a copy, so the client cannot describe a shape
 // the server does not serve.
 //
-// Run with no arguments to write frontend/src/lib/api-types.ts. Run with -check
-// to fail when the file on disk is stale; `make check` and `go test ./...` both
-// do that, so a schema change without regeneration breaks the build.
+// Run with no arguments to write ../../web/src/lib/delivery/api-types.ts (the
+// monorepo web app). Run with -check to fail when the file on disk is stale;
+// `make check` and `go test ./...` both do that, so a schema change without
+// regeneration breaks the build.
 package main
 
 import (
@@ -37,7 +38,7 @@ const (
 )
 
 func main() {
-	out := flag.String("o", "frontend/src/lib/api-types.ts", "output file")
+	out := flag.String("o", "../../web/src/lib/delivery/api-types.ts", "output file")
 	check := flag.Bool("check", false, "verify the output is up to date instead of writing")
 	flag.Parse()
 

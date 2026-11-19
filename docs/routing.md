@@ -25,3 +25,17 @@ scripts. They were deleted with `games/tesla/cmd/tui` in the Tesla migration:
 - There is no stdio MCP mode (`drbrain mcp` fails with an explicit message).
 
 No unprefixed route survives; the old domains only redirect (deploy cutover).
+
+## Disabling a game
+
+`DRBRAIN_GAMES` (or `--games`) selects which compiled-in games mount at startup.
+A game that is built in but not selected reserves its whole prefix with `404`:
+`/<game>`, `/<game>/graphql`, `/<game>/llms.txt` and every SPA path below it
+return 404 instead of the app shell, while `/healthz` lists only the selected
+games. Re-adding the name and restarting restores it without a rebuild.
+
+```sh
+DRBRAIN_GAMES=mazes,motor,tesla,delivery   # all four
+DRBRAIN_GAMES=mazes,tesla,delivery          # motor 404s, others stay up
+```
+

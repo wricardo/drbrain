@@ -158,6 +158,18 @@ func (h *Host) mount(enabled []platform.Game) (http.Handler, error) {
 			return nil, err
 		}
 	}
+	enabledNames := make(map[string]bool, len(enabled))
+	for _, g := range enabled {
+		enabledNames[g.Name()] = true
+	}
+	for _, g := range h.reg.Games() {
+		if enabledNames[g.Name()] {
+			continue
+		}
+		if err := router.Disable(g.Name(), g.Prefix()); err != nil {
+			return nil, err
+		}
+	}
 	return router.Handler(), nil
 }
 

@@ -325,3 +325,65 @@ func TestGzipCompressesLargeGameResponse(t *testing.T) {
 		t.Errorf("Content-Encoding = %q, want gzip", got)
 	}
 }
+
+func TestDisabledGamePrefixes404(t *testing.T) {
+	r := NewRouter(newSPA(t))
+	r.SetLogger(nil)
+	if err := r.Mount(Mount{Game: "mazes", Prefix: "/mazes", API: []string{"/graphql"}, Handler: echoHandler()}); err != nil {
+		t.Fatalf("mount mazes: %v", err)
+	}
+	if err := r.Disable("tesla", "/tesla"); err != nil {
+		t.Fatalf("disable tesla: %v", err)
+	}
+	if err := r.Disable("delivery", "/delivery"); err != nil {
+		t.Fatalf("disable delivery: %v", err)
+	}
+	if err := r.Disable("mazes", "/mazes"); err == nil {
+		t.Fatal("disabling a mounted prefix must fail")
+	}
+	srv := httptest.NewServer(r.Handler())
+	t.Cleanup(srv.Close)
+
+	tests := []struct {
+		method, path string
+		want         int
+	}{
+		{http.MethodGet, "/tesla", 404},
+		{http.MethodGet, "/tesla/", 404},
+		{http.MethodGet, "/tesla/maps", 404},
+		{http.MethodPost, "/tesla/graphql", 404},
+		{http.MethodGet, "/delivery/graphql", 404},
+		{http.MethodPost, "/mazes/graphql", 200},
+		{http.MethodGet, "/mazes", 200},
+	}
+	for _, tc := range tests {
+		req, err := http.NewRequest(tc.method, srv.URL+tc.path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != tc.want {
+			t.Errorf("%s %s = %d, want %d", tc.method, tc.path, resp.StatusCode, tc.want)
+		}
+	}
+
+	resp, err := http.Get(srv.URL + "/healthz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	var health struct {
+		Games map[string]string `json:"games"`
+	}
+	if err := json.Unmarshal(body, &health); err != nil {
+		t.Fatal(err)
+	}
+	if len(health.Games) != 1 || health.Games["mazes"] != "ok" {
+		t.Fatalf("healthz games = %v, want only mazes ok", health.Games)
+	}
+}

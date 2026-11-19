@@ -257,7 +257,7 @@ them are walkable, which is 51% of all 233 walkable tiles.
 ```
 cmd/drbrain         CLI (map / play / sim)
 cmd/drbrain-server  HTTP API + serves the built UI
-cmd/gentypes        generates frontend/src/lib/api-types.ts from the GraphQL schema
+cmd/gentypes        generates web/src/lib/delivery/api-types.ts from the GraphQL schema
 game/engine         world model: terrain, cars, orders, tick loop, builds, closures
 game/session        live sessions, persistence, rehydrate, ticker goroutine
 graph               GraphQL schema, resolvers, generated code

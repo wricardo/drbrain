@@ -10,7 +10,7 @@ TypeScript client types are generated from it.
 
 ```bash
 make serve     # → http://localhost:8080/graphql
-make types     # regenerate frontend/src/lib/api-types.ts from the schema
+make types     # regenerate web/src/lib/delivery/api-types.ts from the schema
 make generate  # regenerate Go resolvers/types with gqlgen
 ```
 
@@ -19,7 +19,7 @@ make generate  # regenerate Go resolvers/types with gqlgen
 | Direction | Generator | Output |
 |---|---|---|
 | schema → Go | gqlgen | `graph/generated/`, `graph/model/` |
-| schema → TypeScript | `cmd/gentypes` | `frontend/src/lib/api-types.ts` |
+| schema → TypeScript | `cmd/gentypes` | `web/src/lib/delivery/api-types.ts` |
 
 Neither side hand-maintains a copy of the schema. `make check` fails if either
 is stale, so a schema change without regeneration breaks the build instead of

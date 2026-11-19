@@ -1,0 +1,30 @@
+[Unit]
+Description=Dr Brain games (one binary, one port)
+Documentation=https://github.com/wricardo/drbrain/blob/main/deploy/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=drbrain
+Group=drbrain
+WorkingDirectory=/opt/drbrain/current
+EnvironmentFile=/etc/drbrain/drbrain.env
+ExecStart=/opt/drbrain/current/drbrain serve
+Restart=always
+RestartSec=2
+# Give every game its save attempt before SIGKILL.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+
+# Runtime state lives outside the release directory: sessions/, maps-user/,
+# accounts/ and the motor PostgreSQL volume are never replaced by a deploy.
+ReadWritePaths=/var/lib/drbrain
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target
