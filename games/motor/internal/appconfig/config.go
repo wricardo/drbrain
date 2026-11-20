@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/kelseyhightower/envconfig"
-	"github.com/wricardo/drbrain/games/motor/game/service"
 )
 
 const (
@@ -44,20 +43,12 @@ type Config struct {
 
 	MaxUserMaps          PositiveInt `envconfig:"MAX_USER_MAPS"`
 	MaxSessions          PositiveInt `envconfig:"MAX_SESSIONS"`
-	MaxAccounts          PositiveInt `envconfig:"MAX_ACCOUNTS"`
 	SessionTTL           Duration    `envconfig:"SESSION_TTL"`
 	SessionSweepInterval Duration    `envconfig:"SESSION_SWEEP_INTERVAL"`
 
 	// AllowedOrigins is the comma-separated origin allowlist for WebSocket
 	// upgrades and CORS; empty or "*" allows all.
 	AllowedOrigins string `envconfig:"ALLOWED_ORIGINS"`
-
-	AuthGoogleClientID     string `envconfig:"AUTH_GOOGLE_CLIENT_ID"`
-	AuthGoogleClientSecret string `envconfig:"AUTH_GOOGLE_CLIENT_SECRET"`
-	AuthGitHubClientID     string `envconfig:"AUTH_GITHUB_CLIENT_ID"`
-	AuthGitHubClientSecret string `envconfig:"AUTH_GITHUB_CLIENT_SECRET"`
-	AuthPassword           Switch `envconfig:"AUTH_PASSWORD"`
-	AuthDevFake            Flag   `envconfig:"AUTH_DEV_FAKE"`
 }
 
 // Default returns the configuration with every documented fallback applied.
@@ -67,10 +58,8 @@ func Default() Config {
 		GraphQLPlayground:    true,
 		MaxUserMaps:          newPositiveInt("MAX_USER_MAPS", DefaultMaxUserMaps),
 		MaxSessions:          newPositiveInt("MAX_SESSIONS", DefaultMaxSessions),
-		MaxAccounts:          newPositiveInt("MAX_ACCOUNTS", service.DefaultMaxAccounts),
 		SessionTTL:           newDuration("SESSION_TTL", DefaultSessionTTL),
 		SessionSweepInterval: newDuration("SESSION_SWEEP_INTERVAL", DefaultSweepInterval),
-		AuthPassword:         true,
 	}
 }
 
@@ -83,10 +72,6 @@ func Load() (Config, error) {
 	// Credentials and the database URL are pasted by hand, so surrounding
 	// spaces are noise rather than a secret.
 	cfg.DatabaseURL = strings.TrimSpace(cfg.DatabaseURL)
-	cfg.AuthGoogleClientID = strings.TrimSpace(cfg.AuthGoogleClientID)
-	cfg.AuthGoogleClientSecret = strings.TrimSpace(cfg.AuthGoogleClientSecret)
-	cfg.AuthGitHubClientID = strings.TrimSpace(cfg.AuthGitHubClientID)
-	cfg.AuthGitHubClientSecret = strings.TrimSpace(cfg.AuthGitHubClientSecret)
 	return cfg, nil
 }
 

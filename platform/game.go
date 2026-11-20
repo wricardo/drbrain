@@ -5,6 +5,10 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/wricardo/drbrain/platform/account"
+	"github.com/wricardo/drbrain/platform/auth"
 	"github.com/wricardo/drbrain/platform/config"
 )
 
@@ -43,6 +47,12 @@ type Deps struct {
 	PublicURL string
 	// Logger is scoped to this game.
 	Logger *slog.Logger
+	// DB is the shared PostgreSQL pool, nil when DRBRAIN_DATABASE_URL is unset.
+	DB *pgxpool.Pool
+	// Accounts is the global account service shared by every game.
+	Accounts *account.Service
+	// Auth is the global sign-in service (nil when sign-in is disabled).
+	Auth *auth.Auth
 }
 
 // LLMSProvider lets a game supply its agent guide. The platform renders it at
@@ -71,10 +81,4 @@ type MapGenerator interface {
 // the unified executor.
 type GraphQLResolver interface {
 	GraphQLResolver() any
-}
-
-// GraphQLAuth is implemented by a game whose resolver needs transport-level
-// auth hooks. Motor uses it for the viewer cookie and password sign-in.
-type GraphQLAuth interface {
-	GraphQLAuth() any
 }

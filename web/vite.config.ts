@@ -17,8 +17,8 @@ export default defineConfig({
 		// per-game routes below are non-GraphQL APIs.
 		proxy: {
 			'/graphql': { target: backend, ws: true },
+			'/auth': { target: backend },
 			'/mazes/llms.txt': { target: backend },
-			'/motor/auth': { target: backend },
 			'/motor/llms.txt': { target: backend },
 			'/tesla/mcp': { target: backend },
 			'/tesla/llms.txt': { target: backend },

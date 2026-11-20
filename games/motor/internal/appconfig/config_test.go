@@ -32,14 +32,11 @@ func TestDefaults(t *testing.T) {
 	if cfg.AllowUnauthenticatedAdmin.Bool() {
 		t.Fatal("built-in map writes are open by default")
 	}
-	if cfg.MaxUserMaps.Int() != DefaultMaxUserMaps || cfg.MaxSessions.Int() != DefaultMaxSessions || cfg.MaxAccounts.Int() != 10000 {
-		t.Fatalf("caps = %d/%d/%d", cfg.MaxUserMaps.Int(), cfg.MaxSessions.Int(), cfg.MaxAccounts.Int())
+	if cfg.MaxUserMaps.Int() != DefaultMaxUserMaps || cfg.MaxSessions.Int() != DefaultMaxSessions {
+		t.Fatalf("caps = %d/%d", cfg.MaxUserMaps.Int(), cfg.MaxSessions.Int())
 	}
 	if cfg.SessionTTL.Duration() != DefaultSessionTTL || cfg.SessionSweepInterval.Duration() != DefaultSweepInterval {
 		t.Fatalf("durations = %s/%s", cfg.SessionTTL.Duration(), cfg.SessionSweepInterval.Duration())
-	}
-	if !cfg.AuthPassword.Bool() || cfg.AuthDevFake.Bool() {
-		t.Fatalf("auth flags = %v/%v, want password on and dev fake off", cfg.AuthPassword, cfg.AuthDevFake)
 	}
 }
 
@@ -95,27 +92,6 @@ func TestStrictFlagOnlyAcceptsTrue(t *testing.T) {
 	}
 }
 
-// TestPasswordStaysOnUnlessTurnedOff pins AUTH_PASSWORD's asymmetry: it needs
-// no registration anywhere, so only the documented off values turn it off.
-func TestPasswordStaysOnUnlessTurnedOff(t *testing.T) {
-	for _, val := range []string{"", "true", "TRUE", "1", "yes", "on", "off", "maybe"} {
-		t.Run(val, func(t *testing.T) {
-			t.Setenv("AUTH_PASSWORD", val)
-			if !load(t).AuthPassword.Bool() {
-				t.Fatalf("AUTH_PASSWORD=%q turned password sign-in off", val)
-			}
-		})
-	}
-	for _, val := range []string{"false", "FALSE", "0", "no"} {
-		t.Run(val, func(t *testing.T) {
-			t.Setenv("AUTH_PASSWORD", val)
-			if load(t).AuthPassword.Bool() {
-				t.Fatalf("AUTH_PASSWORD=%q did not turn password sign-in off", val)
-			}
-		})
-	}
-}
-
 // TestPositiveIntRejectsNonPositive keeps the cap behaviour honest: a cap of 0
 // or a negative would disable the limit, so an invalid value must fall back to
 // the default rather than through.
@@ -151,10 +127,8 @@ func TestDurationFallsBackOnInvalidValues(t *testing.T) {
 
 func TestLoadTrimsCredentials(t *testing.T) {
 	t.Setenv("DATABASE_URL", "  postgres://db/x  ")
-	t.Setenv("AUTH_GOOGLE_CLIENT_ID", " google-id ")
-	t.Setenv("AUTH_GITHUB_CLIENT_SECRET", " github-secret ")
 	cfg := load(t)
-	if cfg.DatabaseURL != "postgres://db/x" || cfg.AuthGoogleClientID != "google-id" || cfg.AuthGitHubClientSecret != "github-secret" {
-		t.Fatalf("untrimmed: %q %q %q", cfg.DatabaseURL, cfg.AuthGoogleClientID, cfg.AuthGitHubClientSecret)
+	if cfg.DatabaseURL != "postgres://db/x" {
+		t.Fatalf("untrimmed: %q", cfg.DatabaseURL)
 	}
 }

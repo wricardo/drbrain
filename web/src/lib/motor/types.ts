@@ -1,9 +1,6 @@
 // Types for the motor UI. The GraphQL schema generates the shared shapes in
 // ../graphql-types.ts; this file keeps the game-local names used by screens.
 export type {
-	Motor_Account as Account,
-	Motor_AccountInput as AccountInput,
-	Motor_AuthProvider as AuthProvider,
 	Motor_ClaimStatus as ClaimStatus,
 	Motor_Conveyor as Conveyor,
 	Motor_DoorTile as DoorTile,
@@ -22,7 +19,6 @@ export type {
 	Motor_PlayerRun as PlayerRun,
 	Motor_Portal as Portal,
 	Motor_Position as Position,
-	Motor_Profile as Profile,
 	Motor_Program as Program,
 	Motor_Session as Session,
 	Motor_SessionClaimInput as SessionClaim,

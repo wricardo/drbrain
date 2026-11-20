@@ -12,8 +12,8 @@
 	import ThemeToggle from '$lib/motor/components/ThemeToggle.svelte';
 	import AccountMenu from '$lib/motor/components/AccountMenu.svelte';
 	import ClaimBanner from '$lib/motor/components/ClaimBanner.svelte';
-	import { refreshAccount } from '$lib/motor/stores/account';
-	import { signinNotice, withoutSigninParam } from '$lib/motor/account';
+	import { refreshAccount } from '$lib/account/stores/account';
+	import { signinNotice, withoutSigninParam } from '$lib/account/account';
 	import { goto } from '$app/navigation';
 
 	let { children } = $props();

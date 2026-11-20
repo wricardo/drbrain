@@ -14,7 +14,11 @@ func TestAuthorizeSessionChange(t *testing.T) {
 	legacy, _ := e.svc.CreateSession("wide", "Old") // no owner token at all
 	owned, ownedTok, _ := e.svc.CreateOwnedSession("wide", "A", alice.ID)
 	claimed, claimedTok, _ := e.svc.CreateOwnedSession("wide", "C", "")
-	if res, _ := e.svc.ClaimSessions(alice.ID, []service.SessionClaim{{SessionID: claimed.ID, OwnerToken: claimedTok}}); res[0].Status != service.ClaimAttached {
+	res, err := e.svc.ClaimSessions(alice.ID, []service.SessionClaim{{SessionID: claimed.ID, OwnerToken: claimedTok}})
+	if err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	if res[0].Status != service.ClaimAttached {
 		t.Fatalf("claim = %v", res)
 	}
 

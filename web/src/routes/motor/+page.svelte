@@ -11,7 +11,7 @@
 	import { nameSyncMessage, renameOwnSessions } from '$lib/motor/nameSync';
 	import { CREATE_SESSION_MUTATION, MAPS_QUERY, RENAME_SESSION_MUTATION, SESSION_QUERY, SESSIONS_QUERY } from '$lib/motor/queries';
 	import { forgetSession, isFinished, lastSessionId, newSessionName, ownSessionIds, ownsSession, progressText, recentStarted, rememberSession, saveDisplayName, savedDisplayName, statusText } from '$lib/motor/sessions';
-	import { account } from '$lib/motor/stores/account';
+	import { account } from '$lib/account/stores/account';
 	import { absoluteTime, relativeTime } from '@drbrain/ui/time';
 	import type { GameMap, Session, SessionSummary } from '$lib/motor/types';
 
@@ -184,7 +184,7 @@
 				<p class="text-sm text-slate-700" data-testid="playing-as">
 					Playing as <strong class="text-indigo-950">{$account.me.displayName || $account.me.handle}</strong>
 					<span class="text-slate-500">@{ $account.me.handle }</span>. Your runs are saved to your profile and appear
-					under your handle; change the name in <a href="/motor/settings" class="text-indigo-700 underline">Settings</a>.
+					under your handle; change the name in <a href="/settings" class="text-indigo-700 underline">Settings</a>.
 				</p>
 			{:else}
 				<label for="display-name" class="block text-sm font-medium text-indigo-900">Your name (optional)</label>

@@ -18,11 +18,10 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/wricardo/drbrain/games/motor/game/account"
 	"github.com/wricardo/drbrain/games/motor/game/config"
 	"github.com/wricardo/drbrain/games/motor/game/engine"
-	"github.com/wricardo/drbrain/games/motor/game/service"
 	"github.com/wricardo/drbrain/games/motor/game/session"
+	"github.com/wricardo/drbrain/platform/account"
 )
 
 // Dirs names the JSON-file layout, the same directories the server flags use.
@@ -111,7 +110,7 @@ func Import(ctx context.Context, pool *pgxpool.Pool, d Dirs, dryRun bool) (Count
 			switch err := pg.Create(a); err {
 			case nil:
 				c.Accounts++
-			case service.ErrHandleTaken, service.ErrIdentityExists:
+			case account.ErrHandleTaken, account.ErrIdentityExists:
 				log.Printf("import: skipping account %s: %v", a.ID, err)
 				c.Skipped++
 			default:

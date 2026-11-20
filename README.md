@@ -54,6 +54,10 @@ prefix with `http.StripPrefix`.
   `cmd/split-schema` derives the per-game SDL that feeds each game's gqlgen
   package, and one executor serves the unified schema. There is no
   request-splitting gateway.
+- **Global player accounts.** Sign-up, sign-in, profiles and settings live in
+  `platform/account` and `platform/auth`, served under the `account` GraphQL
+  namespace and `/auth`, `/settings`, `/u/<handle>`. Games consume the shared
+  viewer; they do not own accounts.
 - **One process.** All games share a listener; per-game `maxSessions`, ws
   limits, and panic recovery keep one game from starving the others.
 - **One frontend app.** Routes are namespaced per game; the build happens in CI

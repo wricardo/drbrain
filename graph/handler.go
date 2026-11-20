@@ -16,10 +16,10 @@ import (
 	"github.com/vektah/gqlparser/v2/ast"
 
 	mazesgraph "github.com/wricardo/drbrain/games/mazes/graph"
-	motorauth "github.com/wricardo/drbrain/games/motor/auth"
 	motorgraph "github.com/wricardo/drbrain/games/motor/graph"
 	teslagraph "github.com/wricardo/drbrain/games/tesla/graph"
 	"github.com/wricardo/drbrain/graph/generated"
+	"github.com/wricardo/drbrain/platform/auth"
 	"github.com/wricardo/drbrain/platform/httpserve"
 )
 
@@ -44,9 +44,9 @@ type Options struct {
 	// them off.
 	Introspection bool
 	Playground    bool
-	// Auth, when non-nil, resolves the motor viewer cookie and exposes the
-	// sign-in hooks the password mutations need.
-	Auth *motorauth.Auth
+	// Auth, when non-nil, resolves the viewer cookie and exposes the sign-in
+	// hooks the global account mutations need.
+	Auth *auth.Auth
 	// MaxBodyBytes defaults to MaxRequestBodyBytes.
 	MaxBodyBytes int64
 }
@@ -98,13 +98,11 @@ func Playground() http.Handler {
 	return playground.Handler("Dr Brain", "/graphql")
 }
 
-// withRequestContext shares the *http.Request with every game's resolvers. The
-// keys live in each game package, so all three are set; delivery reads none.
-// Motor's viewer/sign-in middleware is ported here because the unified handler
-// is the only transport now.
-func withRequestContext(a *motorauth.Auth, next http.Handler) http.Handler {
+// withRequestContext shares the *http.Request and the global viewer with every
+// namespace. The per-game request keys stay because game resolvers read them.
+func withRequestContext(a *auth.Auth, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
+		ctx := auth.WithRequest(r.Context(), r)
 		ctx = context.WithValue(ctx, mazesgraph.HTTPRequestKey{}, r)
 		ctx = context.WithValue(ctx, motorgraph.HTTPRequestKey{}, r)
 		ctx = context.WithValue(ctx, teslagraph.HTTPRequestKey{}, r)
@@ -112,21 +110,19 @@ func withRequestContext(a *motorauth.Auth, next http.Handler) http.Handler {
 		if a != nil && (r.Method == http.MethodPost || isWebSocketUpgrade(r)) {
 			upgrade := isWebSocketUpgrade(r)
 			if acct, token := a.Viewer(r); acct != nil {
-				v := &motorgraph.Viewer{
+				ctx = auth.WithViewer(ctx, &auth.Viewer{
 					Account:      acct,
 					Token:        token,
 					ClearSession: func() { a.ClearSession(w, r) },
-				}
-				ctx = context.WithValue(ctx, motorgraph.ViewerKey{}, v)
+				})
 			}
 			// A websocket upgrade has no HTTP response to set a cookie on, so a
 			// password mutation there is refused instead of minting a login the
 			// browser could never send back.
-			signIn := &motorgraph.SignIn{
+			ctx = auth.WithSignIn(ctx, &auth.SignIn{
 				OverHTTP:   !upgrade,
 				SetSession: func(token string, expires time.Time) { a.SetSession(w, r, token, expires) },
-			}
-			ctx = context.WithValue(ctx, motorgraph.SignInKey{}, signIn)
+			})
 		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

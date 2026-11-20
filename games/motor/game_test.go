@@ -12,33 +12,47 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wricardo/drbrain/games/motor/auth"
 	motorgraph "github.com/wricardo/drbrain/games/motor/graph"
 	"github.com/wricardo/drbrain/graph"
 	"github.com/wricardo/drbrain/platform"
+	"github.com/wricardo/drbrain/platform/account"
+	accountgraph "github.com/wricardo/drbrain/platform/account/graph"
+	"github.com/wricardo/drbrain/platform/auth"
 	"github.com/wricardo/drbrain/platform/config"
 	"github.com/wricardo/drbrain/platform/httpserve"
 )
 
-// TestCookiesReachUnifiedGraphQL proves the password sign-in cookie is scoped
-// to the origin and therefore reaches /graphql, where the motor namespace
-// resolves the viewer.
+func newAccounts(t *testing.T, dir string, password bool) (*account.Service, *auth.Auth, []auth.Provider) {
+	t.Helper()
+	store, err := account.Open(dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accounts := account.New(account.Options{Store: store, PasswordSignIn: password})
+	providers, err := auth.Providers(auth.ProvidersConfig{}, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	authn, err := auth.New(auth.Config{Accounts: accounts, Password: password})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return accounts, authn, providers
+}
+
+// TestCookiesReachUnifiedGraphQL proves the login cookie is scoped to the
+// origin and reaches /graphql, where the global account namespace resolves it.
 func TestCookiesReachUnifiedGraphQL(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("MOTOR_MAPS_DIR", "maps")
 	t.Setenv("MOTOR_USER_MAPS_DIR", dir+"/maps-user")
 	t.Setenv("MOTOR_SESSIONS_DIR", dir+"/sessions")
-	t.Setenv("MOTOR_ACCOUNTS_DIR", dir+"/accounts")
-	t.Setenv("MOTOR_DATABASE_URL", "")
-	t.Setenv("MOTOR_PUBLIC_URL", "")
-	t.Setenv("DATABASE_URL", "")
-	t.Setenv("AUTH_PASSWORD", "")
-	t.Setenv("AUTH_DEV_FAKE", "false")
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	accounts, authn, _ := newAccounts(t, dir+"/accounts", true)
 	motorMux := http.NewServeMux()
 	game := New()
-	if err := game.Mount(motorMux, platform.Deps{Config: config.Config{}, Logger: logger}); err != nil {
+	if err := game.Mount(motorMux, platform.Deps{Config: config.Config{}, Logger: logger, Accounts: accounts, Auth: authn}); err != nil {
 		t.Fatalf("mount motor: %v", err)
 	}
 	t.Cleanup(func() { _ = game.Shutdown(context.Background()) })
@@ -47,9 +61,8 @@ func TestCookiesReachUnifiedGraphQL(t *testing.T) {
 	if !ok {
 		t.Fatalf("GraphQLResolver = %T, want *motorgraph.Resolver", game.GraphQLResolver())
 	}
-	authn, _ := game.GraphQLAuth().(*auth.Auth)
 	unified := graph.NewHandler(graph.Options{
-		Resolver:      graph.New(nil, nil, resolver, nil),
+		Resolver:      graph.New(accountgraph.New(accounts, authn), nil, nil, resolver, nil),
 		Introspection: true,
 		Auth:          authn,
 	})
@@ -71,7 +84,7 @@ func TestCookiesReachUnifiedGraphQL(t *testing.T) {
 	}
 	client := &http.Client{Jar: jar}
 
-	body := `{"query":"mutation { motorProgramming { registerWithPassword(handle:\"cookie_pilot\", password:\"tangerine-ladder-42\") { handle } } }"}`
+	body := `{"query":"mutation { account { registerWithPassword(handle:\"cookie_pilot\", password:\"tangerine-ladder-42\") { handle } } }"}`
 	resp, err := client.Post(ts.URL+"/graphql", "application/json", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
@@ -95,7 +108,7 @@ func TestCookiesReachUnifiedGraphQL(t *testing.T) {
 		t.Errorf("%s Path = %q, want /", auth.SessionCookie, sessionCookie.Path)
 	}
 
-	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/graphql", strings.NewReader(`{"query":"{ motorProgramming { me { handle } } }"}`))
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/graphql", strings.NewReader(`{"query":"{ account { me { handle } } }"}`))
 	req.Header.Set("Content-Type", "application/json")
 	resp2, err := client.Do(req)
 	if err != nil {
@@ -108,10 +121,9 @@ func TestCookiesReachUnifiedGraphQL(t *testing.T) {
 	}
 }
 
-// TestDevSignInUnderMotorPrefix follows the real OAuth-shaped redirect flow:
-// login -> provider authorize -> callback, all under /motor/auth, and checks
-// the cookies and callback URL carry the mount prefix.
-func TestDevSignInUnderMotorPrefix(t *testing.T) {
+// TestDevSignInAtRoot follows the OAuth-shaped redirect flow at /auth: login ->
+// provider authorize -> callback, and checks the cookie paths.
+func TestDevSignInAtRoot(t *testing.T) {
 	dir := t.TempDir()
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -122,17 +134,25 @@ func TestDevSignInUnderMotorPrefix(t *testing.T) {
 	t.Setenv("MOTOR_MAPS_DIR", "maps")
 	t.Setenv("MOTOR_USER_MAPS_DIR", dir+"/maps-user")
 	t.Setenv("MOTOR_SESSIONS_DIR", dir+"/sessions")
-	t.Setenv("MOTOR_ACCOUNTS_DIR", dir+"/accounts")
-	t.Setenv("MOTOR_DATABASE_URL", "")
-	t.Setenv("DATABASE_URL", "")
-	t.Setenv("MOTOR_PUBLIC_URL", base)
-	t.Setenv("AUTH_DEV_FAKE", "true")
-	t.Setenv("AUTH_PASSWORD", "false")
+
+	store, err := account.Open(dir+"/accounts", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accounts := account.New(account.Options{Store: store})
+	providers, err := auth.Providers(auth.ProvidersConfig{DevFake: true}, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authn, err := auth.New(auth.Config{Providers: providers, Accounts: accounts, PublicURL: base})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mux := http.NewServeMux()
 	game := New()
-	if err := game.Mount(mux, platform.Deps{Config: config.Config{PublicURL: base}, Logger: logger}); err != nil {
+	if err := game.Mount(mux, platform.Deps{Config: config.Config{PublicURL: base}, Logger: logger, Accounts: accounts, Auth: authn}); err != nil {
 		t.Fatalf("mount motor: %v", err)
 	}
 	t.Cleanup(func() { _ = game.Shutdown(context.Background()) })
@@ -140,6 +160,9 @@ func TestDevSignInUnderMotorPrefix(t *testing.T) {
 	router := httpserve.NewRouter(httpserve.SPAHandler(t.TempDir()))
 	router.SetLogger(nil)
 	if err := router.Mount(httpserve.Mount{Game: "motor", Prefix: "/motor", API: game.API(), Handler: mux}); err != nil {
+		t.Fatal(err)
+	}
+	if err := router.MountPlatform("/auth", authn.Handler()); err != nil {
 		t.Fatal(err)
 	}
 	srv := &http.Server{Handler: router.Handler()}
@@ -155,7 +178,7 @@ func TestDevSignInUnderMotorPrefix(t *testing.T) {
 		},
 	}
 
-	resp, err := client.Get(ts + "/motor/auth/dev/login")
+	resp, err := client.Get(ts + "/auth/dev/login")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,31 +190,30 @@ func TestDevSignInUnderMotorPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if authURL.Path != "/motor/auth/dev/authorize" {
+	if authURL.Path != "/auth/dev/authorize" {
 		t.Errorf("authorize path = %q", authURL.Path)
 	}
 	var flow *http.Cookie
 	for _, c := range resp.Cookies() {
-		if c.Name == "motor_oauth" {
+		if c.Name == "drbrain_oauth" {
 			flow = c
 		}
 	}
-	if flow == nil || flow.Path != "/motor/auth" {
-		t.Fatalf("flow cookie = %+v, want Path=/motor/auth", flow)
+	if flow == nil || flow.Path != "/auth" {
+		t.Fatalf("flow cookie = %+v, want Path=/auth", flow)
 	}
 
-	// The provider page posts back to the prefixed callback.
 	resp, err = client.Get(ts + authURL.RequestURI())
 	if err != nil {
 		t.Fatal(err)
 	}
 	page, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if !strings.Contains(string(page), `action="/motor/auth/dev/callback"`) {
-		t.Errorf("dev page does not post to the prefixed callback:\n%s", page)
+	if !strings.Contains(string(page), `action="/auth/dev/callback"`) {
+		t.Errorf("dev page does not post to the callback:\n%s", page)
 	}
 
-	callback := "/motor/auth/dev/callback?state=" + url.QueryEscape(authURL.Query().Get("state")) + "&code=alice"
+	callback := "/auth/dev/callback?state=" + url.QueryEscape(authURL.Query().Get("state")) + "&code=alice"
 	resp, err = client.Get(ts + callback)
 	if err != nil {
 		t.Fatal(err)

@@ -11,7 +11,7 @@ import (
 
 	"github.com/wricardo/drbrain/games/motor/game/engine"
 	"github.com/wricardo/drbrain/games/motor/game/service"
-	"github.com/wricardo/drbrain/games/motor/internal/pgdb/pgtest"
+	"github.com/wricardo/drbrain/platform/pgdb/pgtest"
 )
 
 func jsonIndent(c engine.MapConfig) ([]byte, error) { return json.MarshalIndent(c, "", "  ") }

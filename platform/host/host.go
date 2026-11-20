@@ -14,7 +14,11 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/wricardo/drbrain/platform"
+	"github.com/wricardo/drbrain/platform/account"
+	"github.com/wricardo/drbrain/platform/auth"
 	"github.com/wricardo/drbrain/platform/config"
 	"github.com/wricardo/drbrain/platform/httpserve"
 )
@@ -27,7 +31,9 @@ const ReadHeaderTimeout = 10 * time.Second
 // values stay opaque so platform does not import game packages.
 type GraphQLBindings struct {
 	Resolvers map[string]any
-	Auth      map[string]any
+	// Accounts and Authn are the global services every namespace may use.
+	Accounts *account.Service
+	Authn    *auth.Auth
 }
 
 // GraphQLBuilder constructs the single /graphql handler from the mounted
@@ -44,12 +50,28 @@ func WithGraphQL(b GraphQLBuilder) Option {
 	return func(h *Host) { h.graphQL = b }
 }
 
+// WithServices installs the global account and auth services handed to games.
+func WithServices(accounts *account.Service, authn *auth.Auth) Option {
+	return func(h *Host) {
+		h.accounts = accounts
+		h.auth = authn
+	}
+}
+
+// WithDB installs the shared PostgreSQL pool handed to games.
+func WithDB(pool *pgxpool.Pool) Option {
+	return func(h *Host) { h.db = pool }
+}
+
 // Host is one process serving the enabled games.
 type Host struct {
-	cfg     config.Config
-	reg     *Registry
-	logger  *slog.Logger
-	graphQL GraphQLBuilder
+	cfg      config.Config
+	reg      *Registry
+	logger   *slog.Logger
+	graphQL  GraphQLBuilder
+	accounts *account.Service
+	auth     *auth.Auth
+	db       *pgxpool.Pool
 
 	ready chan struct{}
 	ln    net.Listener
@@ -153,7 +175,8 @@ func (h *Host) mount(enabled []platform.Game) (http.Handler, error) {
 	router := httpserve.NewRouter(httpserve.SPAHandler(h.cfg.StaticDir))
 	bindings := GraphQLBindings{
 		Resolvers: make(map[string]any, len(enabled)),
-		Auth:      make(map[string]any, 1),
+		Accounts:  h.accounts,
+		Authn:     h.auth,
 	}
 	for _, g := range enabled {
 		mux := http.NewServeMux()
@@ -162,6 +185,9 @@ func (h *Host) mount(enabled []platform.Game) (http.Handler, error) {
 			StaticDir: h.cfg.StaticDir,
 			PublicURL: h.cfg.PublicURL,
 			Logger:    h.logger.With("game", g.Name()),
+			DB:        h.db,
+			Accounts:  h.accounts,
+			Auth:      h.auth,
 		}
 		if err := g.Mount(mux, deps); err != nil {
 			return nil, fmt.Errorf("game %s: mount: %w", g.Name(), err)
@@ -169,11 +195,6 @@ func (h *Host) mount(enabled []platform.Game) (http.Handler, error) {
 		if gr, ok := g.(platform.GraphQLResolver); ok {
 			if resolver := gr.GraphQLResolver(); resolver != nil {
 				bindings.Resolvers[g.Name()] = resolver
-			}
-		}
-		if ga, ok := g.(platform.GraphQLAuth); ok {
-			if auth := ga.GraphQLAuth(); auth != nil {
-				bindings.Auth[g.Name()] = auth
 			}
 		}
 		api := append([]string(nil), g.API()...)
@@ -208,6 +229,11 @@ func (h *Host) mount(enabled []platform.Game) (http.Handler, error) {
 		}
 		if err := router.Disable(g.Name(), g.Prefix()); err != nil {
 			return nil, err
+		}
+	}
+	if h.auth != nil {
+		if err := router.MountPlatform("/auth", h.auth.Handler()); err != nil {
+			return nil, fmt.Errorf("host: mount auth: %w", err)
 		}
 	}
 	if h.graphQL != nil {

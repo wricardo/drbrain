@@ -1,127 +1,134 @@
-# Agent Instructions
+# Repository Guidelines
 
-This project uses **bd** (beads) for issue tracking. Run `bd prime` for full workflow context.
+## Project Overview
 
-> **Architecture in one line:** Issues live in a local Dolt database
-> (`.beads/dolt/`); cross-machine sync uses `bd dolt push/pull` (a
-> git-compatible protocol), stored under `refs/dolt/data` on your git
-> remote — separate from `refs/heads/*` where your code lives.
-> `.beads/issues.jsonl` is a passive export, not the wire protocol.
->
-> See [sync-concepts](https://github.com/gastownhall/beads/blob/main/docs/core-concepts/sync-concepts.md)
-> for the one-screen overview and anti-patterns (don't treat JSONL as the
-> source of truth; don't `bd import` during normal operation; don't
-> reach for third-party Dolt hosting before trying the default).
+drbrain is one Go module (`github.com/wricardo/drbrain`) and one binary that hosts four browser games plus the SvelteKit app they share:
 
-## Quick Reference
+| game | Go package | URL prefix | GraphQL namespace |
+|---|---|---|---|
+| Mazes | `games/mazes` | `/mazes` | `mazes` |
+| Motor Programming | `games/motor` | `/motor` | `motorProgramming` |
+| Tesla Road Trip | `games/tesla` | `/tesla` | `tesla` |
+| Delivery | `games/delivery` | `/delivery` | `delivery` |
 
-```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --claim  # Claim work atomically
-bd close <id>         # Complete work
-bd dolt push          # Push beads data to remote
+One listener, one process, one GraphQL endpoint at `/graphql`, one frontend. Production is one systemd unit behind one nginx vhost (`deploy/`). There is no per-game server, no gateway fan-out, no second Go module.
+
+## Architecture & Data Flow
+
+```mermaid
+flowchart LR
+  B[Browser] --> N[nginx]
+  N --> H[platform/host]
+  H --> R[platform/httpserve Router]
+  R -->|"/graphql"| G[graph/handler: gqlgen executor]
+  G --> RC[graph.Resolver namespaces]
+  RC --> G1[games/*/graph.Resolver]
+  G1 --> SVC[game service + session manager]
+  SVC --> ENG[pure engine]
+  SVC --> ST[(sessionstore / mapstore)]
+  R -->|"/<game>/mcp, /<game>/auth"| GM[game ServeMux]
+  R -->|"everything else"| SPA[web/build SPA fallback]
 ```
 
-## Non-Interactive Shell Commands
+- `platform/` owns the process: config (`platform/config`), pre-bind mounting and graceful shutdown (`platform/host`), global accounts and sign-in (`platform/account`, `platform/auth`), routing/health/SPA/CORS/gzip/ws limits (`platform/httpserve`), durable payload stores (`platform/sessionstore` file or Postgres, `platform/mapstore` builtin/custom maps).
+- `platform.Game` (`platform/game.go`) is the only required contract: `Name`, `Prefix`, `API`, `Mount(*http.ServeMux, Deps)`, `Shutdown`. Optional interfaces discovered by type assertion: `LLMSProvider`, `GraphQLResolver`, `Validator`, `MapGenerator`.
+- Games are compiled in by `cmd/drbrain.builtinGames()` in order mazes, motor, delivery, tesla; `DRBRAIN_GAMES` or `--games` selects at runtime. Unselected games 404 under their prefix and their namespace returns `game is not enabled`.
+- Every `Game.Mount` runs **before** the listener binds, so bad maps, city files, or DB settings fail startup with the game named.
+- `cmd/drbrain.builtinGraphQL()` type-asserts each game's `*graph.Resolver` into `host.GraphQLBindings`, adds the global `platform/account/graph` resolver, then builds `graph.New(...)` and `graph.NewHandler(...)`; `host.mount` registers it with `Router.MountPlatform("/graphql", ...)`.
+- Canonical schema is `graph/schema.graphqls`: types prefixed `Global_`, `Delivery_`, `Mazes_`, `Motor_`, `Tesla_`; `Query`/`Mutation` expose the `account` global namespace plus the four games; subscriptions are flat roots (`deliverySession`, `mazesSessionUpdated`, `motorProgrammingSessionUpdated`, `teslaSessionUpdated`, `teslaLobbyUpdated`) because GraphQL only streams at the operation root.
+- Gateways live at `/<game>/<api>` only: tesla `/tesla/mcp`, and `/<game>/llms.txt` rendered from embedded `llms.txt.tmpl`. Global sign-in is mounted by the host at `/auth/...`.
+- Sessions embed a map snapshot; map edits never change running sessions. Broadcasts carry a monotonic `seq`; hubs are latest-wins and drop intermediate snapshots for slow clients. Service mutation pattern: lock → mutate → bump seq → clone → unlock → persist → broadcast; never do I/O under a session lock.
 
-**ALWAYS use non-interactive flags** with file operations to avoid hanging on confirmation prompts.
+## Key Directories
 
-Shell commands like `cp`, `mv`, and `rm` may be aliased to include `-i` (interactive) mode on some systems, causing the agent to hang indefinitely waiting for y/n input.
+| path | purpose |
+|---|---|
+| `cmd/drbrain/` | binary entry point: `serve`, `games list`, `validate`, `mapgen` (plus disabled stdio MCP) |
+| `cmd/split-schema/`, `cmd/merge-schema/`, `cmd/gentypes/` | schema derivation, round-trip verification, TypeScript type generation |
+| `graph/` | unified executor: `schema.graphqls`, `handler.go`, `resolver.go`, `schema.resolvers.go`, `complexity.go`, `merge/`, `generated/`, `model/` |
+| `platform/` | process host, config, router, stores, shared origin/ws/gzip helpers |
+| `games/<game>/` | `game.go` (platform adapter), `graph/` (resolvers + conversions), `game/{engine,service,session,config}`, optional `auth/`, `transport/`, `validate/`, `cmd/`, `maps/` |
+| `web/` | SvelteKit app: `src/routes/<game>/`, `src/lib/<game>/`, shared `src/lib/graphql-types.ts`, `packages/ui` (`@drbrain/ui`) |
+| `deploy/` | systemd unit, env example, nginx templates, install, smoke, rollback |
+| `docs/routing.md` | authoritative routing and namespace behavior |
 
-**Use these forms instead:**
-```bash
-# Force overwrite without prompting
-cp -f source dest           # NOT: cp source dest
-mv -f source dest           # NOT: mv source dest
-rm -f file                  # NOT: rm file
+## Development Commands
 
-# For recursive operations
-rm -rf directory            # NOT: rm -r directory
-cp -rf source dest          # NOT: cp -r source dest
-```
-
-**Other commands that may prompt:**
-- `scp` - use `-o BatchMode=yes` for non-interactive
-- `ssh` - use `-o BatchMode=yes` to fail instead of prompting
-- `apt-get` - use `-y` flag
-- `brew` - use `HOMEBREW_NO_AUTO_UPDATE=1` env var
-
-<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->
-## Beads Issue Tracker
-
-This project uses **bd (beads)** for issue tracking. Run `bd prime` to see full workflow context and commands.
-
-### Quick Reference
+Root `justfile` is the maintained dev loop (per-game `Makefile`/`justfile` files are stale leftovers):
 
 ```bash
-bd ready              # Find available work
-bd show <id>          # View issue details
-bd update <id> --claim  # Claim work
-bd close <id>         # Complete work
+just restart             # stop, regen, build web, build binary, start detached
+just port=8081 restart   # same on another port (DRBRAIN_PORT)
+just regen               # go run ./cmd/split-schema && go generate ./graph
+just build-web           # npm run build -> web/build
+just build               # go build -o tmp/drbrain ./cmd/drbrain
+just start / just stop   # detached server in tmp/, log tmp/drbrain.log
 ```
 
-### Rules
-
-- Use `bd` for ALL task tracking — do NOT use TodoWrite, TaskCreate, or markdown TODO lists
-- Run `bd prime` for detailed command reference and session close protocol
-- Use `bd remember` for persistent knowledge — do NOT use MEMORY.md files
-
-**Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/core-concepts/sync-concepts.md for details and anti-patterns.
-
-## Agent Context Profiles
-
-The managed Beads block is task-tracking guidance, not permission to override repository, user, or orchestrator instructions.
-
-- **Conservative (default)**: Use `bd` for task tracking. Do not run git commits, git pushes, or Dolt remote sync unless explicitly asked. At handoff, report changed files, validation, and suggested next commands.
-- **Minimal**: Keep tool instruction files as pointers to `bd prime`; use the same conservative git policy unless active instructions say otherwise.
-- **Team-maintainer**: Only when the repository explicitly opts in, agents may close beads, run quality gates, commit, and push as part of session close. A current "do not commit" or "do not push" instruction still wins.
-
-## Session Completion
-
-This protocol applies when ending a Beads implementation workflow. It is subordinate to explicit user, repository, and orchestrator instructions.
-
-1. **File issues for remaining work** - Create beads for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **Handle git/sync by active profile**:
-   ```bash
-   # Conservative/minimal/default: report status and proposed commands; wait for approval.
-   git status
-
-   # Team-maintainer opt-in only, unless current instructions forbid it:
-   git pull --rebase
-   git push
-   git status
-   ```
-5. **Hand off** - Summarize changes, validation, issue status, and any blocked sync/commit/push step
-
-**Critical rules:**
-- Explicit user or orchestrator instructions override this Beads block.
-- Do not commit or push without clear authority from the active profile or the current user request.
-- If a required sync or push is blocked, stop and report the exact command and error.
-<!-- END BEADS INTEGRATION -->
-
-<!-- BEGIN BEADS CODEX SETUP: generated by bd setup codex -->
-## Beads Issue Tracker
-
-Use Beads (`bd`) for durable task tracking in repositories that include it. Use the `beads` skill at `.agents/skills/beads/SKILL.md` (project install) or `~/.agents/skills/beads/SKILL.md` (global install) for Beads workflow guidance, then use the `bd` CLI for issue operations.
-
-### Quick Reference
+Backend and app:
 
 ```bash
-bd ready                # Find available work
-bd show <id>            # View issue details
-bd update <id> --claim  # Claim work
-bd close <id>           # Complete work
-bd prime                # Refresh Beads context
+go build ./... && go vet ./... && go test ./...
+go run ./cmd/drbrain serve --games=mazes,motor,tesla,delivery
+go run ./cmd/drbrain games list
+npm ci && npm run check && npm test && npm run build   # Node 22
+npm run dev                                            # vite dev on :5173, proxies /graphql (ws: true)
 ```
 
-### Rules
+Schema and generated types — the only supported sequence:
 
-- Use `bd` for all task tracking; do not create markdown TODO lists.
-- Run `bd prime` when Beads context is missing or stale. Codex 0.129.0+ can load Beads context automatically through native hooks; use `/hooks` to inspect or toggle them.
-- Keep persistent project memory in Beads via `bd remember`; do not create ad hoc memory files.
+```bash
+# edit graph/schema.graphqls, then
+go generate ./games/... ./graph     # per-game split + gqlgen, unified gqlgen + gentypes
+go run ./cmd/split-schema -check
+go run ./cmd/merge-schema -check
+go run ./cmd/gentypes -check
+```
 
-**Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See https://github.com/gastownhall/beads/blob/main/docs/core-concepts/sync-concepts.md for details and anti-patterns.
-<!-- END BEADS CODEX SETUP -->
+Issue tracking uses Beads: `bd ready`, `bd show <id>`, `bd update <id> --claim`, `bd close <id>`, `bd prime`. Never use markdown TODO lists. Do not commit or push unless explicitly asked.
+
+## Code Conventions & Common Patterns
+
+- Go 1.27.2, gofmt, stdlib `testing` only (no testify). `go vet` must pass. Frontend gate is `svelte-check` (`npm run check`); there is no ESLint/Prettier or root golangci config.
+- Generated boundaries — never hand-edit: `graph/generated/`, `graph/model/`, `graph/gqlgen.yml`, `games/*/graph/{generated,model}`, `games/*/graph/schema.graphqls`, `web/src/lib/graphql-types.ts`. Put hand-written resolver helpers in `helpers.go`, `convert.go`, `subscription_forward.go` so regeneration cannot erase them.
+- Unified resolvers are pure delegation: `return obj.Query().X(ctx, args...)`, root accessors `return r.Resolver.Delivery, nil`. Domain models stay in `games/<g>/graph/model`; explicit conversion in each game's `convert.go`.
+- Every gqlgen config sets `skip_mod_tidy: true`; don't run `go mod tidy` casually because gqlgen rewrites `go.mod`. gqlgen is pinned at `v0.17.73`.
+- Error conventions: sentinel errors in platform stores (`ErrNotFound`, `ErrLimit`, `ErrInvalid`, `ErrExists`, mapstore token errors); game services return `*service.Error{Code, Msg}` mapped to GraphQL `extensions.code` (`NOT_FOUND`, `INVALID_ARGUMENT`, `FORBIDDEN`, `LIMIT_REACHED`, …); delivery uses `not_found:`/`bad_request:` string prefixes; internal failures log details and expose `INTERNAL`.
+- Request-scoped data goes through context keys: `mazesgraph.HTTPRequestKey`, `motorgraph.HTTPRequestKey`, `teslagraph.HTTPRequestKey`, and global `auth.ViewerKey`/`auth.SignInKey`/`auth.HTTPRequestKey`. Subscriptions forward until `ctx.Done()` and must not leak goroutines.
+- Dependency injection is option structs, not globals: `service.Options`, `auth.Config`, `graph.Options`, `mapstore.Options[T]`, `sessionstore.Options`, `host.WithGraphQL`, `graph.WithAdminPolicy`.
+- Config is `envconfig`: platform `DRBRAIN_*` (including `DRBRAIN_DATABASE_URL`, `DRBRAIN_ACCOUNTS_DIR`, `DRBRAIN_AUTH_*`), `MAZES_*`, `TESLA_*`, `DELIVERY_*`, motor dirs `MOTOR_*`. Motor's `internal/appconfig` and legacy fallbacks read unprefixed vars (`DATABASE_URL`, `ADMIN_API_KEY`, `ALLOWED_ORIGINS`, `SESSION_TTL`). `DRBRAIN_ALLOWED_ORIGINS` falls back to the unprefixed value.
+- Frontend: one urql client per game; wrap every operation in its namespace and unwrap with `mapExchange({ onResult })` so screens keep game-local shapes. Flat subscriptions map back to `sessionUpdated`/`lobbyUpdated`. Documents live in `web/src/lib/<game>/queries.ts`; global account documents live in `web/src/lib/account/queries.ts` and read the `account` namespace directly. Per-game `types.ts` may alias shared generated types.
+- Global auth uses one cookie (`drbrain_session`) with `Path=/` because the origin is shared; account data lives in `platform/account`, sign-in in `platform/auth`. Theme pre-paint in `web/src/app.html` must stay gated to `/motor`.
+- Naming: `newTestX` (constructor), `fakeX`/`spyX`/`recorder` (doubles), `mustX`, `wantCode`, `freeAddr`, `waitFor` (deadline polling).
+
+## Important Files
+
+| file | why |
+|---|---|
+| `cmd/drbrain/main.go` | entry point, game registry, GraphQL builder, subcommands |
+| `platform/game.go`, `platform/config/config.go` | the `Game` contract and validated env config |
+| `platform/host/host.go`, `platform/httpserve/router.go` | bind-then-serve lifecycle, prefix routing, reserved paths, `/healthz` |
+| `graph/schema.graphqls` | canonical SDL — single source for all GraphQL |
+| `graph/handler.go`, `graph/complexity.go`, `graph/resolver.go` | transport stack, CORS/body limits, context injection, complexity cap 1000 |
+| `graph/merge/merge.go`, `graph/merge/gqlgen.go` | schema merge rules and generated `graph/gqlgen.yml` |
+| `games/<g>/game.go` | game adapter: env, mount, optional interfaces |
+| `justfile` | authoritative build/run/regen commands |
+| `web/vite.config.ts`, `web/svelte.config.js` | dev proxy (`/graphql` + ws), Vitest jsdom setup, adapter-static output `web/build` |
+| `deploy/README.md`, `deploy/drbrain.env.example`, `docs/routing.md` | production layout, env, routing truth |
+
+## Runtime/Tooling Preferences
+
+- Required runtimes: Go per `go.mod` (1.27.2) and Node 22 (CI). Package manager is npm with workspaces declared in root `package.json`; one root `package-lock.json` (`web/` and `web/packages/*` are workspaces). Do not introduce pnpm/yarn.
+- SvelteKit uses `@sveltejs/adapter-static`; `web/build` is gitignored and built by CI — never commit it. The Go binary serves it from `DRBRAIN_STATIC_DIR` (default `static`; `just start` sets `web/build`), 404 once missing so the API still runs.
+- gqlgen 0.17.73 + gqlparser v2.5.60 are pinned. Generated code is committed. Do not run codegen variants that skip `cmd/split-schema`/`cmd/gentypes`; `just regen` alone does not run per-game gqlgen for newly added local types, so prefer `go generate ./games/... ./graph`.
+- No Dockerfile; production is systemd + nginx templates under `deploy/`. Never delete `/var/lib/drbrain` state directories.
+- Shell operations must be non-interactive: `cp -f`, `mv -f`, `rm -f`, `rm -rf`, `ssh -o BatchMode=yes`, `apt-get -y`.
+
+## Testing & QA
+
+- Go: `go test ./...` is the gate (`go test -race ./...` recommended locally but not run by CI). PostgreSQL-backed tests use `TEST_DATABASE_URL` and skip when it is unset (`games/motor/internal/pgdb/pgtest`, `platform/sessionstore`).
+- Codegen drift guards: `cmd/split-schema/main_test.go`, `cmd/gentypes/main_test.go`, `graph/merge/merge_test.go` (`TestSchemaIsCurrent`, `TestMergedSchemaShape`); run `go test ./graph/merge ./cmd/split-schema ./cmd/gentypes` after any schema change. `games/delivery/graph/schema_drift_test.go:TestGqlgenRegenerateIsStable` rewrites generated files in place and must run alone: `DRBRAIN_CODEGEN_CHECK=1 go test -run '^TestGqlgenRegenerateIsStable$' ./games/delivery/graph` (skipped with `-short`).
+- Frontend: `npm run check` (svelte-check) plus `npm test` (Vitest 4 + jsdom + `@testing-library/svelte`, setup `web/src/test/setup.ts`); single test via `cd web && npx vitest run src/lib/<path>.test.ts`.
+- Test conventions: new test servers use `httptest` and raw GraphQL JSON POSTs; writes go to `t.TempDir()`; repo assets are read-only fixtures (`games/delivery/maps/city.json`, `games/*/maps/*.json`). Do not add `t.Parallel()` — tests mutate process env with `t.Setenv`. Unset leaked env vars before the suite. Shipped-map counts are golden (`games/mazes` expects exactly 16 maps); solution tests skip because `*/solutions/` is gitignored and absent locally.
+- No coverage thresholds or coverage uploads exist in CI (build, vet, test, web check/test/build only). Do not trust per-game `make test`/`just test` as the monorepo authority.
+- Ops gotcha: `deploy/smoke.sh` still queries `/$game/graphql`; when touching deploy or GraphQL routing, point smoke at `/graphql` with the namespace (`{ mazes { maps { id } } }`) instead of resurrecting per-game endpoints.

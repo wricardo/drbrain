@@ -34,9 +34,9 @@
 	} from '$lib/motor/queries';
 	import type { Facing, GameMap, MapInput, MapValidationResult } from '$lib/motor/types';
 	import { MAX_SUBS } from '$lib/motor/instructions';
-	import { account } from '$lib/motor/stores/account';
+	import { account } from '$lib/account/stores/account';
 	import Cookie from '@drbrain/ui/components/Cookie.svelte';
-	import SignInDialog from '$lib/motor/components/SignInDialog.svelte';
+	import SignInDialog from '$lib/account/components/SignInDialog.svelte';
 
 	/**
 	 * What a click paints: the start cell, plain empty, or any layout glyph. Every

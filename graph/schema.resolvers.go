@@ -16,6 +16,8 @@ import (
 	graph3 "github.com/wricardo/drbrain/games/tesla/graph"
 	model3 "github.com/wricardo/drbrain/games/tesla/graph/model"
 	"github.com/wricardo/drbrain/graph/generated"
+	graph4 "github.com/wricardo/drbrain/platform/account/graph"
+	model4 "github.com/wricardo/drbrain/platform/account/graph/model"
 )
 
 // CreateSession is the resolver for the createSession field.
@@ -106,6 +108,51 @@ func (r *delivery_QueryResolver) CarView(ctx context.Context, obj *graph.Resolve
 // Events is the resolver for the events field.
 func (r *delivery_QueryResolver) Events(ctx context.Context, obj *graph.Resolver, id string, sinceTick int) ([]*model.EventView, error) {
 	return obj.Query().Events(ctx, id, sinceTick)
+}
+
+// Logout is the resolver for the logout field.
+func (r *global_MutationResolver) Logout(ctx context.Context, obj *graph4.Resolver) (bool, error) {
+	return obj.Mutation().Logout(ctx)
+}
+
+// RegisterWithPassword is the resolver for the registerWithPassword field.
+func (r *global_MutationResolver) RegisterWithPassword(ctx context.Context, obj *graph4.Resolver, handle string, password string) (*model4.User, error) {
+	return obj.Mutation().RegisterWithPassword(ctx, handle, password)
+}
+
+// LogInWithPassword is the resolver for the logInWithPassword field.
+func (r *global_MutationResolver) LogInWithPassword(ctx context.Context, obj *graph4.Resolver, handle string, password string) (*model4.User, error) {
+	return obj.Mutation().LogInWithPassword(ctx, handle, password)
+}
+
+// UpdateAccount is the resolver for the updateAccount field.
+func (r *global_MutationResolver) UpdateAccount(ctx context.Context, obj *graph4.Resolver, input model4.AccountInput) (*model4.User, error) {
+	return obj.Mutation().UpdateAccount(ctx, input)
+}
+
+// ChangePassword is the resolver for the changePassword field.
+func (r *global_MutationResolver) ChangePassword(ctx context.Context, obj *graph4.Resolver, currentPassword string, newPassword string) (bool, error) {
+	return obj.Mutation().ChangePassword(ctx, currentPassword, newPassword)
+}
+
+// DeleteAccount is the resolver for the deleteAccount field.
+func (r *global_MutationResolver) DeleteAccount(ctx context.Context, obj *graph4.Resolver, confirmHandle string) (bool, error) {
+	return obj.Mutation().DeleteAccount(ctx, confirmHandle)
+}
+
+// Me is the resolver for the me field.
+func (r *global_QueryResolver) Me(ctx context.Context, obj *graph4.Resolver) (*model4.User, error) {
+	return obj.Query().Me(ctx)
+}
+
+// AuthProviders is the resolver for the authProviders field.
+func (r *global_QueryResolver) AuthProviders(ctx context.Context, obj *graph4.Resolver) ([]*model4.AuthProvider, error) {
+	return obj.Query().AuthProviders(ctx)
+}
+
+// Profile is the resolver for the profile field.
+func (r *global_QueryResolver) Profile(ctx context.Context, obj *graph4.Resolver, handle string) (*model4.Profile, error) {
+	return obj.Query().Profile(ctx, handle)
 }
 
 // CreateSession is the resolver for the createSession field.
@@ -228,36 +275,6 @@ func (r *motor_MutationResolver) Reset(ctx context.Context, obj *graph2.Resolver
 	return obj.Mutation().Reset(ctx, sessionID, ownerToken)
 }
 
-// Logout is the resolver for the logout field.
-func (r *motor_MutationResolver) Logout(ctx context.Context, obj *graph2.Resolver) (bool, error) {
-	return obj.Mutation().Logout(ctx)
-}
-
-// RegisterWithPassword is the resolver for the registerWithPassword field.
-func (r *motor_MutationResolver) RegisterWithPassword(ctx context.Context, obj *graph2.Resolver, handle string, password string) (*model2.Account, error) {
-	return obj.Mutation().RegisterWithPassword(ctx, handle, password)
-}
-
-// LogInWithPassword is the resolver for the logInWithPassword field.
-func (r *motor_MutationResolver) LogInWithPassword(ctx context.Context, obj *graph2.Resolver, handle string, password string) (*model2.Account, error) {
-	return obj.Mutation().LogInWithPassword(ctx, handle, password)
-}
-
-// UpdateAccount is the resolver for the updateAccount field.
-func (r *motor_MutationResolver) UpdateAccount(ctx context.Context, obj *graph2.Resolver, input model2.AccountInput) (*model2.Account, error) {
-	return obj.Mutation().UpdateAccount(ctx, input)
-}
-
-// ChangePassword is the resolver for the changePassword field.
-func (r *motor_MutationResolver) ChangePassword(ctx context.Context, obj *graph2.Resolver, currentPassword string, newPassword string) (bool, error) {
-	return obj.Mutation().ChangePassword(ctx, currentPassword, newPassword)
-}
-
-// DeleteAccount is the resolver for the deleteAccount field.
-func (r *motor_MutationResolver) DeleteAccount(ctx context.Context, obj *graph2.Resolver, confirmHandle string) (bool, error) {
-	return obj.Mutation().DeleteAccount(ctx, confirmHandle)
-}
-
 // ClaimSessions is the resolver for the claimSessions field.
 func (r *motor_MutationResolver) ClaimSessions(ctx context.Context, obj *graph2.Resolver, claims []*model2.SessionClaimInput) ([]*model2.SessionClaimResult, error) {
 	return obj.Mutation().ClaimSessions(ctx, claims)
@@ -281,21 +298,6 @@ func (r *motor_MutationResolver) UpdateMap(ctx context.Context, obj *graph2.Reso
 // DeleteMap is the resolver for the deleteMap field.
 func (r *motor_MutationResolver) DeleteMap(ctx context.Context, obj *graph2.Resolver, id string) (bool, error) {
 	return obj.Mutation().DeleteMap(ctx, id)
-}
-
-// Me is the resolver for the me field.
-func (r *motor_QueryResolver) Me(ctx context.Context, obj *graph2.Resolver) (*model2.Account, error) {
-	return obj.Query().Me(ctx)
-}
-
-// AuthProviders is the resolver for the authProviders field.
-func (r *motor_QueryResolver) AuthProviders(ctx context.Context, obj *graph2.Resolver) ([]*model2.AuthProvider, error) {
-	return obj.Query().AuthProviders(ctx)
-}
-
-// Profile is the resolver for the profile field.
-func (r *motor_QueryResolver) Profile(ctx context.Context, obj *graph2.Resolver, handle string) (*model2.Profile, error) {
-	return obj.Query().Profile(ctx, handle)
 }
 
 // Maps is the resolver for the maps field.
@@ -333,6 +335,19 @@ func (r *motor_QueryResolver) PlayerRuns(ctx context.Context, obj *graph2.Resolv
 	return obj.Query().PlayerRuns(ctx, sessionIds, name)
 }
 
+// PlayerRunsFor is the resolver for the playerRunsFor field.
+func (r *motor_QueryResolver) PlayerRunsFor(ctx context.Context, obj *graph2.Resolver, handle string) ([]*model2.PlayerRun, error) {
+	return obj.Query().PlayerRunsFor(ctx, handle)
+}
+
+// Account is the resolver for the account field.
+func (r *mutationResolver) Account(ctx context.Context) (*graph4.Resolver, error) {
+	if r.Resolver.Account == nil {
+		return nil, errGameDisabled
+	}
+	return r.Resolver.Account, nil
+}
+
 // Delivery is the resolver for the delivery field.
 func (r *mutationResolver) Delivery(ctx context.Context) (*graph.Resolver, error) {
 	if r.Resolver.Delivery == nil {
@@ -363,6 +378,14 @@ func (r *mutationResolver) Tesla(ctx context.Context) (*graph3.Resolver, error) 
 		return nil, errGameDisabled
 	}
 	return r.Resolver.Tesla, nil
+}
+
+// Account is the resolver for the account field.
+func (r *queryResolver) Account(ctx context.Context) (*graph4.Resolver, error) {
+	if r.Resolver.Account == nil {
+		return nil, errGameDisabled
+	}
+	return r.Resolver.Account, nil
 }
 
 // Delivery is the resolver for the delivery field.
@@ -542,6 +565,14 @@ func (r *Resolver) Delivery_Query() generated.Delivery_QueryResolver {
 	return &delivery_QueryResolver{r}
 }
 
+// Global_Mutation returns generated.Global_MutationResolver implementation.
+func (r *Resolver) Global_Mutation() generated.Global_MutationResolver {
+	return &global_MutationResolver{r}
+}
+
+// Global_Query returns generated.Global_QueryResolver implementation.
+func (r *Resolver) Global_Query() generated.Global_QueryResolver { return &global_QueryResolver{r} }
+
 // Mazes_Mutation returns generated.Mazes_MutationResolver implementation.
 func (r *Resolver) Mazes_Mutation() generated.Mazes_MutationResolver {
 	return &mazes_MutationResolver{r}
@@ -588,6 +619,8 @@ func (r *Resolver) Tesla_Query() generated.Tesla_QueryResolver { return &tesla_Q
 
 type delivery_MutationResolver struct{ *Resolver }
 type delivery_QueryResolver struct{ *Resolver }
+type global_MutationResolver struct{ *Resolver }
+type global_QueryResolver struct{ *Resolver }
 type mazes_MutationResolver struct{ *Resolver }
 type mazes_QueryResolver struct{ *Resolver }
 type motor_MapResolver struct{ *Resolver }

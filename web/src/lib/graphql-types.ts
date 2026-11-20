@@ -7,6 +7,7 @@
 /* eslint-disable */
 
 export interface Query {
+	account: Global_Query;
 	delivery: Delivery_Query;
 	mazes: Mazes_Query;
 	motorProgramming: Motor_Query;
@@ -14,6 +15,7 @@ export interface Query {
 }
 
 export interface Mutation {
+	account: Global_Mutation;
 	delivery: Delivery_Mutation;
 	mazes: Mazes_Mutation;
 	motorProgramming: Motor_Mutation;
@@ -356,6 +358,66 @@ export interface Delivery_UnlockView {
 }
 
 /**
+ * A way to sign in, enabled on this server. Sign in by navigating to /auth/<id>/login.
+ */
+export interface Global_AuthProvider {
+	id: string;
+	name: string;
+}
+
+export interface Global_Mutation {
+	/** Signs the player out (clears the login cookie). Always true. */
+	logout: boolean;
+	/** Creates a username/password account and signs the browser in with it. The username is the public handle. Refused cross-site, so another site cannot create accounts through a victim's browser. Errors: INVALID_ARGUMENT (bad handle, weak or taken password), LIMIT_REACHED, FORBIDDEN (password sign-in is off, or no cookie can be set: a subscription connection). */
+	registerWithPassword: (args: { handle: string; password: string }) => Global_User;
+	/** Signs in with a username and password, rotating the browser's previous login. Refused cross-site. An unknown username and a wrong password are answered identically (UNAUTHENTICATED). Repeated failures lock the (address, username) pair and then the username: LIMIT_REACHED, refused before any hashing. FORBIDDEN when password sign-in is off or no cookie can be set. */
+	logInWithPassword: (args: { handle: string; password: string }) => Global_User;
+	/** Changes the signed-in player's handle, display name or profile visibility. */
+	updateAccount: (args: { input: Global_AccountInput }) => Global_User;
+	/** Changes the password of a username/password account and signs out its other browsers. There is no email, so there is no password reset. */
+	changePassword: (args: { currentPassword: string; newPassword: string }) => boolean;
+	/** Permanently deletes the account and signs out. confirmHandle must equal the current handle. Its runs stay on the boards as guest entries. */
+	deleteAccount: (args: { confirmHandle: string }) => boolean;
+}
+
+/**
+ * A player's public identity page. Game-specific statistics live under that game.
+ */
+export interface Global_Profile {
+	handle: string;
+	displayName: string;
+	createdAt: string;
+	/** True when the viewer is this player (a private profile is visible only to its owner). */
+	isMine: boolean;
+}
+
+export interface Global_Query {
+	/** The signed-in player, or null. */
+	me: Global_User | null;
+	/** Sign-in providers enabled on this server; empty means sign-in is off. */
+	authProviders: Global_AuthProvider[];
+	/** A player's public profile; null when the handle is unknown or the profile is private (unless it is yours). */
+	profile: (args: { handle: string }) => Global_Profile | null;
+}
+
+/**
+ * The signed-in player. Nothing about the person beyond the public handle and name
+ * is stored: no email, no avatar.
+ */
+export interface Global_User {
+	/** Unique public name, 3-20 of a-z 0-9 _; the profile lives at /u/<handle>. */
+	handle: string;
+	displayName: string;
+	/** When false the profile page is hidden and board entries read "Private player". */
+	profilePublic: boolean;
+	createdAt: string;
+	/** When the handle may be changed again; null when it can be changed now. */
+	handleChangeableAt: string | null;
+	/** True for a username/password account (the only kind that can change a password). */
+	hasPassword: boolean;
+}
+
+/**
  * Full map for the editor (admin only).
  */
 export interface Mazes_AdminMap {
@@ -525,30 +587,6 @@ export interface Mazes_SessionUpdate {
 	event: Mazes_MoveEvent | null;
 }
 
-/**
- * A signed-in player. Nothing about the person beyond the public handle and name is stored: no email, no avatar.
- */
-export interface Motor_Account {
-	/** Unique public name, 3-20 of a-z 0-9 _; the profile lives at /u/<handle>. */
-	handle: string;
-	displayName: string;
-	/** When false the profile page is hidden and board entries read "Private player". */
-	profilePublic: boolean;
-	createdAt: string;
-	/** When the handle may be changed again; null when it can be changed now. */
-	handleChangeableAt: string | null;
-	/** True for a username/password account (the only kind that can change a password). */
-	hasPassword: boolean;
-}
-
-/**
- * A way to sign in, enabled on this server. Sign in by navigating to /auth/<id>/login.
- */
-export interface Motor_AuthProvider {
-	id: string;
-	name: string;
-}
-
 export interface Motor_Conveyor {
 	pos: Motor_Position;
 	/** Direction the robot is carried after moving onto this tile. */
@@ -676,18 +714,6 @@ export interface Motor_Mutation {
 	step: (args: { sessionID: string; ownerToken?: string | null }) => Motor_Session;
 	/** Puts the robot back at the start. Open to anyone who knows the session id; the program stays hidden from spectators. */
 	reset: (args: { sessionID: string; ownerToken?: string | null }) => Motor_Session;
-	/** Signs the player out (clears the login cookie). Always true. */
-	logout: boolean;
-	/** Creates a username/password account and signs the browser in with it. The username is the public handle. Refused cross-site, so another site cannot create accounts through a victim's browser. Errors: INVALID_ARGUMENT (bad handle, weak or taken password), LIMIT_REACHED, FORBIDDEN (password sign-in is off, or no cookie can be set: a subscription connection). */
-	registerWithPassword: (args: { handle: string; password: string }) => Motor_Account;
-	/** Signs in with a username and password, rotating the browser's previous login. Refused cross-site. An unknown username and a wrong password are answered identically (UNAUTHENTICATED). Repeated failures lock the (address, username) pair and then the username: LIMIT_REACHED, refused before any hashing. FORBIDDEN when password sign-in is off or no cookie can be set. */
-	logInWithPassword: (args: { handle: string; password: string }) => Motor_Account;
-	/** Changes the signed-in player's handle, display name or profile visibility. */
-	updateAccount: (args: { input: Motor_AccountInput }) => Motor_Account;
-	/** Changes the password of a username/password account and signs out its other browsers. There is no email, so there is no password reset. */
-	changePassword: (args: { currentPassword: string; newPassword: string }) => boolean;
-	/** Permanently deletes the account and signs out. confirmHandle must equal the current handle. Its runs stay on the boards as guest entries. */
-	deleteAccount: (args: { confirmHandle: string }) => boolean;
 	/** Attaches guest sessions of this browser to the signed-in account; each needs its owner token (up to 100 per call). */
 	claimSessions: (args: { claims: Motor_SessionClaimInput[] }) => Motor_SessionClaimResult[];
 	/** Creating a map needs a signed-in player (UNAUTHENTICATED otherwise); validateMap is open to everyone. */
@@ -721,31 +747,12 @@ export interface Motor_Position {
 	y: number;
 }
 
-/**
- * A public profile page: the account and its best run per map.
- */
-export interface Motor_Profile {
-	handle: string;
-	displayName: string;
-	createdAt: string;
-	/** True when the viewer is this player (a private profile is visible only to its owner). */
-	isMine: boolean;
-	/** Best run per map won (SLOTS board), ordered by map id. */
-	runs: Motor_PlayerRun[];
-}
-
 export interface Motor_Program {
 	main: Motor_Instruction[];
 	subs: Motor_Instruction[][];
 }
 
 export interface Motor_Query {
-	/** The signed-in player, or null. */
-	me: Motor_Account | null;
-	/** Sign-in providers enabled on this server; empty means sign-in is off. */
-	authProviders: Motor_AuthProvider[];
-	/** A player's public profile; null when the handle is unknown or the profile is private (unless it is yours). */
-	profile: (args: { handle: string }) => Motor_Profile | null;
 	maps: Motor_Map[];
 	map: (args: { id: string }) => Motor_Map | null;
 	/** One session. The program is included only for a caller who may change it; pass the ownerToken (or be signed in as the owning account) to read it. */
@@ -757,6 +764,8 @@ export interface Motor_Query {
 	leaderboard: (args: { mapId: string; order?: Motor_LeaderboardOrder | null; limit?: number | null; sessionId?: string | null }) => Motor_Leaderboard | null;
 	/** A player's best run per map they have won (maps never won are absent), ordered by map id. Give exactly one of sessionIds (up to 200; exact) or name (case-insensitive; matches every session with that display name, so it can mix people who picked the same name; guest sessions only). When signed in, the account's own runs are included with sessionIds, and sessionIds may be left out. */
 	playerRuns: (args: { sessionIds?: string[] | null; name?: string | null }) => Motor_PlayerRun[];
+	/** A player's best run per map they have won, looked up by account handle. Empty when the handle is unknown; game-specific statistics stay with the game. */
+	playerRunsFor: (args: { handle: string }) => Motor_PlayerRun[];
 }
 
 export interface Motor_Session {
@@ -1069,6 +1078,14 @@ export interface Tesla_VisitedPark {
 	visited: boolean;
 }
 
+export interface Global_AccountInput {
+	/** New handle (3-20 of a-z 0-9 _, case-insensitive, unique); limited to one change per day. */
+	handle: string | null;
+	/** Public display name; empty falls back to the handle. */
+	displayName: string | null;
+	profilePublic: boolean | null;
+}
+
 export interface Mazes_MapInput {
 	id: string;
 	name: string;
@@ -1076,14 +1093,6 @@ export interface Mazes_MapInput {
 	difficulty: string | null;
 	levels: string[][];
 	maxMoves: number | null;
-}
-
-export interface Motor_AccountInput {
-	/** New handle (3-20 of a-z 0-9 _, case-insensitive, unique); limited to one change per day. */
-	handle: string | null;
-	/** Public display name; empty falls back to the handle. */
-	displayName: string | null;
-	profilePublic: boolean | null;
 }
 
 export interface Motor_MapInput {

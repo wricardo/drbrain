@@ -1,6 +1,6 @@
 import type { GameMap, LeaderboardEntry, LeaderboardOrder } from './types';
 import { sortMaps } from './maps';
-import { profileHref } from './account';
+import { profileHref } from '$lib/account/account';
 import { runsHref } from './runs';
 
 export interface OrderOption {

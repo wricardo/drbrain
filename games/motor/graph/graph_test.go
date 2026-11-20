@@ -13,6 +13,8 @@ import (
 	"github.com/wricardo/drbrain/games/motor/game/service"
 	"github.com/wricardo/drbrain/games/motor/graph/model"
 	"github.com/wricardo/drbrain/games/motor/transport/websocket"
+	"github.com/wricardo/drbrain/platform/account"
+	"github.com/wricardo/drbrain/platform/auth"
 )
 
 // fakeService overrides only what the tests exercise; any other call panics
@@ -118,7 +120,7 @@ func codeOf(t *testing.T, err error) string {
 
 // withViewer marks the context as a request from a signed-in player.
 func withViewer(ctx context.Context) context.Context {
-	return context.WithValue(ctx, ViewerKey{}, &Viewer{Account: &service.Account{ID: "acct1", Handle: "player"}})
+	return auth.WithViewer(ctx, &auth.Viewer{Account: &account.Account{ID: "acct1", Handle: "player"}})
 }
 
 func ctxWithKey(key string) context.Context {

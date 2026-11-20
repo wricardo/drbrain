@@ -10,34 +10,6 @@ import (
 	"time"
 )
 
-// A signed-in player. Nothing about the person beyond the public handle and name is stored: no email, no avatar.
-type Account struct {
-	// Unique public name, 3-20 of a-z 0-9 _; the profile lives at /u/<handle>.
-	Handle      string `json:"handle"`
-	DisplayName string `json:"displayName"`
-	// When false the profile page is hidden and board entries read "Private player".
-	ProfilePublic bool      `json:"profilePublic"`
-	CreatedAt     time.Time `json:"createdAt"`
-	// When the handle may be changed again; null when it can be changed now.
-	HandleChangeableAt *time.Time `json:"handleChangeableAt,omitempty"`
-	// True for a username/password account (the only kind that can change a password).
-	HasPassword bool `json:"hasPassword"`
-}
-
-type AccountInput struct {
-	// New handle (3-20 of a-z 0-9 _, case-insensitive, unique); limited to one change per day.
-	Handle *string `json:"handle,omitempty"`
-	// Public display name; empty falls back to the handle.
-	DisplayName   *string `json:"displayName,omitempty"`
-	ProfilePublic *bool   `json:"profilePublic,omitempty"`
-}
-
-// A way to sign in, enabled on this server. Sign in by navigating to /auth/<id>/login.
-type AuthProvider struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
-
 type Conveyor struct {
 	Pos *Position `json:"pos"`
 	// Direction the robot is carried after moving onto this tile.
@@ -179,17 +151,6 @@ type Portal struct {
 type Position struct {
 	X int `json:"x"`
 	Y int `json:"y"`
-}
-
-// A public profile page: the account and its best run per map.
-type Profile struct {
-	Handle      string    `json:"handle"`
-	DisplayName string    `json:"displayName"`
-	CreatedAt   time.Time `json:"createdAt"`
-	// True when the viewer is this player (a private profile is visible only to its owner).
-	IsMine bool `json:"isMine"`
-	// Best run per map won (SLOTS board), ordered by map id.
-	Runs []*PlayerRun `json:"runs"`
 }
 
 type Program struct {

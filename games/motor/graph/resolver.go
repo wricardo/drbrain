@@ -9,12 +9,13 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/vektah/gqlparser/v2/gqlerror"
 	"github.com/wricardo/drbrain/games/motor/game/engine"
 	"github.com/wricardo/drbrain/games/motor/game/service"
 	"github.com/wricardo/drbrain/games/motor/transport/websocket"
+	"github.com/wricardo/drbrain/platform/account"
+	"github.com/wricardo/drbrain/platform/auth"
 )
 
 // CodeInternal is the extensions.code for unexpected server failures.
@@ -27,11 +28,8 @@ const subscriptionBuffer = 8
 type Resolver struct {
 	Service service.GameService
 	Hub     *websocket.Hub
-	// Providers lists the enabled sign-in providers (empty = sign-in is off).
-	Providers []Provider
-	// Passwords serves the username/password mutations; nil when sign-in is
-	// off (the schema then answers FORBIDDEN).
-	Passwords Passwords
+	// Accounts is the global account service (nil keeps the game guest-only).
+	Accounts *account.Service
 	// Admin gates writes to shipped content.
 	Admin Admin
 }
@@ -46,16 +44,6 @@ type Admin struct {
 	AllowUnauthenticated bool
 }
 
-// Passwords is the username/password sign-in of the auth package. The mutations
-// call it, so the rules it enforces (same-origin, rate limits, lockouts) cannot
-// be bypassed by a different transport.
-type Passwords interface {
-	PasswordSignIn(register bool, r *http.Request, handle, password string, setSession func(token string, expires time.Time)) (*service.Account, error)
-}
-
-// Provider is a sign-in provider as shown to clients.
-type Provider struct{ ID, Name string }
-
 // NewResolver builds the resolver root from the game service and the
 // subscription hub.
 func NewResolver(svc service.GameService, hub *websocket.Hub) *Resolver {
@@ -66,47 +54,9 @@ func NewResolver(svc service.GameService, hub *websocket.Hub) *Resolver {
 // by the HTTP middleware, so resolvers can read headers (X-Admin-Key).
 type HTTPRequestKey struct{}
 
-// ViewerKey is the context key under which the HTTP middleware stores the
-// *Viewer of a request.
-type ViewerKey struct{}
-
-// SignInKey is the context key under which the HTTP middleware stores the
-// sign-in hooks that need the response (setting the login cookie).
-type SignInKey struct{}
-
-// SignIn is what the password mutations need from the transport: it sets the
-// login cookie on the response and reports whether that is possible at all.
-// overHTTP is false for a websocket connection, which has no response to set a
-// cookie on, so signing in there would hand out a login nobody could keep.
-type SignIn struct {
-	OverHTTP bool
-	// SetSession writes the login cookie. Only call it when OverHTTP.
-	SetSession func(token string, expires time.Time)
-}
-
-// Viewer is the signed-in player of a request. It is only set when the login
-// cookie is valid and the request passed the same-origin check, so a cross-site
-// page can never act as the player.
-type Viewer struct {
-	Account *service.Account
-	// Token is the login cookie's value (for logout).
-	Token string
-	// ClearSession removes the login cookie from the response.
-	ClearSession func()
-}
-
-// ViewerFrom returns the request's viewer, or nil.
-func ViewerFrom(ctx context.Context) *Viewer {
-	v, _ := ctx.Value(ViewerKey{}).(*Viewer)
-	if v == nil || v.Account == nil {
-		return nil
-	}
-	return v
-}
-
 // viewerID is the viewer's account id, "" for guests.
 func viewerID(ctx context.Context) string {
-	if v := ViewerFrom(ctx); v != nil {
+	if v := auth.ViewerFrom(ctx); v != nil {
 		return v.Account.ID
 	}
 	return ""
@@ -131,19 +81,9 @@ func (r *Resolver) mayEdit(ctx context.Context, id string, ownerToken *string) b
 	return r.Service.AuthorizeSessionEdit(id, sessionActor(ctx, ownerToken)) == nil
 }
 
-// requireSignIn returns the request's sign-in hooks or a FORBIDDEN error when
-// the cookie cannot be set (a subscription over websocket, or sign-in off).
-func requireSignIn(ctx context.Context) (*SignIn, error) {
-	s, _ := ctx.Value(SignInKey{}).(*SignIn)
-	if s == nil || !s.OverHTTP {
-		return nil, codedError(service.CodeForbidden, "sign-in needs a request with a response; use HTTP, not a subscription")
-	}
-	return s, nil
-}
-
 // requireViewer returns the signed-in account or an UNAUTHENTICATED error.
-func requireViewer(ctx context.Context) (*service.Account, error) {
-	if v := ViewerFrom(ctx); v != nil {
+func requireViewer(ctx context.Context) (*account.Account, error) {
+	if v := auth.ViewerFrom(ctx); v != nil {
 		return v.Account, nil
 	}
 	return nil, codedError(service.CodeUnauthenticated, "sign in first")

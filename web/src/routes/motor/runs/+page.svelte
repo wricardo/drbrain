@@ -21,7 +21,7 @@
 		type RunFilter
 	} from '$lib/motor/runs';
 	import { newSessionName, ownSessionIds, rememberSession, savedDisplayName } from '$lib/motor/sessions';
-	import { account } from '$lib/motor/stores/account';
+	import { account } from '$lib/account/stores/account';
 	import { absoluteTime, relativeTime } from '@drbrain/ui/time';
 	import type { GameMap, PlayerRun, Session } from '$lib/motor/types';
 

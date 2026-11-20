@@ -47,8 +47,12 @@ type Game struct {
 	ResolverPkg string
 }
 
-// Games is the fixed merge order.
+// Games is the fixed merge order. The first entry is the global account
+// namespace: it is not a game, but it participates in the same prefix and
+// namespace machinery so its SDL, models and resolvers are generated with
+// everything else.
 var Games = []Game{
+	{Name: "Global", Namespace: "account", Dir: "platform/account", ModelPkg: "platform/account/graph/model", ResolverPkg: "platform/account/graph"},
 	{Name: "Delivery", Namespace: "delivery", Dir: "games/delivery", ModelPkg: "games/delivery/graph/model", ResolverPkg: "games/delivery/graph"},
 	{Name: "Mazes", Namespace: "mazes", Dir: "games/mazes", ModelPkg: "games/mazes/graph/model", ResolverPkg: "games/mazes/graph"},
 	{Name: "Motor", Namespace: "motorProgramming", Dir: "games/motor", ModelPkg: "games/motor/graph/model", ResolverPkg: "games/motor/graph"},

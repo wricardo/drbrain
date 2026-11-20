@@ -238,71 +238,15 @@ export const PLAYER_RUNS_QUERY = `
   }
 `;
 
-const ACCOUNT_FIELDS = `handle displayName profilePublic createdAt handleChangeableAt hasPassword`;
-
-/** Keep in sync with `accountQ` in api/hardening_test.go (complexity check). */
-export const ACCOUNT_QUERY = `
-  query Account {
+export const PLAYER_RUNS_FOR_QUERY = `
+  query PlayerRunsFor($handle: String!) {
     motorProgramming {
-      me { ${ACCOUNT_FIELDS} }
-      authProviders { id name }
-    }
-  }
-`;
-
-/** Keep in sync with `profileQ` in api/hardening_test.go (complexity check). */
-export const PROFILE_QUERY = `
-  query Profile($handle: String!) {
-    motorProgramming {
-      profile(handle: $handle) {
-        handle
-        displayName
-        createdAt
-        isMine
-        runs { mapId total entry { ${LEADERBOARD_ENTRY_FIELDS} } }
+      playerRunsFor(handle: $handle) {
+        mapId
+        total
+        entry { ${LEADERBOARD_ENTRY_FIELDS} }
       }
     }
-  }
-`;
-
-export const LOGOUT_MUTATION = `
-  mutation Logout {
-    motorProgramming { logout }
-  }
-`;
-
-/**
- * Username/password sign-up and sign-in. Both are ordinary mutations now: the
- * server sets the login cookie on the response. They are separate documents
- * because every root field of one document runs.
- */
-export const REGISTER_WITH_PASSWORD_MUTATION = `
-  mutation RegisterWithPassword($handle: String!, $password: String!) {
-    motorProgramming { registerWithPassword(handle: $handle, password: $password) { ${ACCOUNT_FIELDS} } }
-  }
-`;
-
-export const LOG_IN_WITH_PASSWORD_MUTATION = `
-  mutation LogInWithPassword($handle: String!, $password: String!) {
-    motorProgramming { logInWithPassword(handle: $handle, password: $password) { ${ACCOUNT_FIELDS} } }
-  }
-`;
-
-export const UPDATE_ACCOUNT_MUTATION = `
-  mutation UpdateAccount($input: Motor_AccountInput!) {
-    motorProgramming { updateAccount(input: $input) { ${ACCOUNT_FIELDS} } }
-  }
-`;
-
-export const CHANGE_PASSWORD_MUTATION = `
-  mutation ChangePassword($currentPassword: String!, $newPassword: String!) {
-    motorProgramming { changePassword(currentPassword: $currentPassword, newPassword: $newPassword) }
-  }
-`;
-
-export const DELETE_ACCOUNT_MUTATION = `
-  mutation DeleteAccount($confirmHandle: String!) {
-    motorProgramming { deleteAccount(confirmHandle: $confirmHandle) }
   }
 `;
 

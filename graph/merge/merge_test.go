@@ -66,10 +66,10 @@ func TestMergedSchemaShape(t *testing.T) {
 		}
 		return out
 	}
-	if got, want := names(schema.Query), []string{"delivery", "mazes", "motorProgramming", "tesla"}; !slices.Equal(got, want) {
+	if got, want := names(schema.Query), []string{"account", "delivery", "mazes", "motorProgramming", "tesla"}; !slices.Equal(got, want) {
 		t.Fatalf("Query fields = %v, want %v", got, want)
 	}
-	if got, want := names(schema.Mutation), []string{"delivery", "mazes", "motorProgramming", "tesla"}; !slices.Equal(got, want) {
+	if got, want := names(schema.Mutation), []string{"account", "delivery", "mazes", "motorProgramming", "tesla"}; !slices.Equal(got, want) {
 		t.Fatalf("Mutation fields = %v, want %v", got, want)
 	}
 	wantSubs := []string{

@@ -9,10 +9,11 @@ single SvelteKit app.
 |---|---|
 | `/graphql`, `/graphql/` | platform: one gqlgen executor, namespaced per game |
 | `/graphql/playground` | platform: GraphQL playground |
+| `/auth/...` | platform: global sign-in routes (OAuth callbacks, dev provider) |
 | `/<game>/mcp` | that game's MCP transport (where it has one) |
 | `/<game>/llms.txt` | platform, rendered from the game's template |
-| `/<game>/auth/...` | motor sign-in routes |
 | `/<game>/...` | the SvelteKit app |
+| `/settings`, `/u/<handle>` | global account settings and public profiles |
 
 ## GraphQL namespaces
 
@@ -20,6 +21,7 @@ Queries and mutations select a namespace:
 
 ```graphql
 query {
+  account { me { handle } authProviders { id name } }
   delivery { sessions { id } }
   mazes { maps { id } }
   motorProgramming { maps { id } }
@@ -40,19 +42,20 @@ subscription {
 }
 ```
 
-Types are prefixed (`Delivery_Snapshot`, `Mazes_Map`, `Motor_Session`,
-`Tesla_GameState`) so the four schemas cannot collide. The shared `Time` scalar
-is emitted once.
+Types are prefixed (`Global_User`, `Delivery_Snapshot`, `Mazes_Map`,
+`Motor_Session`, `Tesla_GameState`) so the schemas cannot collide. The shared
+`Time` scalar is emitted once. The `account` namespace is global: its types use
+the `Global_` prefix and live in `platform/account`.
 
 ## Removing the old per-game endpoints
 
 `/<game>/graphql` and `/<game>/playground` were removed. A game's GraphQL
 handler is no longer built or mounted; each game exposes its resolver root to
-the platform, which serves the one executor. `/motor/auth/...` and
-`/tesla/mcp` stay where they were.
+the platform, which serves the one executor. `/tesla/mcp` stays where it was.
 
-Motor's login cookie is now origin-scoped (`Path=/`) so `/graphql` can read it;
-the cookie name (`motor_session`) still distinguishes it from other games.
+Sign-in moved out of motor: the routes are at `/auth/...`, the cookie is
+`drbrain_session` with `Path=/`, and accounts live in `platform/account` for
+every game to use.
 
 ## Disabling a game
 

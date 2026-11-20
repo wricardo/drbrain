@@ -120,7 +120,7 @@ func TestSubscriptionHidesTheProgramFromSpectators(t *testing.T) {
 		{"owner", map[string]any{"id": id, "t": token}, false},
 	}
 	for _, c := range cases {
-		conn := dialWS(t, srv.Server)
+		conn := dialWS(t, srv)
 		_ = conn.SetReadDeadline(time.Now().Add(10 * time.Second))
 		if err := conn.WriteJSON(map[string]any{"type": "connection_init"}); err != nil {
 			t.Fatal(err)

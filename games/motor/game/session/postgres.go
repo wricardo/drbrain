@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/wricardo/drbrain/games/motor/game/service"
-	"github.com/wricardo/drbrain/games/motor/internal/pgdb"
+	"github.com/wricardo/drbrain/platform/pgdb"
 )
 
 // PostgresPersistence stores sessions in the sessions table. It replaces

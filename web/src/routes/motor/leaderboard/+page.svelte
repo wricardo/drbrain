@@ -23,7 +23,7 @@
 	import { groupMaps, isOfficial, sortMaps } from '$lib/motor/maps';
 	import { CREATE_SESSION_MUTATION, LEADERBOARD_QUERY, MAPS_QUERY } from '$lib/motor/queries';
 	import { newSessionName, ownSessionIds, rememberSession } from '$lib/motor/sessions';
-	import { account } from '$lib/motor/stores/account';
+	import { account } from '$lib/account/stores/account';
 	import { absoluteTime, relativeTime } from '@drbrain/ui/time';
 	import type { GameMap, Leaderboard, LeaderboardOrder, Session } from '$lib/motor/types';
 

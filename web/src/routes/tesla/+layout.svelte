@@ -5,6 +5,7 @@
 	import { makeClient } from '$lib/tesla/graphql';
 	import { browser } from '$app/environment';
 	import { page } from '$app/stores';
+	import AccountMenu from '$lib/motor/components/AccountMenu.svelte';
 
 	let { children } = $props();
 
@@ -50,6 +51,7 @@
 					class="px-3 py-1.5 rounded-full transition-colors {active ? 'bg-[#393c41] text-white' : 'text-gray-500 hover:text-[#393c41] hover:bg-gray-100'}"
 				>{item.label}</a>
 			{/each}
+			<AccountMenu />
 		</nav>
 	</header>
 

@@ -120,83 +120,6 @@ func (r *mutationResolver) Reset(ctx context.Context, sessionID string, ownerTok
 	return toSession(s, r.mayEdit(ctx, sessionID, ownerToken)), nil
 }
 
-// Logout is the resolver for the logout field. It is safe to call when signed
-// out.
-func (r *mutationResolver) Logout(ctx context.Context) (bool, error) {
-	if v := ViewerFrom(ctx); v != nil {
-		r.Service.EndLogin(v.Token)
-		if v.ClearSession != nil {
-			v.ClearSession()
-		}
-	}
-	return true, nil
-}
-
-// RegisterWithPassword is the resolver for the registerWithPassword field.
-func (r *mutationResolver) RegisterWithPassword(ctx context.Context, handle string, password string) (*model.Account, error) {
-	return r.passwordSignIn(ctx, true, handle, password)
-}
-
-// LogInWithPassword is the resolver for the logInWithPassword field.
-func (r *mutationResolver) LogInWithPassword(ctx context.Context, handle string, password string) (*model.Account, error) {
-	return r.passwordSignIn(ctx, false, handle, password)
-}
-
-// UpdateAccount is the resolver for the updateAccount field.
-func (r *mutationResolver) UpdateAccount(ctx context.Context, input model.AccountInput) (*model.Account, error) {
-	acct, err := requireViewer(ctx)
-	if err != nil {
-		return nil, err
-	}
-	a, err := r.Service.UpdateAccount(acct.ID, service.AccountUpdate{
-		Handle: input.Handle, DisplayName: input.DisplayName, ProfilePublic: input.ProfilePublic,
-	})
-	if err != nil {
-		return nil, toGQLError(err)
-	}
-	return r.toAccount(a), nil
-}
-
-// ChangePassword is the resolver for the changePassword field. It needs the
-// current password even though the player is signed in (a stolen session is not
-// enough), and ends the account's other logins; the caller's own stays.
-func (r *mutationResolver) ChangePassword(ctx context.Context, currentPassword string, newPassword string) (bool, error) {
-	acct, err := requireViewer(ctx)
-	if err != nil {
-		return false, err
-	}
-	token := ""
-	if v := ViewerFrom(ctx); v != nil {
-		token = v.Token
-	}
-	if err := r.Service.ChangePassword(acct.ID, currentPassword, newPassword, token); err != nil {
-		return false, toGQLError(err)
-	}
-	return true, nil
-}
-
-// DeleteAccount is the resolver for the deleteAccount field. The caller must
-// retype the handle, so a stray request cannot delete an account.
-func (r *mutationResolver) DeleteAccount(ctx context.Context, confirmHandle string) (bool, error) {
-	acct, err := requireViewer(ctx)
-	if err != nil {
-		return false, err
-	}
-	if service.NormalizeHandle(confirmHandle) != acct.Handle {
-		return false, codedError(service.CodeInvalidArgument, "type your handle exactly to confirm")
-	}
-	if err := r.Service.DeleteAccount(acct.ID); err != nil {
-		return false, toGQLError(err)
-	}
-	if v := ViewerFrom(ctx); v != nil {
-		r.Service.EndLogin(v.Token)
-		if v.ClearSession != nil {
-			v.ClearSession()
-		}
-	}
-	return true, nil
-}
-
 // ClaimSessions is the resolver for the claimSessions field. Each claim needs the
 // session's owner token; knowing a session id is never enough.
 func (r *mutationResolver) ClaimSessions(ctx context.Context, claims []*model.SessionClaimInput) ([]*model.SessionClaimResult, error) {
@@ -278,45 +201,6 @@ func (r *mutationResolver) DeleteMap(ctx context.Context, id string) (bool, erro
 		return false, toGQLError(err)
 	}
 	return true, nil
-}
-
-// Me is the resolver for the me field: the signed-in player, or null.
-func (r *queryResolver) Me(ctx context.Context) (*model.Account, error) {
-	v := ViewerFrom(ctx)
-	if v == nil {
-		return nil, nil
-	}
-	return r.toAccount(v.Account), nil
-}
-
-// AuthProviders is the resolver for the authProviders field; empty when
-// sign-in is off.
-func (r *queryResolver) AuthProviders(ctx context.Context) ([]*model.AuthProvider, error) {
-	out := make([]*model.AuthProvider, len(r.Providers))
-	for i, p := range r.Providers {
-		out[i] = &model.AuthProvider{ID: p.ID, Name: p.Name}
-	}
-	return out, nil
-}
-
-// Profile is the resolver for the profile field. Unknown handles and private
-// profiles (other than the viewer's own) are null.
-func (r *queryResolver) Profile(ctx context.Context, handle string) (*model.Profile, error) {
-	p, err := r.Service.GetProfile(handle, viewerID(ctx))
-	if err != nil {
-		if isNotFound(err) {
-			return nil, nil
-		}
-		return nil, toGQLError(err)
-	}
-	out := &model.Profile{
-		Handle: p.Account.Handle, DisplayName: p.Account.DisplayName, CreatedAt: p.Account.CreatedAt,
-		IsMine: p.IsMine, Runs: make([]*model.PlayerRun, len(p.Runs)),
-	}
-	for i, run := range p.Runs {
-		out.Runs[i] = &model.PlayerRun{MapID: run.MapID, Total: run.Total, Entry: toLeaderboardEntry(run.Entry)}
-	}
-	return out, nil
 }
 
 // Maps is the resolver for the maps field.
@@ -421,6 +305,31 @@ func (r *queryResolver) PlayerRuns(ctx context.Context, sessionIds []string, nam
 		q.Name = *name
 	}
 	runs, err := r.Service.GetPlayerRuns(q)
+	if err != nil {
+		return nil, toGQLError(err)
+	}
+	out := make([]*model.PlayerRun, len(runs))
+	for i, run := range runs {
+		out[i] = &model.PlayerRun{MapID: run.MapID, Total: run.Total, Entry: toLeaderboardEntry(run.Entry)}
+	}
+	return out, nil
+}
+
+// PlayerRunsFor is the resolver for the playerRunsFor field.
+func (r *queryResolver) PlayerRunsFor(ctx context.Context, handle string) ([]*model.PlayerRun, error) {
+	if r.Accounts == nil {
+		return nil, nil
+	}
+	// Respect profile privacy: a private profile's stats are visible only to
+	// its owner.
+	p, err := r.Accounts.GetProfile(handle, viewerID(ctx))
+	if err != nil {
+		if isNotFound(err) {
+			return nil, nil
+		}
+		return nil, toGQLError(err)
+	}
+	runs, err := r.Service.GetPlayerRuns(service.RunsQuery{AccountID: p.Account.ID})
 	if err != nil {
 		return nil, toGQLError(err)
 	}

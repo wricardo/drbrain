@@ -6,6 +6,7 @@
 	import { browser } from '$app/environment';
 	import { page } from '$app/stores';
 	import { GAME, SITE, TITLE } from '$lib/mazes/brand';
+	import AccountMenu from '$lib/motor/components/AccountMenu.svelte';
 
 	let { children } = $props();
 
@@ -79,6 +80,7 @@
 						: 'text-indigo-900 hover:bg-indigo-100'}">{item.label}</a
 				>
 			{/each}
+			<AccountMenu />
 		</nav>
 	</header>
 

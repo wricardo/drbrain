@@ -1,8 +1,6 @@
 package graph
 
 import (
-	"time"
-
 	"github.com/wricardo/drbrain/games/motor/game/engine"
 	"github.com/wricardo/drbrain/games/motor/game/service"
 	"github.com/wricardo/drbrain/games/motor/graph/model"
@@ -282,18 +280,7 @@ func toLeaderboardEntry(e service.LeaderboardEntry) *model.LeaderboardEntry {
 	return out
 }
 
-// toAccount converts an account for its owner (me, updateAccount).
-func (r *Resolver) toAccount(a *service.Account) *model.Account {
-	out := &model.Account{
-		Handle: a.Handle, DisplayName: a.DisplayName, ProfilePublic: a.ProfilePublic, CreatedAt: a.CreatedAt,
-		HasPassword: a.HasPassword,
-	}
-	if at := r.Service.HandleChangeableAt(a); !at.IsZero() && at.After(time.Now()) {
-		out.HandleChangeableAt = &at
-	}
-	return out
-}
-
+// toLeaderboard converts a leaderboard.
 func toLeaderboard(lb *service.Leaderboard) *model.Leaderboard {
 	if lb == nil {
 		return nil

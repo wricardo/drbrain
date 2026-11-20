@@ -25,7 +25,7 @@ import (
 
 	"github.com/wricardo/drbrain/games/motor/internal/appconfig"
 	"github.com/wricardo/drbrain/games/motor/internal/jsonmigrate"
-	"github.com/wricardo/drbrain/games/motor/internal/pgdb"
+	"github.com/wricardo/drbrain/platform/pgdb"
 )
 
 func main() {

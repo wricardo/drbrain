@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { getContextClient } from '@urql/svelte';
 	import { unwrap } from '@drbrain/ui/graphql';
-	import { claimOffer, claimResultText, summarizeClaims } from '$lib/motor/account';
+	import { claimOffer, claimResultText, summarizeClaims } from '$lib/motor/profile';
 	import { describeError } from '@drbrain/ui/errors';
 	import { CLAIM_SESSIONS_MUTATION } from '$lib/motor/queries';
 	import { claimableSessions, forgetOwnerTokens } from '$lib/motor/sessions';
-	import { account } from '$lib/motor/stores/account';
+	import { account } from '$lib/account/stores/account';
 	import type { SessionClaimResult } from '$lib/motor/types';
 
 	/**

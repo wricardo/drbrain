@@ -23,8 +23,8 @@ served from the same process.
 Runtime state lives in `/var/lib/drbrain`, outside the release directory, so a deploy
 only replaces the binary, the web bundle and the built-in maps. **Never `rm -rf` the
 state dirs**; they are the only copy of player sessions, accounts and user maps.
-Motor's PostgreSQL volume (when `MOTOR_DATABASE_URL` is set) also lives outside the
-release.
+PostgreSQL (when `DRBRAIN_DATABASE_URL` is set; it stores accounts, sessions,
+logins and player maps) keeps its own volume outside the release.
 
 ## First-time provisioning
 

@@ -16,10 +16,9 @@ logfile := "tmp/drbrain.log"
 default:
     @just --list
 
-# Regenerate per-game SDL, merged schema, gqlgen executor and web GraphQL types
+# Regenerate per-game SDL, merged schema, gqlgen executors and web GraphQL types
 regen:
-    go run ./cmd/split-schema
-    go generate ./graph
+    go generate ./games/... ./platform/account ./graph
 
 # Build the SvelteKit app into web/build
 build-web:
@@ -96,6 +95,7 @@ start:
     export DRBRAIN_ADDR="{{addr}}"
     export DRBRAIN_STATIC_DIR="web/build"
     export DRBRAIN_DEBUG="${DRBRAIN_DEBUG:-false}"
+    export DRBRAIN_ACCOUNTS_DIR="tmp/state/accounts"
     # Built-in maps come from the repo; sessions/accounts stay under tmp/.
     export MAZES_MAPS_DIR="games/mazes/maps"
     export MAZES_SESSIONS_DIR="tmp/state/mazes/sessions"

@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/wricardo/drbrain/games/motor/game/engine"
+	"github.com/wricardo/drbrain/platform/account"
 )
 
 // Run speed bounds (milliseconds per tick) and defaults.
@@ -44,21 +45,9 @@ type Options struct {
 	// MaxDisplayName is the maximum display-name length in characters
 	// (default DefaultMaxDisplayName).
 	MaxDisplayName int
-	// Accounts enables sign-in and profiles; nil (the default) keeps the game
-	// guest-only and every account method returns FORBIDDEN.
-	Accounts AccountStore
-	// LoginTTL is how long a login lasts (default DefaultLoginTTL).
-	LoginTTL time.Duration
-	// HandleCooldown is the minimum time between handle changes (default
-	// DefaultHandleCooldown).
-	HandleCooldown time.Duration
-	// MaxAccounts caps the number of accounts (default DefaultMaxAccounts).
-	MaxAccounts int
-	// PasswordSignIn enables username/password accounts (AUTH_PASSWORD, on
-	// unless false). It needs Accounts.
-	PasswordSignIn bool
-	// Now overrides the clock used by account logic (tests).
-	Now func() time.Time
+	// Accounts is the global account service; nil keeps the game guest-only
+	// (sessions cannot be attached to accounts).
+	Accounts *account.Service
 }
 
 // gameService implements GameService.
@@ -101,15 +90,9 @@ func New(maps MapStore, sessions SessionStore, bc Broadcaster, opts Options) Gam
 	return svc
 }
 
-// loginSweeper is implemented by account stores that keep logins in a database
-// and so need expired ones removed (the file store drops them when it starts).
-type loginSweeper interface {
-	SweepLogins(now time.Time) (int, error)
-}
-
-// sweepLoop removes idle sessions and expired logins every interval until
-// Shutdown. Sessions go through DeleteSession, so a runner is stopped and the
-// stored copy is removed with the live one.
+// sweepLoop removes idle sessions every interval until Shutdown. Sessions go
+// through DeleteSession, so a runner is stopped and the stored copy is removed
+// with the live one.
 func (svc *gameService) sweepLoop(interval time.Duration) {
 	defer close(svc.sweepDone)
 	t := time.NewTicker(interval)
@@ -120,13 +103,6 @@ func (svc *gameService) sweepLoop(interval time.Duration) {
 			return
 		case <-t.C:
 			svc.sweepExpired(time.Now().Add(-svc.opts.SessionTTL))
-			if sw, ok := svc.opts.Accounts.(loginSweeper); ok {
-				if n, err := sw.SweepLogins(time.Now()); err != nil {
-					log.Printf("service: sweep logins: %v", err)
-				} else if n > 0 {
-					log.Printf("service: removed %d expired logins", n)
-				}
-			}
 		}
 	}
 }
@@ -223,7 +199,7 @@ func (svc *gameService) cleanName(name string) (string, error) {
 		return "", Errorf(CodeInvalidArgument, "display name too long (%d characters, max %d)", n, svc.opts.MaxDisplayName)
 	}
 	if name == "" {
-		name = GuestName(svc.opts.MaxDisplayName)
+		name = account.GuestName(svc.opts.MaxDisplayName)
 	}
 	return name, nil
 }

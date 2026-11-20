@@ -19,12 +19,14 @@ import (
 	"github.com/vektah/gqlparser/v2/ast"
 	"github.com/wricardo/drbrain/games/delivery/graph"
 	"github.com/wricardo/drbrain/games/delivery/graph/model"
-	graph1 "github.com/wricardo/drbrain/games/mazes/graph"
-	model1 "github.com/wricardo/drbrain/games/mazes/graph/model"
-	graph2 "github.com/wricardo/drbrain/games/motor/graph"
-	model2 "github.com/wricardo/drbrain/games/motor/graph/model"
-	graph3 "github.com/wricardo/drbrain/games/tesla/graph"
-	model3 "github.com/wricardo/drbrain/games/tesla/graph/model"
+	graph2 "github.com/wricardo/drbrain/games/mazes/graph"
+	model2 "github.com/wricardo/drbrain/games/mazes/graph/model"
+	graph3 "github.com/wricardo/drbrain/games/motor/graph"
+	model3 "github.com/wricardo/drbrain/games/motor/graph/model"
+	graph4 "github.com/wricardo/drbrain/games/tesla/graph"
+	model4 "github.com/wricardo/drbrain/games/tesla/graph/model"
+	graph1 "github.com/wricardo/drbrain/platform/account/graph"
+	model1 "github.com/wricardo/drbrain/platform/account/graph/model"
 )
 
 // region    ************************** generated!.gotpl **************************
@@ -49,6 +51,8 @@ type Config struct {
 type ResolverRoot interface {
 	Delivery_Mutation() Delivery_MutationResolver
 	Delivery_Query() Delivery_QueryResolver
+	Global_Mutation() Global_MutationResolver
+	Global_Query() Global_QueryResolver
 	Mazes_Mutation() Mazes_MutationResolver
 	Mazes_Query() Mazes_QueryResolver
 	Motor_Map() Motor_MapResolver
@@ -277,6 +281,42 @@ type ComplexityRoot struct {
 		Title       func(childComplexity int) int
 	}
 
+	Global_AuthProvider struct {
+		ID   func(childComplexity int) int
+		Name func(childComplexity int) int
+	}
+
+	Global_Mutation struct {
+		ChangePassword       func(childComplexity int, currentPassword string, newPassword string) int
+		DeleteAccount        func(childComplexity int, confirmHandle string) int
+		LogInWithPassword    func(childComplexity int, handle string, password string) int
+		Logout               func(childComplexity int) int
+		RegisterWithPassword func(childComplexity int, handle string, password string) int
+		UpdateAccount        func(childComplexity int, input model1.AccountInput) int
+	}
+
+	Global_Profile struct {
+		CreatedAt   func(childComplexity int) int
+		DisplayName func(childComplexity int) int
+		Handle      func(childComplexity int) int
+		IsMine      func(childComplexity int) int
+	}
+
+	Global_Query struct {
+		AuthProviders func(childComplexity int) int
+		Me            func(childComplexity int) int
+		Profile       func(childComplexity int, handle string) int
+	}
+
+	Global_User struct {
+		CreatedAt          func(childComplexity int) int
+		DisplayName        func(childComplexity int) int
+		Handle             func(childComplexity int) int
+		HandleChangeableAt func(childComplexity int) int
+		HasPassword        func(childComplexity int) int
+		ProfilePublic      func(childComplexity int) int
+	}
+
 	Mazes_AdminMap struct {
 		Description     func(childComplexity int) int
 		Difficulty      func(childComplexity int) int
@@ -351,16 +391,16 @@ type ComplexityRoot struct {
 	}
 
 	Mazes_Mutation struct {
-		BulkMove      func(childComplexity int, sessionID string, directions []model1.Direction, stopOnBlocked *bool) int
-		CreateMap     func(childComplexity int, mapArg model1.MapInput) int
+		BulkMove      func(childComplexity int, sessionID string, directions []model2.Direction, stopOnBlocked *bool) int
+		CreateMap     func(childComplexity int, mapArg model2.MapInput) int
 		CreateSession func(childComplexity int, mapID string, displayName *string) int
 		DeleteMap     func(childComplexity int, id string) int
 		DeleteSession func(childComplexity int, id string) int
-		Move          func(childComplexity int, sessionID string, direction model1.Direction) int
+		Move          func(childComplexity int, sessionID string, direction model2.Direction) int
 		RenameSession func(childComplexity int, id string, displayName string) int
 		Reset         func(childComplexity int, sessionID string) int
-		UpdateMap     func(childComplexity int, mapArg model1.MapInput) int
-		ValidateMap   func(childComplexity int, mapArg model1.MapInput) int
+		UpdateMap     func(childComplexity int, mapArg model2.MapInput) int
+		ValidateMap   func(childComplexity int, mapArg model2.MapInput) int
 	}
 
 	Mazes_Portal struct {
@@ -380,7 +420,7 @@ type ComplexityRoot struct {
 		Map      func(childComplexity int, id string) int
 		Maps     func(childComplexity int) int
 		Session  func(childComplexity int, id string) int
-		Sessions func(childComplexity int, sort *model1.SessionSort, limit *int, mapID *string) int
+		Sessions func(childComplexity int, sort *model2.SessionSort, limit *int, mapID *string) int
 	}
 
 	Mazes_Session struct {
@@ -402,20 +442,6 @@ type ComplexityRoot struct {
 		Event   func(childComplexity int) int
 		Seq     func(childComplexity int) int
 		Session func(childComplexity int) int
-	}
-
-	Motor_Account struct {
-		CreatedAt          func(childComplexity int) int
-		DisplayName        func(childComplexity int) int
-		Handle             func(childComplexity int) int
-		HandleChangeableAt func(childComplexity int) int
-		HasPassword        func(childComplexity int) int
-		ProfilePublic      func(childComplexity int) int
-	}
-
-	Motor_AuthProvider struct {
-		ID   func(childComplexity int) int
-		Name func(childComplexity int) int
 	}
 
 	Motor_Conveyor struct {
@@ -498,25 +524,19 @@ type ComplexityRoot struct {
 	}
 
 	Motor_Mutation struct {
-		ChangePassword       func(childComplexity int, currentPassword string, newPassword string) int
-		ClaimSessions        func(childComplexity int, claims []*model2.SessionClaimInput) int
-		CreateMap            func(childComplexity int, mapArg model2.MapInput) int
-		CreateSession        func(childComplexity int, mapID string, displayName *string) int
-		DeleteAccount        func(childComplexity int, confirmHandle string) int
-		DeleteMap            func(childComplexity int, id string) int
-		DeleteSession        func(childComplexity int, id string, ownerToken *string) int
-		LogInWithPassword    func(childComplexity int, handle string, password string) int
-		Logout               func(childComplexity int) int
-		Pause                func(childComplexity int, sessionID string, ownerToken *string) int
-		RegisterWithPassword func(childComplexity int, handle string, password string) int
-		RenameSession        func(childComplexity int, id string, displayName string, ownerToken *string) int
-		Reset                func(childComplexity int, sessionID string, ownerToken *string) int
-		Run                  func(childComplexity int, sessionID string, speedMs *int, ownerToken *string) int
-		SetProgram           func(childComplexity int, sessionID string, program model2.ProgramInput, ownerToken *string) int
-		Step                 func(childComplexity int, sessionID string, ownerToken *string) int
-		UpdateAccount        func(childComplexity int, input model2.AccountInput) int
-		UpdateMap            func(childComplexity int, mapArg model2.MapInput) int
-		ValidateMap          func(childComplexity int, mapArg model2.MapInput) int
+		ClaimSessions func(childComplexity int, claims []*model3.SessionClaimInput) int
+		CreateMap     func(childComplexity int, mapArg model3.MapInput) int
+		CreateSession func(childComplexity int, mapID string, displayName *string) int
+		DeleteMap     func(childComplexity int, id string) int
+		DeleteSession func(childComplexity int, id string, ownerToken *string) int
+		Pause         func(childComplexity int, sessionID string, ownerToken *string) int
+		RenameSession func(childComplexity int, id string, displayName string, ownerToken *string) int
+		Reset         func(childComplexity int, sessionID string, ownerToken *string) int
+		Run           func(childComplexity int, sessionID string, speedMs *int, ownerToken *string) int
+		SetProgram    func(childComplexity int, sessionID string, program model3.ProgramInput, ownerToken *string) int
+		Step          func(childComplexity int, sessionID string, ownerToken *string) int
+		UpdateMap     func(childComplexity int, mapArg model3.MapInput) int
+		ValidateMap   func(childComplexity int, mapArg model3.MapInput) int
 	}
 
 	Motor_PlayerRun struct {
@@ -535,30 +555,20 @@ type ComplexityRoot struct {
 		Y func(childComplexity int) int
 	}
 
-	Motor_Profile struct {
-		CreatedAt   func(childComplexity int) int
-		DisplayName func(childComplexity int) int
-		Handle      func(childComplexity int) int
-		IsMine      func(childComplexity int) int
-		Runs        func(childComplexity int) int
-	}
-
 	Motor_Program struct {
 		Main func(childComplexity int) int
 		Subs func(childComplexity int) int
 	}
 
 	Motor_Query struct {
-		AuthProviders  func(childComplexity int) int
 		CanPlaySession func(childComplexity int, id string, ownerToken *string) int
-		Leaderboard    func(childComplexity int, mapID string, order *model2.LeaderboardOrder, limit *int, sessionID *string) int
+		Leaderboard    func(childComplexity int, mapID string, order *model3.LeaderboardOrder, limit *int, sessionID *string) int
 		Map            func(childComplexity int, id string) int
 		Maps           func(childComplexity int) int
-		Me             func(childComplexity int) int
 		PlayerRuns     func(childComplexity int, sessionIds []string, name *string) int
-		Profile        func(childComplexity int, handle string) int
+		PlayerRunsFor  func(childComplexity int, handle string) int
 		Session        func(childComplexity int, id string, ownerToken *string) int
-		Sessions       func(childComplexity int, sort *model2.SessionSort, limit *int, mapID *string) int
+		Sessions       func(childComplexity int, sort *model3.SessionSort, limit *int, mapID *string) int
 	}
 
 	Motor_Session struct {
@@ -625,6 +635,7 @@ type ComplexityRoot struct {
 	}
 
 	Mutation struct {
+		Account          func(childComplexity int) int
 		Delivery         func(childComplexity int) int
 		Mazes            func(childComplexity int) int
 		MotorProgramming func(childComplexity int) int
@@ -632,6 +643,7 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
+		Account          func(childComplexity int) int
 		Delivery         func(childComplexity int) int
 		Mazes            func(childComplexity int) int
 		MotorProgramming func(childComplexity int) int
@@ -795,16 +807,16 @@ type ComplexityRoot struct {
 	}
 
 	Tesla_Mutation struct {
-		BulkMove      func(childComplexity int, sessionID string, moves []model3.Direction, reset *bool) int
-		CreateMap     func(childComplexity int, name string, mapArg model3.GameMapInput) int
+		BulkMove      func(childComplexity int, sessionID string, moves []model4.Direction, reset *bool) int
+		CreateMap     func(childComplexity int, name string, mapArg model4.GameMapInput) int
 		CreateSession func(childComplexity int, mapID *string, mapName *string, fogEnabled *bool, fogRadius *int, gridPassword *string, moveDelayMs *int) int
 		DeleteMap     func(childComplexity int, name string, editKey *string) int
 		DeleteSession func(childComplexity int, id string) int
-		Move          func(childComplexity int, sessionID string, direction model3.Direction, reset *bool) int
+		Move          func(childComplexity int, sessionID string, direction model4.Direction, reset *bool) int
 		Reset         func(childComplexity int, sessionID string) int
-		UpdateMap     func(childComplexity int, name string, patch model3.GameMapPatchInput, editKey *string) int
+		UpdateMap     func(childComplexity int, name string, patch model4.GameMapPatchInput, editKey *string) int
 		UpdateSession func(childComplexity int, id string, displayName string) int
-		ValidateMap   func(childComplexity int, mapArg model3.GameMapInput) int
+		ValidateMap   func(childComplexity int, mapArg model4.GameMapInput) int
 	}
 
 	Tesla_Position struct {
@@ -814,11 +826,11 @@ type ComplexityRoot struct {
 
 	Tesla_Query struct {
 		GameState       func(childComplexity int, sessionID string) int
-		History         func(childComplexity int, sessionID string, page *int, limit *int, order *model3.SortOrder) int
+		History         func(childComplexity int, sessionID string, page *int, limit *int, order *model4.SortOrder) int
 		Map             func(childComplexity int, name string, password *string) int
 		Maps            func(childComplexity int) int
 		Session         func(childComplexity int, id string) int
-		Sessions        func(childComplexity int, sort *model3.SessionSort, order *model3.SortOrder, limit *int) int
+		Sessions        func(childComplexity int, sort *model4.SessionSort, order *model4.SortOrder, limit *int) int
 		UnifiedSessions func(childComplexity int, mapName *string) int
 	}
 
@@ -898,106 +910,113 @@ type Delivery_QueryResolver interface {
 	CarView(ctx context.Context, obj *graph.Resolver, id string, carID string, radius int) (*model.CarWindow, error)
 	Events(ctx context.Context, obj *graph.Resolver, id string, sinceTick int) ([]*model.EventView, error)
 }
+type Global_MutationResolver interface {
+	Logout(ctx context.Context, obj *graph1.Resolver) (bool, error)
+	RegisterWithPassword(ctx context.Context, obj *graph1.Resolver, handle string, password string) (*model1.User, error)
+	LogInWithPassword(ctx context.Context, obj *graph1.Resolver, handle string, password string) (*model1.User, error)
+	UpdateAccount(ctx context.Context, obj *graph1.Resolver, input model1.AccountInput) (*model1.User, error)
+	ChangePassword(ctx context.Context, obj *graph1.Resolver, currentPassword string, newPassword string) (bool, error)
+	DeleteAccount(ctx context.Context, obj *graph1.Resolver, confirmHandle string) (bool, error)
+}
+type Global_QueryResolver interface {
+	Me(ctx context.Context, obj *graph1.Resolver) (*model1.User, error)
+	AuthProviders(ctx context.Context, obj *graph1.Resolver) ([]*model1.AuthProvider, error)
+	Profile(ctx context.Context, obj *graph1.Resolver, handle string) (*model1.Profile, error)
+}
 type Mazes_MutationResolver interface {
-	CreateSession(ctx context.Context, obj *graph1.Resolver, mapID string, displayName *string) (*model1.Session, error)
-	DeleteSession(ctx context.Context, obj *graph1.Resolver, id string) (bool, error)
-	RenameSession(ctx context.Context, obj *graph1.Resolver, id string, displayName string) (*model1.Session, error)
-	Move(ctx context.Context, obj *graph1.Resolver, sessionID string, direction model1.Direction) (*model1.Session, error)
-	BulkMove(ctx context.Context, obj *graph1.Resolver, sessionID string, directions []model1.Direction, stopOnBlocked *bool) (*model1.Session, error)
-	Reset(ctx context.Context, obj *graph1.Resolver, sessionID string) (*model1.Session, error)
-	CreateMap(ctx context.Context, obj *graph1.Resolver, mapArg model1.MapInput) (*model1.AdminMap, error)
-	UpdateMap(ctx context.Context, obj *graph1.Resolver, mapArg model1.MapInput) (*model1.AdminMap, error)
-	DeleteMap(ctx context.Context, obj *graph1.Resolver, id string) (bool, error)
-	ValidateMap(ctx context.Context, obj *graph1.Resolver, mapArg model1.MapInput) (*model1.MapValidationResult, error)
+	CreateSession(ctx context.Context, obj *graph2.Resolver, mapID string, displayName *string) (*model2.Session, error)
+	DeleteSession(ctx context.Context, obj *graph2.Resolver, id string) (bool, error)
+	RenameSession(ctx context.Context, obj *graph2.Resolver, id string, displayName string) (*model2.Session, error)
+	Move(ctx context.Context, obj *graph2.Resolver, sessionID string, direction model2.Direction) (*model2.Session, error)
+	BulkMove(ctx context.Context, obj *graph2.Resolver, sessionID string, directions []model2.Direction, stopOnBlocked *bool) (*model2.Session, error)
+	Reset(ctx context.Context, obj *graph2.Resolver, sessionID string) (*model2.Session, error)
+	CreateMap(ctx context.Context, obj *graph2.Resolver, mapArg model2.MapInput) (*model2.AdminMap, error)
+	UpdateMap(ctx context.Context, obj *graph2.Resolver, mapArg model2.MapInput) (*model2.AdminMap, error)
+	DeleteMap(ctx context.Context, obj *graph2.Resolver, id string) (bool, error)
+	ValidateMap(ctx context.Context, obj *graph2.Resolver, mapArg model2.MapInput) (*model2.MapValidationResult, error)
 }
 type Mazes_QueryResolver interface {
-	Maps(ctx context.Context, obj *graph1.Resolver) ([]*model1.Map, error)
-	Map(ctx context.Context, obj *graph1.Resolver, id string) (*model1.Map, error)
-	AdminMap(ctx context.Context, obj *graph1.Resolver, id string) (*model1.AdminMap, error)
-	Session(ctx context.Context, obj *graph1.Resolver, id string) (*model1.Session, error)
-	Sessions(ctx context.Context, obj *graph1.Resolver, sort *model1.SessionSort, limit *int, mapID *string) ([]*model1.Session, error)
-}
-type Motor_MapResolver interface {
-	Builtin(ctx context.Context, obj *model2.Map) (bool, error)
-}
-type Motor_MutationResolver interface {
-	CreateSession(ctx context.Context, obj *graph2.Resolver, mapID string, displayName *string) (*model2.Session, error)
-	DeleteSession(ctx context.Context, obj *graph2.Resolver, id string, ownerToken *string) (bool, error)
-	RenameSession(ctx context.Context, obj *graph2.Resolver, id string, displayName string, ownerToken *string) (*model2.Session, error)
-	SetProgram(ctx context.Context, obj *graph2.Resolver, sessionID string, program model2.ProgramInput, ownerToken *string) (*model2.Session, error)
-	Run(ctx context.Context, obj *graph2.Resolver, sessionID string, speedMs *int, ownerToken *string) (*model2.Session, error)
-	Pause(ctx context.Context, obj *graph2.Resolver, sessionID string, ownerToken *string) (*model2.Session, error)
-	Step(ctx context.Context, obj *graph2.Resolver, sessionID string, ownerToken *string) (*model2.Session, error)
-	Reset(ctx context.Context, obj *graph2.Resolver, sessionID string, ownerToken *string) (*model2.Session, error)
-	Logout(ctx context.Context, obj *graph2.Resolver) (bool, error)
-	RegisterWithPassword(ctx context.Context, obj *graph2.Resolver, handle string, password string) (*model2.Account, error)
-	LogInWithPassword(ctx context.Context, obj *graph2.Resolver, handle string, password string) (*model2.Account, error)
-	UpdateAccount(ctx context.Context, obj *graph2.Resolver, input model2.AccountInput) (*model2.Account, error)
-	ChangePassword(ctx context.Context, obj *graph2.Resolver, currentPassword string, newPassword string) (bool, error)
-	DeleteAccount(ctx context.Context, obj *graph2.Resolver, confirmHandle string) (bool, error)
-	ClaimSessions(ctx context.Context, obj *graph2.Resolver, claims []*model2.SessionClaimInput) ([]*model2.SessionClaimResult, error)
-	CreateMap(ctx context.Context, obj *graph2.Resolver, mapArg model2.MapInput) (*model2.Map, error)
-	ValidateMap(ctx context.Context, obj *graph2.Resolver, mapArg model2.MapInput) (*model2.MapValidationResult, error)
-	UpdateMap(ctx context.Context, obj *graph2.Resolver, mapArg model2.MapInput) (*model2.Map, error)
-	DeleteMap(ctx context.Context, obj *graph2.Resolver, id string) (bool, error)
-}
-type Motor_QueryResolver interface {
-	Me(ctx context.Context, obj *graph2.Resolver) (*model2.Account, error)
-	AuthProviders(ctx context.Context, obj *graph2.Resolver) ([]*model2.AuthProvider, error)
-	Profile(ctx context.Context, obj *graph2.Resolver, handle string) (*model2.Profile, error)
 	Maps(ctx context.Context, obj *graph2.Resolver) ([]*model2.Map, error)
 	Map(ctx context.Context, obj *graph2.Resolver, id string) (*model2.Map, error)
-	Session(ctx context.Context, obj *graph2.Resolver, id string, ownerToken *string) (*model2.Session, error)
-	CanPlaySession(ctx context.Context, obj *graph2.Resolver, id string, ownerToken *string) (bool, error)
+	AdminMap(ctx context.Context, obj *graph2.Resolver, id string) (*model2.AdminMap, error)
+	Session(ctx context.Context, obj *graph2.Resolver, id string) (*model2.Session, error)
 	Sessions(ctx context.Context, obj *graph2.Resolver, sort *model2.SessionSort, limit *int, mapID *string) ([]*model2.Session, error)
-	Leaderboard(ctx context.Context, obj *graph2.Resolver, mapID string, order *model2.LeaderboardOrder, limit *int, sessionID *string) (*model2.Leaderboard, error)
-	PlayerRuns(ctx context.Context, obj *graph2.Resolver, sessionIds []string, name *string) ([]*model2.PlayerRun, error)
+}
+type Motor_MapResolver interface {
+	Builtin(ctx context.Context, obj *model3.Map) (bool, error)
+}
+type Motor_MutationResolver interface {
+	CreateSession(ctx context.Context, obj *graph3.Resolver, mapID string, displayName *string) (*model3.Session, error)
+	DeleteSession(ctx context.Context, obj *graph3.Resolver, id string, ownerToken *string) (bool, error)
+	RenameSession(ctx context.Context, obj *graph3.Resolver, id string, displayName string, ownerToken *string) (*model3.Session, error)
+	SetProgram(ctx context.Context, obj *graph3.Resolver, sessionID string, program model3.ProgramInput, ownerToken *string) (*model3.Session, error)
+	Run(ctx context.Context, obj *graph3.Resolver, sessionID string, speedMs *int, ownerToken *string) (*model3.Session, error)
+	Pause(ctx context.Context, obj *graph3.Resolver, sessionID string, ownerToken *string) (*model3.Session, error)
+	Step(ctx context.Context, obj *graph3.Resolver, sessionID string, ownerToken *string) (*model3.Session, error)
+	Reset(ctx context.Context, obj *graph3.Resolver, sessionID string, ownerToken *string) (*model3.Session, error)
+	ClaimSessions(ctx context.Context, obj *graph3.Resolver, claims []*model3.SessionClaimInput) ([]*model3.SessionClaimResult, error)
+	CreateMap(ctx context.Context, obj *graph3.Resolver, mapArg model3.MapInput) (*model3.Map, error)
+	ValidateMap(ctx context.Context, obj *graph3.Resolver, mapArg model3.MapInput) (*model3.MapValidationResult, error)
+	UpdateMap(ctx context.Context, obj *graph3.Resolver, mapArg model3.MapInput) (*model3.Map, error)
+	DeleteMap(ctx context.Context, obj *graph3.Resolver, id string) (bool, error)
+}
+type Motor_QueryResolver interface {
+	Maps(ctx context.Context, obj *graph3.Resolver) ([]*model3.Map, error)
+	Map(ctx context.Context, obj *graph3.Resolver, id string) (*model3.Map, error)
+	Session(ctx context.Context, obj *graph3.Resolver, id string, ownerToken *string) (*model3.Session, error)
+	CanPlaySession(ctx context.Context, obj *graph3.Resolver, id string, ownerToken *string) (bool, error)
+	Sessions(ctx context.Context, obj *graph3.Resolver, sort *model3.SessionSort, limit *int, mapID *string) ([]*model3.Session, error)
+	Leaderboard(ctx context.Context, obj *graph3.Resolver, mapID string, order *model3.LeaderboardOrder, limit *int, sessionID *string) (*model3.Leaderboard, error)
+	PlayerRuns(ctx context.Context, obj *graph3.Resolver, sessionIds []string, name *string) ([]*model3.PlayerRun, error)
+	PlayerRunsFor(ctx context.Context, obj *graph3.Resolver, handle string) ([]*model3.PlayerRun, error)
 }
 type MutationResolver interface {
+	Account(ctx context.Context) (*graph1.Resolver, error)
 	Delivery(ctx context.Context) (*graph.Resolver, error)
-	Mazes(ctx context.Context) (*graph1.Resolver, error)
-	MotorProgramming(ctx context.Context) (*graph2.Resolver, error)
-	Tesla(ctx context.Context) (*graph3.Resolver, error)
+	Mazes(ctx context.Context) (*graph2.Resolver, error)
+	MotorProgramming(ctx context.Context) (*graph3.Resolver, error)
+	Tesla(ctx context.Context) (*graph4.Resolver, error)
 }
 type QueryResolver interface {
+	Account(ctx context.Context) (*graph1.Resolver, error)
 	Delivery(ctx context.Context) (*graph.Resolver, error)
-	Mazes(ctx context.Context) (*graph1.Resolver, error)
-	MotorProgramming(ctx context.Context) (*graph2.Resolver, error)
-	Tesla(ctx context.Context) (*graph3.Resolver, error)
+	Mazes(ctx context.Context) (*graph2.Resolver, error)
+	MotorProgramming(ctx context.Context) (*graph3.Resolver, error)
+	Tesla(ctx context.Context) (*graph4.Resolver, error)
 }
 type SubscriptionResolver interface {
 	DeliverySession(ctx context.Context, id string) (<-chan *model.Snapshot, error)
-	MazesSessionUpdated(ctx context.Context, sessionID string) (<-chan *model1.SessionUpdate, error)
-	MotorProgrammingSessionUpdated(ctx context.Context, sessionID string, ownerToken *string) (<-chan *model2.SessionUpdate, error)
-	TeslaSessionUpdated(ctx context.Context, sessionID string) (<-chan *model3.GameState, error)
-	TeslaLobbyUpdated(ctx context.Context) (<-chan *model3.GameState, error)
+	MazesSessionUpdated(ctx context.Context, sessionID string) (<-chan *model2.SessionUpdate, error)
+	MotorProgrammingSessionUpdated(ctx context.Context, sessionID string, ownerToken *string) (<-chan *model3.SessionUpdate, error)
+	TeslaSessionUpdated(ctx context.Context, sessionID string) (<-chan *model4.GameState, error)
+	TeslaLobbyUpdated(ctx context.Context) (<-chan *model4.GameState, error)
 }
 type Tesla_GameMapResolver interface {
-	Layout(ctx context.Context, obj *model3.GameMap, password *string) ([]string, error)
+	Layout(ctx context.Context, obj *model4.GameMap, password *string) ([]string, error)
 }
 type Tesla_GameStateResolver interface {
-	Grid(ctx context.Context, obj *model3.GameState, password *string) ([][]*model3.Cell, error)
+	Grid(ctx context.Context, obj *model4.GameState, password *string) ([][]*model4.Cell, error)
 }
 type Tesla_MutationResolver interface {
-	CreateSession(ctx context.Context, obj *graph3.Resolver, mapID *string, mapName *string, fogEnabled *bool, fogRadius *int, gridPassword *string, moveDelayMs *int) (*model3.Session, error)
-	DeleteSession(ctx context.Context, obj *graph3.Resolver, id string) (*model3.DeleteSessionResult, error)
-	UpdateSession(ctx context.Context, obj *graph3.Resolver, id string, displayName string) (*model3.Session, error)
-	Move(ctx context.Context, obj *graph3.Resolver, sessionID string, direction model3.Direction, reset *bool) (*model3.MoveResult, error)
-	BulkMove(ctx context.Context, obj *graph3.Resolver, sessionID string, moves []model3.Direction, reset *bool) (*model3.BulkMoveResult, error)
-	Reset(ctx context.Context, obj *graph3.Resolver, sessionID string) (*model3.GameState, error)
-	CreateMap(ctx context.Context, obj *graph3.Resolver, name string, mapArg model3.GameMapInput) (*model3.GameMap, error)
-	UpdateMap(ctx context.Context, obj *graph3.Resolver, name string, patch model3.GameMapPatchInput, editKey *string) (*model3.GameMap, error)
-	DeleteMap(ctx context.Context, obj *graph3.Resolver, name string, editKey *string) (*model3.DeleteSessionResult, error)
-	ValidateMap(ctx context.Context, obj *graph3.Resolver, mapArg model3.GameMapInput) (*model3.MapValidationResult, error)
+	CreateSession(ctx context.Context, obj *graph4.Resolver, mapID *string, mapName *string, fogEnabled *bool, fogRadius *int, gridPassword *string, moveDelayMs *int) (*model4.Session, error)
+	DeleteSession(ctx context.Context, obj *graph4.Resolver, id string) (*model4.DeleteSessionResult, error)
+	UpdateSession(ctx context.Context, obj *graph4.Resolver, id string, displayName string) (*model4.Session, error)
+	Move(ctx context.Context, obj *graph4.Resolver, sessionID string, direction model4.Direction, reset *bool) (*model4.MoveResult, error)
+	BulkMove(ctx context.Context, obj *graph4.Resolver, sessionID string, moves []model4.Direction, reset *bool) (*model4.BulkMoveResult, error)
+	Reset(ctx context.Context, obj *graph4.Resolver, sessionID string) (*model4.GameState, error)
+	CreateMap(ctx context.Context, obj *graph4.Resolver, name string, mapArg model4.GameMapInput) (*model4.GameMap, error)
+	UpdateMap(ctx context.Context, obj *graph4.Resolver, name string, patch model4.GameMapPatchInput, editKey *string) (*model4.GameMap, error)
+	DeleteMap(ctx context.Context, obj *graph4.Resolver, name string, editKey *string) (*model4.DeleteSessionResult, error)
+	ValidateMap(ctx context.Context, obj *graph4.Resolver, mapArg model4.GameMapInput) (*model4.MapValidationResult, error)
 }
 type Tesla_QueryResolver interface {
-	Session(ctx context.Context, obj *graph3.Resolver, id string) (*model3.Session, error)
-	Sessions(ctx context.Context, obj *graph3.Resolver, sort *model3.SessionSort, order *model3.SortOrder, limit *int) (*model3.SessionList, error)
-	UnifiedSessions(ctx context.Context, obj *graph3.Resolver, mapName *string) (*model3.UnifiedSessions, error)
-	GameState(ctx context.Context, obj *graph3.Resolver, sessionID string) (*model3.GameState, error)
-	History(ctx context.Context, obj *graph3.Resolver, sessionID string, page *int, limit *int, order *model3.SortOrder) (*model3.HistoryResponse, error)
-	Maps(ctx context.Context, obj *graph3.Resolver) ([]*model3.MapInfo, error)
-	Map(ctx context.Context, obj *graph3.Resolver, name string, password *string) (*model3.GameMap, error)
+	Session(ctx context.Context, obj *graph4.Resolver, id string) (*model4.Session, error)
+	Sessions(ctx context.Context, obj *graph4.Resolver, sort *model4.SessionSort, order *model4.SortOrder, limit *int) (*model4.SessionList, error)
+	UnifiedSessions(ctx context.Context, obj *graph4.Resolver, mapName *string) (*model4.UnifiedSessions, error)
+	GameState(ctx context.Context, obj *graph4.Resolver, sessionID string) (*model4.GameState, error)
+	History(ctx context.Context, obj *graph4.Resolver, sessionID string, page *int, limit *int, order *model4.SortOrder) (*model4.HistoryResponse, error)
+	Maps(ctx context.Context, obj *graph4.Resolver) ([]*model4.MapInfo, error)
+	Map(ctx context.Context, obj *graph4.Resolver, name string, password *string) (*model4.GameMap, error)
 }
 
 type executableSchema struct {
@@ -2186,6 +2205,183 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Delivery_UnlockView.Title(childComplexity), true
 
+	case "Global_AuthProvider.id":
+		if e.complexity.Global_AuthProvider.ID == nil {
+			break
+		}
+
+		return e.complexity.Global_AuthProvider.ID(childComplexity), true
+
+	case "Global_AuthProvider.name":
+		if e.complexity.Global_AuthProvider.Name == nil {
+			break
+		}
+
+		return e.complexity.Global_AuthProvider.Name(childComplexity), true
+
+	case "Global_Mutation.changePassword":
+		if e.complexity.Global_Mutation.ChangePassword == nil {
+			break
+		}
+
+		args, err := ec.field_Global_Mutation_changePassword_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Global_Mutation.ChangePassword(childComplexity, args["currentPassword"].(string), args["newPassword"].(string)), true
+
+	case "Global_Mutation.deleteAccount":
+		if e.complexity.Global_Mutation.DeleteAccount == nil {
+			break
+		}
+
+		args, err := ec.field_Global_Mutation_deleteAccount_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Global_Mutation.DeleteAccount(childComplexity, args["confirmHandle"].(string)), true
+
+	case "Global_Mutation.logInWithPassword":
+		if e.complexity.Global_Mutation.LogInWithPassword == nil {
+			break
+		}
+
+		args, err := ec.field_Global_Mutation_logInWithPassword_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Global_Mutation.LogInWithPassword(childComplexity, args["handle"].(string), args["password"].(string)), true
+
+	case "Global_Mutation.logout":
+		if e.complexity.Global_Mutation.Logout == nil {
+			break
+		}
+
+		return e.complexity.Global_Mutation.Logout(childComplexity), true
+
+	case "Global_Mutation.registerWithPassword":
+		if e.complexity.Global_Mutation.RegisterWithPassword == nil {
+			break
+		}
+
+		args, err := ec.field_Global_Mutation_registerWithPassword_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Global_Mutation.RegisterWithPassword(childComplexity, args["handle"].(string), args["password"].(string)), true
+
+	case "Global_Mutation.updateAccount":
+		if e.complexity.Global_Mutation.UpdateAccount == nil {
+			break
+		}
+
+		args, err := ec.field_Global_Mutation_updateAccount_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Global_Mutation.UpdateAccount(childComplexity, args["input"].(model1.AccountInput)), true
+
+	case "Global_Profile.createdAt":
+		if e.complexity.Global_Profile.CreatedAt == nil {
+			break
+		}
+
+		return e.complexity.Global_Profile.CreatedAt(childComplexity), true
+
+	case "Global_Profile.displayName":
+		if e.complexity.Global_Profile.DisplayName == nil {
+			break
+		}
+
+		return e.complexity.Global_Profile.DisplayName(childComplexity), true
+
+	case "Global_Profile.handle":
+		if e.complexity.Global_Profile.Handle == nil {
+			break
+		}
+
+		return e.complexity.Global_Profile.Handle(childComplexity), true
+
+	case "Global_Profile.isMine":
+		if e.complexity.Global_Profile.IsMine == nil {
+			break
+		}
+
+		return e.complexity.Global_Profile.IsMine(childComplexity), true
+
+	case "Global_Query.authProviders":
+		if e.complexity.Global_Query.AuthProviders == nil {
+			break
+		}
+
+		return e.complexity.Global_Query.AuthProviders(childComplexity), true
+
+	case "Global_Query.me":
+		if e.complexity.Global_Query.Me == nil {
+			break
+		}
+
+		return e.complexity.Global_Query.Me(childComplexity), true
+
+	case "Global_Query.profile":
+		if e.complexity.Global_Query.Profile == nil {
+			break
+		}
+
+		args, err := ec.field_Global_Query_profile_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Global_Query.Profile(childComplexity, args["handle"].(string)), true
+
+	case "Global_User.createdAt":
+		if e.complexity.Global_User.CreatedAt == nil {
+			break
+		}
+
+		return e.complexity.Global_User.CreatedAt(childComplexity), true
+
+	case "Global_User.displayName":
+		if e.complexity.Global_User.DisplayName == nil {
+			break
+		}
+
+		return e.complexity.Global_User.DisplayName(childComplexity), true
+
+	case "Global_User.handle":
+		if e.complexity.Global_User.Handle == nil {
+			break
+		}
+
+		return e.complexity.Global_User.Handle(childComplexity), true
+
+	case "Global_User.handleChangeableAt":
+		if e.complexity.Global_User.HandleChangeableAt == nil {
+			break
+		}
+
+		return e.complexity.Global_User.HandleChangeableAt(childComplexity), true
+
+	case "Global_User.hasPassword":
+		if e.complexity.Global_User.HasPassword == nil {
+			break
+		}
+
+		return e.complexity.Global_User.HasPassword(childComplexity), true
+
+	case "Global_User.profilePublic":
+		if e.complexity.Global_User.ProfilePublic == nil {
+			break
+		}
+
+		return e.complexity.Global_User.ProfilePublic(childComplexity), true
+
 	case "Mazes_AdminMap.description":
 		if e.complexity.Mazes_AdminMap.Description == nil {
 			break
@@ -2560,7 +2756,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mazes_Mutation.BulkMove(childComplexity, args["sessionID"].(string), args["directions"].([]model1.Direction), args["stopOnBlocked"].(*bool)), true
+		return e.complexity.Mazes_Mutation.BulkMove(childComplexity, args["sessionID"].(string), args["directions"].([]model2.Direction), args["stopOnBlocked"].(*bool)), true
 
 	case "Mazes_Mutation.createMap":
 		if e.complexity.Mazes_Mutation.CreateMap == nil {
@@ -2572,7 +2768,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mazes_Mutation.CreateMap(childComplexity, args["map"].(model1.MapInput)), true
+		return e.complexity.Mazes_Mutation.CreateMap(childComplexity, args["map"].(model2.MapInput)), true
 
 	case "Mazes_Mutation.createSession":
 		if e.complexity.Mazes_Mutation.CreateSession == nil {
@@ -2620,7 +2816,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mazes_Mutation.Move(childComplexity, args["sessionID"].(string), args["direction"].(model1.Direction)), true
+		return e.complexity.Mazes_Mutation.Move(childComplexity, args["sessionID"].(string), args["direction"].(model2.Direction)), true
 
 	case "Mazes_Mutation.renameSession":
 		if e.complexity.Mazes_Mutation.RenameSession == nil {
@@ -2656,7 +2852,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mazes_Mutation.UpdateMap(childComplexity, args["map"].(model1.MapInput)), true
+		return e.complexity.Mazes_Mutation.UpdateMap(childComplexity, args["map"].(model2.MapInput)), true
 
 	case "Mazes_Mutation.validateMap":
 		if e.complexity.Mazes_Mutation.ValidateMap == nil {
@@ -2668,7 +2864,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mazes_Mutation.ValidateMap(childComplexity, args["map"].(model1.MapInput)), true
+		return e.complexity.Mazes_Mutation.ValidateMap(childComplexity, args["map"].(model2.MapInput)), true
 
 	case "Mazes_Portal.a":
 		if e.complexity.Mazes_Portal.A == nil {
@@ -2765,7 +2961,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mazes_Query.Sessions(childComplexity, args["sort"].(*model1.SessionSort), args["limit"].(*int), args["mapId"].(*string)), true
+		return e.complexity.Mazes_Query.Sessions(childComplexity, args["sort"].(*model2.SessionSort), args["limit"].(*int), args["mapId"].(*string)), true
 
 	case "Mazes_Session.attempts":
 		if e.complexity.Mazes_Session.Attempts == nil {
@@ -2871,62 +3067,6 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mazes_SessionUpdate.Session(childComplexity), true
-
-	case "Motor_Account.createdAt":
-		if e.complexity.Motor_Account.CreatedAt == nil {
-			break
-		}
-
-		return e.complexity.Motor_Account.CreatedAt(childComplexity), true
-
-	case "Motor_Account.displayName":
-		if e.complexity.Motor_Account.DisplayName == nil {
-			break
-		}
-
-		return e.complexity.Motor_Account.DisplayName(childComplexity), true
-
-	case "Motor_Account.handle":
-		if e.complexity.Motor_Account.Handle == nil {
-			break
-		}
-
-		return e.complexity.Motor_Account.Handle(childComplexity), true
-
-	case "Motor_Account.handleChangeableAt":
-		if e.complexity.Motor_Account.HandleChangeableAt == nil {
-			break
-		}
-
-		return e.complexity.Motor_Account.HandleChangeableAt(childComplexity), true
-
-	case "Motor_Account.hasPassword":
-		if e.complexity.Motor_Account.HasPassword == nil {
-			break
-		}
-
-		return e.complexity.Motor_Account.HasPassword(childComplexity), true
-
-	case "Motor_Account.profilePublic":
-		if e.complexity.Motor_Account.ProfilePublic == nil {
-			break
-		}
-
-		return e.complexity.Motor_Account.ProfilePublic(childComplexity), true
-
-	case "Motor_AuthProvider.id":
-		if e.complexity.Motor_AuthProvider.ID == nil {
-			break
-		}
-
-		return e.complexity.Motor_AuthProvider.ID(childComplexity), true
-
-	case "Motor_AuthProvider.name":
-		if e.complexity.Motor_AuthProvider.Name == nil {
-			break
-		}
-
-		return e.complexity.Motor_AuthProvider.Name(childComplexity), true
 
 	case "Motor_Conveyor.dir":
 		if e.complexity.Motor_Conveyor.Dir == nil {
@@ -3271,18 +3411,6 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Motor_Mirror.Slash(childComplexity), true
 
-	case "Motor_Mutation.changePassword":
-		if e.complexity.Motor_Mutation.ChangePassword == nil {
-			break
-		}
-
-		args, err := ec.field_Motor_Mutation_changePassword_args(ctx, rawArgs)
-		if err != nil {
-			return 0, false
-		}
-
-		return e.complexity.Motor_Mutation.ChangePassword(childComplexity, args["currentPassword"].(string), args["newPassword"].(string)), true
-
 	case "Motor_Mutation.claimSessions":
 		if e.complexity.Motor_Mutation.ClaimSessions == nil {
 			break
@@ -3293,7 +3421,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Motor_Mutation.ClaimSessions(childComplexity, args["claims"].([]*model2.SessionClaimInput)), true
+		return e.complexity.Motor_Mutation.ClaimSessions(childComplexity, args["claims"].([]*model3.SessionClaimInput)), true
 
 	case "Motor_Mutation.createMap":
 		if e.complexity.Motor_Mutation.CreateMap == nil {
@@ -3305,7 +3433,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Motor_Mutation.CreateMap(childComplexity, args["map"].(model2.MapInput)), true
+		return e.complexity.Motor_Mutation.CreateMap(childComplexity, args["map"].(model3.MapInput)), true
 
 	case "Motor_Mutation.createSession":
 		if e.complexity.Motor_Mutation.CreateSession == nil {
@@ -3318,18 +3446,6 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Motor_Mutation.CreateSession(childComplexity, args["mapID"].(string), args["displayName"].(*string)), true
-
-	case "Motor_Mutation.deleteAccount":
-		if e.complexity.Motor_Mutation.DeleteAccount == nil {
-			break
-		}
-
-		args, err := ec.field_Motor_Mutation_deleteAccount_args(ctx, rawArgs)
-		if err != nil {
-			return 0, false
-		}
-
-		return e.complexity.Motor_Mutation.DeleteAccount(childComplexity, args["confirmHandle"].(string)), true
 
 	case "Motor_Mutation.deleteMap":
 		if e.complexity.Motor_Mutation.DeleteMap == nil {
@@ -3355,25 +3471,6 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Motor_Mutation.DeleteSession(childComplexity, args["id"].(string), args["ownerToken"].(*string)), true
 
-	case "Motor_Mutation.logInWithPassword":
-		if e.complexity.Motor_Mutation.LogInWithPassword == nil {
-			break
-		}
-
-		args, err := ec.field_Motor_Mutation_logInWithPassword_args(ctx, rawArgs)
-		if err != nil {
-			return 0, false
-		}
-
-		return e.complexity.Motor_Mutation.LogInWithPassword(childComplexity, args["handle"].(string), args["password"].(string)), true
-
-	case "Motor_Mutation.logout":
-		if e.complexity.Motor_Mutation.Logout == nil {
-			break
-		}
-
-		return e.complexity.Motor_Mutation.Logout(childComplexity), true
-
 	case "Motor_Mutation.pause":
 		if e.complexity.Motor_Mutation.Pause == nil {
 			break
@@ -3385,18 +3482,6 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Motor_Mutation.Pause(childComplexity, args["sessionID"].(string), args["ownerToken"].(*string)), true
-
-	case "Motor_Mutation.registerWithPassword":
-		if e.complexity.Motor_Mutation.RegisterWithPassword == nil {
-			break
-		}
-
-		args, err := ec.field_Motor_Mutation_registerWithPassword_args(ctx, rawArgs)
-		if err != nil {
-			return 0, false
-		}
-
-		return e.complexity.Motor_Mutation.RegisterWithPassword(childComplexity, args["handle"].(string), args["password"].(string)), true
 
 	case "Motor_Mutation.renameSession":
 		if e.complexity.Motor_Mutation.RenameSession == nil {
@@ -3444,7 +3529,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Motor_Mutation.SetProgram(childComplexity, args["sessionID"].(string), args["program"].(model2.ProgramInput), args["ownerToken"].(*string)), true
+		return e.complexity.Motor_Mutation.SetProgram(childComplexity, args["sessionID"].(string), args["program"].(model3.ProgramInput), args["ownerToken"].(*string)), true
 
 	case "Motor_Mutation.step":
 		if e.complexity.Motor_Mutation.Step == nil {
@@ -3458,18 +3543,6 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Motor_Mutation.Step(childComplexity, args["sessionID"].(string), args["ownerToken"].(*string)), true
 
-	case "Motor_Mutation.updateAccount":
-		if e.complexity.Motor_Mutation.UpdateAccount == nil {
-			break
-		}
-
-		args, err := ec.field_Motor_Mutation_updateAccount_args(ctx, rawArgs)
-		if err != nil {
-			return 0, false
-		}
-
-		return e.complexity.Motor_Mutation.UpdateAccount(childComplexity, args["input"].(model2.AccountInput)), true
-
 	case "Motor_Mutation.updateMap":
 		if e.complexity.Motor_Mutation.UpdateMap == nil {
 			break
@@ -3480,7 +3553,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Motor_Mutation.UpdateMap(childComplexity, args["map"].(model2.MapInput)), true
+		return e.complexity.Motor_Mutation.UpdateMap(childComplexity, args["map"].(model3.MapInput)), true
 
 	case "Motor_Mutation.validateMap":
 		if e.complexity.Motor_Mutation.ValidateMap == nil {
@@ -3492,7 +3565,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Motor_Mutation.ValidateMap(childComplexity, args["map"].(model2.MapInput)), true
+		return e.complexity.Motor_Mutation.ValidateMap(childComplexity, args["map"].(model3.MapInput)), true
 
 	case "Motor_PlayerRun.entry":
 		if e.complexity.Motor_PlayerRun.Entry == nil {
@@ -3543,41 +3616,6 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Motor_Position.Y(childComplexity), true
 
-	case "Motor_Profile.createdAt":
-		if e.complexity.Motor_Profile.CreatedAt == nil {
-			break
-		}
-
-		return e.complexity.Motor_Profile.CreatedAt(childComplexity), true
-
-	case "Motor_Profile.displayName":
-		if e.complexity.Motor_Profile.DisplayName == nil {
-			break
-		}
-
-		return e.complexity.Motor_Profile.DisplayName(childComplexity), true
-
-	case "Motor_Profile.handle":
-		if e.complexity.Motor_Profile.Handle == nil {
-			break
-		}
-
-		return e.complexity.Motor_Profile.Handle(childComplexity), true
-
-	case "Motor_Profile.isMine":
-		if e.complexity.Motor_Profile.IsMine == nil {
-			break
-		}
-
-		return e.complexity.Motor_Profile.IsMine(childComplexity), true
-
-	case "Motor_Profile.runs":
-		if e.complexity.Motor_Profile.Runs == nil {
-			break
-		}
-
-		return e.complexity.Motor_Profile.Runs(childComplexity), true
-
 	case "Motor_Program.main":
 		if e.complexity.Motor_Program.Main == nil {
 			break
@@ -3591,13 +3629,6 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Motor_Program.Subs(childComplexity), true
-
-	case "Motor_Query.authProviders":
-		if e.complexity.Motor_Query.AuthProviders == nil {
-			break
-		}
-
-		return e.complexity.Motor_Query.AuthProviders(childComplexity), true
 
 	case "Motor_Query.canPlaySession":
 		if e.complexity.Motor_Query.CanPlaySession == nil {
@@ -3621,7 +3652,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Motor_Query.Leaderboard(childComplexity, args["mapId"].(string), args["order"].(*model2.LeaderboardOrder), args["limit"].(*int), args["sessionId"].(*string)), true
+		return e.complexity.Motor_Query.Leaderboard(childComplexity, args["mapId"].(string), args["order"].(*model3.LeaderboardOrder), args["limit"].(*int), args["sessionId"].(*string)), true
 
 	case "Motor_Query.map":
 		if e.complexity.Motor_Query.Map == nil {
@@ -3642,13 +3673,6 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Motor_Query.Maps(childComplexity), true
 
-	case "Motor_Query.me":
-		if e.complexity.Motor_Query.Me == nil {
-			break
-		}
-
-		return e.complexity.Motor_Query.Me(childComplexity), true
-
 	case "Motor_Query.playerRuns":
 		if e.complexity.Motor_Query.PlayerRuns == nil {
 			break
@@ -3661,17 +3685,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Motor_Query.PlayerRuns(childComplexity, args["sessionIds"].([]string), args["name"].(*string)), true
 
-	case "Motor_Query.profile":
-		if e.complexity.Motor_Query.Profile == nil {
+	case "Motor_Query.playerRunsFor":
+		if e.complexity.Motor_Query.PlayerRunsFor == nil {
 			break
 		}
 
-		args, err := ec.field_Motor_Query_profile_args(ctx, rawArgs)
+		args, err := ec.field_Motor_Query_playerRunsFor_args(ctx, rawArgs)
 		if err != nil {
 			return 0, false
 		}
 
-		return e.complexity.Motor_Query.Profile(childComplexity, args["handle"].(string)), true
+		return e.complexity.Motor_Query.PlayerRunsFor(childComplexity, args["handle"].(string)), true
 
 	case "Motor_Query.session":
 		if e.complexity.Motor_Query.Session == nil {
@@ -3695,7 +3719,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Motor_Query.Sessions(childComplexity, args["sort"].(*model2.SessionSort), args["limit"].(*int), args["mapId"].(*string)), true
+		return e.complexity.Motor_Query.Sessions(childComplexity, args["sort"].(*model3.SessionSort), args["limit"].(*int), args["mapId"].(*string)), true
 
 	case "Motor_Session.attempts":
 		if e.complexity.Motor_Session.Attempts == nil {
@@ -4033,6 +4057,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Motor_VMState.Visited(childComplexity), true
 
+	case "Mutation.account":
+		if e.complexity.Mutation.Account == nil {
+			break
+		}
+
+		return e.complexity.Mutation.Account(childComplexity), true
+
 	case "Mutation.delivery":
 		if e.complexity.Mutation.Delivery == nil {
 			break
@@ -4060,6 +4091,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mutation.Tesla(childComplexity), true
+
+	case "Query.account":
+		if e.complexity.Query.Account == nil {
+			break
+		}
+
+		return e.complexity.Query.Account(childComplexity), true
 
 	case "Query.delivery":
 		if e.complexity.Query.Delivery == nil {
@@ -4906,7 +4944,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Tesla_Mutation.BulkMove(childComplexity, args["sessionID"].(string), args["moves"].([]model3.Direction), args["reset"].(*bool)), true
+		return e.complexity.Tesla_Mutation.BulkMove(childComplexity, args["sessionID"].(string), args["moves"].([]model4.Direction), args["reset"].(*bool)), true
 
 	case "Tesla_Mutation.createMap":
 		if e.complexity.Tesla_Mutation.CreateMap == nil {
@@ -4918,7 +4956,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Tesla_Mutation.CreateMap(childComplexity, args["name"].(string), args["map"].(model3.GameMapInput)), true
+		return e.complexity.Tesla_Mutation.CreateMap(childComplexity, args["name"].(string), args["map"].(model4.GameMapInput)), true
 
 	case "Tesla_Mutation.createSession":
 		if e.complexity.Tesla_Mutation.CreateSession == nil {
@@ -4966,7 +5004,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Tesla_Mutation.Move(childComplexity, args["sessionID"].(string), args["direction"].(model3.Direction), args["reset"].(*bool)), true
+		return e.complexity.Tesla_Mutation.Move(childComplexity, args["sessionID"].(string), args["direction"].(model4.Direction), args["reset"].(*bool)), true
 
 	case "Tesla_Mutation.reset":
 		if e.complexity.Tesla_Mutation.Reset == nil {
@@ -4990,7 +5028,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Tesla_Mutation.UpdateMap(childComplexity, args["name"].(string), args["patch"].(model3.GameMapPatchInput), args["editKey"].(*string)), true
+		return e.complexity.Tesla_Mutation.UpdateMap(childComplexity, args["name"].(string), args["patch"].(model4.GameMapPatchInput), args["editKey"].(*string)), true
 
 	case "Tesla_Mutation.updateSession":
 		if e.complexity.Tesla_Mutation.UpdateSession == nil {
@@ -5014,7 +5052,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Tesla_Mutation.ValidateMap(childComplexity, args["map"].(model3.GameMapInput)), true
+		return e.complexity.Tesla_Mutation.ValidateMap(childComplexity, args["map"].(model4.GameMapInput)), true
 
 	case "Tesla_Position.x":
 		if e.complexity.Tesla_Position.X == nil {
@@ -5052,7 +5090,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Tesla_Query.History(childComplexity, args["sessionID"].(string), args["page"].(*int), args["limit"].(*int), args["order"].(*model3.SortOrder)), true
+		return e.complexity.Tesla_Query.History(childComplexity, args["sessionID"].(string), args["page"].(*int), args["limit"].(*int), args["order"].(*model4.SortOrder)), true
 
 	case "Tesla_Query.map":
 		if e.complexity.Tesla_Query.Map == nil {
@@ -5095,7 +5133,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Tesla_Query.Sessions(childComplexity, args["sort"].(*model3.SessionSort), args["order"].(*model3.SortOrder), args["limit"].(*int)), true
+		return e.complexity.Tesla_Query.Sessions(childComplexity, args["sort"].(*model4.SessionSort), args["order"].(*model4.SortOrder), args["limit"].(*int)), true
 
 	case "Tesla_Query.unifiedSessions":
 		if e.complexity.Tesla_Query.UnifiedSessions == nil {
@@ -5362,8 +5400,8 @@ func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 	opCtx := graphql.GetOperationContext(ctx)
 	ec := executionContext{opCtx, e, 0, 0, make(chan graphql.DeferredResult)}
 	inputUnmarshalMap := graphql.BuildUnmarshalerMap(
+		ec.unmarshalInputGlobal_AccountInput,
 		ec.unmarshalInputMazes_MapInput,
-		ec.unmarshalInputMotor_AccountInput,
 		ec.unmarshalInputMotor_MapInput,
 		ec.unmarshalInputMotor_ProgramInput,
 		ec.unmarshalInputMotor_SessionClaimInput,
@@ -5488,6 +5526,106 @@ var sources = []*ast.Source{
 	{Name: "../schema.graphqls", Input: `# Dr Brain unified GraphQL schema. Source of truth: edit this file, then run
 # ` + "`" + `go generate ./games/... ./graph` + "`" + `.
 
+"""
+The signed-in player. Nothing about the person beyond the public handle and name
+is stored: no email, no avatar.
+"""
+type Global_User {
+	"""
+	Unique public name, 3-20 of a-z 0-9 _; the profile lives at /u/<handle>.
+	"""
+	handle: String!
+	displayName: String!
+	"""
+	When false the profile page is hidden and board entries read "Private player".
+	"""
+	profilePublic: Boolean!
+	createdAt: Time!
+	"""
+	When the handle may be changed again; null when it can be changed now.
+	"""
+	handleChangeableAt: Time
+	"""
+	True for a username/password account (the only kind that can change a password).
+	"""
+	hasPassword: Boolean!
+}
+"""
+A way to sign in, enabled on this server. Sign in by navigating to /auth/<id>/login.
+"""
+type Global_AuthProvider {
+	id: ID!
+	name: String!
+}
+"""
+A player's public identity page. Game-specific statistics live under that game.
+"""
+type Global_Profile {
+	handle: String!
+	displayName: String!
+	createdAt: Time!
+	"""
+	True when the viewer is this player (a private profile is visible only to its owner).
+	"""
+	isMine: Boolean!
+}
+input Global_AccountInput {
+	"""
+	New handle (3-20 of a-z 0-9 _, case-insensitive, unique); limited to one change per day.
+	"""
+	handle: String
+	"""
+	Public display name; empty falls back to the handle.
+	"""
+	displayName: String
+	profilePublic: Boolean
+}
+type Global_Query {
+	"""
+	The signed-in player, or null.
+	"""
+	me: Global_User
+	"""
+	Sign-in providers enabled on this server; empty means sign-in is off.
+	"""
+	authProviders: [Global_AuthProvider!]!
+	"""
+	A player's public profile; null when the handle is unknown or the profile is private (unless it is yours).
+	"""
+	profile(handle: String!): Global_Profile
+}
+type Global_Mutation {
+	"""
+	Signs the player out (clears the login cookie). Always true.
+	"""
+	logout: Boolean!
+	"""
+	Creates a username/password account and signs the browser in with it. The username is the public
+	handle. Refused cross-site, so another site cannot create accounts through a victim's browser.
+	Errors: INVALID_ARGUMENT (bad handle, weak or taken password), LIMIT_REACHED, FORBIDDEN (password
+	sign-in is off, or no cookie can be set: a subscription connection).
+	"""
+	registerWithPassword(handle: String!, password: String!): Global_User!
+	"""
+	Signs in with a username and password, rotating the browser's previous login. Refused cross-site.
+	An unknown username and a wrong password are answered identically (UNAUTHENTICATED). Repeated
+	failures lock the (address, username) pair and then the username: LIMIT_REACHED, refused before
+	any hashing. FORBIDDEN when password sign-in is off or no cookie can be set.
+	"""
+	logInWithPassword(handle: String!, password: String!): Global_User!
+	"""
+	Changes the signed-in player's handle, display name or profile visibility.
+	"""
+	updateAccount(input: Global_AccountInput!): Global_User!
+	"""
+	Changes the password of a username/password account and signs out its other browsers. There is no email, so there is no password reset.
+	"""
+	changePassword(currentPassword: String!, newPassword: String!): Boolean!
+	"""
+	Permanently deletes the account and signs out. confirmHandle must equal the current handle. Its runs stay on the boards as guest entries.
+	"""
+	deleteAccount(confirmHandle: String!): Boolean!
+}
 enum Delivery_Direction {
 	NORTH
 	SOUTH
@@ -6503,52 +6641,6 @@ type Motor_PlayerRun {
 	"""
 	entry: Motor_LeaderboardEntry!
 }
-"""
-A signed-in player. Nothing about the person beyond the public handle and name is stored: no email, no avatar.
-"""
-type Motor_Account {
-	"""
-	Unique public name, 3-20 of a-z 0-9 _; the profile lives at /u/<handle>.
-	"""
-	handle: String!
-	displayName: String!
-	"""
-	When false the profile page is hidden and board entries read "Private player".
-	"""
-	profilePublic: Boolean!
-	createdAt: Time!
-	"""
-	When the handle may be changed again; null when it can be changed now.
-	"""
-	handleChangeableAt: Time
-	"""
-	True for a username/password account (the only kind that can change a password).
-	"""
-	hasPassword: Boolean!
-}
-"""
-A way to sign in, enabled on this server. Sign in by navigating to /auth/<id>/login.
-"""
-type Motor_AuthProvider {
-	id: ID!
-	name: String!
-}
-"""
-A public profile page: the account and its best run per map.
-"""
-type Motor_Profile {
-	handle: String!
-	displayName: String!
-	createdAt: Time!
-	"""
-	True when the viewer is this player (a private profile is visible only to its owner).
-	"""
-	isMine: Boolean!
-	"""
-	Best run per map won (SLOTS board), ordered by map id.
-	"""
-	runs: [Motor_PlayerRun!]!
-}
 enum Motor_ClaimStatus {
 	"""
 	The session now belongs to your account.
@@ -6571,30 +6663,7 @@ type Motor_SessionClaimResult {
 	sessionID: ID!
 	status: Motor_ClaimStatus!
 }
-input Motor_AccountInput {
-	"""
-	New handle (3-20 of a-z 0-9 _, case-insensitive, unique); limited to one change per day.
-	"""
-	handle: String
-	"""
-	Public display name; empty falls back to the handle.
-	"""
-	displayName: String
-	profilePublic: Boolean
-}
 type Motor_Query {
-	"""
-	The signed-in player, or null.
-	"""
-	me: Motor_Account
-	"""
-	Sign-in providers enabled on this server; empty means sign-in is off.
-	"""
-	authProviders: [Motor_AuthProvider!]!
-	"""
-	A player's public profile; null when the handle is unknown or the profile is private (unless it is yours).
-	"""
-	profile(handle: String!): Motor_Profile
 	maps: [Motor_Map!]!
 	map(id: ID!): Motor_Map
 	"""
@@ -6621,6 +6690,11 @@ type Motor_Query {
 	When signed in, the account's own runs are included with sessionIds, and sessionIds may be left out.
 	"""
 	playerRuns(sessionIds: [ID!], name: String): [Motor_PlayerRun!]!
+	"""
+	A player's best run per map they have won, looked up by account handle. Empty when the
+	handle is unknown; game-specific statistics stay with the game.
+	"""
+	playerRunsFor(handle: String!): [Motor_PlayerRun!]!
 }
 type Motor_Mutation {
 	"""
@@ -6662,36 +6736,6 @@ type Motor_Mutation {
 	Puts the robot back at the start. Open to anyone who knows the session id; the program stays hidden from spectators.
 	"""
 	reset(sessionID: ID!, ownerToken: String): Motor_Session!
-	"""
-	Signs the player out (clears the login cookie). Always true.
-	"""
-	logout: Boolean!
-	"""
-	Creates a username/password account and signs the browser in with it. The username is the public
-	handle. Refused cross-site, so another site cannot create accounts through a victim's browser.
-	Errors: INVALID_ARGUMENT (bad handle, weak or taken password), LIMIT_REACHED, FORBIDDEN (password
-	sign-in is off, or no cookie can be set: a subscription connection).
-	"""
-	registerWithPassword(handle: String!, password: String!): Motor_Account!
-	"""
-	Signs in with a username and password, rotating the browser's previous login. Refused cross-site.
-	An unknown username and a wrong password are answered identically (UNAUTHENTICATED). Repeated
-	failures lock the (address, username) pair and then the username: LIMIT_REACHED, refused before
-	any hashing. FORBIDDEN when password sign-in is off or no cookie can be set.
-	"""
-	logInWithPassword(handle: String!, password: String!): Motor_Account!
-	"""
-	Changes the signed-in player's handle, display name or profile visibility.
-	"""
-	updateAccount(input: Motor_AccountInput!): Motor_Account!
-	"""
-	Changes the password of a username/password account and signs out its other browsers. There is no email, so there is no password reset.
-	"""
-	changePassword(currentPassword: String!, newPassword: String!): Boolean!
-	"""
-	Permanently deletes the account and signs out. confirmHandle must equal the current handle. Its runs stay on the boards as guest entries.
-	"""
-	deleteAccount(confirmHandle: String!): Boolean!
 	"""
 	Attaches guest sessions of this browser to the signed-in account; each needs its owner token (up to 100 per call).
 	"""
@@ -6980,12 +7024,14 @@ type Tesla_Mutation {
 }
 scalar Time
 type Query {
+	account: Global_Query!
 	delivery: Delivery_Query!
 	mazes: Mazes_Query!
 	motorProgramming: Motor_Query!
 	tesla: Tesla_Query!
 }
 type Mutation {
+	account: Global_Mutation!
 	delivery: Delivery_Mutation!
 	mazes: Mazes_Mutation!
 	motorProgramming: Motor_Mutation!
@@ -7794,6 +7840,243 @@ func (ec *executionContext) field_Delivery_Query_session_argsID(
 	return zeroVal, nil
 }
 
+func (ec *executionContext) field_Global_Mutation_changePassword_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Global_Mutation_changePassword_argsCurrentPassword(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["currentPassword"] = arg0
+	arg1, err := ec.field_Global_Mutation_changePassword_argsNewPassword(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["newPassword"] = arg1
+	return args, nil
+}
+func (ec *executionContext) field_Global_Mutation_changePassword_argsCurrentPassword(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["currentPassword"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("currentPassword"))
+	if tmp, ok := rawArgs["currentPassword"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Global_Mutation_changePassword_argsNewPassword(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["newPassword"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("newPassword"))
+	if tmp, ok := rawArgs["newPassword"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Global_Mutation_deleteAccount_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Global_Mutation_deleteAccount_argsConfirmHandle(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["confirmHandle"] = arg0
+	return args, nil
+}
+func (ec *executionContext) field_Global_Mutation_deleteAccount_argsConfirmHandle(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["confirmHandle"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("confirmHandle"))
+	if tmp, ok := rawArgs["confirmHandle"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Global_Mutation_logInWithPassword_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Global_Mutation_logInWithPassword_argsHandle(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["handle"] = arg0
+	arg1, err := ec.field_Global_Mutation_logInWithPassword_argsPassword(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["password"] = arg1
+	return args, nil
+}
+func (ec *executionContext) field_Global_Mutation_logInWithPassword_argsHandle(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["handle"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("handle"))
+	if tmp, ok := rawArgs["handle"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Global_Mutation_logInWithPassword_argsPassword(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["password"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("password"))
+	if tmp, ok := rawArgs["password"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Global_Mutation_registerWithPassword_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Global_Mutation_registerWithPassword_argsHandle(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["handle"] = arg0
+	arg1, err := ec.field_Global_Mutation_registerWithPassword_argsPassword(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["password"] = arg1
+	return args, nil
+}
+func (ec *executionContext) field_Global_Mutation_registerWithPassword_argsHandle(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["handle"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("handle"))
+	if tmp, ok := rawArgs["handle"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Global_Mutation_registerWithPassword_argsPassword(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["password"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("password"))
+	if tmp, ok := rawArgs["password"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Global_Mutation_updateAccount_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Global_Mutation_updateAccount_argsInput(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["input"] = arg0
+	return args, nil
+}
+func (ec *executionContext) field_Global_Mutation_updateAccount_argsInput(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (model1.AccountInput, error) {
+	if _, ok := rawArgs["input"]; !ok {
+		var zeroVal model1.AccountInput
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("input"))
+	if tmp, ok := rawArgs["input"]; ok {
+		return ec.unmarshalNGlobal_AccountInput2githubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚋmodelᚐAccountInput(ctx, tmp)
+	}
+
+	var zeroVal model1.AccountInput
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Global_Query_profile_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Global_Query_profile_argsHandle(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["handle"] = arg0
+	return args, nil
+}
+func (ec *executionContext) field_Global_Query_profile_argsHandle(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["handle"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("handle"))
+	if tmp, ok := rawArgs["handle"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
 func (ec *executionContext) field_Mazes_Mutation_bulkMove_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -7835,9 +8118,9 @@ func (ec *executionContext) field_Mazes_Mutation_bulkMove_argsSessionID(
 func (ec *executionContext) field_Mazes_Mutation_bulkMove_argsDirections(
 	ctx context.Context,
 	rawArgs map[string]any,
-) ([]model1.Direction, error) {
+) ([]model2.Direction, error) {
 	if _, ok := rawArgs["directions"]; !ok {
-		var zeroVal []model1.Direction
+		var zeroVal []model2.Direction
 		return zeroVal, nil
 	}
 
@@ -7846,7 +8129,7 @@ func (ec *executionContext) field_Mazes_Mutation_bulkMove_argsDirections(
 		return ec.unmarshalNMazes_Direction2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐDirectionᚄ(ctx, tmp)
 	}
 
-	var zeroVal []model1.Direction
+	var zeroVal []model2.Direction
 	return zeroVal, nil
 }
 
@@ -7881,9 +8164,9 @@ func (ec *executionContext) field_Mazes_Mutation_createMap_args(ctx context.Cont
 func (ec *executionContext) field_Mazes_Mutation_createMap_argsMap(
 	ctx context.Context,
 	rawArgs map[string]any,
-) (model1.MapInput, error) {
+) (model2.MapInput, error) {
 	if _, ok := rawArgs["map"]; !ok {
-		var zeroVal model1.MapInput
+		var zeroVal model2.MapInput
 		return zeroVal, nil
 	}
 
@@ -7892,7 +8175,7 @@ func (ec *executionContext) field_Mazes_Mutation_createMap_argsMap(
 		return ec.unmarshalNMazes_MapInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapInput(ctx, tmp)
 	}
 
-	var zeroVal model1.MapInput
+	var zeroVal model2.MapInput
 	return zeroVal, nil
 }
 
@@ -8039,9 +8322,9 @@ func (ec *executionContext) field_Mazes_Mutation_move_argsSessionID(
 func (ec *executionContext) field_Mazes_Mutation_move_argsDirection(
 	ctx context.Context,
 	rawArgs map[string]any,
-) (model1.Direction, error) {
+) (model2.Direction, error) {
 	if _, ok := rawArgs["direction"]; !ok {
-		var zeroVal model1.Direction
+		var zeroVal model2.Direction
 		return zeroVal, nil
 	}
 
@@ -8050,7 +8333,7 @@ func (ec *executionContext) field_Mazes_Mutation_move_argsDirection(
 		return ec.unmarshalNMazes_Direction2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐDirection(ctx, tmp)
 	}
 
-	var zeroVal model1.Direction
+	var zeroVal model2.Direction
 	return zeroVal, nil
 }
 
@@ -8146,9 +8429,9 @@ func (ec *executionContext) field_Mazes_Mutation_updateMap_args(ctx context.Cont
 func (ec *executionContext) field_Mazes_Mutation_updateMap_argsMap(
 	ctx context.Context,
 	rawArgs map[string]any,
-) (model1.MapInput, error) {
+) (model2.MapInput, error) {
 	if _, ok := rawArgs["map"]; !ok {
-		var zeroVal model1.MapInput
+		var zeroVal model2.MapInput
 		return zeroVal, nil
 	}
 
@@ -8157,7 +8440,7 @@ func (ec *executionContext) field_Mazes_Mutation_updateMap_argsMap(
 		return ec.unmarshalNMazes_MapInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapInput(ctx, tmp)
 	}
 
-	var zeroVal model1.MapInput
+	var zeroVal model2.MapInput
 	return zeroVal, nil
 }
 
@@ -8174,9 +8457,9 @@ func (ec *executionContext) field_Mazes_Mutation_validateMap_args(ctx context.Co
 func (ec *executionContext) field_Mazes_Mutation_validateMap_argsMap(
 	ctx context.Context,
 	rawArgs map[string]any,
-) (model1.MapInput, error) {
+) (model2.MapInput, error) {
 	if _, ok := rawArgs["map"]; !ok {
-		var zeroVal model1.MapInput
+		var zeroVal model2.MapInput
 		return zeroVal, nil
 	}
 
@@ -8185,7 +8468,7 @@ func (ec *executionContext) field_Mazes_Mutation_validateMap_argsMap(
 		return ec.unmarshalNMazes_MapInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapInput(ctx, tmp)
 	}
 
-	var zeroVal model1.MapInput
+	var zeroVal model2.MapInput
 	return zeroVal, nil
 }
 
@@ -8296,9 +8579,9 @@ func (ec *executionContext) field_Mazes_Query_sessions_args(ctx context.Context,
 func (ec *executionContext) field_Mazes_Query_sessions_argsSort(
 	ctx context.Context,
 	rawArgs map[string]any,
-) (*model1.SessionSort, error) {
+) (*model2.SessionSort, error) {
 	if _, ok := rawArgs["sort"]; !ok {
-		var zeroVal *model1.SessionSort
+		var zeroVal *model2.SessionSort
 		return zeroVal, nil
 	}
 
@@ -8307,7 +8590,7 @@ func (ec *executionContext) field_Mazes_Query_sessions_argsSort(
 		return ec.unmarshalOMazes_SessionSort2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSessionSort(ctx, tmp)
 	}
 
-	var zeroVal *model1.SessionSort
+	var zeroVal *model2.SessionSort
 	return zeroVal, nil
 }
 
@@ -8347,57 +8630,6 @@ func (ec *executionContext) field_Mazes_Query_sessions_argsMapID(
 	return zeroVal, nil
 }
 
-func (ec *executionContext) field_Motor_Mutation_changePassword_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
-	var err error
-	args := map[string]any{}
-	arg0, err := ec.field_Motor_Mutation_changePassword_argsCurrentPassword(ctx, rawArgs)
-	if err != nil {
-		return nil, err
-	}
-	args["currentPassword"] = arg0
-	arg1, err := ec.field_Motor_Mutation_changePassword_argsNewPassword(ctx, rawArgs)
-	if err != nil {
-		return nil, err
-	}
-	args["newPassword"] = arg1
-	return args, nil
-}
-func (ec *executionContext) field_Motor_Mutation_changePassword_argsCurrentPassword(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (string, error) {
-	if _, ok := rawArgs["currentPassword"]; !ok {
-		var zeroVal string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("currentPassword"))
-	if tmp, ok := rawArgs["currentPassword"]; ok {
-		return ec.unmarshalNString2string(ctx, tmp)
-	}
-
-	var zeroVal string
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Motor_Mutation_changePassword_argsNewPassword(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (string, error) {
-	if _, ok := rawArgs["newPassword"]; !ok {
-		var zeroVal string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("newPassword"))
-	if tmp, ok := rawArgs["newPassword"]; ok {
-		return ec.unmarshalNString2string(ctx, tmp)
-	}
-
-	var zeroVal string
-	return zeroVal, nil
-}
-
 func (ec *executionContext) field_Motor_Mutation_claimSessions_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -8411,9 +8643,9 @@ func (ec *executionContext) field_Motor_Mutation_claimSessions_args(ctx context.
 func (ec *executionContext) field_Motor_Mutation_claimSessions_argsClaims(
 	ctx context.Context,
 	rawArgs map[string]any,
-) ([]*model2.SessionClaimInput, error) {
+) ([]*model3.SessionClaimInput, error) {
 	if _, ok := rawArgs["claims"]; !ok {
-		var zeroVal []*model2.SessionClaimInput
+		var zeroVal []*model3.SessionClaimInput
 		return zeroVal, nil
 	}
 
@@ -8422,7 +8654,7 @@ func (ec *executionContext) field_Motor_Mutation_claimSessions_argsClaims(
 		return ec.unmarshalNMotor_SessionClaimInput2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSessionClaimInputᚄ(ctx, tmp)
 	}
 
-	var zeroVal []*model2.SessionClaimInput
+	var zeroVal []*model3.SessionClaimInput
 	return zeroVal, nil
 }
 
@@ -8439,9 +8671,9 @@ func (ec *executionContext) field_Motor_Mutation_createMap_args(ctx context.Cont
 func (ec *executionContext) field_Motor_Mutation_createMap_argsMap(
 	ctx context.Context,
 	rawArgs map[string]any,
-) (model2.MapInput, error) {
+) (model3.MapInput, error) {
 	if _, ok := rawArgs["map"]; !ok {
-		var zeroVal model2.MapInput
+		var zeroVal model3.MapInput
 		return zeroVal, nil
 	}
 
@@ -8450,7 +8682,7 @@ func (ec *executionContext) field_Motor_Mutation_createMap_argsMap(
 		return ec.unmarshalNMotor_MapInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMapInput(ctx, tmp)
 	}
 
-	var zeroVal model2.MapInput
+	var zeroVal model3.MapInput
 	return zeroVal, nil
 }
 
@@ -8502,34 +8734,6 @@ func (ec *executionContext) field_Motor_Mutation_createSession_argsDisplayName(
 	}
 
 	var zeroVal *string
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Motor_Mutation_deleteAccount_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
-	var err error
-	args := map[string]any{}
-	arg0, err := ec.field_Motor_Mutation_deleteAccount_argsConfirmHandle(ctx, rawArgs)
-	if err != nil {
-		return nil, err
-	}
-	args["confirmHandle"] = arg0
-	return args, nil
-}
-func (ec *executionContext) field_Motor_Mutation_deleteAccount_argsConfirmHandle(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (string, error) {
-	if _, ok := rawArgs["confirmHandle"]; !ok {
-		var zeroVal string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("confirmHandle"))
-	if tmp, ok := rawArgs["confirmHandle"]; ok {
-		return ec.unmarshalNString2string(ctx, tmp)
-	}
-
-	var zeroVal string
 	return zeroVal, nil
 }
 
@@ -8612,57 +8816,6 @@ func (ec *executionContext) field_Motor_Mutation_deleteSession_argsOwnerToken(
 	return zeroVal, nil
 }
 
-func (ec *executionContext) field_Motor_Mutation_logInWithPassword_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
-	var err error
-	args := map[string]any{}
-	arg0, err := ec.field_Motor_Mutation_logInWithPassword_argsHandle(ctx, rawArgs)
-	if err != nil {
-		return nil, err
-	}
-	args["handle"] = arg0
-	arg1, err := ec.field_Motor_Mutation_logInWithPassword_argsPassword(ctx, rawArgs)
-	if err != nil {
-		return nil, err
-	}
-	args["password"] = arg1
-	return args, nil
-}
-func (ec *executionContext) field_Motor_Mutation_logInWithPassword_argsHandle(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (string, error) {
-	if _, ok := rawArgs["handle"]; !ok {
-		var zeroVal string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("handle"))
-	if tmp, ok := rawArgs["handle"]; ok {
-		return ec.unmarshalNString2string(ctx, tmp)
-	}
-
-	var zeroVal string
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Motor_Mutation_logInWithPassword_argsPassword(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (string, error) {
-	if _, ok := rawArgs["password"]; !ok {
-		var zeroVal string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("password"))
-	if tmp, ok := rawArgs["password"]; ok {
-		return ec.unmarshalNString2string(ctx, tmp)
-	}
-
-	var zeroVal string
-	return zeroVal, nil
-}
-
 func (ec *executionContext) field_Motor_Mutation_pause_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -8711,57 +8864,6 @@ func (ec *executionContext) field_Motor_Mutation_pause_argsOwnerToken(
 	}
 
 	var zeroVal *string
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Motor_Mutation_registerWithPassword_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
-	var err error
-	args := map[string]any{}
-	arg0, err := ec.field_Motor_Mutation_registerWithPassword_argsHandle(ctx, rawArgs)
-	if err != nil {
-		return nil, err
-	}
-	args["handle"] = arg0
-	arg1, err := ec.field_Motor_Mutation_registerWithPassword_argsPassword(ctx, rawArgs)
-	if err != nil {
-		return nil, err
-	}
-	args["password"] = arg1
-	return args, nil
-}
-func (ec *executionContext) field_Motor_Mutation_registerWithPassword_argsHandle(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (string, error) {
-	if _, ok := rawArgs["handle"]; !ok {
-		var zeroVal string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("handle"))
-	if tmp, ok := rawArgs["handle"]; ok {
-		return ec.unmarshalNString2string(ctx, tmp)
-	}
-
-	var zeroVal string
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Motor_Mutation_registerWithPassword_argsPassword(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (string, error) {
-	if _, ok := rawArgs["password"]; !ok {
-		var zeroVal string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("password"))
-	if tmp, ok := rawArgs["password"]; ok {
-		return ec.unmarshalNString2string(ctx, tmp)
-	}
-
-	var zeroVal string
 	return zeroVal, nil
 }
 
@@ -9005,9 +9107,9 @@ func (ec *executionContext) field_Motor_Mutation_setProgram_argsSessionID(
 func (ec *executionContext) field_Motor_Mutation_setProgram_argsProgram(
 	ctx context.Context,
 	rawArgs map[string]any,
-) (model2.ProgramInput, error) {
+) (model3.ProgramInput, error) {
 	if _, ok := rawArgs["program"]; !ok {
-		var zeroVal model2.ProgramInput
+		var zeroVal model3.ProgramInput
 		return zeroVal, nil
 	}
 
@@ -9016,7 +9118,7 @@ func (ec *executionContext) field_Motor_Mutation_setProgram_argsProgram(
 		return ec.unmarshalNMotor_ProgramInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐProgramInput(ctx, tmp)
 	}
 
-	var zeroVal model2.ProgramInput
+	var zeroVal model3.ProgramInput
 	return zeroVal, nil
 }
 
@@ -9089,34 +9191,6 @@ func (ec *executionContext) field_Motor_Mutation_step_argsOwnerToken(
 	return zeroVal, nil
 }
 
-func (ec *executionContext) field_Motor_Mutation_updateAccount_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
-	var err error
-	args := map[string]any{}
-	arg0, err := ec.field_Motor_Mutation_updateAccount_argsInput(ctx, rawArgs)
-	if err != nil {
-		return nil, err
-	}
-	args["input"] = arg0
-	return args, nil
-}
-func (ec *executionContext) field_Motor_Mutation_updateAccount_argsInput(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (model2.AccountInput, error) {
-	if _, ok := rawArgs["input"]; !ok {
-		var zeroVal model2.AccountInput
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("input"))
-	if tmp, ok := rawArgs["input"]; ok {
-		return ec.unmarshalNMotor_AccountInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐAccountInput(ctx, tmp)
-	}
-
-	var zeroVal model2.AccountInput
-	return zeroVal, nil
-}
-
 func (ec *executionContext) field_Motor_Mutation_updateMap_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -9130,9 +9204,9 @@ func (ec *executionContext) field_Motor_Mutation_updateMap_args(ctx context.Cont
 func (ec *executionContext) field_Motor_Mutation_updateMap_argsMap(
 	ctx context.Context,
 	rawArgs map[string]any,
-) (model2.MapInput, error) {
+) (model3.MapInput, error) {
 	if _, ok := rawArgs["map"]; !ok {
-		var zeroVal model2.MapInput
+		var zeroVal model3.MapInput
 		return zeroVal, nil
 	}
 
@@ -9141,7 +9215,7 @@ func (ec *executionContext) field_Motor_Mutation_updateMap_argsMap(
 		return ec.unmarshalNMotor_MapInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMapInput(ctx, tmp)
 	}
 
-	var zeroVal model2.MapInput
+	var zeroVal model3.MapInput
 	return zeroVal, nil
 }
 
@@ -9158,9 +9232,9 @@ func (ec *executionContext) field_Motor_Mutation_validateMap_args(ctx context.Co
 func (ec *executionContext) field_Motor_Mutation_validateMap_argsMap(
 	ctx context.Context,
 	rawArgs map[string]any,
-) (model2.MapInput, error) {
+) (model3.MapInput, error) {
 	if _, ok := rawArgs["map"]; !ok {
-		var zeroVal model2.MapInput
+		var zeroVal model3.MapInput
 		return zeroVal, nil
 	}
 
@@ -9169,7 +9243,7 @@ func (ec *executionContext) field_Motor_Mutation_validateMap_argsMap(
 		return ec.unmarshalNMotor_MapInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMapInput(ctx, tmp)
 	}
 
-	var zeroVal model2.MapInput
+	var zeroVal model3.MapInput
 	return zeroVal, nil
 }
 
@@ -9270,9 +9344,9 @@ func (ec *executionContext) field_Motor_Query_leaderboard_argsMapID(
 func (ec *executionContext) field_Motor_Query_leaderboard_argsOrder(
 	ctx context.Context,
 	rawArgs map[string]any,
-) (*model2.LeaderboardOrder, error) {
+) (*model3.LeaderboardOrder, error) {
 	if _, ok := rawArgs["order"]; !ok {
-		var zeroVal *model2.LeaderboardOrder
+		var zeroVal *model3.LeaderboardOrder
 		return zeroVal, nil
 	}
 
@@ -9281,7 +9355,7 @@ func (ec *executionContext) field_Motor_Query_leaderboard_argsOrder(
 		return ec.unmarshalOMotor_LeaderboardOrder2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLeaderboardOrder(ctx, tmp)
 	}
 
-	var zeroVal *model2.LeaderboardOrder
+	var zeroVal *model3.LeaderboardOrder
 	return zeroVal, nil
 }
 
@@ -9349,6 +9423,34 @@ func (ec *executionContext) field_Motor_Query_map_argsID(
 	return zeroVal, nil
 }
 
+func (ec *executionContext) field_Motor_Query_playerRunsFor_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Motor_Query_playerRunsFor_argsHandle(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["handle"] = arg0
+	return args, nil
+}
+func (ec *executionContext) field_Motor_Query_playerRunsFor_argsHandle(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["handle"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("handle"))
+	if tmp, ok := rawArgs["handle"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
 func (ec *executionContext) field_Motor_Query_playerRuns_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -9397,34 +9499,6 @@ func (ec *executionContext) field_Motor_Query_playerRuns_argsName(
 	}
 
 	var zeroVal *string
-	return zeroVal, nil
-}
-
-func (ec *executionContext) field_Motor_Query_profile_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
-	var err error
-	args := map[string]any{}
-	arg0, err := ec.field_Motor_Query_profile_argsHandle(ctx, rawArgs)
-	if err != nil {
-		return nil, err
-	}
-	args["handle"] = arg0
-	return args, nil
-}
-func (ec *executionContext) field_Motor_Query_profile_argsHandle(
-	ctx context.Context,
-	rawArgs map[string]any,
-) (string, error) {
-	if _, ok := rawArgs["handle"]; !ok {
-		var zeroVal string
-		return zeroVal, nil
-	}
-
-	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("handle"))
-	if tmp, ok := rawArgs["handle"]; ok {
-		return ec.unmarshalNString2string(ctx, tmp)
-	}
-
-	var zeroVal string
 	return zeroVal, nil
 }
 
@@ -9502,9 +9576,9 @@ func (ec *executionContext) field_Motor_Query_sessions_args(ctx context.Context,
 func (ec *executionContext) field_Motor_Query_sessions_argsSort(
 	ctx context.Context,
 	rawArgs map[string]any,
-) (*model2.SessionSort, error) {
+) (*model3.SessionSort, error) {
 	if _, ok := rawArgs["sort"]; !ok {
-		var zeroVal *model2.SessionSort
+		var zeroVal *model3.SessionSort
 		return zeroVal, nil
 	}
 
@@ -9513,7 +9587,7 @@ func (ec *executionContext) field_Motor_Query_sessions_argsSort(
 		return ec.unmarshalOMotor_SessionSort2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSessionSort(ctx, tmp)
 	}
 
-	var zeroVal *model2.SessionSort
+	var zeroVal *model3.SessionSort
 	return zeroVal, nil
 }
 
@@ -9813,9 +9887,9 @@ func (ec *executionContext) field_Tesla_Mutation_bulkMove_argsSessionID(
 func (ec *executionContext) field_Tesla_Mutation_bulkMove_argsMoves(
 	ctx context.Context,
 	rawArgs map[string]any,
-) ([]model3.Direction, error) {
+) ([]model4.Direction, error) {
 	if _, ok := rawArgs["moves"]; !ok {
-		var zeroVal []model3.Direction
+		var zeroVal []model4.Direction
 		return zeroVal, nil
 	}
 
@@ -9824,7 +9898,7 @@ func (ec *executionContext) field_Tesla_Mutation_bulkMove_argsMoves(
 		return ec.unmarshalNTesla_Direction2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐDirectionᚄ(ctx, tmp)
 	}
 
-	var zeroVal []model3.Direction
+	var zeroVal []model4.Direction
 	return zeroVal, nil
 }
 
@@ -9882,9 +9956,9 @@ func (ec *executionContext) field_Tesla_Mutation_createMap_argsName(
 func (ec *executionContext) field_Tesla_Mutation_createMap_argsMap(
 	ctx context.Context,
 	rawArgs map[string]any,
-) (model3.GameMapInput, error) {
+) (model4.GameMapInput, error) {
 	if _, ok := rawArgs["map"]; !ok {
-		var zeroVal model3.GameMapInput
+		var zeroVal model4.GameMapInput
 		return zeroVal, nil
 	}
 
@@ -9893,7 +9967,7 @@ func (ec *executionContext) field_Tesla_Mutation_createMap_argsMap(
 		return ec.unmarshalNTesla_GameMapInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameMapInput(ctx, tmp)
 	}
 
-	var zeroVal model3.GameMapInput
+	var zeroVal model4.GameMapInput
 	return zeroVal, nil
 }
 
@@ -10160,9 +10234,9 @@ func (ec *executionContext) field_Tesla_Mutation_move_argsSessionID(
 func (ec *executionContext) field_Tesla_Mutation_move_argsDirection(
 	ctx context.Context,
 	rawArgs map[string]any,
-) (model3.Direction, error) {
+) (model4.Direction, error) {
 	if _, ok := rawArgs["direction"]; !ok {
-		var zeroVal model3.Direction
+		var zeroVal model4.Direction
 		return zeroVal, nil
 	}
 
@@ -10171,7 +10245,7 @@ func (ec *executionContext) field_Tesla_Mutation_move_argsDirection(
 		return ec.unmarshalNTesla_Direction2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐDirection(ctx, tmp)
 	}
 
-	var zeroVal model3.Direction
+	var zeroVal model4.Direction
 	return zeroVal, nil
 }
 
@@ -10262,9 +10336,9 @@ func (ec *executionContext) field_Tesla_Mutation_updateMap_argsName(
 func (ec *executionContext) field_Tesla_Mutation_updateMap_argsPatch(
 	ctx context.Context,
 	rawArgs map[string]any,
-) (model3.GameMapPatchInput, error) {
+) (model4.GameMapPatchInput, error) {
 	if _, ok := rawArgs["patch"]; !ok {
-		var zeroVal model3.GameMapPatchInput
+		var zeroVal model4.GameMapPatchInput
 		return zeroVal, nil
 	}
 
@@ -10273,7 +10347,7 @@ func (ec *executionContext) field_Tesla_Mutation_updateMap_argsPatch(
 		return ec.unmarshalNTesla_GameMapPatchInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameMapPatchInput(ctx, tmp)
 	}
 
-	var zeroVal model3.GameMapPatchInput
+	var zeroVal model4.GameMapPatchInput
 	return zeroVal, nil
 }
 
@@ -10359,9 +10433,9 @@ func (ec *executionContext) field_Tesla_Mutation_validateMap_args(ctx context.Co
 func (ec *executionContext) field_Tesla_Mutation_validateMap_argsMap(
 	ctx context.Context,
 	rawArgs map[string]any,
-) (model3.GameMapInput, error) {
+) (model4.GameMapInput, error) {
 	if _, ok := rawArgs["map"]; !ok {
-		var zeroVal model3.GameMapInput
+		var zeroVal model4.GameMapInput
 		return zeroVal, nil
 	}
 
@@ -10370,7 +10444,7 @@ func (ec *executionContext) field_Tesla_Mutation_validateMap_argsMap(
 		return ec.unmarshalNTesla_GameMapInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameMapInput(ctx, tmp)
 	}
 
-	var zeroVal model3.GameMapInput
+	var zeroVal model4.GameMapInput
 	return zeroVal, nil
 }
 
@@ -10484,9 +10558,9 @@ func (ec *executionContext) field_Tesla_Query_history_argsLimit(
 func (ec *executionContext) field_Tesla_Query_history_argsOrder(
 	ctx context.Context,
 	rawArgs map[string]any,
-) (*model3.SortOrder, error) {
+) (*model4.SortOrder, error) {
 	if _, ok := rawArgs["order"]; !ok {
-		var zeroVal *model3.SortOrder
+		var zeroVal *model4.SortOrder
 		return zeroVal, nil
 	}
 
@@ -10495,7 +10569,7 @@ func (ec *executionContext) field_Tesla_Query_history_argsOrder(
 		return ec.unmarshalOTesla_SortOrder2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSortOrder(ctx, tmp)
 	}
 
-	var zeroVal *model3.SortOrder
+	var zeroVal *model4.SortOrder
 	return zeroVal, nil
 }
 
@@ -10601,9 +10675,9 @@ func (ec *executionContext) field_Tesla_Query_sessions_args(ctx context.Context,
 func (ec *executionContext) field_Tesla_Query_sessions_argsSort(
 	ctx context.Context,
 	rawArgs map[string]any,
-) (*model3.SessionSort, error) {
+) (*model4.SessionSort, error) {
 	if _, ok := rawArgs["sort"]; !ok {
-		var zeroVal *model3.SessionSort
+		var zeroVal *model4.SessionSort
 		return zeroVal, nil
 	}
 
@@ -10612,16 +10686,16 @@ func (ec *executionContext) field_Tesla_Query_sessions_argsSort(
 		return ec.unmarshalOTesla_SessionSort2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSessionSort(ctx, tmp)
 	}
 
-	var zeroVal *model3.SessionSort
+	var zeroVal *model4.SessionSort
 	return zeroVal, nil
 }
 
 func (ec *executionContext) field_Tesla_Query_sessions_argsOrder(
 	ctx context.Context,
 	rawArgs map[string]any,
-) (*model3.SortOrder, error) {
+) (*model4.SortOrder, error) {
 	if _, ok := rawArgs["order"]; !ok {
-		var zeroVal *model3.SortOrder
+		var zeroVal *model4.SortOrder
 		return zeroVal, nil
 	}
 
@@ -10630,7 +10704,7 @@ func (ec *executionContext) field_Tesla_Query_sessions_argsOrder(
 		return ec.unmarshalOTesla_SortOrder2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSortOrder(ctx, tmp)
 	}
 
-	var zeroVal *model3.SortOrder
+	var zeroVal *model4.SortOrder
 	return zeroVal, nil
 }
 
@@ -18632,7 +18706,1060 @@ func (ec *executionContext) fieldContext_Delivery_UnlockView_builds(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_AdminMap_id(ctx context.Context, field graphql.CollectedField, obj *model1.AdminMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Global_AuthProvider_id(ctx context.Context, field graphql.CollectedField, obj *model1.AuthProvider) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Global_AuthProvider_id(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.ID, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNID2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Global_AuthProvider_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Global_AuthProvider",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Global_AuthProvider_name(ctx context.Context, field graphql.CollectedField, obj *model1.AuthProvider) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Global_AuthProvider_name(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Name, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Global_AuthProvider_name(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Global_AuthProvider",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Global_Mutation_logout(ctx context.Context, field graphql.CollectedField, obj *graph1.Resolver) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Global_Mutation_logout(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Global_Mutation().Logout(rctx, obj)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Global_Mutation_logout(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Global_Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Global_Mutation_registerWithPassword(ctx context.Context, field graphql.CollectedField, obj *graph1.Resolver) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Global_Mutation_registerWithPassword(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Global_Mutation().RegisterWithPassword(rctx, obj, fc.Args["handle"].(string), fc.Args["password"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model1.User)
+	fc.Result = res
+	return ec.marshalNGlobal_User2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚋmodelᚐUser(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Global_Mutation_registerWithPassword(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Global_Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "handle":
+				return ec.fieldContext_Global_User_handle(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Global_User_displayName(ctx, field)
+			case "profilePublic":
+				return ec.fieldContext_Global_User_profilePublic(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Global_User_createdAt(ctx, field)
+			case "handleChangeableAt":
+				return ec.fieldContext_Global_User_handleChangeableAt(ctx, field)
+			case "hasPassword":
+				return ec.fieldContext_Global_User_hasPassword(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Global_User", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Global_Mutation_registerWithPassword_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Global_Mutation_logInWithPassword(ctx context.Context, field graphql.CollectedField, obj *graph1.Resolver) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Global_Mutation_logInWithPassword(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Global_Mutation().LogInWithPassword(rctx, obj, fc.Args["handle"].(string), fc.Args["password"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model1.User)
+	fc.Result = res
+	return ec.marshalNGlobal_User2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚋmodelᚐUser(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Global_Mutation_logInWithPassword(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Global_Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "handle":
+				return ec.fieldContext_Global_User_handle(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Global_User_displayName(ctx, field)
+			case "profilePublic":
+				return ec.fieldContext_Global_User_profilePublic(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Global_User_createdAt(ctx, field)
+			case "handleChangeableAt":
+				return ec.fieldContext_Global_User_handleChangeableAt(ctx, field)
+			case "hasPassword":
+				return ec.fieldContext_Global_User_hasPassword(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Global_User", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Global_Mutation_logInWithPassword_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Global_Mutation_updateAccount(ctx context.Context, field graphql.CollectedField, obj *graph1.Resolver) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Global_Mutation_updateAccount(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Global_Mutation().UpdateAccount(rctx, obj, fc.Args["input"].(model1.AccountInput))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model1.User)
+	fc.Result = res
+	return ec.marshalNGlobal_User2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚋmodelᚐUser(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Global_Mutation_updateAccount(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Global_Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "handle":
+				return ec.fieldContext_Global_User_handle(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Global_User_displayName(ctx, field)
+			case "profilePublic":
+				return ec.fieldContext_Global_User_profilePublic(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Global_User_createdAt(ctx, field)
+			case "handleChangeableAt":
+				return ec.fieldContext_Global_User_handleChangeableAt(ctx, field)
+			case "hasPassword":
+				return ec.fieldContext_Global_User_hasPassword(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Global_User", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Global_Mutation_updateAccount_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Global_Mutation_changePassword(ctx context.Context, field graphql.CollectedField, obj *graph1.Resolver) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Global_Mutation_changePassword(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Global_Mutation().ChangePassword(rctx, obj, fc.Args["currentPassword"].(string), fc.Args["newPassword"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Global_Mutation_changePassword(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Global_Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Global_Mutation_changePassword_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Global_Mutation_deleteAccount(ctx context.Context, field graphql.CollectedField, obj *graph1.Resolver) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Global_Mutation_deleteAccount(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Global_Mutation().DeleteAccount(rctx, obj, fc.Args["confirmHandle"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Global_Mutation_deleteAccount(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Global_Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Global_Mutation_deleteAccount_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Global_Profile_handle(ctx context.Context, field graphql.CollectedField, obj *model1.Profile) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Global_Profile_handle(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Handle, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Global_Profile_handle(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Global_Profile",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Global_Profile_displayName(ctx context.Context, field graphql.CollectedField, obj *model1.Profile) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Global_Profile_displayName(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.DisplayName, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Global_Profile_displayName(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Global_Profile",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Global_Profile_createdAt(ctx context.Context, field graphql.CollectedField, obj *model1.Profile) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Global_Profile_createdAt(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.CreatedAt, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(time.Time)
+	fc.Result = res
+	return ec.marshalNTime2timeᚐTime(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Global_Profile_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Global_Profile",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Global_Profile_isMine(ctx context.Context, field graphql.CollectedField, obj *model1.Profile) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Global_Profile_isMine(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.IsMine, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Global_Profile_isMine(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Global_Profile",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Global_Query_me(ctx context.Context, field graphql.CollectedField, obj *graph1.Resolver) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Global_Query_me(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Global_Query().Me(rctx, obj)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*model1.User)
+	fc.Result = res
+	return ec.marshalOGlobal_User2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚋmodelᚐUser(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Global_Query_me(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Global_Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "handle":
+				return ec.fieldContext_Global_User_handle(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Global_User_displayName(ctx, field)
+			case "profilePublic":
+				return ec.fieldContext_Global_User_profilePublic(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Global_User_createdAt(ctx, field)
+			case "handleChangeableAt":
+				return ec.fieldContext_Global_User_handleChangeableAt(ctx, field)
+			case "hasPassword":
+				return ec.fieldContext_Global_User_hasPassword(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Global_User", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Global_Query_authProviders(ctx context.Context, field graphql.CollectedField, obj *graph1.Resolver) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Global_Query_authProviders(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Global_Query().AuthProviders(rctx, obj)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model1.AuthProvider)
+	fc.Result = res
+	return ec.marshalNGlobal_AuthProvider2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚋmodelᚐAuthProviderᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Global_Query_authProviders(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Global_Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Global_AuthProvider_id(ctx, field)
+			case "name":
+				return ec.fieldContext_Global_AuthProvider_name(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Global_AuthProvider", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Global_Query_profile(ctx context.Context, field graphql.CollectedField, obj *graph1.Resolver) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Global_Query_profile(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Global_Query().Profile(rctx, obj, fc.Args["handle"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*model1.Profile)
+	fc.Result = res
+	return ec.marshalOGlobal_Profile2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚋmodelᚐProfile(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Global_Query_profile(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Global_Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "handle":
+				return ec.fieldContext_Global_Profile_handle(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Global_Profile_displayName(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Global_Profile_createdAt(ctx, field)
+			case "isMine":
+				return ec.fieldContext_Global_Profile_isMine(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Global_Profile", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Global_Query_profile_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Global_User_handle(ctx context.Context, field graphql.CollectedField, obj *model1.User) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Global_User_handle(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Handle, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Global_User_handle(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Global_User",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Global_User_displayName(ctx context.Context, field graphql.CollectedField, obj *model1.User) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Global_User_displayName(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.DisplayName, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Global_User_displayName(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Global_User",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Global_User_profilePublic(ctx context.Context, field graphql.CollectedField, obj *model1.User) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Global_User_profilePublic(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.ProfilePublic, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Global_User_profilePublic(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Global_User",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Global_User_createdAt(ctx context.Context, field graphql.CollectedField, obj *model1.User) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Global_User_createdAt(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.CreatedAt, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(time.Time)
+	fc.Result = res
+	return ec.marshalNTime2timeᚐTime(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Global_User_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Global_User",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Global_User_handleChangeableAt(ctx context.Context, field graphql.CollectedField, obj *model1.User) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Global_User_handleChangeableAt(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.HandleChangeableAt, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*time.Time)
+	fc.Result = res
+	return ec.marshalOTime2ᚖtimeᚐTime(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Global_User_handleChangeableAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Global_User",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Global_User_hasPassword(ctx context.Context, field graphql.CollectedField, obj *model1.User) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Global_User_hasPassword(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.HasPassword, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Global_User_hasPassword(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Global_User",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mazes_AdminMap_id(ctx context.Context, field graphql.CollectedField, obj *model2.AdminMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_AdminMap_id(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -18676,7 +19803,7 @@ func (ec *executionContext) fieldContext_Mazes_AdminMap_id(_ context.Context, fi
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_AdminMap_name(ctx context.Context, field graphql.CollectedField, obj *model1.AdminMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_AdminMap_name(ctx context.Context, field graphql.CollectedField, obj *model2.AdminMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_AdminMap_name(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -18720,7 +19847,7 @@ func (ec *executionContext) fieldContext_Mazes_AdminMap_name(_ context.Context, 
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_AdminMap_description(ctx context.Context, field graphql.CollectedField, obj *model1.AdminMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_AdminMap_description(ctx context.Context, field graphql.CollectedField, obj *model2.AdminMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_AdminMap_description(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -18764,7 +19891,7 @@ func (ec *executionContext) fieldContext_Mazes_AdminMap_description(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_AdminMap_difficulty(ctx context.Context, field graphql.CollectedField, obj *model1.AdminMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_AdminMap_difficulty(ctx context.Context, field graphql.CollectedField, obj *model2.AdminMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_AdminMap_difficulty(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -18808,7 +19935,7 @@ func (ec *executionContext) fieldContext_Mazes_AdminMap_difficulty(_ context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_AdminMap_width(ctx context.Context, field graphql.CollectedField, obj *model1.AdminMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_AdminMap_width(ctx context.Context, field graphql.CollectedField, obj *model2.AdminMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_AdminMap_width(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -18852,7 +19979,7 @@ func (ec *executionContext) fieldContext_Mazes_AdminMap_width(_ context.Context,
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_AdminMap_height(ctx context.Context, field graphql.CollectedField, obj *model1.AdminMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_AdminMap_height(ctx context.Context, field graphql.CollectedField, obj *model2.AdminMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_AdminMap_height(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -18896,7 +20023,7 @@ func (ec *executionContext) fieldContext_Mazes_AdminMap_height(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_AdminMap_levelCount(ctx context.Context, field graphql.CollectedField, obj *model1.AdminMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_AdminMap_levelCount(ctx context.Context, field graphql.CollectedField, obj *model2.AdminMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_AdminMap_levelCount(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -18940,7 +20067,7 @@ func (ec *executionContext) fieldContext_Mazes_AdminMap_levelCount(_ context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_AdminMap_levels(ctx context.Context, field graphql.CollectedField, obj *model1.AdminMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_AdminMap_levels(ctx context.Context, field graphql.CollectedField, obj *model2.AdminMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_AdminMap_levels(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -18984,7 +20111,7 @@ func (ec *executionContext) fieldContext_Mazes_AdminMap_levels(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_AdminMap_start(ctx context.Context, field graphql.CollectedField, obj *model1.AdminMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_AdminMap_start(ctx context.Context, field graphql.CollectedField, obj *model2.AdminMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_AdminMap_start(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -19010,7 +20137,7 @@ func (ec *executionContext) _Mazes_AdminMap_start(ctx context.Context, field gra
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model1.Position)
+	res := resTmp.(*model2.Position)
 	fc.Result = res
 	return ec.marshalNMazes_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -19036,7 +20163,7 @@ func (ec *executionContext) fieldContext_Mazes_AdminMap_start(_ context.Context,
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_AdminMap_finish(ctx context.Context, field graphql.CollectedField, obj *model1.AdminMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_AdminMap_finish(ctx context.Context, field graphql.CollectedField, obj *model2.AdminMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_AdminMap_finish(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -19062,7 +20189,7 @@ func (ec *executionContext) _Mazes_AdminMap_finish(ctx context.Context, field gr
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model1.Position)
+	res := resTmp.(*model2.Position)
 	fc.Result = res
 	return ec.marshalNMazes_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -19088,7 +20215,7 @@ func (ec *executionContext) fieldContext_Mazes_AdminMap_finish(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_AdminMap_portals(ctx context.Context, field graphql.CollectedField, obj *model1.AdminMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_AdminMap_portals(ctx context.Context, field graphql.CollectedField, obj *model2.AdminMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_AdminMap_portals(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -19114,7 +20241,7 @@ func (ec *executionContext) _Mazes_AdminMap_portals(ctx context.Context, field g
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model1.Portal)
+	res := resTmp.([]*model2.Portal)
 	fc.Result = res
 	return ec.marshalNMazes_Portal2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPortalᚄ(ctx, field.Selections, res)
 }
@@ -19140,7 +20267,7 @@ func (ec *executionContext) fieldContext_Mazes_AdminMap_portals(_ context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_AdminMap_maxMoves(ctx context.Context, field graphql.CollectedField, obj *model1.AdminMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_AdminMap_maxMoves(ctx context.Context, field graphql.CollectedField, obj *model2.AdminMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_AdminMap_maxMoves(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -19184,7 +20311,7 @@ func (ec *executionContext) fieldContext_Mazes_AdminMap_maxMoves(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_AdminMap_parMoves(ctx context.Context, field graphql.CollectedField, obj *model1.AdminMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_AdminMap_parMoves(ctx context.Context, field graphql.CollectedField, obj *model2.AdminMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_AdminMap_parMoves(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -19225,7 +20352,7 @@ func (ec *executionContext) fieldContext_Mazes_AdminMap_parMoves(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_AdminMap_minLevelChanges(ctx context.Context, field graphql.CollectedField, obj *model1.AdminMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_AdminMap_minLevelChanges(ctx context.Context, field graphql.CollectedField, obj *model2.AdminMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_AdminMap_minLevelChanges(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -19266,7 +20393,7 @@ func (ec *executionContext) fieldContext_Mazes_AdminMap_minLevelChanges(_ contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_AdminMap_forcedDescents(ctx context.Context, field graphql.CollectedField, obj *model1.AdminMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_AdminMap_forcedDescents(ctx context.Context, field graphql.CollectedField, obj *model2.AdminMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_AdminMap_forcedDescents(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -19307,7 +20434,7 @@ func (ec *executionContext) fieldContext_Mazes_AdminMap_forcedDescents(_ context
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_GameState_pos(ctx context.Context, field graphql.CollectedField, obj *model1.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_GameState_pos(ctx context.Context, field graphql.CollectedField, obj *model2.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_GameState_pos(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -19333,7 +20460,7 @@ func (ec *executionContext) _Mazes_GameState_pos(ctx context.Context, field grap
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model1.Position)
+	res := resTmp.(*model2.Position)
 	fc.Result = res
 	return ec.marshalNMazes_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -19359,7 +20486,7 @@ func (ec *executionContext) fieldContext_Mazes_GameState_pos(_ context.Context, 
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_GameState_moves(ctx context.Context, field graphql.CollectedField, obj *model1.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_GameState_moves(ctx context.Context, field graphql.CollectedField, obj *model2.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_GameState_moves(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -19403,7 +20530,7 @@ func (ec *executionContext) fieldContext_Mazes_GameState_moves(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_GameState_status(ctx context.Context, field graphql.CollectedField, obj *model1.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_GameState_status(ctx context.Context, field graphql.CollectedField, obj *model2.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_GameState_status(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -19429,7 +20556,7 @@ func (ec *executionContext) _Mazes_GameState_status(ctx context.Context, field g
 		}
 		return graphql.Null
 	}
-	res := resTmp.(model1.Status)
+	res := resTmp.(model2.Status)
 	fc.Result = res
 	return ec.marshalNMazes_Status2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐStatus(ctx, field.Selections, res)
 }
@@ -19447,7 +20574,7 @@ func (ec *executionContext) fieldContext_Mazes_GameState_status(_ context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_GameState_lossReason(ctx context.Context, field graphql.CollectedField, obj *model1.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_GameState_lossReason(ctx context.Context, field graphql.CollectedField, obj *model2.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_GameState_lossReason(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -19470,7 +20597,7 @@ func (ec *executionContext) _Mazes_GameState_lossReason(ctx context.Context, fie
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*model1.LossReason)
+	res := resTmp.(*model2.LossReason)
 	fc.Result = res
 	return ec.marshalOMazes_LossReason2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐLossReason(ctx, field.Selections, res)
 }
@@ -19488,7 +20615,7 @@ func (ec *executionContext) fieldContext_Mazes_GameState_lossReason(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_GameState_path(ctx context.Context, field graphql.CollectedField, obj *model1.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_GameState_path(ctx context.Context, field graphql.CollectedField, obj *model2.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_GameState_path(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -19514,7 +20641,7 @@ func (ec *executionContext) _Mazes_GameState_path(ctx context.Context, field gra
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model1.Position)
+	res := resTmp.([]*model2.Position)
 	fc.Result = res
 	return ec.marshalNMazes_Position2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPositionᚄ(ctx, field.Selections, res)
 }
@@ -19540,7 +20667,7 @@ func (ec *executionContext) fieldContext_Mazes_GameState_path(_ context.Context,
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_LevelView_level(ctx context.Context, field graphql.CollectedField, obj *model1.LevelView) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_LevelView_level(ctx context.Context, field graphql.CollectedField, obj *model2.LevelView) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_LevelView_level(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -19584,7 +20711,7 @@ func (ec *executionContext) fieldContext_Mazes_LevelView_level(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_LevelView_levelCount(ctx context.Context, field graphql.CollectedField, obj *model1.LevelView) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_LevelView_levelCount(ctx context.Context, field graphql.CollectedField, obj *model2.LevelView) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_LevelView_levelCount(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -19628,7 +20755,7 @@ func (ec *executionContext) fieldContext_Mazes_LevelView_levelCount(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_LevelView_rows(ctx context.Context, field graphql.CollectedField, obj *model1.LevelView) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_LevelView_rows(ctx context.Context, field graphql.CollectedField, obj *model2.LevelView) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_LevelView_rows(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -19672,7 +20799,7 @@ func (ec *executionContext) fieldContext_Mazes_LevelView_rows(_ context.Context,
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_LevelView_portals(ctx context.Context, field graphql.CollectedField, obj *model1.LevelView) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_LevelView_portals(ctx context.Context, field graphql.CollectedField, obj *model2.LevelView) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_LevelView_portals(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -19698,7 +20825,7 @@ func (ec *executionContext) _Mazes_LevelView_portals(ctx context.Context, field 
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model1.Portal)
+	res := resTmp.([]*model2.Portal)
 	fc.Result = res
 	return ec.marshalNMazes_Portal2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPortalᚄ(ctx, field.Selections, res)
 }
@@ -19724,7 +20851,7 @@ func (ec *executionContext) fieldContext_Mazes_LevelView_portals(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Map_id(ctx context.Context, field graphql.CollectedField, obj *model1.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Map_id(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Map_id(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -19768,7 +20895,7 @@ func (ec *executionContext) fieldContext_Mazes_Map_id(_ context.Context, field g
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Map_name(ctx context.Context, field graphql.CollectedField, obj *model1.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Map_name(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Map_name(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -19812,7 +20939,7 @@ func (ec *executionContext) fieldContext_Mazes_Map_name(_ context.Context, field
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Map_description(ctx context.Context, field graphql.CollectedField, obj *model1.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Map_description(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Map_description(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -19856,7 +20983,7 @@ func (ec *executionContext) fieldContext_Mazes_Map_description(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Map_difficulty(ctx context.Context, field graphql.CollectedField, obj *model1.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Map_difficulty(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Map_difficulty(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -19900,7 +21027,7 @@ func (ec *executionContext) fieldContext_Mazes_Map_difficulty(_ context.Context,
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Map_width(ctx context.Context, field graphql.CollectedField, obj *model1.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Map_width(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Map_width(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -19944,7 +21071,7 @@ func (ec *executionContext) fieldContext_Mazes_Map_width(_ context.Context, fiel
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Map_height(ctx context.Context, field graphql.CollectedField, obj *model1.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Map_height(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Map_height(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -19988,7 +21115,7 @@ func (ec *executionContext) fieldContext_Mazes_Map_height(_ context.Context, fie
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Map_levelCount(ctx context.Context, field graphql.CollectedField, obj *model1.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Map_levelCount(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Map_levelCount(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -20032,7 +21159,7 @@ func (ec *executionContext) fieldContext_Mazes_Map_levelCount(_ context.Context,
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Map_preview(ctx context.Context, field graphql.CollectedField, obj *model1.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Map_preview(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Map_preview(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -20076,7 +21203,7 @@ func (ec *executionContext) fieldContext_Mazes_Map_preview(_ context.Context, fi
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Map_maxMoves(ctx context.Context, field graphql.CollectedField, obj *model1.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Map_maxMoves(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Map_maxMoves(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -20120,7 +21247,7 @@ func (ec *executionContext) fieldContext_Mazes_Map_maxMoves(_ context.Context, f
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Map_parMoves(ctx context.Context, field graphql.CollectedField, obj *model1.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Map_parMoves(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Map_parMoves(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -20161,7 +21288,7 @@ func (ec *executionContext) fieldContext_Mazes_Map_parMoves(_ context.Context, f
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Map_minLevelChanges(ctx context.Context, field graphql.CollectedField, obj *model1.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Map_minLevelChanges(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Map_minLevelChanges(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -20202,7 +21329,7 @@ func (ec *executionContext) fieldContext_Mazes_Map_minLevelChanges(_ context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Map_forcedDescents(ctx context.Context, field graphql.CollectedField, obj *model1.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Map_forcedDescents(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Map_forcedDescents(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -20243,7 +21370,7 @@ func (ec *executionContext) fieldContext_Mazes_Map_forcedDescents(_ context.Cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_MapValidationIssue_message(ctx context.Context, field graphql.CollectedField, obj *model1.MapValidationIssue) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_MapValidationIssue_message(ctx context.Context, field graphql.CollectedField, obj *model2.MapValidationIssue) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_MapValidationIssue_message(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -20287,7 +21414,7 @@ func (ec *executionContext) fieldContext_Mazes_MapValidationIssue_message(_ cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_MapValidationResult_valid(ctx context.Context, field graphql.CollectedField, obj *model1.MapValidationResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_MapValidationResult_valid(ctx context.Context, field graphql.CollectedField, obj *model2.MapValidationResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_MapValidationResult_valid(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -20331,7 +21458,7 @@ func (ec *executionContext) fieldContext_Mazes_MapValidationResult_valid(_ conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_MapValidationResult_issues(ctx context.Context, field graphql.CollectedField, obj *model1.MapValidationResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_MapValidationResult_issues(ctx context.Context, field graphql.CollectedField, obj *model2.MapValidationResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_MapValidationResult_issues(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -20357,7 +21484,7 @@ func (ec *executionContext) _Mazes_MapValidationResult_issues(ctx context.Contex
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model1.MapValidationIssue)
+	res := resTmp.([]*model2.MapValidationIssue)
 	fc.Result = res
 	return ec.marshalNMazes_MapValidationIssue2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapValidationIssueᚄ(ctx, field.Selections, res)
 }
@@ -20379,7 +21506,7 @@ func (ec *executionContext) fieldContext_Mazes_MapValidationResult_issues(_ cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_MapValidationResult_finishReachable(ctx context.Context, field graphql.CollectedField, obj *model1.MapValidationResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_MapValidationResult_finishReachable(ctx context.Context, field graphql.CollectedField, obj *model2.MapValidationResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_MapValidationResult_finishReachable(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -20423,7 +21550,7 @@ func (ec *executionContext) fieldContext_Mazes_MapValidationResult_finishReachab
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_MapValidationResult_parMoves(ctx context.Context, field graphql.CollectedField, obj *model1.MapValidationResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_MapValidationResult_parMoves(ctx context.Context, field graphql.CollectedField, obj *model2.MapValidationResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_MapValidationResult_parMoves(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -20464,7 +21591,7 @@ func (ec *executionContext) fieldContext_Mazes_MapValidationResult_parMoves(_ co
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_MapValidationResult_minLevelChanges(ctx context.Context, field graphql.CollectedField, obj *model1.MapValidationResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_MapValidationResult_minLevelChanges(ctx context.Context, field graphql.CollectedField, obj *model2.MapValidationResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_MapValidationResult_minLevelChanges(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -20505,7 +21632,7 @@ func (ec *executionContext) fieldContext_Mazes_MapValidationResult_minLevelChang
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_MapValidationResult_forcedDescents(ctx context.Context, field graphql.CollectedField, obj *model1.MapValidationResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_MapValidationResult_forcedDescents(ctx context.Context, field graphql.CollectedField, obj *model2.MapValidationResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_MapValidationResult_forcedDescents(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -20546,7 +21673,7 @@ func (ec *executionContext) fieldContext_Mazes_MapValidationResult_forcedDescent
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_MoveEvent_move(ctx context.Context, field graphql.CollectedField, obj *model1.MoveEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_MoveEvent_move(ctx context.Context, field graphql.CollectedField, obj *model2.MoveEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_MoveEvent_move(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -20590,7 +21717,7 @@ func (ec *executionContext) fieldContext_Mazes_MoveEvent_move(_ context.Context,
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_MoveEvent_direction(ctx context.Context, field graphql.CollectedField, obj *model1.MoveEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_MoveEvent_direction(ctx context.Context, field graphql.CollectedField, obj *model2.MoveEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_MoveEvent_direction(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -20616,7 +21743,7 @@ func (ec *executionContext) _Mazes_MoveEvent_direction(ctx context.Context, fiel
 		}
 		return graphql.Null
 	}
-	res := resTmp.(model1.Direction)
+	res := resTmp.(model2.Direction)
 	fc.Result = res
 	return ec.marshalNMazes_Direction2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐDirection(ctx, field.Selections, res)
 }
@@ -20634,7 +21761,7 @@ func (ec *executionContext) fieldContext_Mazes_MoveEvent_direction(_ context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_MoveEvent_from(ctx context.Context, field graphql.CollectedField, obj *model1.MoveEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_MoveEvent_from(ctx context.Context, field graphql.CollectedField, obj *model2.MoveEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_MoveEvent_from(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -20660,7 +21787,7 @@ func (ec *executionContext) _Mazes_MoveEvent_from(ctx context.Context, field gra
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model1.Position)
+	res := resTmp.(*model2.Position)
 	fc.Result = res
 	return ec.marshalNMazes_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -20686,7 +21813,7 @@ func (ec *executionContext) fieldContext_Mazes_MoveEvent_from(_ context.Context,
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_MoveEvent_stepped(ctx context.Context, field graphql.CollectedField, obj *model1.MoveEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_MoveEvent_stepped(ctx context.Context, field graphql.CollectedField, obj *model2.MoveEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_MoveEvent_stepped(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -20712,7 +21839,7 @@ func (ec *executionContext) _Mazes_MoveEvent_stepped(ctx context.Context, field 
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model1.Position)
+	res := resTmp.(*model2.Position)
 	fc.Result = res
 	return ec.marshalNMazes_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -20738,7 +21865,7 @@ func (ec *executionContext) fieldContext_Mazes_MoveEvent_stepped(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_MoveEvent_to(ctx context.Context, field graphql.CollectedField, obj *model1.MoveEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_MoveEvent_to(ctx context.Context, field graphql.CollectedField, obj *model2.MoveEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_MoveEvent_to(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -20764,7 +21891,7 @@ func (ec *executionContext) _Mazes_MoveEvent_to(ctx context.Context, field graph
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model1.Position)
+	res := resTmp.(*model2.Position)
 	fc.Result = res
 	return ec.marshalNMazes_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -20790,7 +21917,7 @@ func (ec *executionContext) fieldContext_Mazes_MoveEvent_to(_ context.Context, f
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_MoveEvent_blocked(ctx context.Context, field graphql.CollectedField, obj *model1.MoveEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_MoveEvent_blocked(ctx context.Context, field graphql.CollectedField, obj *model2.MoveEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_MoveEvent_blocked(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -20834,7 +21961,7 @@ func (ec *executionContext) fieldContext_Mazes_MoveEvent_blocked(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_MoveEvent_via(ctx context.Context, field graphql.CollectedField, obj *model1.MoveEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_MoveEvent_via(ctx context.Context, field graphql.CollectedField, obj *model2.MoveEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_MoveEvent_via(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -20860,7 +21987,7 @@ func (ec *executionContext) _Mazes_MoveEvent_via(ctx context.Context, field grap
 		}
 		return graphql.Null
 	}
-	res := resTmp.(model1.Via)
+	res := resTmp.(model2.Via)
 	fc.Result = res
 	return ec.marshalNMazes_Via2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐVia(ctx, field.Selections, res)
 }
@@ -20878,7 +22005,7 @@ func (ec *executionContext) fieldContext_Mazes_MoveEvent_via(_ context.Context, 
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_MoveEvent_status(ctx context.Context, field graphql.CollectedField, obj *model1.MoveEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_MoveEvent_status(ctx context.Context, field graphql.CollectedField, obj *model2.MoveEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_MoveEvent_status(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -20904,7 +22031,7 @@ func (ec *executionContext) _Mazes_MoveEvent_status(ctx context.Context, field g
 		}
 		return graphql.Null
 	}
-	res := resTmp.(model1.Status)
+	res := resTmp.(model2.Status)
 	fc.Result = res
 	return ec.marshalNMazes_Status2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐStatus(ctx, field.Selections, res)
 }
@@ -20922,7 +22049,7 @@ func (ec *executionContext) fieldContext_Mazes_MoveEvent_status(_ context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_MoveEvent_lossReason(ctx context.Context, field graphql.CollectedField, obj *model1.MoveEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_MoveEvent_lossReason(ctx context.Context, field graphql.CollectedField, obj *model2.MoveEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_MoveEvent_lossReason(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -20945,7 +22072,7 @@ func (ec *executionContext) _Mazes_MoveEvent_lossReason(ctx context.Context, fie
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*model1.LossReason)
+	res := resTmp.(*model2.LossReason)
 	fc.Result = res
 	return ec.marshalOMazes_LossReason2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐLossReason(ctx, field.Selections, res)
 }
@@ -20963,7 +22090,7 @@ func (ec *executionContext) fieldContext_Mazes_MoveEvent_lossReason(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Mutation_createSession(ctx context.Context, field graphql.CollectedField, obj *graph1.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Mutation_createSession(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Mutation_createSession(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -20989,7 +22116,7 @@ func (ec *executionContext) _Mazes_Mutation_createSession(ctx context.Context, f
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model1.Session)
+	res := resTmp.(*model2.Session)
 	fc.Result = res
 	return ec.marshalNMazes_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
@@ -21044,7 +22171,7 @@ func (ec *executionContext) fieldContext_Mazes_Mutation_createSession(ctx contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Mutation_deleteSession(ctx context.Context, field graphql.CollectedField, obj *graph1.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Mutation_deleteSession(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Mutation_deleteSession(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -21099,7 +22226,7 @@ func (ec *executionContext) fieldContext_Mazes_Mutation_deleteSession(ctx contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Mutation_renameSession(ctx context.Context, field graphql.CollectedField, obj *graph1.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Mutation_renameSession(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Mutation_renameSession(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -21125,7 +22252,7 @@ func (ec *executionContext) _Mazes_Mutation_renameSession(ctx context.Context, f
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model1.Session)
+	res := resTmp.(*model2.Session)
 	fc.Result = res
 	return ec.marshalNMazes_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
@@ -21180,7 +22307,7 @@ func (ec *executionContext) fieldContext_Mazes_Mutation_renameSession(ctx contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Mutation_move(ctx context.Context, field graphql.CollectedField, obj *graph1.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Mutation_move(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Mutation_move(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -21194,7 +22321,7 @@ func (ec *executionContext) _Mazes_Mutation_move(ctx context.Context, field grap
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mazes_Mutation().Move(rctx, obj, fc.Args["sessionID"].(string), fc.Args["direction"].(model1.Direction))
+		return ec.resolvers.Mazes_Mutation().Move(rctx, obj, fc.Args["sessionID"].(string), fc.Args["direction"].(model2.Direction))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -21206,7 +22333,7 @@ func (ec *executionContext) _Mazes_Mutation_move(ctx context.Context, field grap
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model1.Session)
+	res := resTmp.(*model2.Session)
 	fc.Result = res
 	return ec.marshalNMazes_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
@@ -21261,7 +22388,7 @@ func (ec *executionContext) fieldContext_Mazes_Mutation_move(ctx context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Mutation_bulkMove(ctx context.Context, field graphql.CollectedField, obj *graph1.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Mutation_bulkMove(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Mutation_bulkMove(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -21275,7 +22402,7 @@ func (ec *executionContext) _Mazes_Mutation_bulkMove(ctx context.Context, field 
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mazes_Mutation().BulkMove(rctx, obj, fc.Args["sessionID"].(string), fc.Args["directions"].([]model1.Direction), fc.Args["stopOnBlocked"].(*bool))
+		return ec.resolvers.Mazes_Mutation().BulkMove(rctx, obj, fc.Args["sessionID"].(string), fc.Args["directions"].([]model2.Direction), fc.Args["stopOnBlocked"].(*bool))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -21287,7 +22414,7 @@ func (ec *executionContext) _Mazes_Mutation_bulkMove(ctx context.Context, field 
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model1.Session)
+	res := resTmp.(*model2.Session)
 	fc.Result = res
 	return ec.marshalNMazes_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
@@ -21342,7 +22469,7 @@ func (ec *executionContext) fieldContext_Mazes_Mutation_bulkMove(ctx context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Mutation_reset(ctx context.Context, field graphql.CollectedField, obj *graph1.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Mutation_reset(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Mutation_reset(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -21368,7 +22495,7 @@ func (ec *executionContext) _Mazes_Mutation_reset(ctx context.Context, field gra
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model1.Session)
+	res := resTmp.(*model2.Session)
 	fc.Result = res
 	return ec.marshalNMazes_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
@@ -21423,7 +22550,7 @@ func (ec *executionContext) fieldContext_Mazes_Mutation_reset(ctx context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Mutation_createMap(ctx context.Context, field graphql.CollectedField, obj *graph1.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Mutation_createMap(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Mutation_createMap(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -21437,7 +22564,7 @@ func (ec *executionContext) _Mazes_Mutation_createMap(ctx context.Context, field
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mazes_Mutation().CreateMap(rctx, obj, fc.Args["map"].(model1.MapInput))
+		return ec.resolvers.Mazes_Mutation().CreateMap(rctx, obj, fc.Args["map"].(model2.MapInput))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -21449,7 +22576,7 @@ func (ec *executionContext) _Mazes_Mutation_createMap(ctx context.Context, field
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model1.AdminMap)
+	res := resTmp.(*model2.AdminMap)
 	fc.Result = res
 	return ec.marshalNMazes_AdminMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐAdminMap(ctx, field.Selections, res)
 }
@@ -21510,7 +22637,7 @@ func (ec *executionContext) fieldContext_Mazes_Mutation_createMap(ctx context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Mutation_updateMap(ctx context.Context, field graphql.CollectedField, obj *graph1.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Mutation_updateMap(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Mutation_updateMap(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -21524,7 +22651,7 @@ func (ec *executionContext) _Mazes_Mutation_updateMap(ctx context.Context, field
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mazes_Mutation().UpdateMap(rctx, obj, fc.Args["map"].(model1.MapInput))
+		return ec.resolvers.Mazes_Mutation().UpdateMap(rctx, obj, fc.Args["map"].(model2.MapInput))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -21536,7 +22663,7 @@ func (ec *executionContext) _Mazes_Mutation_updateMap(ctx context.Context, field
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model1.AdminMap)
+	res := resTmp.(*model2.AdminMap)
 	fc.Result = res
 	return ec.marshalNMazes_AdminMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐAdminMap(ctx, field.Selections, res)
 }
@@ -21597,7 +22724,7 @@ func (ec *executionContext) fieldContext_Mazes_Mutation_updateMap(ctx context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Mutation_deleteMap(ctx context.Context, field graphql.CollectedField, obj *graph1.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Mutation_deleteMap(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Mutation_deleteMap(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -21652,7 +22779,7 @@ func (ec *executionContext) fieldContext_Mazes_Mutation_deleteMap(ctx context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Mutation_validateMap(ctx context.Context, field graphql.CollectedField, obj *graph1.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Mutation_validateMap(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Mutation_validateMap(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -21666,7 +22793,7 @@ func (ec *executionContext) _Mazes_Mutation_validateMap(ctx context.Context, fie
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mazes_Mutation().ValidateMap(rctx, obj, fc.Args["map"].(model1.MapInput))
+		return ec.resolvers.Mazes_Mutation().ValidateMap(rctx, obj, fc.Args["map"].(model2.MapInput))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -21678,7 +22805,7 @@ func (ec *executionContext) _Mazes_Mutation_validateMap(ctx context.Context, fie
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model1.MapValidationResult)
+	res := resTmp.(*model2.MapValidationResult)
 	fc.Result = res
 	return ec.marshalNMazes_MapValidationResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapValidationResult(ctx, field.Selections, res)
 }
@@ -21721,7 +22848,7 @@ func (ec *executionContext) fieldContext_Mazes_Mutation_validateMap(ctx context.
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Portal_glyph(ctx context.Context, field graphql.CollectedField, obj *model1.Portal) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Portal_glyph(ctx context.Context, field graphql.CollectedField, obj *model2.Portal) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Portal_glyph(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -21765,7 +22892,7 @@ func (ec *executionContext) fieldContext_Mazes_Portal_glyph(_ context.Context, f
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Portal_a(ctx context.Context, field graphql.CollectedField, obj *model1.Portal) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Portal_a(ctx context.Context, field graphql.CollectedField, obj *model2.Portal) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Portal_a(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -21791,7 +22918,7 @@ func (ec *executionContext) _Mazes_Portal_a(ctx context.Context, field graphql.C
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model1.Position)
+	res := resTmp.(*model2.Position)
 	fc.Result = res
 	return ec.marshalNMazes_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -21817,7 +22944,7 @@ func (ec *executionContext) fieldContext_Mazes_Portal_a(_ context.Context, field
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Portal_b(ctx context.Context, field graphql.CollectedField, obj *model1.Portal) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Portal_b(ctx context.Context, field graphql.CollectedField, obj *model2.Portal) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Portal_b(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -21840,7 +22967,7 @@ func (ec *executionContext) _Mazes_Portal_b(ctx context.Context, field graphql.C
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*model1.Position)
+	res := resTmp.(*model2.Position)
 	fc.Result = res
 	return ec.marshalOMazes_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -21866,7 +22993,7 @@ func (ec *executionContext) fieldContext_Mazes_Portal_b(_ context.Context, field
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Position_level(ctx context.Context, field graphql.CollectedField, obj *model1.Position) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Position_level(ctx context.Context, field graphql.CollectedField, obj *model2.Position) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Position_level(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -21910,7 +23037,7 @@ func (ec *executionContext) fieldContext_Mazes_Position_level(_ context.Context,
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Position_x(ctx context.Context, field graphql.CollectedField, obj *model1.Position) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Position_x(ctx context.Context, field graphql.CollectedField, obj *model2.Position) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Position_x(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -21954,7 +23081,7 @@ func (ec *executionContext) fieldContext_Mazes_Position_x(_ context.Context, fie
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Position_y(ctx context.Context, field graphql.CollectedField, obj *model1.Position) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Position_y(ctx context.Context, field graphql.CollectedField, obj *model2.Position) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Position_y(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -21998,7 +23125,7 @@ func (ec *executionContext) fieldContext_Mazes_Position_y(_ context.Context, fie
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Query_maps(ctx context.Context, field graphql.CollectedField, obj *graph1.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Query_maps(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Query_maps(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -22024,7 +23151,7 @@ func (ec *executionContext) _Mazes_Query_maps(ctx context.Context, field graphql
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model1.Map)
+	res := resTmp.([]*model2.Map)
 	fc.Result = res
 	return ec.marshalNMazes_Map2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapᚄ(ctx, field.Selections, res)
 }
@@ -22068,7 +23195,7 @@ func (ec *executionContext) fieldContext_Mazes_Query_maps(_ context.Context, fie
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Query_map(ctx context.Context, field graphql.CollectedField, obj *graph1.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Query_map(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Query_map(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -22091,7 +23218,7 @@ func (ec *executionContext) _Mazes_Query_map(ctx context.Context, field graphql.
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*model1.Map)
+	res := resTmp.(*model2.Map)
 	fc.Result = res
 	return ec.marshalOMazes_Map2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMap(ctx, field.Selections, res)
 }
@@ -22146,7 +23273,7 @@ func (ec *executionContext) fieldContext_Mazes_Query_map(ctx context.Context, fi
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Query_adminMap(ctx context.Context, field graphql.CollectedField, obj *graph1.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Query_adminMap(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Query_adminMap(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -22169,7 +23296,7 @@ func (ec *executionContext) _Mazes_Query_adminMap(ctx context.Context, field gra
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*model1.AdminMap)
+	res := resTmp.(*model2.AdminMap)
 	fc.Result = res
 	return ec.marshalOMazes_AdminMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐAdminMap(ctx, field.Selections, res)
 }
@@ -22230,7 +23357,7 @@ func (ec *executionContext) fieldContext_Mazes_Query_adminMap(ctx context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Query_session(ctx context.Context, field graphql.CollectedField, obj *graph1.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Query_session(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Query_session(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -22253,7 +23380,7 @@ func (ec *executionContext) _Mazes_Query_session(ctx context.Context, field grap
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*model1.Session)
+	res := resTmp.(*model2.Session)
 	fc.Result = res
 	return ec.marshalOMazes_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
@@ -22308,7 +23435,7 @@ func (ec *executionContext) fieldContext_Mazes_Query_session(ctx context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Query_sessions(ctx context.Context, field graphql.CollectedField, obj *graph1.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Query_sessions(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Query_sessions(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -22322,7 +23449,7 @@ func (ec *executionContext) _Mazes_Query_sessions(ctx context.Context, field gra
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mazes_Query().Sessions(rctx, obj, fc.Args["sort"].(*model1.SessionSort), fc.Args["limit"].(*int), fc.Args["mapId"].(*string))
+		return ec.resolvers.Mazes_Query().Sessions(rctx, obj, fc.Args["sort"].(*model2.SessionSort), fc.Args["limit"].(*int), fc.Args["mapId"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -22334,7 +23461,7 @@ func (ec *executionContext) _Mazes_Query_sessions(ctx context.Context, field gra
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model1.Session)
+	res := resTmp.([]*model2.Session)
 	fc.Result = res
 	return ec.marshalNMazes_Session2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSessionᚄ(ctx, field.Selections, res)
 }
@@ -22389,7 +23516,7 @@ func (ec *executionContext) fieldContext_Mazes_Query_sessions(ctx context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Session_id(ctx context.Context, field graphql.CollectedField, obj *model1.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Session_id(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Session_id(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -22433,7 +23560,7 @@ func (ec *executionContext) fieldContext_Mazes_Session_id(_ context.Context, fie
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Session_displayName(ctx context.Context, field graphql.CollectedField, obj *model1.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Session_displayName(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Session_displayName(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -22477,7 +23604,7 @@ func (ec *executionContext) fieldContext_Mazes_Session_displayName(_ context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Session_mapId(ctx context.Context, field graphql.CollectedField, obj *model1.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Session_mapId(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Session_mapId(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -22521,7 +23648,7 @@ func (ec *executionContext) fieldContext_Mazes_Session_mapId(_ context.Context, 
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Session_map(ctx context.Context, field graphql.CollectedField, obj *model1.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Session_map(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Session_map(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -22547,7 +23674,7 @@ func (ec *executionContext) _Mazes_Session_map(ctx context.Context, field graphq
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model1.Map)
+	res := resTmp.(*model2.Map)
 	fc.Result = res
 	return ec.marshalNMazes_Map2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMap(ctx, field.Selections, res)
 }
@@ -22591,7 +23718,7 @@ func (ec *executionContext) fieldContext_Mazes_Session_map(_ context.Context, fi
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Session_view(ctx context.Context, field graphql.CollectedField, obj *model1.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Session_view(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Session_view(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -22617,7 +23744,7 @@ func (ec *executionContext) _Mazes_Session_view(ctx context.Context, field graph
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model1.LevelView)
+	res := resTmp.(*model2.LevelView)
 	fc.Result = res
 	return ec.marshalNMazes_LevelView2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐLevelView(ctx, field.Selections, res)
 }
@@ -22645,7 +23772,7 @@ func (ec *executionContext) fieldContext_Mazes_Session_view(_ context.Context, f
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Session_state(ctx context.Context, field graphql.CollectedField, obj *model1.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Session_state(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Session_state(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -22671,7 +23798,7 @@ func (ec *executionContext) _Mazes_Session_state(ctx context.Context, field grap
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model1.GameState)
+	res := resTmp.(*model2.GameState)
 	fc.Result = res
 	return ec.marshalNMazes_GameState2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐGameState(ctx, field.Selections, res)
 }
@@ -22701,7 +23828,7 @@ func (ec *executionContext) fieldContext_Mazes_Session_state(_ context.Context, 
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Session_seq(ctx context.Context, field graphql.CollectedField, obj *model1.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Session_seq(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Session_seq(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -22745,7 +23872,7 @@ func (ec *executionContext) fieldContext_Mazes_Session_seq(_ context.Context, fi
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Session_createdAt(ctx context.Context, field graphql.CollectedField, obj *model1.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Session_createdAt(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Session_createdAt(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -22789,7 +23916,7 @@ func (ec *executionContext) fieldContext_Mazes_Session_createdAt(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Session_lastActionAt(ctx context.Context, field graphql.CollectedField, obj *model1.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Session_lastActionAt(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Session_lastActionAt(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -22833,7 +23960,7 @@ func (ec *executionContext) fieldContext_Mazes_Session_lastActionAt(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Session_attempts(ctx context.Context, field graphql.CollectedField, obj *model1.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Session_attempts(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Session_attempts(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -22877,7 +24004,7 @@ func (ec *executionContext) fieldContext_Mazes_Session_attempts(_ context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Session_bestMoves(ctx context.Context, field graphql.CollectedField, obj *model1.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Session_bestMoves(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Session_bestMoves(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -22918,7 +24045,7 @@ func (ec *executionContext) fieldContext_Mazes_Session_bestMoves(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_Session_lastEvent(ctx context.Context, field graphql.CollectedField, obj *model1.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_Session_lastEvent(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_Session_lastEvent(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -22941,7 +24068,7 @@ func (ec *executionContext) _Mazes_Session_lastEvent(ctx context.Context, field 
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*model1.MoveEvent)
+	res := resTmp.(*model2.MoveEvent)
 	fc.Result = res
 	return ec.marshalOMazes_MoveEvent2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMoveEvent(ctx, field.Selections, res)
 }
@@ -22979,7 +24106,7 @@ func (ec *executionContext) fieldContext_Mazes_Session_lastEvent(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_SessionUpdate_seq(ctx context.Context, field graphql.CollectedField, obj *model1.SessionUpdate) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_SessionUpdate_seq(ctx context.Context, field graphql.CollectedField, obj *model2.SessionUpdate) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_SessionUpdate_seq(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -23023,7 +24150,7 @@ func (ec *executionContext) fieldContext_Mazes_SessionUpdate_seq(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_SessionUpdate_session(ctx context.Context, field graphql.CollectedField, obj *model1.SessionUpdate) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_SessionUpdate_session(ctx context.Context, field graphql.CollectedField, obj *model2.SessionUpdate) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_SessionUpdate_session(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -23049,7 +24176,7 @@ func (ec *executionContext) _Mazes_SessionUpdate_session(ctx context.Context, fi
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model1.Session)
+	res := resTmp.(*model2.Session)
 	fc.Result = res
 	return ec.marshalNMazes_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
@@ -23093,7 +24220,7 @@ func (ec *executionContext) fieldContext_Mazes_SessionUpdate_session(_ context.C
 	return fc, nil
 }
 
-func (ec *executionContext) _Mazes_SessionUpdate_event(ctx context.Context, field graphql.CollectedField, obj *model1.SessionUpdate) (ret graphql.Marshaler) {
+func (ec *executionContext) _Mazes_SessionUpdate_event(ctx context.Context, field graphql.CollectedField, obj *model2.SessionUpdate) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mazes_SessionUpdate_event(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -23116,7 +24243,7 @@ func (ec *executionContext) _Mazes_SessionUpdate_event(ctx context.Context, fiel
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*model1.MoveEvent)
+	res := resTmp.(*model2.MoveEvent)
 	fc.Result = res
 	return ec.marshalOMazes_MoveEvent2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMoveEvent(ctx, field.Selections, res)
 }
@@ -23154,356 +24281,7 @@ func (ec *executionContext) fieldContext_Mazes_SessionUpdate_event(_ context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Account_handle(ctx context.Context, field graphql.CollectedField, obj *model2.Account) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Motor_Account_handle(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Handle, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(string)
-	fc.Result = res
-	return ec.marshalNString2string(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Motor_Account_handle(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Motor_Account",
-		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type String does not have child fields")
-		},
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Motor_Account_displayName(ctx context.Context, field graphql.CollectedField, obj *model2.Account) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Motor_Account_displayName(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.DisplayName, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(string)
-	fc.Result = res
-	return ec.marshalNString2string(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Motor_Account_displayName(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Motor_Account",
-		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type String does not have child fields")
-		},
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Motor_Account_profilePublic(ctx context.Context, field graphql.CollectedField, obj *model2.Account) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Motor_Account_profilePublic(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.ProfilePublic, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(bool)
-	fc.Result = res
-	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Motor_Account_profilePublic(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Motor_Account",
-		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type Boolean does not have child fields")
-		},
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Motor_Account_createdAt(ctx context.Context, field graphql.CollectedField, obj *model2.Account) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Motor_Account_createdAt(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.CreatedAt, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(time.Time)
-	fc.Result = res
-	return ec.marshalNTime2timeᚐTime(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Motor_Account_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Motor_Account",
-		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type Time does not have child fields")
-		},
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Motor_Account_handleChangeableAt(ctx context.Context, field graphql.CollectedField, obj *model2.Account) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Motor_Account_handleChangeableAt(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.HandleChangeableAt, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.(*time.Time)
-	fc.Result = res
-	return ec.marshalOTime2ᚖtimeᚐTime(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Motor_Account_handleChangeableAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Motor_Account",
-		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type Time does not have child fields")
-		},
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Motor_Account_hasPassword(ctx context.Context, field graphql.CollectedField, obj *model2.Account) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Motor_Account_hasPassword(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.HasPassword, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(bool)
-	fc.Result = res
-	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Motor_Account_hasPassword(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Motor_Account",
-		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type Boolean does not have child fields")
-		},
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Motor_AuthProvider_id(ctx context.Context, field graphql.CollectedField, obj *model2.AuthProvider) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Motor_AuthProvider_id(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.ID, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(string)
-	fc.Result = res
-	return ec.marshalNID2string(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Motor_AuthProvider_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Motor_AuthProvider",
-		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type ID does not have child fields")
-		},
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Motor_AuthProvider_name(ctx context.Context, field graphql.CollectedField, obj *model2.AuthProvider) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Motor_AuthProvider_name(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Name, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(string)
-	fc.Result = res
-	return ec.marshalNString2string(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Motor_AuthProvider_name(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Motor_AuthProvider",
-		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type String does not have child fields")
-		},
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Motor_Conveyor_pos(ctx context.Context, field graphql.CollectedField, obj *model2.Conveyor) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Conveyor_pos(ctx context.Context, field graphql.CollectedField, obj *model3.Conveyor) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Conveyor_pos(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -23529,7 +24307,7 @@ func (ec *executionContext) _Motor_Conveyor_pos(ctx context.Context, field graph
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Position)
+	res := resTmp.(*model3.Position)
 	fc.Result = res
 	return ec.marshalNMotor_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -23553,7 +24331,7 @@ func (ec *executionContext) fieldContext_Motor_Conveyor_pos(_ context.Context, f
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Conveyor_dir(ctx context.Context, field graphql.CollectedField, obj *model2.Conveyor) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Conveyor_dir(ctx context.Context, field graphql.CollectedField, obj *model3.Conveyor) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Conveyor_dir(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -23579,7 +24357,7 @@ func (ec *executionContext) _Motor_Conveyor_dir(ctx context.Context, field graph
 		}
 		return graphql.Null
 	}
-	res := resTmp.(model2.Facing)
+	res := resTmp.(model3.Facing)
 	fc.Result = res
 	return ec.marshalNMotor_Facing2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐFacing(ctx, field.Selections, res)
 }
@@ -23597,7 +24375,7 @@ func (ec *executionContext) fieldContext_Motor_Conveyor_dir(_ context.Context, f
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_DoorTile_pos(ctx context.Context, field graphql.CollectedField, obj *model2.DoorTile) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_DoorTile_pos(ctx context.Context, field graphql.CollectedField, obj *model3.DoorTile) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_DoorTile_pos(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -23623,7 +24401,7 @@ func (ec *executionContext) _Motor_DoorTile_pos(ctx context.Context, field graph
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Position)
+	res := resTmp.(*model3.Position)
 	fc.Result = res
 	return ec.marshalNMotor_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -23647,7 +24425,7 @@ func (ec *executionContext) fieldContext_Motor_DoorTile_pos(_ context.Context, f
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_DoorTile_letter(ctx context.Context, field graphql.CollectedField, obj *model2.DoorTile) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_DoorTile_letter(ctx context.Context, field graphql.CollectedField, obj *model3.DoorTile) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_DoorTile_letter(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -23691,7 +24469,7 @@ func (ec *executionContext) fieldContext_Motor_DoorTile_letter(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Frame_tape(ctx context.Context, field graphql.CollectedField, obj *model2.Frame) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Frame_tape(ctx context.Context, field graphql.CollectedField, obj *model3.Frame) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Frame_tape(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -23735,7 +24513,7 @@ func (ec *executionContext) fieldContext_Motor_Frame_tape(_ context.Context, fie
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Frame_pc(ctx context.Context, field graphql.CollectedField, obj *model2.Frame) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Frame_pc(ctx context.Context, field graphql.CollectedField, obj *model3.Frame) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Frame_pc(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -23779,7 +24557,7 @@ func (ec *executionContext) fieldContext_Motor_Frame_pc(_ context.Context, field
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_KeyTile_pos(ctx context.Context, field graphql.CollectedField, obj *model2.KeyTile) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_KeyTile_pos(ctx context.Context, field graphql.CollectedField, obj *model3.KeyTile) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_KeyTile_pos(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -23805,7 +24583,7 @@ func (ec *executionContext) _Motor_KeyTile_pos(ctx context.Context, field graphq
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Position)
+	res := resTmp.(*model3.Position)
 	fc.Result = res
 	return ec.marshalNMotor_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -23829,7 +24607,7 @@ func (ec *executionContext) fieldContext_Motor_KeyTile_pos(_ context.Context, fi
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_KeyTile_letter(ctx context.Context, field graphql.CollectedField, obj *model2.KeyTile) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_KeyTile_letter(ctx context.Context, field graphql.CollectedField, obj *model3.KeyTile) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_KeyTile_letter(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -23873,7 +24651,7 @@ func (ec *executionContext) fieldContext_Motor_KeyTile_letter(_ context.Context,
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Leaderboard_mapId(ctx context.Context, field graphql.CollectedField, obj *model2.Leaderboard) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Leaderboard_mapId(ctx context.Context, field graphql.CollectedField, obj *model3.Leaderboard) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Leaderboard_mapId(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -23917,7 +24695,7 @@ func (ec *executionContext) fieldContext_Motor_Leaderboard_mapId(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Leaderboard_order(ctx context.Context, field graphql.CollectedField, obj *model2.Leaderboard) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Leaderboard_order(ctx context.Context, field graphql.CollectedField, obj *model3.Leaderboard) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Leaderboard_order(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -23943,7 +24721,7 @@ func (ec *executionContext) _Motor_Leaderboard_order(ctx context.Context, field 
 		}
 		return graphql.Null
 	}
-	res := resTmp.(model2.LeaderboardOrder)
+	res := resTmp.(model3.LeaderboardOrder)
 	fc.Result = res
 	return ec.marshalNMotor_LeaderboardOrder2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLeaderboardOrder(ctx, field.Selections, res)
 }
@@ -23961,7 +24739,7 @@ func (ec *executionContext) fieldContext_Motor_Leaderboard_order(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Leaderboard_total(ctx context.Context, field graphql.CollectedField, obj *model2.Leaderboard) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Leaderboard_total(ctx context.Context, field graphql.CollectedField, obj *model3.Leaderboard) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Leaderboard_total(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -24005,7 +24783,7 @@ func (ec *executionContext) fieldContext_Motor_Leaderboard_total(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Leaderboard_entries(ctx context.Context, field graphql.CollectedField, obj *model2.Leaderboard) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Leaderboard_entries(ctx context.Context, field graphql.CollectedField, obj *model3.Leaderboard) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Leaderboard_entries(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -24031,7 +24809,7 @@ func (ec *executionContext) _Motor_Leaderboard_entries(ctx context.Context, fiel
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model2.LeaderboardEntry)
+	res := resTmp.([]*model3.LeaderboardEntry)
 	fc.Result = res
 	return ec.marshalNMotor_LeaderboardEntry2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLeaderboardEntryᚄ(ctx, field.Selections, res)
 }
@@ -24067,7 +24845,7 @@ func (ec *executionContext) fieldContext_Motor_Leaderboard_entries(_ context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Leaderboard_yours(ctx context.Context, field graphql.CollectedField, obj *model2.Leaderboard) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Leaderboard_yours(ctx context.Context, field graphql.CollectedField, obj *model3.Leaderboard) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Leaderboard_yours(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -24090,7 +24868,7 @@ func (ec *executionContext) _Motor_Leaderboard_yours(ctx context.Context, field 
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*model2.LeaderboardEntry)
+	res := resTmp.(*model3.LeaderboardEntry)
 	fc.Result = res
 	return ec.marshalOMotor_LeaderboardEntry2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLeaderboardEntry(ctx, field.Selections, res)
 }
@@ -24126,7 +24904,7 @@ func (ec *executionContext) fieldContext_Motor_Leaderboard_yours(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_LeaderboardEntry_rank(ctx context.Context, field graphql.CollectedField, obj *model2.LeaderboardEntry) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_LeaderboardEntry_rank(ctx context.Context, field graphql.CollectedField, obj *model3.LeaderboardEntry) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_LeaderboardEntry_rank(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -24170,7 +24948,7 @@ func (ec *executionContext) fieldContext_Motor_LeaderboardEntry_rank(_ context.C
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_LeaderboardEntry_sessionId(ctx context.Context, field graphql.CollectedField, obj *model2.LeaderboardEntry) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_LeaderboardEntry_sessionId(ctx context.Context, field graphql.CollectedField, obj *model3.LeaderboardEntry) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_LeaderboardEntry_sessionId(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -24214,7 +24992,7 @@ func (ec *executionContext) fieldContext_Motor_LeaderboardEntry_sessionId(_ cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_LeaderboardEntry_displayName(ctx context.Context, field graphql.CollectedField, obj *model2.LeaderboardEntry) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_LeaderboardEntry_displayName(ctx context.Context, field graphql.CollectedField, obj *model3.LeaderboardEntry) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_LeaderboardEntry_displayName(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -24258,7 +25036,7 @@ func (ec *executionContext) fieldContext_Motor_LeaderboardEntry_displayName(_ co
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_LeaderboardEntry_handle(ctx context.Context, field graphql.CollectedField, obj *model2.LeaderboardEntry) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_LeaderboardEntry_handle(ctx context.Context, field graphql.CollectedField, obj *model3.LeaderboardEntry) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_LeaderboardEntry_handle(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -24299,7 +25077,7 @@ func (ec *executionContext) fieldContext_Motor_LeaderboardEntry_handle(_ context
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_LeaderboardEntry_mine(ctx context.Context, field graphql.CollectedField, obj *model2.LeaderboardEntry) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_LeaderboardEntry_mine(ctx context.Context, field graphql.CollectedField, obj *model3.LeaderboardEntry) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_LeaderboardEntry_mine(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -24343,7 +25121,7 @@ func (ec *executionContext) fieldContext_Motor_LeaderboardEntry_mine(_ context.C
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_LeaderboardEntry_slots(ctx context.Context, field graphql.CollectedField, obj *model2.LeaderboardEntry) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_LeaderboardEntry_slots(ctx context.Context, field graphql.CollectedField, obj *model3.LeaderboardEntry) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_LeaderboardEntry_slots(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -24387,7 +25165,7 @@ func (ec *executionContext) fieldContext_Motor_LeaderboardEntry_slots(_ context.
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_LeaderboardEntry_steps(ctx context.Context, field graphql.CollectedField, obj *model2.LeaderboardEntry) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_LeaderboardEntry_steps(ctx context.Context, field graphql.CollectedField, obj *model3.LeaderboardEntry) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_LeaderboardEntry_steps(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -24431,7 +25209,7 @@ func (ec *executionContext) fieldContext_Motor_LeaderboardEntry_steps(_ context.
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_LeaderboardEntry_achievedAt(ctx context.Context, field graphql.CollectedField, obj *model2.LeaderboardEntry) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_LeaderboardEntry_achievedAt(ctx context.Context, field graphql.CollectedField, obj *model3.LeaderboardEntry) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_LeaderboardEntry_achievedAt(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -24475,7 +25253,7 @@ func (ec *executionContext) fieldContext_Motor_LeaderboardEntry_achievedAt(_ con
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Map_id(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Map_id(ctx context.Context, field graphql.CollectedField, obj *model3.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Map_id(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -24519,7 +25297,7 @@ func (ec *executionContext) fieldContext_Motor_Map_id(_ context.Context, field g
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Map_name(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Map_name(ctx context.Context, field graphql.CollectedField, obj *model3.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Map_name(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -24563,7 +25341,7 @@ func (ec *executionContext) fieldContext_Motor_Map_name(_ context.Context, field
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Map_description(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Map_description(ctx context.Context, field graphql.CollectedField, obj *model3.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Map_description(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -24607,7 +25385,7 @@ func (ec *executionContext) fieldContext_Motor_Map_description(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Map_difficulty(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Map_difficulty(ctx context.Context, field graphql.CollectedField, obj *model3.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Map_difficulty(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -24651,7 +25429,7 @@ func (ec *executionContext) fieldContext_Motor_Map_difficulty(_ context.Context,
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Map_builtin(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Map_builtin(ctx context.Context, field graphql.CollectedField, obj *model3.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Map_builtin(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -24695,7 +25473,7 @@ func (ec *executionContext) fieldContext_Motor_Map_builtin(_ context.Context, fi
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Map_width(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Map_width(ctx context.Context, field graphql.CollectedField, obj *model3.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Map_width(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -24739,7 +25517,7 @@ func (ec *executionContext) fieldContext_Motor_Map_width(_ context.Context, fiel
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Map_height(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Map_height(ctx context.Context, field graphql.CollectedField, obj *model3.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Map_height(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -24783,7 +25561,7 @@ func (ec *executionContext) fieldContext_Motor_Map_height(_ context.Context, fie
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Map_layout(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Map_layout(ctx context.Context, field graphql.CollectedField, obj *model3.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Map_layout(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -24827,7 +25605,7 @@ func (ec *executionContext) fieldContext_Motor_Map_layout(_ context.Context, fie
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Map_start(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Map_start(ctx context.Context, field graphql.CollectedField, obj *model3.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Map_start(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -24853,7 +25631,7 @@ func (ec *executionContext) _Motor_Map_start(ctx context.Context, field graphql.
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Position)
+	res := resTmp.(*model3.Position)
 	fc.Result = res
 	return ec.marshalNMotor_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -24877,7 +25655,7 @@ func (ec *executionContext) fieldContext_Motor_Map_start(_ context.Context, fiel
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Map_startFacing(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Map_startFacing(ctx context.Context, field graphql.CollectedField, obj *model3.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Map_startFacing(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -24903,7 +25681,7 @@ func (ec *executionContext) _Motor_Map_startFacing(ctx context.Context, field gr
 		}
 		return graphql.Null
 	}
-	res := resTmp.(model2.Facing)
+	res := resTmp.(model3.Facing)
 	fc.Result = res
 	return ec.marshalNMotor_Facing2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐFacing(ctx, field.Selections, res)
 }
@@ -24921,7 +25699,7 @@ func (ec *executionContext) fieldContext_Motor_Map_startFacing(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Map_rocks(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Map_rocks(ctx context.Context, field graphql.CollectedField, obj *model3.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Map_rocks(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -24947,7 +25725,7 @@ func (ec *executionContext) _Motor_Map_rocks(ctx context.Context, field graphql.
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model2.Position)
+	res := resTmp.([]*model3.Position)
 	fc.Result = res
 	return ec.marshalNMotor_Position2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPositionᚄ(ctx, field.Selections, res)
 }
@@ -24971,7 +25749,7 @@ func (ec *executionContext) fieldContext_Motor_Map_rocks(_ context.Context, fiel
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Map_treats(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Map_treats(ctx context.Context, field graphql.CollectedField, obj *model3.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Map_treats(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -24997,7 +25775,7 @@ func (ec *executionContext) _Motor_Map_treats(ctx context.Context, field graphql
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model2.Position)
+	res := resTmp.([]*model3.Position)
 	fc.Result = res
 	return ec.marshalNMotor_Position2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPositionᚄ(ctx, field.Selections, res)
 }
@@ -25021,7 +25799,7 @@ func (ec *executionContext) fieldContext_Motor_Map_treats(_ context.Context, fie
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Map_conveyors(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Map_conveyors(ctx context.Context, field graphql.CollectedField, obj *model3.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Map_conveyors(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -25047,7 +25825,7 @@ func (ec *executionContext) _Motor_Map_conveyors(ctx context.Context, field grap
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model2.Conveyor)
+	res := resTmp.([]*model3.Conveyor)
 	fc.Result = res
 	return ec.marshalNMotor_Conveyor2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐConveyorᚄ(ctx, field.Selections, res)
 }
@@ -25071,7 +25849,7 @@ func (ec *executionContext) fieldContext_Motor_Map_conveyors(_ context.Context, 
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Map_mirrors(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Map_mirrors(ctx context.Context, field graphql.CollectedField, obj *model3.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Map_mirrors(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -25097,7 +25875,7 @@ func (ec *executionContext) _Motor_Map_mirrors(ctx context.Context, field graphq
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model2.Mirror)
+	res := resTmp.([]*model3.Mirror)
 	fc.Result = res
 	return ec.marshalNMotor_Mirror2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMirrorᚄ(ctx, field.Selections, res)
 }
@@ -25121,7 +25899,7 @@ func (ec *executionContext) fieldContext_Motor_Map_mirrors(_ context.Context, fi
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Map_keys(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Map_keys(ctx context.Context, field graphql.CollectedField, obj *model3.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Map_keys(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -25147,7 +25925,7 @@ func (ec *executionContext) _Motor_Map_keys(ctx context.Context, field graphql.C
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model2.KeyTile)
+	res := resTmp.([]*model3.KeyTile)
 	fc.Result = res
 	return ec.marshalNMotor_KeyTile2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐKeyTileᚄ(ctx, field.Selections, res)
 }
@@ -25171,7 +25949,7 @@ func (ec *executionContext) fieldContext_Motor_Map_keys(_ context.Context, field
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Map_doors(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Map_doors(ctx context.Context, field graphql.CollectedField, obj *model3.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Map_doors(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -25197,7 +25975,7 @@ func (ec *executionContext) _Motor_Map_doors(ctx context.Context, field graphql.
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model2.DoorTile)
+	res := resTmp.([]*model3.DoorTile)
 	fc.Result = res
 	return ec.marshalNMotor_DoorTile2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐDoorTileᚄ(ctx, field.Selections, res)
 }
@@ -25221,7 +25999,7 @@ func (ec *executionContext) fieldContext_Motor_Map_doors(_ context.Context, fiel
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Map_portals(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Map_portals(ctx context.Context, field graphql.CollectedField, obj *model3.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Map_portals(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -25247,7 +26025,7 @@ func (ec *executionContext) _Motor_Map_portals(ctx context.Context, field graphq
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model2.Portal)
+	res := resTmp.([]*model3.Portal)
 	fc.Result = res
 	return ec.marshalNMotor_Portal2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPortalᚄ(ctx, field.Selections, res)
 }
@@ -25271,7 +26049,7 @@ func (ec *executionContext) fieldContext_Motor_Map_portals(_ context.Context, fi
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Map_mainTapeLength(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Map_mainTapeLength(ctx context.Context, field graphql.CollectedField, obj *model3.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Map_mainTapeLength(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -25315,7 +26093,7 @@ func (ec *executionContext) fieldContext_Motor_Map_mainTapeLength(_ context.Cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Map_subTapeLengths(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Map_subTapeLengths(ctx context.Context, field graphql.CollectedField, obj *model3.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Map_subTapeLengths(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -25359,7 +26137,7 @@ func (ec *executionContext) fieldContext_Motor_Map_subTapeLengths(_ context.Cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Map_maxSteps(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Map_maxSteps(ctx context.Context, field graphql.CollectedField, obj *model3.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Map_maxSteps(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -25403,7 +26181,7 @@ func (ec *executionContext) fieldContext_Motor_Map_maxSteps(_ context.Context, f
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Map_maxCallDepth(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Map_maxCallDepth(ctx context.Context, field graphql.CollectedField, obj *model3.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Map_maxCallDepth(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -25447,7 +26225,7 @@ func (ec *executionContext) fieldContext_Motor_Map_maxCallDepth(_ context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Map_allowRecursion(ctx context.Context, field graphql.CollectedField, obj *model2.Map) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Map_allowRecursion(ctx context.Context, field graphql.CollectedField, obj *model3.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Map_allowRecursion(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -25491,7 +26269,7 @@ func (ec *executionContext) fieldContext_Motor_Map_allowRecursion(_ context.Cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_MapValidationIssue_message(ctx context.Context, field graphql.CollectedField, obj *model2.MapValidationIssue) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_MapValidationIssue_message(ctx context.Context, field graphql.CollectedField, obj *model3.MapValidationIssue) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_MapValidationIssue_message(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -25535,7 +26313,7 @@ func (ec *executionContext) fieldContext_Motor_MapValidationIssue_message(_ cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_MapValidationResult_valid(ctx context.Context, field graphql.CollectedField, obj *model2.MapValidationResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_MapValidationResult_valid(ctx context.Context, field graphql.CollectedField, obj *model3.MapValidationResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_MapValidationResult_valid(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -25579,7 +26357,7 @@ func (ec *executionContext) fieldContext_Motor_MapValidationResult_valid(_ conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_MapValidationResult_issues(ctx context.Context, field graphql.CollectedField, obj *model2.MapValidationResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_MapValidationResult_issues(ctx context.Context, field graphql.CollectedField, obj *model3.MapValidationResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_MapValidationResult_issues(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -25605,7 +26383,7 @@ func (ec *executionContext) _Motor_MapValidationResult_issues(ctx context.Contex
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model2.MapValidationIssue)
+	res := resTmp.([]*model3.MapValidationIssue)
 	fc.Result = res
 	return ec.marshalNMotor_MapValidationIssue2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMapValidationIssueᚄ(ctx, field.Selections, res)
 }
@@ -25627,7 +26405,7 @@ func (ec *executionContext) fieldContext_Motor_MapValidationResult_issues(_ cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_MapValidationResult_unreachableTreats(ctx context.Context, field graphql.CollectedField, obj *model2.MapValidationResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_MapValidationResult_unreachableTreats(ctx context.Context, field graphql.CollectedField, obj *model3.MapValidationResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_MapValidationResult_unreachableTreats(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -25653,7 +26431,7 @@ func (ec *executionContext) _Motor_MapValidationResult_unreachableTreats(ctx con
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model2.Position)
+	res := resTmp.([]*model3.Position)
 	fc.Result = res
 	return ec.marshalNMotor_Position2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPositionᚄ(ctx, field.Selections, res)
 }
@@ -25677,7 +26455,7 @@ func (ec *executionContext) fieldContext_Motor_MapValidationResult_unreachableTr
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Mirror_pos(ctx context.Context, field graphql.CollectedField, obj *model2.Mirror) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Mirror_pos(ctx context.Context, field graphql.CollectedField, obj *model3.Mirror) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Mirror_pos(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -25703,7 +26481,7 @@ func (ec *executionContext) _Motor_Mirror_pos(ctx context.Context, field graphql
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Position)
+	res := resTmp.(*model3.Position)
 	fc.Result = res
 	return ec.marshalNMotor_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -25727,7 +26505,7 @@ func (ec *executionContext) fieldContext_Motor_Mirror_pos(_ context.Context, fie
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Mirror_slash(ctx context.Context, field graphql.CollectedField, obj *model2.Mirror) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Mirror_slash(ctx context.Context, field graphql.CollectedField, obj *model3.Mirror) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Mirror_slash(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -25771,7 +26549,7 @@ func (ec *executionContext) fieldContext_Motor_Mirror_slash(_ context.Context, f
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Mutation_createSession(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Mutation_createSession(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Mutation_createSession(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -25797,7 +26575,7 @@ func (ec *executionContext) _Motor_Mutation_createSession(ctx context.Context, f
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Session)
+	res := resTmp.(*model3.Session)
 	fc.Result = res
 	return ec.marshalNMotor_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
@@ -25858,7 +26636,7 @@ func (ec *executionContext) fieldContext_Motor_Mutation_createSession(ctx contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Mutation_deleteSession(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Mutation_deleteSession(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Mutation_deleteSession(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -25913,7 +26691,7 @@ func (ec *executionContext) fieldContext_Motor_Mutation_deleteSession(ctx contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Mutation_renameSession(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Mutation_renameSession(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Mutation_renameSession(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -25939,7 +26717,7 @@ func (ec *executionContext) _Motor_Mutation_renameSession(ctx context.Context, f
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Session)
+	res := resTmp.(*model3.Session)
 	fc.Result = res
 	return ec.marshalNMotor_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
@@ -26000,7 +26778,7 @@ func (ec *executionContext) fieldContext_Motor_Mutation_renameSession(ctx contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Mutation_setProgram(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Mutation_setProgram(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Mutation_setProgram(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -26014,7 +26792,7 @@ func (ec *executionContext) _Motor_Mutation_setProgram(ctx context.Context, fiel
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Motor_Mutation().SetProgram(rctx, obj, fc.Args["sessionID"].(string), fc.Args["program"].(model2.ProgramInput), fc.Args["ownerToken"].(*string))
+		return ec.resolvers.Motor_Mutation().SetProgram(rctx, obj, fc.Args["sessionID"].(string), fc.Args["program"].(model3.ProgramInput), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -26026,7 +26804,7 @@ func (ec *executionContext) _Motor_Mutation_setProgram(ctx context.Context, fiel
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Session)
+	res := resTmp.(*model3.Session)
 	fc.Result = res
 	return ec.marshalNMotor_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
@@ -26087,7 +26865,7 @@ func (ec *executionContext) fieldContext_Motor_Mutation_setProgram(ctx context.C
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Mutation_run(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Mutation_run(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Mutation_run(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -26113,7 +26891,7 @@ func (ec *executionContext) _Motor_Mutation_run(ctx context.Context, field graph
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Session)
+	res := resTmp.(*model3.Session)
 	fc.Result = res
 	return ec.marshalNMotor_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
@@ -26174,7 +26952,7 @@ func (ec *executionContext) fieldContext_Motor_Mutation_run(ctx context.Context,
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Mutation_pause(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Mutation_pause(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Mutation_pause(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -26200,7 +26978,7 @@ func (ec *executionContext) _Motor_Mutation_pause(ctx context.Context, field gra
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Session)
+	res := resTmp.(*model3.Session)
 	fc.Result = res
 	return ec.marshalNMotor_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
@@ -26261,7 +27039,7 @@ func (ec *executionContext) fieldContext_Motor_Mutation_pause(ctx context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Mutation_step(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Mutation_step(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Mutation_step(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -26287,7 +27065,7 @@ func (ec *executionContext) _Motor_Mutation_step(ctx context.Context, field grap
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Session)
+	res := resTmp.(*model3.Session)
 	fc.Result = res
 	return ec.marshalNMotor_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
@@ -26348,7 +27126,7 @@ func (ec *executionContext) fieldContext_Motor_Mutation_step(ctx context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Mutation_reset(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Mutation_reset(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Mutation_reset(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -26374,7 +27152,7 @@ func (ec *executionContext) _Motor_Mutation_reset(ctx context.Context, field gra
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Session)
+	res := resTmp.(*model3.Session)
 	fc.Result = res
 	return ec.marshalNMotor_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
@@ -26435,368 +27213,7 @@ func (ec *executionContext) fieldContext_Motor_Mutation_reset(ctx context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Mutation_logout(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Motor_Mutation_logout(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Motor_Mutation().Logout(rctx, obj)
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(bool)
-	fc.Result = res
-	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Motor_Mutation_logout(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Motor_Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type Boolean does not have child fields")
-		},
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Motor_Mutation_registerWithPassword(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Motor_Mutation_registerWithPassword(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Motor_Mutation().RegisterWithPassword(rctx, obj, fc.Args["handle"].(string), fc.Args["password"].(string))
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(*model2.Account)
-	fc.Result = res
-	return ec.marshalNMotor_Account2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐAccount(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Motor_Mutation_registerWithPassword(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Motor_Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			switch field.Name {
-			case "handle":
-				return ec.fieldContext_Motor_Account_handle(ctx, field)
-			case "displayName":
-				return ec.fieldContext_Motor_Account_displayName(ctx, field)
-			case "profilePublic":
-				return ec.fieldContext_Motor_Account_profilePublic(ctx, field)
-			case "createdAt":
-				return ec.fieldContext_Motor_Account_createdAt(ctx, field)
-			case "handleChangeableAt":
-				return ec.fieldContext_Motor_Account_handleChangeableAt(ctx, field)
-			case "hasPassword":
-				return ec.fieldContext_Motor_Account_hasPassword(ctx, field)
-			}
-			return nil, fmt.Errorf("no field named %q was found under type Motor_Account", field.Name)
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Motor_Mutation_registerWithPassword_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Motor_Mutation_logInWithPassword(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Motor_Mutation_logInWithPassword(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Motor_Mutation().LogInWithPassword(rctx, obj, fc.Args["handle"].(string), fc.Args["password"].(string))
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(*model2.Account)
-	fc.Result = res
-	return ec.marshalNMotor_Account2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐAccount(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Motor_Mutation_logInWithPassword(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Motor_Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			switch field.Name {
-			case "handle":
-				return ec.fieldContext_Motor_Account_handle(ctx, field)
-			case "displayName":
-				return ec.fieldContext_Motor_Account_displayName(ctx, field)
-			case "profilePublic":
-				return ec.fieldContext_Motor_Account_profilePublic(ctx, field)
-			case "createdAt":
-				return ec.fieldContext_Motor_Account_createdAt(ctx, field)
-			case "handleChangeableAt":
-				return ec.fieldContext_Motor_Account_handleChangeableAt(ctx, field)
-			case "hasPassword":
-				return ec.fieldContext_Motor_Account_hasPassword(ctx, field)
-			}
-			return nil, fmt.Errorf("no field named %q was found under type Motor_Account", field.Name)
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Motor_Mutation_logInWithPassword_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Motor_Mutation_updateAccount(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Motor_Mutation_updateAccount(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Motor_Mutation().UpdateAccount(rctx, obj, fc.Args["input"].(model2.AccountInput))
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(*model2.Account)
-	fc.Result = res
-	return ec.marshalNMotor_Account2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐAccount(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Motor_Mutation_updateAccount(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Motor_Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			switch field.Name {
-			case "handle":
-				return ec.fieldContext_Motor_Account_handle(ctx, field)
-			case "displayName":
-				return ec.fieldContext_Motor_Account_displayName(ctx, field)
-			case "profilePublic":
-				return ec.fieldContext_Motor_Account_profilePublic(ctx, field)
-			case "createdAt":
-				return ec.fieldContext_Motor_Account_createdAt(ctx, field)
-			case "handleChangeableAt":
-				return ec.fieldContext_Motor_Account_handleChangeableAt(ctx, field)
-			case "hasPassword":
-				return ec.fieldContext_Motor_Account_hasPassword(ctx, field)
-			}
-			return nil, fmt.Errorf("no field named %q was found under type Motor_Account", field.Name)
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Motor_Mutation_updateAccount_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Motor_Mutation_changePassword(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Motor_Mutation_changePassword(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Motor_Mutation().ChangePassword(rctx, obj, fc.Args["currentPassword"].(string), fc.Args["newPassword"].(string))
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(bool)
-	fc.Result = res
-	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Motor_Mutation_changePassword(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Motor_Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type Boolean does not have child fields")
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Motor_Mutation_changePassword_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Motor_Mutation_deleteAccount(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Motor_Mutation_deleteAccount(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Motor_Mutation().DeleteAccount(rctx, obj, fc.Args["confirmHandle"].(string))
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(bool)
-	fc.Result = res
-	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Motor_Mutation_deleteAccount(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Motor_Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type Boolean does not have child fields")
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Motor_Mutation_deleteAccount_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Motor_Mutation_claimSessions(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Mutation_claimSessions(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Mutation_claimSessions(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -26810,7 +27227,7 @@ func (ec *executionContext) _Motor_Mutation_claimSessions(ctx context.Context, f
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Motor_Mutation().ClaimSessions(rctx, obj, fc.Args["claims"].([]*model2.SessionClaimInput))
+		return ec.resolvers.Motor_Mutation().ClaimSessions(rctx, obj, fc.Args["claims"].([]*model3.SessionClaimInput))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -26822,7 +27239,7 @@ func (ec *executionContext) _Motor_Mutation_claimSessions(ctx context.Context, f
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model2.SessionClaimResult)
+	res := resTmp.([]*model3.SessionClaimResult)
 	fc.Result = res
 	return ec.marshalNMotor_SessionClaimResult2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSessionClaimResultᚄ(ctx, field.Selections, res)
 }
@@ -26857,7 +27274,7 @@ func (ec *executionContext) fieldContext_Motor_Mutation_claimSessions(ctx contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Mutation_createMap(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Mutation_createMap(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Mutation_createMap(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -26871,7 +27288,7 @@ func (ec *executionContext) _Motor_Mutation_createMap(ctx context.Context, field
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Motor_Mutation().CreateMap(rctx, obj, fc.Args["map"].(model2.MapInput))
+		return ec.resolvers.Motor_Mutation().CreateMap(rctx, obj, fc.Args["map"].(model3.MapInput))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -26883,7 +27300,7 @@ func (ec *executionContext) _Motor_Mutation_createMap(ctx context.Context, field
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Map)
+	res := resTmp.(*model3.Map)
 	fc.Result = res
 	return ec.marshalNMotor_Map2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMap(ctx, field.Selections, res)
 }
@@ -26958,7 +27375,7 @@ func (ec *executionContext) fieldContext_Motor_Mutation_createMap(ctx context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Mutation_validateMap(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Mutation_validateMap(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Mutation_validateMap(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -26972,7 +27389,7 @@ func (ec *executionContext) _Motor_Mutation_validateMap(ctx context.Context, fie
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Motor_Mutation().ValidateMap(rctx, obj, fc.Args["map"].(model2.MapInput))
+		return ec.resolvers.Motor_Mutation().ValidateMap(rctx, obj, fc.Args["map"].(model3.MapInput))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -26984,7 +27401,7 @@ func (ec *executionContext) _Motor_Mutation_validateMap(ctx context.Context, fie
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model2.MapValidationResult)
+	res := resTmp.(*model3.MapValidationResult)
 	fc.Result = res
 	return ec.marshalNMotor_MapValidationResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMapValidationResult(ctx, field.Selections, res)
 }
@@ -27021,7 +27438,7 @@ func (ec *executionContext) fieldContext_Motor_Mutation_validateMap(ctx context.
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Mutation_updateMap(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Mutation_updateMap(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Mutation_updateMap(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -27035,7 +27452,7 @@ func (ec *executionContext) _Motor_Mutation_updateMap(ctx context.Context, field
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Motor_Mutation().UpdateMap(rctx, obj, fc.Args["map"].(model2.MapInput))
+		return ec.resolvers.Motor_Mutation().UpdateMap(rctx, obj, fc.Args["map"].(model3.MapInput))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -27047,7 +27464,7 @@ func (ec *executionContext) _Motor_Mutation_updateMap(ctx context.Context, field
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Map)
+	res := resTmp.(*model3.Map)
 	fc.Result = res
 	return ec.marshalNMotor_Map2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMap(ctx, field.Selections, res)
 }
@@ -27122,7 +27539,7 @@ func (ec *executionContext) fieldContext_Motor_Mutation_updateMap(ctx context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Mutation_deleteMap(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Mutation_deleteMap(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Mutation_deleteMap(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -27177,7 +27594,7 @@ func (ec *executionContext) fieldContext_Motor_Mutation_deleteMap(ctx context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_PlayerRun_mapId(ctx context.Context, field graphql.CollectedField, obj *model2.PlayerRun) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_PlayerRun_mapId(ctx context.Context, field graphql.CollectedField, obj *model3.PlayerRun) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_PlayerRun_mapId(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -27221,7 +27638,7 @@ func (ec *executionContext) fieldContext_Motor_PlayerRun_mapId(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_PlayerRun_total(ctx context.Context, field graphql.CollectedField, obj *model2.PlayerRun) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_PlayerRun_total(ctx context.Context, field graphql.CollectedField, obj *model3.PlayerRun) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_PlayerRun_total(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -27265,7 +27682,7 @@ func (ec *executionContext) fieldContext_Motor_PlayerRun_total(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_PlayerRun_entry(ctx context.Context, field graphql.CollectedField, obj *model2.PlayerRun) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_PlayerRun_entry(ctx context.Context, field graphql.CollectedField, obj *model3.PlayerRun) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_PlayerRun_entry(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -27291,7 +27708,7 @@ func (ec *executionContext) _Motor_PlayerRun_entry(ctx context.Context, field gr
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model2.LeaderboardEntry)
+	res := resTmp.(*model3.LeaderboardEntry)
 	fc.Result = res
 	return ec.marshalNMotor_LeaderboardEntry2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLeaderboardEntry(ctx, field.Selections, res)
 }
@@ -27327,7 +27744,7 @@ func (ec *executionContext) fieldContext_Motor_PlayerRun_entry(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Portal_pos(ctx context.Context, field graphql.CollectedField, obj *model2.Portal) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Portal_pos(ctx context.Context, field graphql.CollectedField, obj *model3.Portal) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Portal_pos(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -27353,7 +27770,7 @@ func (ec *executionContext) _Motor_Portal_pos(ctx context.Context, field graphql
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Position)
+	res := resTmp.(*model3.Position)
 	fc.Result = res
 	return ec.marshalNMotor_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -27377,7 +27794,7 @@ func (ec *executionContext) fieldContext_Motor_Portal_pos(_ context.Context, fie
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Portal_pair(ctx context.Context, field graphql.CollectedField, obj *model2.Portal) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Portal_pair(ctx context.Context, field graphql.CollectedField, obj *model3.Portal) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Portal_pair(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -27421,7 +27838,7 @@ func (ec *executionContext) fieldContext_Motor_Portal_pair(_ context.Context, fi
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Position_x(ctx context.Context, field graphql.CollectedField, obj *model2.Position) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Position_x(ctx context.Context, field graphql.CollectedField, obj *model3.Position) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Position_x(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -27465,7 +27882,7 @@ func (ec *executionContext) fieldContext_Motor_Position_x(_ context.Context, fie
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Position_y(ctx context.Context, field graphql.CollectedField, obj *model2.Position) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Position_y(ctx context.Context, field graphql.CollectedField, obj *model3.Position) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Position_y(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -27509,235 +27926,7 @@ func (ec *executionContext) fieldContext_Motor_Position_y(_ context.Context, fie
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Profile_handle(ctx context.Context, field graphql.CollectedField, obj *model2.Profile) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Motor_Profile_handle(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Handle, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(string)
-	fc.Result = res
-	return ec.marshalNString2string(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Motor_Profile_handle(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Motor_Profile",
-		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type String does not have child fields")
-		},
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Motor_Profile_displayName(ctx context.Context, field graphql.CollectedField, obj *model2.Profile) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Motor_Profile_displayName(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.DisplayName, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(string)
-	fc.Result = res
-	return ec.marshalNString2string(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Motor_Profile_displayName(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Motor_Profile",
-		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type String does not have child fields")
-		},
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Motor_Profile_createdAt(ctx context.Context, field graphql.CollectedField, obj *model2.Profile) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Motor_Profile_createdAt(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.CreatedAt, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(time.Time)
-	fc.Result = res
-	return ec.marshalNTime2timeᚐTime(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Motor_Profile_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Motor_Profile",
-		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type Time does not have child fields")
-		},
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Motor_Profile_isMine(ctx context.Context, field graphql.CollectedField, obj *model2.Profile) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Motor_Profile_isMine(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.IsMine, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.(bool)
-	fc.Result = res
-	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Motor_Profile_isMine(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Motor_Profile",
-		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type Boolean does not have child fields")
-		},
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Motor_Profile_runs(ctx context.Context, field graphql.CollectedField, obj *model2.Profile) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Motor_Profile_runs(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
-		ctx = rctx // use context from middleware stack in children
-		return obj.Runs, nil
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.([]*model2.PlayerRun)
-	fc.Result = res
-	return ec.marshalNMotor_PlayerRun2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPlayerRunᚄ(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Motor_Profile_runs(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Motor_Profile",
-		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			switch field.Name {
-			case "mapId":
-				return ec.fieldContext_Motor_PlayerRun_mapId(ctx, field)
-			case "total":
-				return ec.fieldContext_Motor_PlayerRun_total(ctx, field)
-			case "entry":
-				return ec.fieldContext_Motor_PlayerRun_entry(ctx, field)
-			}
-			return nil, fmt.Errorf("no field named %q was found under type Motor_PlayerRun", field.Name)
-		},
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Motor_Program_main(ctx context.Context, field graphql.CollectedField, obj *model2.Program) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Program_main(ctx context.Context, field graphql.CollectedField, obj *model3.Program) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Program_main(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -27763,7 +27952,7 @@ func (ec *executionContext) _Motor_Program_main(ctx context.Context, field graph
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]model2.Instruction)
+	res := resTmp.([]model3.Instruction)
 	fc.Result = res
 	return ec.marshalNMotor_Instruction2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐInstructionᚄ(ctx, field.Selections, res)
 }
@@ -27781,7 +27970,7 @@ func (ec *executionContext) fieldContext_Motor_Program_main(_ context.Context, f
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Program_subs(ctx context.Context, field graphql.CollectedField, obj *model2.Program) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Program_subs(ctx context.Context, field graphql.CollectedField, obj *model3.Program) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Program_subs(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -27807,7 +27996,7 @@ func (ec *executionContext) _Motor_Program_subs(ctx context.Context, field graph
 		}
 		return graphql.Null
 	}
-	res := resTmp.([][]model2.Instruction)
+	res := resTmp.([][]model3.Instruction)
 	fc.Result = res
 	return ec.marshalNMotor_Instruction2ᚕᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐInstructionᚄ(ctx, field.Selections, res)
 }
@@ -27825,176 +28014,7 @@ func (ec *executionContext) fieldContext_Motor_Program_subs(_ context.Context, f
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Query_me(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Motor_Query_me(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Motor_Query().Me(rctx, obj)
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.(*model2.Account)
-	fc.Result = res
-	return ec.marshalOMotor_Account2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐAccount(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Motor_Query_me(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Motor_Query",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			switch field.Name {
-			case "handle":
-				return ec.fieldContext_Motor_Account_handle(ctx, field)
-			case "displayName":
-				return ec.fieldContext_Motor_Account_displayName(ctx, field)
-			case "profilePublic":
-				return ec.fieldContext_Motor_Account_profilePublic(ctx, field)
-			case "createdAt":
-				return ec.fieldContext_Motor_Account_createdAt(ctx, field)
-			case "handleChangeableAt":
-				return ec.fieldContext_Motor_Account_handleChangeableAt(ctx, field)
-			case "hasPassword":
-				return ec.fieldContext_Motor_Account_hasPassword(ctx, field)
-			}
-			return nil, fmt.Errorf("no field named %q was found under type Motor_Account", field.Name)
-		},
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Motor_Query_authProviders(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Motor_Query_authProviders(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Motor_Query().AuthProviders(rctx, obj)
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		if !graphql.HasFieldError(ctx, fc) {
-			ec.Errorf(ctx, "must not be null")
-		}
-		return graphql.Null
-	}
-	res := resTmp.([]*model2.AuthProvider)
-	fc.Result = res
-	return ec.marshalNMotor_AuthProvider2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐAuthProviderᚄ(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Motor_Query_authProviders(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Motor_Query",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			switch field.Name {
-			case "id":
-				return ec.fieldContext_Motor_AuthProvider_id(ctx, field)
-			case "name":
-				return ec.fieldContext_Motor_AuthProvider_name(ctx, field)
-			}
-			return nil, fmt.Errorf("no field named %q was found under type Motor_AuthProvider", field.Name)
-		},
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Motor_Query_profile(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Motor_Query_profile(ctx, field)
-	if err != nil {
-		return graphql.Null
-	}
-	ctx = graphql.WithFieldContext(ctx, fc)
-	defer func() {
-		if r := recover(); r != nil {
-			ec.Error(ctx, ec.Recover(ctx, r))
-			ret = graphql.Null
-		}
-	}()
-	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
-		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Motor_Query().Profile(rctx, obj, fc.Args["handle"].(string))
-	})
-	if err != nil {
-		ec.Error(ctx, err)
-		return graphql.Null
-	}
-	if resTmp == nil {
-		return graphql.Null
-	}
-	res := resTmp.(*model2.Profile)
-	fc.Result = res
-	return ec.marshalOMotor_Profile2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐProfile(ctx, field.Selections, res)
-}
-
-func (ec *executionContext) fieldContext_Motor_Query_profile(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Motor_Query",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			switch field.Name {
-			case "handle":
-				return ec.fieldContext_Motor_Profile_handle(ctx, field)
-			case "displayName":
-				return ec.fieldContext_Motor_Profile_displayName(ctx, field)
-			case "createdAt":
-				return ec.fieldContext_Motor_Profile_createdAt(ctx, field)
-			case "isMine":
-				return ec.fieldContext_Motor_Profile_isMine(ctx, field)
-			case "runs":
-				return ec.fieldContext_Motor_Profile_runs(ctx, field)
-			}
-			return nil, fmt.Errorf("no field named %q was found under type Motor_Profile", field.Name)
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Motor_Query_profile_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Motor_Query_maps(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Query_maps(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Query_maps(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -28020,7 +28040,7 @@ func (ec *executionContext) _Motor_Query_maps(ctx context.Context, field graphql
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model2.Map)
+	res := resTmp.([]*model3.Map)
 	fc.Result = res
 	return ec.marshalNMotor_Map2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMapᚄ(ctx, field.Selections, res)
 }
@@ -28084,7 +28104,7 @@ func (ec *executionContext) fieldContext_Motor_Query_maps(_ context.Context, fie
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Query_map(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Query_map(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Query_map(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -28107,7 +28127,7 @@ func (ec *executionContext) _Motor_Query_map(ctx context.Context, field graphql.
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Map)
+	res := resTmp.(*model3.Map)
 	fc.Result = res
 	return ec.marshalOMotor_Map2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMap(ctx, field.Selections, res)
 }
@@ -28182,7 +28202,7 @@ func (ec *executionContext) fieldContext_Motor_Query_map(ctx context.Context, fi
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Query_session(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Query_session(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Query_session(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -28205,7 +28225,7 @@ func (ec *executionContext) _Motor_Query_session(ctx context.Context, field grap
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Session)
+	res := resTmp.(*model3.Session)
 	fc.Result = res
 	return ec.marshalOMotor_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
@@ -28266,7 +28286,7 @@ func (ec *executionContext) fieldContext_Motor_Query_session(ctx context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Query_canPlaySession(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Query_canPlaySession(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Query_canPlaySession(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -28321,7 +28341,7 @@ func (ec *executionContext) fieldContext_Motor_Query_canPlaySession(ctx context.
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Query_sessions(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Query_sessions(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Query_sessions(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -28335,7 +28355,7 @@ func (ec *executionContext) _Motor_Query_sessions(ctx context.Context, field gra
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Motor_Query().Sessions(rctx, obj, fc.Args["sort"].(*model2.SessionSort), fc.Args["limit"].(*int), fc.Args["mapId"].(*string))
+		return ec.resolvers.Motor_Query().Sessions(rctx, obj, fc.Args["sort"].(*model3.SessionSort), fc.Args["limit"].(*int), fc.Args["mapId"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -28347,7 +28367,7 @@ func (ec *executionContext) _Motor_Query_sessions(ctx context.Context, field gra
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model2.Session)
+	res := resTmp.([]*model3.Session)
 	fc.Result = res
 	return ec.marshalNMotor_Session2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSessionᚄ(ctx, field.Selections, res)
 }
@@ -28408,7 +28428,7 @@ func (ec *executionContext) fieldContext_Motor_Query_sessions(ctx context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Query_leaderboard(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Query_leaderboard(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Query_leaderboard(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -28422,7 +28442,7 @@ func (ec *executionContext) _Motor_Query_leaderboard(ctx context.Context, field 
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Motor_Query().Leaderboard(rctx, obj, fc.Args["mapId"].(string), fc.Args["order"].(*model2.LeaderboardOrder), fc.Args["limit"].(*int), fc.Args["sessionId"].(*string))
+		return ec.resolvers.Motor_Query().Leaderboard(rctx, obj, fc.Args["mapId"].(string), fc.Args["order"].(*model3.LeaderboardOrder), fc.Args["limit"].(*int), fc.Args["sessionId"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -28431,7 +28451,7 @@ func (ec *executionContext) _Motor_Query_leaderboard(ctx context.Context, field 
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Leaderboard)
+	res := resTmp.(*model3.Leaderboard)
 	fc.Result = res
 	return ec.marshalOMotor_Leaderboard2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLeaderboard(ctx, field.Selections, res)
 }
@@ -28472,7 +28492,7 @@ func (ec *executionContext) fieldContext_Motor_Query_leaderboard(ctx context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Query_playerRuns(ctx context.Context, field graphql.CollectedField, obj *graph2.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Query_playerRuns(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Query_playerRuns(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -28498,7 +28518,7 @@ func (ec *executionContext) _Motor_Query_playerRuns(ctx context.Context, field g
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model2.PlayerRun)
+	res := resTmp.([]*model3.PlayerRun)
 	fc.Result = res
 	return ec.marshalNMotor_PlayerRun2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPlayerRunᚄ(ctx, field.Selections, res)
 }
@@ -28535,7 +28555,70 @@ func (ec *executionContext) fieldContext_Motor_Query_playerRuns(ctx context.Cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Session_id(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Query_playerRunsFor(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Motor_Query_playerRunsFor(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Motor_Query().PlayerRunsFor(rctx, obj, fc.Args["handle"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model3.PlayerRun)
+	fc.Result = res
+	return ec.marshalNMotor_PlayerRun2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPlayerRunᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Motor_Query_playerRunsFor(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Motor_Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "mapId":
+				return ec.fieldContext_Motor_PlayerRun_mapId(ctx, field)
+			case "total":
+				return ec.fieldContext_Motor_PlayerRun_total(ctx, field)
+			case "entry":
+				return ec.fieldContext_Motor_PlayerRun_entry(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Motor_PlayerRun", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Motor_Query_playerRunsFor_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Motor_Session_id(ctx context.Context, field graphql.CollectedField, obj *model3.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Session_id(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -28579,7 +28662,7 @@ func (ec *executionContext) fieldContext_Motor_Session_id(_ context.Context, fie
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Session_displayName(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Session_displayName(ctx context.Context, field graphql.CollectedField, obj *model3.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Session_displayName(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -28623,7 +28706,7 @@ func (ec *executionContext) fieldContext_Motor_Session_displayName(_ context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Session_mapId(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Session_mapId(ctx context.Context, field graphql.CollectedField, obj *model3.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Session_mapId(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -28667,7 +28750,7 @@ func (ec *executionContext) fieldContext_Motor_Session_mapId(_ context.Context, 
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Session_map(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Session_map(ctx context.Context, field graphql.CollectedField, obj *model3.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Session_map(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -28693,7 +28776,7 @@ func (ec *executionContext) _Motor_Session_map(ctx context.Context, field graphq
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Map)
+	res := resTmp.(*model3.Map)
 	fc.Result = res
 	return ec.marshalNMotor_Map2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMap(ctx, field.Selections, res)
 }
@@ -28757,7 +28840,7 @@ func (ec *executionContext) fieldContext_Motor_Session_map(_ context.Context, fi
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Session_program(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Session_program(ctx context.Context, field graphql.CollectedField, obj *model3.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Session_program(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -28780,7 +28863,7 @@ func (ec *executionContext) _Motor_Session_program(ctx context.Context, field gr
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Program)
+	res := resTmp.(*model3.Program)
 	fc.Result = res
 	return ec.marshalOMotor_Program2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐProgram(ctx, field.Selections, res)
 }
@@ -28804,7 +28887,7 @@ func (ec *executionContext) fieldContext_Motor_Session_program(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Session_vm(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Session_vm(ctx context.Context, field graphql.CollectedField, obj *model3.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Session_vm(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -28830,7 +28913,7 @@ func (ec *executionContext) _Motor_Session_vm(ctx context.Context, field graphql
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model2.VMState)
+	res := resTmp.(*model3.VMState)
 	fc.Result = res
 	return ec.marshalNMotor_VMState2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐVMState(ctx, field.Selections, res)
 }
@@ -28868,7 +28951,7 @@ func (ec *executionContext) fieldContext_Motor_Session_vm(_ context.Context, fie
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Session_playing(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Session_playing(ctx context.Context, field graphql.CollectedField, obj *model3.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Session_playing(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -28912,7 +28995,7 @@ func (ec *executionContext) fieldContext_Motor_Session_playing(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Session_speedMs(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Session_speedMs(ctx context.Context, field graphql.CollectedField, obj *model3.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Session_speedMs(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -28956,7 +29039,7 @@ func (ec *executionContext) fieldContext_Motor_Session_speedMs(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Session_seq(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Session_seq(ctx context.Context, field graphql.CollectedField, obj *model3.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Session_seq(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -29000,7 +29083,7 @@ func (ec *executionContext) fieldContext_Motor_Session_seq(_ context.Context, fi
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Session_createdAt(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Session_createdAt(ctx context.Context, field graphql.CollectedField, obj *model3.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Session_createdAt(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -29044,7 +29127,7 @@ func (ec *executionContext) fieldContext_Motor_Session_createdAt(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Session_lastActionAt(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Session_lastActionAt(ctx context.Context, field graphql.CollectedField, obj *model3.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Session_lastActionAt(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -29088,7 +29171,7 @@ func (ec *executionContext) fieldContext_Motor_Session_lastActionAt(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Session_attempts(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Session_attempts(ctx context.Context, field graphql.CollectedField, obj *model3.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Session_attempts(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -29132,7 +29215,7 @@ func (ec *executionContext) fieldContext_Motor_Session_attempts(_ context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Session_bestSteps(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Session_bestSteps(ctx context.Context, field graphql.CollectedField, obj *model3.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Session_bestSteps(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -29173,7 +29256,7 @@ func (ec *executionContext) fieldContext_Motor_Session_bestSteps(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Session_lastEvent(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Session_lastEvent(ctx context.Context, field graphql.CollectedField, obj *model3.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Session_lastEvent(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -29196,7 +29279,7 @@ func (ec *executionContext) _Motor_Session_lastEvent(ctx context.Context, field 
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*model2.StepEvent)
+	res := resTmp.(*model3.StepEvent)
 	fc.Result = res
 	return ec.marshalOMotor_StepEvent2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐStepEvent(ctx, field.Selections, res)
 }
@@ -29254,7 +29337,7 @@ func (ec *executionContext) fieldContext_Motor_Session_lastEvent(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_Session_ownerToken(ctx context.Context, field graphql.CollectedField, obj *model2.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_Session_ownerToken(ctx context.Context, field graphql.CollectedField, obj *model3.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_Session_ownerToken(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -29295,7 +29378,7 @@ func (ec *executionContext) fieldContext_Motor_Session_ownerToken(_ context.Cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_SessionClaimResult_sessionID(ctx context.Context, field graphql.CollectedField, obj *model2.SessionClaimResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_SessionClaimResult_sessionID(ctx context.Context, field graphql.CollectedField, obj *model3.SessionClaimResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_SessionClaimResult_sessionID(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -29339,7 +29422,7 @@ func (ec *executionContext) fieldContext_Motor_SessionClaimResult_sessionID(_ co
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_SessionClaimResult_status(ctx context.Context, field graphql.CollectedField, obj *model2.SessionClaimResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_SessionClaimResult_status(ctx context.Context, field graphql.CollectedField, obj *model3.SessionClaimResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_SessionClaimResult_status(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -29365,7 +29448,7 @@ func (ec *executionContext) _Motor_SessionClaimResult_status(ctx context.Context
 		}
 		return graphql.Null
 	}
-	res := resTmp.(model2.ClaimStatus)
+	res := resTmp.(model3.ClaimStatus)
 	fc.Result = res
 	return ec.marshalNMotor_ClaimStatus2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐClaimStatus(ctx, field.Selections, res)
 }
@@ -29383,7 +29466,7 @@ func (ec *executionContext) fieldContext_Motor_SessionClaimResult_status(_ conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_SessionUpdate_seq(ctx context.Context, field graphql.CollectedField, obj *model2.SessionUpdate) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_SessionUpdate_seq(ctx context.Context, field graphql.CollectedField, obj *model3.SessionUpdate) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_SessionUpdate_seq(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -29427,7 +29510,7 @@ func (ec *executionContext) fieldContext_Motor_SessionUpdate_seq(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_SessionUpdate_session(ctx context.Context, field graphql.CollectedField, obj *model2.SessionUpdate) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_SessionUpdate_session(ctx context.Context, field graphql.CollectedField, obj *model3.SessionUpdate) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_SessionUpdate_session(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -29453,7 +29536,7 @@ func (ec *executionContext) _Motor_SessionUpdate_session(ctx context.Context, fi
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Session)
+	res := resTmp.(*model3.Session)
 	fc.Result = res
 	return ec.marshalNMotor_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
@@ -29503,7 +29586,7 @@ func (ec *executionContext) fieldContext_Motor_SessionUpdate_session(_ context.C
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_SessionUpdate_event(ctx context.Context, field graphql.CollectedField, obj *model2.SessionUpdate) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_SessionUpdate_event(ctx context.Context, field graphql.CollectedField, obj *model3.SessionUpdate) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_SessionUpdate_event(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -29526,7 +29609,7 @@ func (ec *executionContext) _Motor_SessionUpdate_event(ctx context.Context, fiel
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*model2.StepEvent)
+	res := resTmp.(*model3.StepEvent)
 	fc.Result = res
 	return ec.marshalOMotor_StepEvent2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐStepEvent(ctx, field.Selections, res)
 }
@@ -29584,7 +29667,7 @@ func (ec *executionContext) fieldContext_Motor_SessionUpdate_event(_ context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_StepEvent_step(ctx context.Context, field graphql.CollectedField, obj *model2.StepEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_StepEvent_step(ctx context.Context, field graphql.CollectedField, obj *model3.StepEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_StepEvent_step(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -29628,7 +29711,7 @@ func (ec *executionContext) fieldContext_Motor_StepEvent_step(_ context.Context,
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_StepEvent_instruction(ctx context.Context, field graphql.CollectedField, obj *model2.StepEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_StepEvent_instruction(ctx context.Context, field graphql.CollectedField, obj *model3.StepEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_StepEvent_instruction(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -29654,7 +29737,7 @@ func (ec *executionContext) _Motor_StepEvent_instruction(ctx context.Context, fi
 		}
 		return graphql.Null
 	}
-	res := resTmp.(model2.Instruction)
+	res := resTmp.(model3.Instruction)
 	fc.Result = res
 	return ec.marshalNMotor_Instruction2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐInstruction(ctx, field.Selections, res)
 }
@@ -29672,7 +29755,7 @@ func (ec *executionContext) fieldContext_Motor_StepEvent_instruction(_ context.C
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_StepEvent_tapeIndex(ctx context.Context, field graphql.CollectedField, obj *model2.StepEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_StepEvent_tapeIndex(ctx context.Context, field graphql.CollectedField, obj *model3.StepEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_StepEvent_tapeIndex(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -29716,7 +29799,7 @@ func (ec *executionContext) fieldContext_Motor_StepEvent_tapeIndex(_ context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_StepEvent_slotIndex(ctx context.Context, field graphql.CollectedField, obj *model2.StepEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_StepEvent_slotIndex(ctx context.Context, field graphql.CollectedField, obj *model3.StepEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_StepEvent_slotIndex(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -29760,7 +29843,7 @@ func (ec *executionContext) fieldContext_Motor_StepEvent_slotIndex(_ context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_StepEvent_from(ctx context.Context, field graphql.CollectedField, obj *model2.StepEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_StepEvent_from(ctx context.Context, field graphql.CollectedField, obj *model3.StepEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_StepEvent_from(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -29786,7 +29869,7 @@ func (ec *executionContext) _Motor_StepEvent_from(ctx context.Context, field gra
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Position)
+	res := resTmp.(*model3.Position)
 	fc.Result = res
 	return ec.marshalNMotor_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -29810,7 +29893,7 @@ func (ec *executionContext) fieldContext_Motor_StepEvent_from(_ context.Context,
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_StepEvent_to(ctx context.Context, field graphql.CollectedField, obj *model2.StepEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_StepEvent_to(ctx context.Context, field graphql.CollectedField, obj *model3.StepEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_StepEvent_to(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -29836,7 +29919,7 @@ func (ec *executionContext) _Motor_StepEvent_to(ctx context.Context, field graph
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Position)
+	res := resTmp.(*model3.Position)
 	fc.Result = res
 	return ec.marshalNMotor_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -29860,7 +29943,7 @@ func (ec *executionContext) fieldContext_Motor_StepEvent_to(_ context.Context, f
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_StepEvent_facingBefore(ctx context.Context, field graphql.CollectedField, obj *model2.StepEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_StepEvent_facingBefore(ctx context.Context, field graphql.CollectedField, obj *model3.StepEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_StepEvent_facingBefore(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -29886,7 +29969,7 @@ func (ec *executionContext) _Motor_StepEvent_facingBefore(ctx context.Context, f
 		}
 		return graphql.Null
 	}
-	res := resTmp.(model2.Facing)
+	res := resTmp.(model3.Facing)
 	fc.Result = res
 	return ec.marshalNMotor_Facing2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐFacing(ctx, field.Selections, res)
 }
@@ -29904,7 +29987,7 @@ func (ec *executionContext) fieldContext_Motor_StepEvent_facingBefore(_ context.
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_StepEvent_facingAfter(ctx context.Context, field graphql.CollectedField, obj *model2.StepEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_StepEvent_facingAfter(ctx context.Context, field graphql.CollectedField, obj *model3.StepEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_StepEvent_facingAfter(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -29930,7 +30013,7 @@ func (ec *executionContext) _Motor_StepEvent_facingAfter(ctx context.Context, fi
 		}
 		return graphql.Null
 	}
-	res := resTmp.(model2.Facing)
+	res := resTmp.(model3.Facing)
 	fc.Result = res
 	return ec.marshalNMotor_Facing2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐFacing(ctx, field.Selections, res)
 }
@@ -29948,7 +30031,7 @@ func (ec *executionContext) fieldContext_Motor_StepEvent_facingAfter(_ context.C
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_StepEvent_blocked(ctx context.Context, field graphql.CollectedField, obj *model2.StepEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_StepEvent_blocked(ctx context.Context, field graphql.CollectedField, obj *model3.StepEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_StepEvent_blocked(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -29992,7 +30075,7 @@ func (ec *executionContext) fieldContext_Motor_StepEvent_blocked(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_StepEvent_callBlocked(ctx context.Context, field graphql.CollectedField, obj *model2.StepEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_StepEvent_callBlocked(ctx context.Context, field graphql.CollectedField, obj *model3.StepEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_StepEvent_callBlocked(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -30036,7 +30119,7 @@ func (ec *executionContext) fieldContext_Motor_StepEvent_callBlocked(_ context.C
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_StepEvent_pushed(ctx context.Context, field graphql.CollectedField, obj *model2.StepEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_StepEvent_pushed(ctx context.Context, field graphql.CollectedField, obj *model3.StepEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_StepEvent_pushed(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -30080,7 +30163,7 @@ func (ec *executionContext) fieldContext_Motor_StepEvent_pushed(_ context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_StepEvent_pushBlocked(ctx context.Context, field graphql.CollectedField, obj *model2.StepEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_StepEvent_pushBlocked(ctx context.Context, field graphql.CollectedField, obj *model3.StepEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_StepEvent_pushBlocked(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -30124,7 +30207,7 @@ func (ec *executionContext) fieldContext_Motor_StepEvent_pushBlocked(_ context.C
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_StepEvent_mirrored(ctx context.Context, field graphql.CollectedField, obj *model2.StepEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_StepEvent_mirrored(ctx context.Context, field graphql.CollectedField, obj *model3.StepEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_StepEvent_mirrored(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -30168,7 +30251,7 @@ func (ec *executionContext) fieldContext_Motor_StepEvent_mirrored(_ context.Cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_StepEvent_collectedKey(ctx context.Context, field graphql.CollectedField, obj *model2.StepEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_StepEvent_collectedKey(ctx context.Context, field graphql.CollectedField, obj *model3.StepEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_StepEvent_collectedKey(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -30209,7 +30292,7 @@ func (ec *executionContext) fieldContext_Motor_StepEvent_collectedKey(_ context.
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_StepEvent_teleported(ctx context.Context, field graphql.CollectedField, obj *model2.StepEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_StepEvent_teleported(ctx context.Context, field graphql.CollectedField, obj *model3.StepEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_StepEvent_teleported(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -30232,7 +30315,7 @@ func (ec *executionContext) _Motor_StepEvent_teleported(ctx context.Context, fie
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Position)
+	res := resTmp.(*model3.Position)
 	fc.Result = res
 	return ec.marshalOMotor_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -30256,7 +30339,7 @@ func (ec *executionContext) fieldContext_Motor_StepEvent_teleported(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_StepEvent_collected(ctx context.Context, field graphql.CollectedField, obj *model2.StepEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_StepEvent_collected(ctx context.Context, field graphql.CollectedField, obj *model3.StepEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_StepEvent_collected(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -30279,7 +30362,7 @@ func (ec *executionContext) _Motor_StepEvent_collected(ctx context.Context, fiel
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Position)
+	res := resTmp.(*model3.Position)
 	fc.Result = res
 	return ec.marshalOMotor_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -30303,7 +30386,7 @@ func (ec *executionContext) fieldContext_Motor_StepEvent_collected(_ context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_StepEvent_callStack(ctx context.Context, field graphql.CollectedField, obj *model2.StepEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_StepEvent_callStack(ctx context.Context, field graphql.CollectedField, obj *model3.StepEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_StepEvent_callStack(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -30329,7 +30412,7 @@ func (ec *executionContext) _Motor_StepEvent_callStack(ctx context.Context, fiel
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model2.Frame)
+	res := resTmp.([]*model3.Frame)
 	fc.Result = res
 	return ec.marshalNMotor_Frame2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐFrameᚄ(ctx, field.Selections, res)
 }
@@ -30353,7 +30436,7 @@ func (ec *executionContext) fieldContext_Motor_StepEvent_callStack(_ context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_StepEvent_status(ctx context.Context, field graphql.CollectedField, obj *model2.StepEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_StepEvent_status(ctx context.Context, field graphql.CollectedField, obj *model3.StepEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_StepEvent_status(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -30379,7 +30462,7 @@ func (ec *executionContext) _Motor_StepEvent_status(ctx context.Context, field g
 		}
 		return graphql.Null
 	}
-	res := resTmp.(model2.Status)
+	res := resTmp.(model3.Status)
 	fc.Result = res
 	return ec.marshalNMotor_Status2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐStatus(ctx, field.Selections, res)
 }
@@ -30397,7 +30480,7 @@ func (ec *executionContext) fieldContext_Motor_StepEvent_status(_ context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_StepEvent_lossReason(ctx context.Context, field graphql.CollectedField, obj *model2.StepEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_StepEvent_lossReason(ctx context.Context, field graphql.CollectedField, obj *model3.StepEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_StepEvent_lossReason(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -30420,7 +30503,7 @@ func (ec *executionContext) _Motor_StepEvent_lossReason(ctx context.Context, fie
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*model2.LossReason)
+	res := resTmp.(*model3.LossReason)
 	fc.Result = res
 	return ec.marshalOMotor_LossReason2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLossReason(ctx, field.Selections, res)
 }
@@ -30438,7 +30521,7 @@ func (ec *executionContext) fieldContext_Motor_StepEvent_lossReason(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_VMState_pos(ctx context.Context, field graphql.CollectedField, obj *model2.VMState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_VMState_pos(ctx context.Context, field graphql.CollectedField, obj *model3.VMState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_VMState_pos(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -30464,7 +30547,7 @@ func (ec *executionContext) _Motor_VMState_pos(ctx context.Context, field graphq
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model2.Position)
+	res := resTmp.(*model3.Position)
 	fc.Result = res
 	return ec.marshalNMotor_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -30488,7 +30571,7 @@ func (ec *executionContext) fieldContext_Motor_VMState_pos(_ context.Context, fi
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_VMState_facing(ctx context.Context, field graphql.CollectedField, obj *model2.VMState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_VMState_facing(ctx context.Context, field graphql.CollectedField, obj *model3.VMState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_VMState_facing(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -30514,7 +30597,7 @@ func (ec *executionContext) _Motor_VMState_facing(ctx context.Context, field gra
 		}
 		return graphql.Null
 	}
-	res := resTmp.(model2.Facing)
+	res := resTmp.(model3.Facing)
 	fc.Result = res
 	return ec.marshalNMotor_Facing2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐFacing(ctx, field.Selections, res)
 }
@@ -30532,7 +30615,7 @@ func (ec *executionContext) fieldContext_Motor_VMState_facing(_ context.Context,
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_VMState_treatsRemaining(ctx context.Context, field graphql.CollectedField, obj *model2.VMState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_VMState_treatsRemaining(ctx context.Context, field graphql.CollectedField, obj *model3.VMState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_VMState_treatsRemaining(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -30558,7 +30641,7 @@ func (ec *executionContext) _Motor_VMState_treatsRemaining(ctx context.Context, 
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model2.Position)
+	res := resTmp.([]*model3.Position)
 	fc.Result = res
 	return ec.marshalNMotor_Position2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPositionᚄ(ctx, field.Selections, res)
 }
@@ -30582,7 +30665,7 @@ func (ec *executionContext) fieldContext_Motor_VMState_treatsRemaining(_ context
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_VMState_callStack(ctx context.Context, field graphql.CollectedField, obj *model2.VMState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_VMState_callStack(ctx context.Context, field graphql.CollectedField, obj *model3.VMState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_VMState_callStack(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -30608,7 +30691,7 @@ func (ec *executionContext) _Motor_VMState_callStack(ctx context.Context, field 
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model2.Frame)
+	res := resTmp.([]*model3.Frame)
 	fc.Result = res
 	return ec.marshalNMotor_Frame2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐFrameᚄ(ctx, field.Selections, res)
 }
@@ -30632,7 +30715,7 @@ func (ec *executionContext) fieldContext_Motor_VMState_callStack(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_VMState_steps(ctx context.Context, field graphql.CollectedField, obj *model2.VMState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_VMState_steps(ctx context.Context, field graphql.CollectedField, obj *model3.VMState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_VMState_steps(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -30676,7 +30759,7 @@ func (ec *executionContext) fieldContext_Motor_VMState_steps(_ context.Context, 
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_VMState_status(ctx context.Context, field graphql.CollectedField, obj *model2.VMState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_VMState_status(ctx context.Context, field graphql.CollectedField, obj *model3.VMState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_VMState_status(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -30702,7 +30785,7 @@ func (ec *executionContext) _Motor_VMState_status(ctx context.Context, field gra
 		}
 		return graphql.Null
 	}
-	res := resTmp.(model2.Status)
+	res := resTmp.(model3.Status)
 	fc.Result = res
 	return ec.marshalNMotor_Status2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐStatus(ctx, field.Selections, res)
 }
@@ -30720,7 +30803,7 @@ func (ec *executionContext) fieldContext_Motor_VMState_status(_ context.Context,
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_VMState_lossReason(ctx context.Context, field graphql.CollectedField, obj *model2.VMState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_VMState_lossReason(ctx context.Context, field graphql.CollectedField, obj *model3.VMState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_VMState_lossReason(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -30743,7 +30826,7 @@ func (ec *executionContext) _Motor_VMState_lossReason(ctx context.Context, field
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*model2.LossReason)
+	res := resTmp.(*model3.LossReason)
 	fc.Result = res
 	return ec.marshalOMotor_LossReason2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLossReason(ctx, field.Selections, res)
 }
@@ -30761,7 +30844,7 @@ func (ec *executionContext) fieldContext_Motor_VMState_lossReason(_ context.Cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_VMState_visited(ctx context.Context, field graphql.CollectedField, obj *model2.VMState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_VMState_visited(ctx context.Context, field graphql.CollectedField, obj *model3.VMState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_VMState_visited(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -30787,7 +30870,7 @@ func (ec *executionContext) _Motor_VMState_visited(ctx context.Context, field gr
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model2.Position)
+	res := resTmp.([]*model3.Position)
 	fc.Result = res
 	return ec.marshalNMotor_Position2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPositionᚄ(ctx, field.Selections, res)
 }
@@ -30811,7 +30894,7 @@ func (ec *executionContext) fieldContext_Motor_VMState_visited(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Motor_VMState_openDoors(ctx context.Context, field graphql.CollectedField, obj *model2.VMState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Motor_VMState_openDoors(ctx context.Context, field graphql.CollectedField, obj *model3.VMState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Motor_VMState_openDoors(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -30850,6 +30933,64 @@ func (ec *executionContext) fieldContext_Motor_VMState_openDoors(_ context.Conte
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_account(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_account(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().Account(rctx)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*graph1.Resolver)
+	fc.Result = res
+	return ec.marshalNGlobal_Mutation2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚐResolver(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mutation_account(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "logout":
+				return ec.fieldContext_Global_Mutation_logout(ctx, field)
+			case "registerWithPassword":
+				return ec.fieldContext_Global_Mutation_registerWithPassword(ctx, field)
+			case "logInWithPassword":
+				return ec.fieldContext_Global_Mutation_logInWithPassword(ctx, field)
+			case "updateAccount":
+				return ec.fieldContext_Global_Mutation_updateAccount(ctx, field)
+			case "changePassword":
+				return ec.fieldContext_Global_Mutation_changePassword(ctx, field)
+			case "deleteAccount":
+				return ec.fieldContext_Global_Mutation_deleteAccount(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Global_Mutation", field.Name)
 		},
 	}
 	return fc, nil
@@ -30951,7 +31092,7 @@ func (ec *executionContext) _Mutation_mazes(ctx context.Context, field graphql.C
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*graph1.Resolver)
+	res := resTmp.(*graph2.Resolver)
 	fc.Result = res
 	return ec.marshalNMazes_Mutation2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚐResolver(ctx, field.Selections, res)
 }
@@ -31017,7 +31158,7 @@ func (ec *executionContext) _Mutation_motorProgramming(ctx context.Context, fiel
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*graph2.Resolver)
+	res := resTmp.(*graph3.Resolver)
 	fc.Result = res
 	return ec.marshalNMotor_Mutation2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚐResolver(ctx, field.Selections, res)
 }
@@ -31046,18 +31187,6 @@ func (ec *executionContext) fieldContext_Mutation_motorProgramming(_ context.Con
 				return ec.fieldContext_Motor_Mutation_step(ctx, field)
 			case "reset":
 				return ec.fieldContext_Motor_Mutation_reset(ctx, field)
-			case "logout":
-				return ec.fieldContext_Motor_Mutation_logout(ctx, field)
-			case "registerWithPassword":
-				return ec.fieldContext_Motor_Mutation_registerWithPassword(ctx, field)
-			case "logInWithPassword":
-				return ec.fieldContext_Motor_Mutation_logInWithPassword(ctx, field)
-			case "updateAccount":
-				return ec.fieldContext_Motor_Mutation_updateAccount(ctx, field)
-			case "changePassword":
-				return ec.fieldContext_Motor_Mutation_changePassword(ctx, field)
-			case "deleteAccount":
-				return ec.fieldContext_Motor_Mutation_deleteAccount(ctx, field)
 			case "claimSessions":
 				return ec.fieldContext_Motor_Mutation_claimSessions(ctx, field)
 			case "createMap":
@@ -31101,7 +31230,7 @@ func (ec *executionContext) _Mutation_tesla(ctx context.Context, field graphql.C
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*graph3.Resolver)
+	res := resTmp.(*graph4.Resolver)
 	fc.Result = res
 	return ec.marshalNTesla_Mutation2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚐResolver(ctx, field.Selections, res)
 }
@@ -31136,6 +31265,58 @@ func (ec *executionContext) fieldContext_Mutation_tesla(_ context.Context, field
 				return ec.fieldContext_Tesla_Mutation_validateMap(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Tesla_Mutation", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_account(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Query_account(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().Account(rctx)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*graph1.Resolver)
+	fc.Result = res
+	return ec.marshalNGlobal_Query2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚐResolver(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Query_account(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "me":
+				return ec.fieldContext_Global_Query_me(ctx, field)
+			case "authProviders":
+				return ec.fieldContext_Global_Query_authProviders(ctx, field)
+			case "profile":
+				return ec.fieldContext_Global_Query_profile(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Global_Query", field.Name)
 		},
 	}
 	return fc, nil
@@ -31225,7 +31406,7 @@ func (ec *executionContext) _Query_mazes(ctx context.Context, field graphql.Coll
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*graph1.Resolver)
+	res := resTmp.(*graph2.Resolver)
 	fc.Result = res
 	return ec.marshalNMazes_Query2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚐResolver(ctx, field.Selections, res)
 }
@@ -31281,7 +31462,7 @@ func (ec *executionContext) _Query_motorProgramming(ctx context.Context, field g
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*graph2.Resolver)
+	res := resTmp.(*graph3.Resolver)
 	fc.Result = res
 	return ec.marshalNMotor_Query2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚐResolver(ctx, field.Selections, res)
 }
@@ -31294,12 +31475,6 @@ func (ec *executionContext) fieldContext_Query_motorProgramming(_ context.Contex
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
-			case "me":
-				return ec.fieldContext_Motor_Query_me(ctx, field)
-			case "authProviders":
-				return ec.fieldContext_Motor_Query_authProviders(ctx, field)
-			case "profile":
-				return ec.fieldContext_Motor_Query_profile(ctx, field)
 			case "maps":
 				return ec.fieldContext_Motor_Query_maps(ctx, field)
 			case "map":
@@ -31314,6 +31489,8 @@ func (ec *executionContext) fieldContext_Query_motorProgramming(_ context.Contex
 				return ec.fieldContext_Motor_Query_leaderboard(ctx, field)
 			case "playerRuns":
 				return ec.fieldContext_Motor_Query_playerRuns(ctx, field)
+			case "playerRunsFor":
+				return ec.fieldContext_Motor_Query_playerRunsFor(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Motor_Query", field.Name)
 		},
@@ -31347,7 +31524,7 @@ func (ec *executionContext) _Query_tesla(ctx context.Context, field graphql.Coll
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*graph3.Resolver)
+	res := resTmp.(*graph4.Resolver)
 	fc.Result = res
 	return ec.marshalNTesla_Query2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚐResolver(ctx, field.Selections, res)
 }
@@ -31643,7 +31820,7 @@ func (ec *executionContext) _Subscription_mazesSessionUpdated(ctx context.Contex
 	}
 	return func(ctx context.Context) graphql.Marshaler {
 		select {
-		case res, ok := <-resTmp.(<-chan *model1.SessionUpdate):
+		case res, ok := <-resTmp.(<-chan *model2.SessionUpdate):
 			if !ok {
 				return nil
 			}
@@ -31720,7 +31897,7 @@ func (ec *executionContext) _Subscription_motorProgrammingSessionUpdated(ctx con
 	}
 	return func(ctx context.Context) graphql.Marshaler {
 		select {
-		case res, ok := <-resTmp.(<-chan *model2.SessionUpdate):
+		case res, ok := <-resTmp.(<-chan *model3.SessionUpdate):
 			if !ok {
 				return nil
 			}
@@ -31797,7 +31974,7 @@ func (ec *executionContext) _Subscription_teslaSessionUpdated(ctx context.Contex
 	}
 	return func(ctx context.Context) graphql.Marshaler {
 		select {
-		case res, ok := <-resTmp.(<-chan *model3.GameState):
+		case res, ok := <-resTmp.(<-chan *model4.GameState):
 			if !ok {
 				return nil
 			}
@@ -31910,7 +32087,7 @@ func (ec *executionContext) _Subscription_teslaLobbyUpdated(ctx context.Context,
 	}
 	return func(ctx context.Context) graphql.Marshaler {
 		select {
-		case res, ok := <-resTmp.(<-chan *model3.GameState):
+		case res, ok := <-resTmp.(<-chan *model4.GameState):
 			if !ok {
 				return nil
 			}
@@ -31984,7 +32161,7 @@ func (ec *executionContext) fieldContext_Subscription_teslaLobbyUpdated(_ contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_AttemptInfo_x(ctx context.Context, field graphql.CollectedField, obj *model3.AttemptInfo) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_AttemptInfo_x(ctx context.Context, field graphql.CollectedField, obj *model4.AttemptInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_AttemptInfo_x(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -32028,7 +32205,7 @@ func (ec *executionContext) fieldContext_Tesla_AttemptInfo_x(_ context.Context, 
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_AttemptInfo_y(ctx context.Context, field graphql.CollectedField, obj *model3.AttemptInfo) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_AttemptInfo_y(ctx context.Context, field graphql.CollectedField, obj *model4.AttemptInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_AttemptInfo_y(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -32072,7 +32249,7 @@ func (ec *executionContext) fieldContext_Tesla_AttemptInfo_y(_ context.Context, 
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_AttemptInfo_tileChar(ctx context.Context, field graphql.CollectedField, obj *model3.AttemptInfo) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_AttemptInfo_tileChar(ctx context.Context, field graphql.CollectedField, obj *model4.AttemptInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_AttemptInfo_tileChar(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -32116,7 +32293,7 @@ func (ec *executionContext) fieldContext_Tesla_AttemptInfo_tileChar(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_AttemptInfo_tileType(ctx context.Context, field graphql.CollectedField, obj *model3.AttemptInfo) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_AttemptInfo_tileType(ctx context.Context, field graphql.CollectedField, obj *model4.AttemptInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_AttemptInfo_tileType(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -32160,7 +32337,7 @@ func (ec *executionContext) fieldContext_Tesla_AttemptInfo_tileType(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_AttemptInfo_passable(ctx context.Context, field graphql.CollectedField, obj *model3.AttemptInfo) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_AttemptInfo_passable(ctx context.Context, field graphql.CollectedField, obj *model4.AttemptInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_AttemptInfo_passable(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -32204,7 +32381,7 @@ func (ec *executionContext) fieldContext_Tesla_AttemptInfo_passable(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_BulkMoveResult_movesExecuted(ctx context.Context, field graphql.CollectedField, obj *model3.BulkMoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_BulkMoveResult_movesExecuted(ctx context.Context, field graphql.CollectedField, obj *model4.BulkMoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_BulkMoveResult_movesExecuted(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -32248,7 +32425,7 @@ func (ec *executionContext) fieldContext_Tesla_BulkMoveResult_movesExecuted(_ co
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_BulkMoveResult_totalMoves(ctx context.Context, field graphql.CollectedField, obj *model3.BulkMoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_BulkMoveResult_totalMoves(ctx context.Context, field graphql.CollectedField, obj *model4.BulkMoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_BulkMoveResult_totalMoves(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -32292,7 +32469,7 @@ func (ec *executionContext) fieldContext_Tesla_BulkMoveResult_totalMoves(_ conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_BulkMoveResult_requestedMoves(ctx context.Context, field graphql.CollectedField, obj *model3.BulkMoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_BulkMoveResult_requestedMoves(ctx context.Context, field graphql.CollectedField, obj *model4.BulkMoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_BulkMoveResult_requestedMoves(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -32336,7 +32513,7 @@ func (ec *executionContext) fieldContext_Tesla_BulkMoveResult_requestedMoves(_ c
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_BulkMoveResult_success(ctx context.Context, field graphql.CollectedField, obj *model3.BulkMoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_BulkMoveResult_success(ctx context.Context, field graphql.CollectedField, obj *model4.BulkMoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_BulkMoveResult_success(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -32380,7 +32557,7 @@ func (ec *executionContext) fieldContext_Tesla_BulkMoveResult_success(_ context.
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_BulkMoveResult_gameState(ctx context.Context, field graphql.CollectedField, obj *model3.BulkMoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_BulkMoveResult_gameState(ctx context.Context, field graphql.CollectedField, obj *model4.BulkMoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_BulkMoveResult_gameState(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -32406,7 +32583,7 @@ func (ec *executionContext) _Tesla_BulkMoveResult_gameState(ctx context.Context,
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.GameState)
+	res := resTmp.(*model4.GameState)
 	fc.Result = res
 	return ec.marshalNTesla_GameState2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameState(ctx, field.Selections, res)
 }
@@ -32468,7 +32645,7 @@ func (ec *executionContext) fieldContext_Tesla_BulkMoveResult_gameState(_ contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_BulkMoveResult_events(ctx context.Context, field graphql.CollectedField, obj *model3.BulkMoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_BulkMoveResult_events(ctx context.Context, field graphql.CollectedField, obj *model4.BulkMoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_BulkMoveResult_events(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -32494,7 +32671,7 @@ func (ec *executionContext) _Tesla_BulkMoveResult_events(ctx context.Context, fi
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model3.GameEvent)
+	res := resTmp.([]*model4.GameEvent)
 	fc.Result = res
 	return ec.marshalNTesla_GameEvent2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameEventᚄ(ctx, field.Selections, res)
 }
@@ -32522,7 +32699,7 @@ func (ec *executionContext) fieldContext_Tesla_BulkMoveResult_events(_ context.C
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_BulkMoveResult_stoppedReason(ctx context.Context, field graphql.CollectedField, obj *model3.BulkMoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_BulkMoveResult_stoppedReason(ctx context.Context, field graphql.CollectedField, obj *model4.BulkMoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_BulkMoveResult_stoppedReason(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -32566,7 +32743,7 @@ func (ec *executionContext) fieldContext_Tesla_BulkMoveResult_stoppedReason(_ co
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_BulkMoveResult_stopReasonCode(ctx context.Context, field graphql.CollectedField, obj *model3.BulkMoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_BulkMoveResult_stopReasonCode(ctx context.Context, field graphql.CollectedField, obj *model4.BulkMoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_BulkMoveResult_stopReasonCode(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -32610,7 +32787,7 @@ func (ec *executionContext) fieldContext_Tesla_BulkMoveResult_stopReasonCode(_ c
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_BulkMoveResult_stoppedOnMove(ctx context.Context, field graphql.CollectedField, obj *model3.BulkMoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_BulkMoveResult_stoppedOnMove(ctx context.Context, field graphql.CollectedField, obj *model4.BulkMoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_BulkMoveResult_stoppedOnMove(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -32654,7 +32831,7 @@ func (ec *executionContext) fieldContext_Tesla_BulkMoveResult_stoppedOnMove(_ co
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_BulkMoveResult_truncated(ctx context.Context, field graphql.CollectedField, obj *model3.BulkMoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_BulkMoveResult_truncated(ctx context.Context, field graphql.CollectedField, obj *model4.BulkMoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_BulkMoveResult_truncated(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -32698,7 +32875,7 @@ func (ec *executionContext) fieldContext_Tesla_BulkMoveResult_truncated(_ contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_BulkMoveResult_limit(ctx context.Context, field graphql.CollectedField, obj *model3.BulkMoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_BulkMoveResult_limit(ctx context.Context, field graphql.CollectedField, obj *model4.BulkMoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_BulkMoveResult_limit(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -32742,7 +32919,7 @@ func (ec *executionContext) fieldContext_Tesla_BulkMoveResult_limit(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_BulkMoveResult_startPos(ctx context.Context, field graphql.CollectedField, obj *model3.BulkMoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_BulkMoveResult_startPos(ctx context.Context, field graphql.CollectedField, obj *model4.BulkMoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_BulkMoveResult_startPos(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -32768,7 +32945,7 @@ func (ec *executionContext) _Tesla_BulkMoveResult_startPos(ctx context.Context, 
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.Position)
+	res := resTmp.(*model4.Position)
 	fc.Result = res
 	return ec.marshalNTesla_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -32792,7 +32969,7 @@ func (ec *executionContext) fieldContext_Tesla_BulkMoveResult_startPos(_ context
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_BulkMoveResult_endPos(ctx context.Context, field graphql.CollectedField, obj *model3.BulkMoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_BulkMoveResult_endPos(ctx context.Context, field graphql.CollectedField, obj *model4.BulkMoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_BulkMoveResult_endPos(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -32818,7 +32995,7 @@ func (ec *executionContext) _Tesla_BulkMoveResult_endPos(ctx context.Context, fi
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.Position)
+	res := resTmp.(*model4.Position)
 	fc.Result = res
 	return ec.marshalNTesla_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -32842,7 +33019,7 @@ func (ec *executionContext) fieldContext_Tesla_BulkMoveResult_endPos(_ context.C
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_BulkMoveResult_startBattery(ctx context.Context, field graphql.CollectedField, obj *model3.BulkMoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_BulkMoveResult_startBattery(ctx context.Context, field graphql.CollectedField, obj *model4.BulkMoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_BulkMoveResult_startBattery(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -32886,7 +33063,7 @@ func (ec *executionContext) fieldContext_Tesla_BulkMoveResult_startBattery(_ con
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_BulkMoveResult_endBattery(ctx context.Context, field graphql.CollectedField, obj *model3.BulkMoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_BulkMoveResult_endBattery(ctx context.Context, field graphql.CollectedField, obj *model4.BulkMoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_BulkMoveResult_endBattery(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -32930,7 +33107,7 @@ func (ec *executionContext) fieldContext_Tesla_BulkMoveResult_endBattery(_ conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_BulkMoveResult_scoreDelta(ctx context.Context, field graphql.CollectedField, obj *model3.BulkMoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_BulkMoveResult_scoreDelta(ctx context.Context, field graphql.CollectedField, obj *model4.BulkMoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_BulkMoveResult_scoreDelta(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -32974,7 +33151,7 @@ func (ec *executionContext) fieldContext_Tesla_BulkMoveResult_scoreDelta(_ conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_BulkMoveResult_steps(ctx context.Context, field graphql.CollectedField, obj *model3.BulkMoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_BulkMoveResult_steps(ctx context.Context, field graphql.CollectedField, obj *model4.BulkMoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_BulkMoveResult_steps(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -33000,7 +33177,7 @@ func (ec *executionContext) _Tesla_BulkMoveResult_steps(ctx context.Context, fie
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model3.StepInfo)
+	res := resTmp.([]*model4.StepInfo)
 	fc.Result = res
 	return ec.marshalNTesla_StepInfo2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐStepInfoᚄ(ctx, field.Selections, res)
 }
@@ -33044,7 +33221,7 @@ func (ec *executionContext) fieldContext_Tesla_BulkMoveResult_steps(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_BulkMoveResult_attemptedTo(ctx context.Context, field graphql.CollectedField, obj *model3.BulkMoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_BulkMoveResult_attemptedTo(ctx context.Context, field graphql.CollectedField, obj *model4.BulkMoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_BulkMoveResult_attemptedTo(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -33067,7 +33244,7 @@ func (ec *executionContext) _Tesla_BulkMoveResult_attemptedTo(ctx context.Contex
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*model3.AttemptInfo)
+	res := resTmp.(*model4.AttemptInfo)
 	fc.Result = res
 	return ec.marshalOTesla_AttemptInfo2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐAttemptInfo(ctx, field.Selections, res)
 }
@@ -33097,7 +33274,7 @@ func (ec *executionContext) fieldContext_Tesla_BulkMoveResult_attemptedTo(_ cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_BulkMoveResult_gameOver(ctx context.Context, field graphql.CollectedField, obj *model3.BulkMoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_BulkMoveResult_gameOver(ctx context.Context, field graphql.CollectedField, obj *model4.BulkMoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_BulkMoveResult_gameOver(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -33141,7 +33318,7 @@ func (ec *executionContext) fieldContext_Tesla_BulkMoveResult_gameOver(_ context
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_BulkMoveResult_gameOverCode(ctx context.Context, field graphql.CollectedField, obj *model3.BulkMoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_BulkMoveResult_gameOverCode(ctx context.Context, field graphql.CollectedField, obj *model4.BulkMoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_BulkMoveResult_gameOverCode(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -33185,7 +33362,7 @@ func (ec *executionContext) fieldContext_Tesla_BulkMoveResult_gameOverCode(_ con
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_BulkMoveResult_message(ctx context.Context, field graphql.CollectedField, obj *model3.BulkMoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_BulkMoveResult_message(ctx context.Context, field graphql.CollectedField, obj *model4.BulkMoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_BulkMoveResult_message(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -33229,7 +33406,7 @@ func (ec *executionContext) fieldContext_Tesla_BulkMoveResult_message(_ context.
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_BulkMoveResult_possibleMoves(ctx context.Context, field graphql.CollectedField, obj *model3.BulkMoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_BulkMoveResult_possibleMoves(ctx context.Context, field graphql.CollectedField, obj *model4.BulkMoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_BulkMoveResult_possibleMoves(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -33273,7 +33450,7 @@ func (ec *executionContext) fieldContext_Tesla_BulkMoveResult_possibleMoves(_ co
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_BulkMoveResult_batteryRisk(ctx context.Context, field graphql.CollectedField, obj *model3.BulkMoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_BulkMoveResult_batteryRisk(ctx context.Context, field graphql.CollectedField, obj *model4.BulkMoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_BulkMoveResult_batteryRisk(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -33317,7 +33494,7 @@ func (ec *executionContext) fieldContext_Tesla_BulkMoveResult_batteryRisk(_ cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Cell_x(ctx context.Context, field graphql.CollectedField, obj *model3.Cell) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Cell_x(ctx context.Context, field graphql.CollectedField, obj *model4.Cell) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Cell_x(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -33361,7 +33538,7 @@ func (ec *executionContext) fieldContext_Tesla_Cell_x(_ context.Context, field g
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Cell_y(ctx context.Context, field graphql.CollectedField, obj *model3.Cell) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Cell_y(ctx context.Context, field graphql.CollectedField, obj *model4.Cell) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Cell_y(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -33405,7 +33582,7 @@ func (ec *executionContext) fieldContext_Tesla_Cell_y(_ context.Context, field g
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Cell_type(ctx context.Context, field graphql.CollectedField, obj *model3.Cell) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Cell_type(ctx context.Context, field graphql.CollectedField, obj *model4.Cell) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Cell_type(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -33449,7 +33626,7 @@ func (ec *executionContext) fieldContext_Tesla_Cell_type(_ context.Context, fiel
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Cell_visited(ctx context.Context, field graphql.CollectedField, obj *model3.Cell) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Cell_visited(ctx context.Context, field graphql.CollectedField, obj *model4.Cell) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Cell_visited(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -33493,7 +33670,7 @@ func (ec *executionContext) fieldContext_Tesla_Cell_visited(_ context.Context, f
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Cell_id(ctx context.Context, field graphql.CollectedField, obj *model3.Cell) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Cell_id(ctx context.Context, field graphql.CollectedField, obj *model4.Cell) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Cell_id(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -33537,7 +33714,7 @@ func (ec *executionContext) fieldContext_Tesla_Cell_id(_ context.Context, field 
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Cell_allowedDirections(ctx context.Context, field graphql.CollectedField, obj *model3.Cell) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Cell_allowedDirections(ctx context.Context, field graphql.CollectedField, obj *model4.Cell) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Cell_allowedDirections(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -33581,7 +33758,7 @@ func (ec *executionContext) fieldContext_Tesla_Cell_allowedDirections(_ context.
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_CellConfigEntry_key(ctx context.Context, field graphql.CollectedField, obj *model3.CellConfigEntry) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_CellConfigEntry_key(ctx context.Context, field graphql.CollectedField, obj *model4.CellConfigEntry) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_CellConfigEntry_key(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -33625,7 +33802,7 @@ func (ec *executionContext) fieldContext_Tesla_CellConfigEntry_key(_ context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_CellConfigEntry_type(ctx context.Context, field graphql.CollectedField, obj *model3.CellConfigEntry) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_CellConfigEntry_type(ctx context.Context, field graphql.CollectedField, obj *model4.CellConfigEntry) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_CellConfigEntry_type(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -33669,7 +33846,7 @@ func (ec *executionContext) fieldContext_Tesla_CellConfigEntry_type(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_CellConfigEntry_allowedDirections(ctx context.Context, field graphql.CollectedField, obj *model3.CellConfigEntry) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_CellConfigEntry_allowedDirections(ctx context.Context, field graphql.CollectedField, obj *model4.CellConfigEntry) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_CellConfigEntry_allowedDirections(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -33713,7 +33890,7 @@ func (ec *executionContext) fieldContext_Tesla_CellConfigEntry_allowedDirections
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_DeleteSessionResult_message(ctx context.Context, field graphql.CollectedField, obj *model3.DeleteSessionResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_DeleteSessionResult_message(ctx context.Context, field graphql.CollectedField, obj *model4.DeleteSessionResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_DeleteSessionResult_message(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -33757,7 +33934,7 @@ func (ec *executionContext) fieldContext_Tesla_DeleteSessionResult_message(_ con
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameEvent_type(ctx context.Context, field graphql.CollectedField, obj *model3.GameEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameEvent_type(ctx context.Context, field graphql.CollectedField, obj *model4.GameEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameEvent_type(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -33801,7 +33978,7 @@ func (ec *executionContext) fieldContext_Tesla_GameEvent_type(_ context.Context,
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameEvent_message(ctx context.Context, field graphql.CollectedField, obj *model3.GameEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameEvent_message(ctx context.Context, field graphql.CollectedField, obj *model4.GameEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameEvent_message(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -33845,7 +34022,7 @@ func (ec *executionContext) fieldContext_Tesla_GameEvent_message(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameEvent_timestamp(ctx context.Context, field graphql.CollectedField, obj *model3.GameEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameEvent_timestamp(ctx context.Context, field graphql.CollectedField, obj *model4.GameEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameEvent_timestamp(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -33889,7 +34066,7 @@ func (ec *executionContext) fieldContext_Tesla_GameEvent_timestamp(_ context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameEvent_position(ctx context.Context, field graphql.CollectedField, obj *model3.GameEvent) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameEvent_position(ctx context.Context, field graphql.CollectedField, obj *model4.GameEvent) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameEvent_position(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -33915,7 +34092,7 @@ func (ec *executionContext) _Tesla_GameEvent_position(ctx context.Context, field
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.Position)
+	res := resTmp.(*model4.Position)
 	fc.Result = res
 	return ec.marshalNTesla_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -33939,7 +34116,7 @@ func (ec *executionContext) fieldContext_Tesla_GameEvent_position(_ context.Cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameMap_name(ctx context.Context, field graphql.CollectedField, obj *model3.GameMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameMap_name(ctx context.Context, field graphql.CollectedField, obj *model4.GameMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameMap_name(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -33983,7 +34160,7 @@ func (ec *executionContext) fieldContext_Tesla_GameMap_name(_ context.Context, f
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameMap_description(ctx context.Context, field graphql.CollectedField, obj *model3.GameMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameMap_description(ctx context.Context, field graphql.CollectedField, obj *model4.GameMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameMap_description(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -34027,7 +34204,7 @@ func (ec *executionContext) fieldContext_Tesla_GameMap_description(_ context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameMap_gridSize(ctx context.Context, field graphql.CollectedField, obj *model3.GameMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameMap_gridSize(ctx context.Context, field graphql.CollectedField, obj *model4.GameMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameMap_gridSize(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -34071,7 +34248,7 @@ func (ec *executionContext) fieldContext_Tesla_GameMap_gridSize(_ context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameMap_maxBattery(ctx context.Context, field graphql.CollectedField, obj *model3.GameMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameMap_maxBattery(ctx context.Context, field graphql.CollectedField, obj *model4.GameMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameMap_maxBattery(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -34115,7 +34292,7 @@ func (ec *executionContext) fieldContext_Tesla_GameMap_maxBattery(_ context.Cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameMap_startingBattery(ctx context.Context, field graphql.CollectedField, obj *model3.GameMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameMap_startingBattery(ctx context.Context, field graphql.CollectedField, obj *model4.GameMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameMap_startingBattery(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -34159,7 +34336,7 @@ func (ec *executionContext) fieldContext_Tesla_GameMap_startingBattery(_ context
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameMap_layout(ctx context.Context, field graphql.CollectedField, obj *model3.GameMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameMap_layout(ctx context.Context, field graphql.CollectedField, obj *model4.GameMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameMap_layout(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -34214,7 +34391,7 @@ func (ec *executionContext) fieldContext_Tesla_GameMap_layout(ctx context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameMap_legend(ctx context.Context, field graphql.CollectedField, obj *model3.GameMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameMap_legend(ctx context.Context, field graphql.CollectedField, obj *model4.GameMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameMap_legend(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -34240,7 +34417,7 @@ func (ec *executionContext) _Tesla_GameMap_legend(ctx context.Context, field gra
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model3.LegendEntry)
+	res := resTmp.([]*model4.LegendEntry)
 	fc.Result = res
 	return ec.marshalNTesla_LegendEntry2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐLegendEntryᚄ(ctx, field.Selections, res)
 }
@@ -34264,7 +34441,7 @@ func (ec *executionContext) fieldContext_Tesla_GameMap_legend(_ context.Context,
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameMap_cellConfigs(ctx context.Context, field graphql.CollectedField, obj *model3.GameMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameMap_cellConfigs(ctx context.Context, field graphql.CollectedField, obj *model4.GameMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameMap_cellConfigs(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -34290,7 +34467,7 @@ func (ec *executionContext) _Tesla_GameMap_cellConfigs(ctx context.Context, fiel
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model3.CellConfigEntry)
+	res := resTmp.([]*model4.CellConfigEntry)
 	fc.Result = res
 	return ec.marshalNTesla_CellConfigEntry2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐCellConfigEntryᚄ(ctx, field.Selections, res)
 }
@@ -34316,7 +34493,7 @@ func (ec *executionContext) fieldContext_Tesla_GameMap_cellConfigs(_ context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameMap_builtin(ctx context.Context, field graphql.CollectedField, obj *model3.GameMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameMap_builtin(ctx context.Context, field graphql.CollectedField, obj *model4.GameMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameMap_builtin(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -34360,7 +34537,7 @@ func (ec *executionContext) fieldContext_Tesla_GameMap_builtin(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameMap_editKey(ctx context.Context, field graphql.CollectedField, obj *model3.GameMap) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameMap_editKey(ctx context.Context, field graphql.CollectedField, obj *model4.GameMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameMap_editKey(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -34401,7 +34578,7 @@ func (ec *executionContext) fieldContext_Tesla_GameMap_editKey(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameState_grid(ctx context.Context, field graphql.CollectedField, obj *model3.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameState_grid(ctx context.Context, field graphql.CollectedField, obj *model4.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameState_grid(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -34427,7 +34604,7 @@ func (ec *executionContext) _Tesla_GameState_grid(ctx context.Context, field gra
 		}
 		return graphql.Null
 	}
-	res := resTmp.([][]*model3.Cell)
+	res := resTmp.([][]*model4.Cell)
 	fc.Result = res
 	return ec.marshalNTesla_Cell2ᚕᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐCellᚄ(ctx, field.Selections, res)
 }
@@ -34470,7 +34647,7 @@ func (ec *executionContext) fieldContext_Tesla_GameState_grid(ctx context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameState_playerPos(ctx context.Context, field graphql.CollectedField, obj *model3.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameState_playerPos(ctx context.Context, field graphql.CollectedField, obj *model4.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameState_playerPos(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -34496,7 +34673,7 @@ func (ec *executionContext) _Tesla_GameState_playerPos(ctx context.Context, fiel
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.Position)
+	res := resTmp.(*model4.Position)
 	fc.Result = res
 	return ec.marshalNTesla_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -34520,7 +34697,7 @@ func (ec *executionContext) fieldContext_Tesla_GameState_playerPos(_ context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameState_battery(ctx context.Context, field graphql.CollectedField, obj *model3.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameState_battery(ctx context.Context, field graphql.CollectedField, obj *model4.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameState_battery(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -34564,7 +34741,7 @@ func (ec *executionContext) fieldContext_Tesla_GameState_battery(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameState_maxBattery(ctx context.Context, field graphql.CollectedField, obj *model3.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameState_maxBattery(ctx context.Context, field graphql.CollectedField, obj *model4.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameState_maxBattery(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -34608,7 +34785,7 @@ func (ec *executionContext) fieldContext_Tesla_GameState_maxBattery(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameState_score(ctx context.Context, field graphql.CollectedField, obj *model3.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameState_score(ctx context.Context, field graphql.CollectedField, obj *model4.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameState_score(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -34652,7 +34829,7 @@ func (ec *executionContext) fieldContext_Tesla_GameState_score(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameState_totalParks(ctx context.Context, field graphql.CollectedField, obj *model3.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameState_totalParks(ctx context.Context, field graphql.CollectedField, obj *model4.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameState_totalParks(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -34696,7 +34873,7 @@ func (ec *executionContext) fieldContext_Tesla_GameState_totalParks(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameState_visitedParks(ctx context.Context, field graphql.CollectedField, obj *model3.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameState_visitedParks(ctx context.Context, field graphql.CollectedField, obj *model4.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameState_visitedParks(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -34722,7 +34899,7 @@ func (ec *executionContext) _Tesla_GameState_visitedParks(ctx context.Context, f
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model3.VisitedPark)
+	res := resTmp.([]*model4.VisitedPark)
 	fc.Result = res
 	return ec.marshalNTesla_VisitedPark2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐVisitedParkᚄ(ctx, field.Selections, res)
 }
@@ -34746,7 +34923,7 @@ func (ec *executionContext) fieldContext_Tesla_GameState_visitedParks(_ context.
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameState_message(ctx context.Context, field graphql.CollectedField, obj *model3.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameState_message(ctx context.Context, field graphql.CollectedField, obj *model4.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameState_message(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -34790,7 +34967,7 @@ func (ec *executionContext) fieldContext_Tesla_GameState_message(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameState_gameOver(ctx context.Context, field graphql.CollectedField, obj *model3.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameState_gameOver(ctx context.Context, field graphql.CollectedField, obj *model4.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameState_gameOver(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -34834,7 +35011,7 @@ func (ec *executionContext) fieldContext_Tesla_GameState_gameOver(_ context.Cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameState_victory(ctx context.Context, field graphql.CollectedField, obj *model3.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameState_victory(ctx context.Context, field graphql.CollectedField, obj *model4.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameState_victory(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -34878,7 +35055,7 @@ func (ec *executionContext) fieldContext_Tesla_GameState_victory(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameState_mapName(ctx context.Context, field graphql.CollectedField, obj *model3.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameState_mapName(ctx context.Context, field graphql.CollectedField, obj *model4.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameState_mapName(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -34922,7 +35099,7 @@ func (ec *executionContext) fieldContext_Tesla_GameState_mapName(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameState_moveHistory(ctx context.Context, field graphql.CollectedField, obj *model3.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameState_moveHistory(ctx context.Context, field graphql.CollectedField, obj *model4.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameState_moveHistory(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -34948,7 +35125,7 @@ func (ec *executionContext) _Tesla_GameState_moveHistory(ctx context.Context, fi
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model3.MoveHistoryEntry)
+	res := resTmp.([]*model4.MoveHistoryEntry)
 	fc.Result = res
 	return ec.marshalNTesla_MoveHistoryEntry2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMoveHistoryEntryᚄ(ctx, field.Selections, res)
 }
@@ -34982,7 +35159,7 @@ func (ec *executionContext) fieldContext_Tesla_GameState_moveHistory(_ context.C
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameState_totalMoves(ctx context.Context, field graphql.CollectedField, obj *model3.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameState_totalMoves(ctx context.Context, field graphql.CollectedField, obj *model4.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameState_totalMoves(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -35026,7 +35203,7 @@ func (ec *executionContext) fieldContext_Tesla_GameState_totalMoves(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameState_resetCount(ctx context.Context, field graphql.CollectedField, obj *model3.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameState_resetCount(ctx context.Context, field graphql.CollectedField, obj *model4.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameState_resetCount(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -35070,7 +35247,7 @@ func (ec *executionContext) fieldContext_Tesla_GameState_resetCount(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameState_nearbyGrid(ctx context.Context, field graphql.CollectedField, obj *model3.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameState_nearbyGrid(ctx context.Context, field graphql.CollectedField, obj *model4.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameState_nearbyGrid(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -35096,7 +35273,7 @@ func (ec *executionContext) _Tesla_GameState_nearbyGrid(ctx context.Context, fie
 		}
 		return graphql.Null
 	}
-	res := resTmp.([][]*model3.Cell)
+	res := resTmp.([][]*model4.Cell)
 	fc.Result = res
 	return ec.marshalNTesla_Cell2ᚕᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐCellᚄ(ctx, field.Selections, res)
 }
@@ -35128,7 +35305,7 @@ func (ec *executionContext) fieldContext_Tesla_GameState_nearbyGrid(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameState_currentMoves(ctx context.Context, field graphql.CollectedField, obj *model3.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameState_currentMoves(ctx context.Context, field graphql.CollectedField, obj *model4.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameState_currentMoves(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -35154,7 +35331,7 @@ func (ec *executionContext) _Tesla_GameState_currentMoves(ctx context.Context, f
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model3.MoveHistoryEntry)
+	res := resTmp.([]*model4.MoveHistoryEntry)
 	fc.Result = res
 	return ec.marshalNTesla_MoveHistoryEntry2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMoveHistoryEntryᚄ(ctx, field.Selections, res)
 }
@@ -35188,7 +35365,7 @@ func (ec *executionContext) fieldContext_Tesla_GameState_currentMoves(_ context.
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameState_currentMovesCount(ctx context.Context, field graphql.CollectedField, obj *model3.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameState_currentMovesCount(ctx context.Context, field graphql.CollectedField, obj *model4.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameState_currentMovesCount(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -35232,7 +35409,7 @@ func (ec *executionContext) fieldContext_Tesla_GameState_currentMovesCount(_ con
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameState_batteryRisk(ctx context.Context, field graphql.CollectedField, obj *model3.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameState_batteryRisk(ctx context.Context, field graphql.CollectedField, obj *model4.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameState_batteryRisk(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -35276,7 +35453,7 @@ func (ec *executionContext) fieldContext_Tesla_GameState_batteryRisk(_ context.C
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameState_fogEnabled(ctx context.Context, field graphql.CollectedField, obj *model3.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameState_fogEnabled(ctx context.Context, field graphql.CollectedField, obj *model4.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameState_fogEnabled(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -35320,7 +35497,7 @@ func (ec *executionContext) fieldContext_Tesla_GameState_fogEnabled(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameState_fogRadius(ctx context.Context, field graphql.CollectedField, obj *model3.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameState_fogRadius(ctx context.Context, field graphql.CollectedField, obj *model4.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameState_fogRadius(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -35364,7 +35541,7 @@ func (ec *executionContext) fieldContext_Tesla_GameState_fogRadius(_ context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_GameState_moveDelayMs(ctx context.Context, field graphql.CollectedField, obj *model3.GameState) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_GameState_moveDelayMs(ctx context.Context, field graphql.CollectedField, obj *model4.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_GameState_moveDelayMs(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -35408,7 +35585,7 @@ func (ec *executionContext) fieldContext_Tesla_GameState_moveDelayMs(_ context.C
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_HistoryResponse_moves(ctx context.Context, field graphql.CollectedField, obj *model3.HistoryResponse) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_HistoryResponse_moves(ctx context.Context, field graphql.CollectedField, obj *model4.HistoryResponse) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_HistoryResponse_moves(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -35434,7 +35611,7 @@ func (ec *executionContext) _Tesla_HistoryResponse_moves(ctx context.Context, fi
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model3.MoveHistoryEntry)
+	res := resTmp.([]*model4.MoveHistoryEntry)
 	fc.Result = res
 	return ec.marshalNTesla_MoveHistoryEntry2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMoveHistoryEntryᚄ(ctx, field.Selections, res)
 }
@@ -35468,7 +35645,7 @@ func (ec *executionContext) fieldContext_Tesla_HistoryResponse_moves(_ context.C
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_HistoryResponse_totalMoves(ctx context.Context, field graphql.CollectedField, obj *model3.HistoryResponse) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_HistoryResponse_totalMoves(ctx context.Context, field graphql.CollectedField, obj *model4.HistoryResponse) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_HistoryResponse_totalMoves(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -35512,7 +35689,7 @@ func (ec *executionContext) fieldContext_Tesla_HistoryResponse_totalMoves(_ cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_HistoryResponse_page(ctx context.Context, field graphql.CollectedField, obj *model3.HistoryResponse) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_HistoryResponse_page(ctx context.Context, field graphql.CollectedField, obj *model4.HistoryResponse) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_HistoryResponse_page(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -35556,7 +35733,7 @@ func (ec *executionContext) fieldContext_Tesla_HistoryResponse_page(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_HistoryResponse_pageSize(ctx context.Context, field graphql.CollectedField, obj *model3.HistoryResponse) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_HistoryResponse_pageSize(ctx context.Context, field graphql.CollectedField, obj *model4.HistoryResponse) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_HistoryResponse_pageSize(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -35600,7 +35777,7 @@ func (ec *executionContext) fieldContext_Tesla_HistoryResponse_pageSize(_ contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_HistoryResponse_totalPages(ctx context.Context, field graphql.CollectedField, obj *model3.HistoryResponse) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_HistoryResponse_totalPages(ctx context.Context, field graphql.CollectedField, obj *model4.HistoryResponse) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_HistoryResponse_totalPages(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -35644,7 +35821,7 @@ func (ec *executionContext) fieldContext_Tesla_HistoryResponse_totalPages(_ cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_HistoryResponse_hasNext(ctx context.Context, field graphql.CollectedField, obj *model3.HistoryResponse) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_HistoryResponse_hasNext(ctx context.Context, field graphql.CollectedField, obj *model4.HistoryResponse) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_HistoryResponse_hasNext(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -35688,7 +35865,7 @@ func (ec *executionContext) fieldContext_Tesla_HistoryResponse_hasNext(_ context
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_HistoryResponse_hasPrevious(ctx context.Context, field graphql.CollectedField, obj *model3.HistoryResponse) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_HistoryResponse_hasPrevious(ctx context.Context, field graphql.CollectedField, obj *model4.HistoryResponse) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_HistoryResponse_hasPrevious(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -35732,7 +35909,7 @@ func (ec *executionContext) fieldContext_Tesla_HistoryResponse_hasPrevious(_ con
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_LegendEntry_key(ctx context.Context, field graphql.CollectedField, obj *model3.LegendEntry) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_LegendEntry_key(ctx context.Context, field graphql.CollectedField, obj *model4.LegendEntry) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_LegendEntry_key(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -35776,7 +35953,7 @@ func (ec *executionContext) fieldContext_Tesla_LegendEntry_key(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_LegendEntry_value(ctx context.Context, field graphql.CollectedField, obj *model3.LegendEntry) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_LegendEntry_value(ctx context.Context, field graphql.CollectedField, obj *model4.LegendEntry) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_LegendEntry_value(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -35820,7 +35997,7 @@ func (ec *executionContext) fieldContext_Tesla_LegendEntry_value(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_MapInfo_filename(ctx context.Context, field graphql.CollectedField, obj *model3.MapInfo) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_MapInfo_filename(ctx context.Context, field graphql.CollectedField, obj *model4.MapInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_MapInfo_filename(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -35864,7 +36041,7 @@ func (ec *executionContext) fieldContext_Tesla_MapInfo_filename(_ context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_MapInfo_mapId(ctx context.Context, field graphql.CollectedField, obj *model3.MapInfo) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_MapInfo_mapId(ctx context.Context, field graphql.CollectedField, obj *model4.MapInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_MapInfo_mapId(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -35908,7 +36085,7 @@ func (ec *executionContext) fieldContext_Tesla_MapInfo_mapId(_ context.Context, 
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_MapInfo_name(ctx context.Context, field graphql.CollectedField, obj *model3.MapInfo) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_MapInfo_name(ctx context.Context, field graphql.CollectedField, obj *model4.MapInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_MapInfo_name(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -35952,7 +36129,7 @@ func (ec *executionContext) fieldContext_Tesla_MapInfo_name(_ context.Context, f
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_MapInfo_description(ctx context.Context, field graphql.CollectedField, obj *model3.MapInfo) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_MapInfo_description(ctx context.Context, field graphql.CollectedField, obj *model4.MapInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_MapInfo_description(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -35996,7 +36173,7 @@ func (ec *executionContext) fieldContext_Tesla_MapInfo_description(_ context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_MapInfo_gridSize(ctx context.Context, field graphql.CollectedField, obj *model3.MapInfo) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_MapInfo_gridSize(ctx context.Context, field graphql.CollectedField, obj *model4.MapInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_MapInfo_gridSize(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -36040,7 +36217,7 @@ func (ec *executionContext) fieldContext_Tesla_MapInfo_gridSize(_ context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_MapInfo_maxBattery(ctx context.Context, field graphql.CollectedField, obj *model3.MapInfo) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_MapInfo_maxBattery(ctx context.Context, field graphql.CollectedField, obj *model4.MapInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_MapInfo_maxBattery(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -36084,7 +36261,7 @@ func (ec *executionContext) fieldContext_Tesla_MapInfo_maxBattery(_ context.Cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_MapInfo_builtin(ctx context.Context, field graphql.CollectedField, obj *model3.MapInfo) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_MapInfo_builtin(ctx context.Context, field graphql.CollectedField, obj *model4.MapInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_MapInfo_builtin(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -36128,7 +36305,7 @@ func (ec *executionContext) fieldContext_Tesla_MapInfo_builtin(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_MapValidationResult_valid(ctx context.Context, field graphql.CollectedField, obj *model3.MapValidationResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_MapValidationResult_valid(ctx context.Context, field graphql.CollectedField, obj *model4.MapValidationResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_MapValidationResult_valid(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -36172,7 +36349,7 @@ func (ec *executionContext) fieldContext_Tesla_MapValidationResult_valid(_ conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_MapValidationResult_winnable(ctx context.Context, field graphql.CollectedField, obj *model3.MapValidationResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_MapValidationResult_winnable(ctx context.Context, field graphql.CollectedField, obj *model4.MapValidationResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_MapValidationResult_winnable(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -36216,7 +36393,7 @@ func (ec *executionContext) fieldContext_Tesla_MapValidationResult_winnable(_ co
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_MapValidationResult_message(ctx context.Context, field graphql.CollectedField, obj *model3.MapValidationResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_MapValidationResult_message(ctx context.Context, field graphql.CollectedField, obj *model4.MapValidationResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_MapValidationResult_message(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -36260,7 +36437,7 @@ func (ec *executionContext) fieldContext_Tesla_MapValidationResult_message(_ con
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_MapValidationResult_error(ctx context.Context, field graphql.CollectedField, obj *model3.MapValidationResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_MapValidationResult_error(ctx context.Context, field graphql.CollectedField, obj *model4.MapValidationResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_MapValidationResult_error(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -36301,7 +36478,7 @@ func (ec *executionContext) fieldContext_Tesla_MapValidationResult_error(_ conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_MoveHistoryEntry_action(ctx context.Context, field graphql.CollectedField, obj *model3.MoveHistoryEntry) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_MoveHistoryEntry_action(ctx context.Context, field graphql.CollectedField, obj *model4.MoveHistoryEntry) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_MoveHistoryEntry_action(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -36345,7 +36522,7 @@ func (ec *executionContext) fieldContext_Tesla_MoveHistoryEntry_action(_ context
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_MoveHistoryEntry_fromPosition(ctx context.Context, field graphql.CollectedField, obj *model3.MoveHistoryEntry) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_MoveHistoryEntry_fromPosition(ctx context.Context, field graphql.CollectedField, obj *model4.MoveHistoryEntry) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_MoveHistoryEntry_fromPosition(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -36371,7 +36548,7 @@ func (ec *executionContext) _Tesla_MoveHistoryEntry_fromPosition(ctx context.Con
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.Position)
+	res := resTmp.(*model4.Position)
 	fc.Result = res
 	return ec.marshalNTesla_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -36395,7 +36572,7 @@ func (ec *executionContext) fieldContext_Tesla_MoveHistoryEntry_fromPosition(_ c
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_MoveHistoryEntry_toPosition(ctx context.Context, field graphql.CollectedField, obj *model3.MoveHistoryEntry) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_MoveHistoryEntry_toPosition(ctx context.Context, field graphql.CollectedField, obj *model4.MoveHistoryEntry) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_MoveHistoryEntry_toPosition(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -36421,7 +36598,7 @@ func (ec *executionContext) _Tesla_MoveHistoryEntry_toPosition(ctx context.Conte
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.Position)
+	res := resTmp.(*model4.Position)
 	fc.Result = res
 	return ec.marshalNTesla_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -36445,7 +36622,7 @@ func (ec *executionContext) fieldContext_Tesla_MoveHistoryEntry_toPosition(_ con
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_MoveHistoryEntry_battery(ctx context.Context, field graphql.CollectedField, obj *model3.MoveHistoryEntry) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_MoveHistoryEntry_battery(ctx context.Context, field graphql.CollectedField, obj *model4.MoveHistoryEntry) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_MoveHistoryEntry_battery(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -36489,7 +36666,7 @@ func (ec *executionContext) fieldContext_Tesla_MoveHistoryEntry_battery(_ contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_MoveHistoryEntry_timestamp(ctx context.Context, field graphql.CollectedField, obj *model3.MoveHistoryEntry) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_MoveHistoryEntry_timestamp(ctx context.Context, field graphql.CollectedField, obj *model4.MoveHistoryEntry) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_MoveHistoryEntry_timestamp(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -36533,7 +36710,7 @@ func (ec *executionContext) fieldContext_Tesla_MoveHistoryEntry_timestamp(_ cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_MoveHistoryEntry_success(ctx context.Context, field graphql.CollectedField, obj *model3.MoveHistoryEntry) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_MoveHistoryEntry_success(ctx context.Context, field graphql.CollectedField, obj *model4.MoveHistoryEntry) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_MoveHistoryEntry_success(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -36577,7 +36754,7 @@ func (ec *executionContext) fieldContext_Tesla_MoveHistoryEntry_success(_ contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_MoveHistoryEntry_moveNumber(ctx context.Context, field graphql.CollectedField, obj *model3.MoveHistoryEntry) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_MoveHistoryEntry_moveNumber(ctx context.Context, field graphql.CollectedField, obj *model4.MoveHistoryEntry) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_MoveHistoryEntry_moveNumber(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -36621,7 +36798,7 @@ func (ec *executionContext) fieldContext_Tesla_MoveHistoryEntry_moveNumber(_ con
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_MoveResult_success(ctx context.Context, field graphql.CollectedField, obj *model3.MoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_MoveResult_success(ctx context.Context, field graphql.CollectedField, obj *model4.MoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_MoveResult_success(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -36665,7 +36842,7 @@ func (ec *executionContext) fieldContext_Tesla_MoveResult_success(_ context.Cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_MoveResult_gameState(ctx context.Context, field graphql.CollectedField, obj *model3.MoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_MoveResult_gameState(ctx context.Context, field graphql.CollectedField, obj *model4.MoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_MoveResult_gameState(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -36691,7 +36868,7 @@ func (ec *executionContext) _Tesla_MoveResult_gameState(ctx context.Context, fie
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.GameState)
+	res := resTmp.(*model4.GameState)
 	fc.Result = res
 	return ec.marshalNTesla_GameState2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameState(ctx, field.Selections, res)
 }
@@ -36753,7 +36930,7 @@ func (ec *executionContext) fieldContext_Tesla_MoveResult_gameState(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_MoveResult_message(ctx context.Context, field graphql.CollectedField, obj *model3.MoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_MoveResult_message(ctx context.Context, field graphql.CollectedField, obj *model4.MoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_MoveResult_message(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -36797,7 +36974,7 @@ func (ec *executionContext) fieldContext_Tesla_MoveResult_message(_ context.Cont
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_MoveResult_events(ctx context.Context, field graphql.CollectedField, obj *model3.MoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_MoveResult_events(ctx context.Context, field graphql.CollectedField, obj *model4.MoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_MoveResult_events(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -36823,7 +37000,7 @@ func (ec *executionContext) _Tesla_MoveResult_events(ctx context.Context, field 
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model3.GameEvent)
+	res := resTmp.([]*model4.GameEvent)
 	fc.Result = res
 	return ec.marshalNTesla_GameEvent2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameEventᚄ(ctx, field.Selections, res)
 }
@@ -36851,7 +37028,7 @@ func (ec *executionContext) fieldContext_Tesla_MoveResult_events(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_MoveResult_step(ctx context.Context, field graphql.CollectedField, obj *model3.MoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_MoveResult_step(ctx context.Context, field graphql.CollectedField, obj *model4.MoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_MoveResult_step(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -36874,7 +37051,7 @@ func (ec *executionContext) _Tesla_MoveResult_step(ctx context.Context, field gr
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*model3.StepInfo)
+	res := resTmp.(*model4.StepInfo)
 	fc.Result = res
 	return ec.marshalOTesla_StepInfo2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐStepInfo(ctx, field.Selections, res)
 }
@@ -36918,7 +37095,7 @@ func (ec *executionContext) fieldContext_Tesla_MoveResult_step(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_MoveResult_attemptedTo(ctx context.Context, field graphql.CollectedField, obj *model3.MoveResult) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_MoveResult_attemptedTo(ctx context.Context, field graphql.CollectedField, obj *model4.MoveResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_MoveResult_attemptedTo(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -36941,7 +37118,7 @@ func (ec *executionContext) _Tesla_MoveResult_attemptedTo(ctx context.Context, f
 	if resTmp == nil {
 		return graphql.Null
 	}
-	res := resTmp.(*model3.AttemptInfo)
+	res := resTmp.(*model4.AttemptInfo)
 	fc.Result = res
 	return ec.marshalOTesla_AttemptInfo2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐAttemptInfo(ctx, field.Selections, res)
 }
@@ -36971,7 +37148,7 @@ func (ec *executionContext) fieldContext_Tesla_MoveResult_attemptedTo(_ context.
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Mutation_createSession(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Mutation_createSession(ctx context.Context, field graphql.CollectedField, obj *graph4.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Mutation_createSession(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -36997,7 +37174,7 @@ func (ec *executionContext) _Tesla_Mutation_createSession(ctx context.Context, f
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.Session)
+	res := resTmp.(*model4.Session)
 	fc.Result = res
 	return ec.marshalNTesla_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
@@ -37044,7 +37221,7 @@ func (ec *executionContext) fieldContext_Tesla_Mutation_createSession(ctx contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Mutation_deleteSession(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Mutation_deleteSession(ctx context.Context, field graphql.CollectedField, obj *graph4.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Mutation_deleteSession(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -37070,7 +37247,7 @@ func (ec *executionContext) _Tesla_Mutation_deleteSession(ctx context.Context, f
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.DeleteSessionResult)
+	res := resTmp.(*model4.DeleteSessionResult)
 	fc.Result = res
 	return ec.marshalNTesla_DeleteSessionResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐDeleteSessionResult(ctx, field.Selections, res)
 }
@@ -37103,7 +37280,7 @@ func (ec *executionContext) fieldContext_Tesla_Mutation_deleteSession(ctx contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Mutation_updateSession(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Mutation_updateSession(ctx context.Context, field graphql.CollectedField, obj *graph4.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Mutation_updateSession(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -37129,7 +37306,7 @@ func (ec *executionContext) _Tesla_Mutation_updateSession(ctx context.Context, f
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.Session)
+	res := resTmp.(*model4.Session)
 	fc.Result = res
 	return ec.marshalNTesla_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
@@ -37176,7 +37353,7 @@ func (ec *executionContext) fieldContext_Tesla_Mutation_updateSession(ctx contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Mutation_move(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Mutation_move(ctx context.Context, field graphql.CollectedField, obj *graph4.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Mutation_move(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -37190,7 +37367,7 @@ func (ec *executionContext) _Tesla_Mutation_move(ctx context.Context, field grap
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Tesla_Mutation().Move(rctx, obj, fc.Args["sessionID"].(string), fc.Args["direction"].(model3.Direction), fc.Args["reset"].(*bool))
+		return ec.resolvers.Tesla_Mutation().Move(rctx, obj, fc.Args["sessionID"].(string), fc.Args["direction"].(model4.Direction), fc.Args["reset"].(*bool))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -37202,7 +37379,7 @@ func (ec *executionContext) _Tesla_Mutation_move(ctx context.Context, field grap
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.MoveResult)
+	res := resTmp.(*model4.MoveResult)
 	fc.Result = res
 	return ec.marshalNTesla_MoveResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMoveResult(ctx, field.Selections, res)
 }
@@ -37245,7 +37422,7 @@ func (ec *executionContext) fieldContext_Tesla_Mutation_move(ctx context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Mutation_bulkMove(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Mutation_bulkMove(ctx context.Context, field graphql.CollectedField, obj *graph4.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Mutation_bulkMove(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -37259,7 +37436,7 @@ func (ec *executionContext) _Tesla_Mutation_bulkMove(ctx context.Context, field 
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Tesla_Mutation().BulkMove(rctx, obj, fc.Args["sessionID"].(string), fc.Args["moves"].([]model3.Direction), fc.Args["reset"].(*bool))
+		return ec.resolvers.Tesla_Mutation().BulkMove(rctx, obj, fc.Args["sessionID"].(string), fc.Args["moves"].([]model4.Direction), fc.Args["reset"].(*bool))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -37271,7 +37448,7 @@ func (ec *executionContext) _Tesla_Mutation_bulkMove(ctx context.Context, field 
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.BulkMoveResult)
+	res := resTmp.(*model4.BulkMoveResult)
 	fc.Result = res
 	return ec.marshalNTesla_BulkMoveResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐBulkMoveResult(ctx, field.Selections, res)
 }
@@ -37348,7 +37525,7 @@ func (ec *executionContext) fieldContext_Tesla_Mutation_bulkMove(ctx context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Mutation_reset(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Mutation_reset(ctx context.Context, field graphql.CollectedField, obj *graph4.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Mutation_reset(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -37374,7 +37551,7 @@ func (ec *executionContext) _Tesla_Mutation_reset(ctx context.Context, field gra
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.GameState)
+	res := resTmp.(*model4.GameState)
 	fc.Result = res
 	return ec.marshalNTesla_GameState2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameState(ctx, field.Selections, res)
 }
@@ -37447,7 +37624,7 @@ func (ec *executionContext) fieldContext_Tesla_Mutation_reset(ctx context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Mutation_createMap(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Mutation_createMap(ctx context.Context, field graphql.CollectedField, obj *graph4.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Mutation_createMap(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -37461,7 +37638,7 @@ func (ec *executionContext) _Tesla_Mutation_createMap(ctx context.Context, field
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Tesla_Mutation().CreateMap(rctx, obj, fc.Args["name"].(string), fc.Args["map"].(model3.GameMapInput))
+		return ec.resolvers.Tesla_Mutation().CreateMap(rctx, obj, fc.Args["name"].(string), fc.Args["map"].(model4.GameMapInput))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -37473,7 +37650,7 @@ func (ec *executionContext) _Tesla_Mutation_createMap(ctx context.Context, field
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.GameMap)
+	res := resTmp.(*model4.GameMap)
 	fc.Result = res
 	return ec.marshalNTesla_GameMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameMap(ctx, field.Selections, res)
 }
@@ -37524,7 +37701,7 @@ func (ec *executionContext) fieldContext_Tesla_Mutation_createMap(ctx context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Mutation_updateMap(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Mutation_updateMap(ctx context.Context, field graphql.CollectedField, obj *graph4.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Mutation_updateMap(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -37538,7 +37715,7 @@ func (ec *executionContext) _Tesla_Mutation_updateMap(ctx context.Context, field
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Tesla_Mutation().UpdateMap(rctx, obj, fc.Args["name"].(string), fc.Args["patch"].(model3.GameMapPatchInput), fc.Args["editKey"].(*string))
+		return ec.resolvers.Tesla_Mutation().UpdateMap(rctx, obj, fc.Args["name"].(string), fc.Args["patch"].(model4.GameMapPatchInput), fc.Args["editKey"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -37550,7 +37727,7 @@ func (ec *executionContext) _Tesla_Mutation_updateMap(ctx context.Context, field
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.GameMap)
+	res := resTmp.(*model4.GameMap)
 	fc.Result = res
 	return ec.marshalNTesla_GameMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameMap(ctx, field.Selections, res)
 }
@@ -37601,7 +37778,7 @@ func (ec *executionContext) fieldContext_Tesla_Mutation_updateMap(ctx context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Mutation_deleteMap(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Mutation_deleteMap(ctx context.Context, field graphql.CollectedField, obj *graph4.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Mutation_deleteMap(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -37627,7 +37804,7 @@ func (ec *executionContext) _Tesla_Mutation_deleteMap(ctx context.Context, field
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.DeleteSessionResult)
+	res := resTmp.(*model4.DeleteSessionResult)
 	fc.Result = res
 	return ec.marshalNTesla_DeleteSessionResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐDeleteSessionResult(ctx, field.Selections, res)
 }
@@ -37660,7 +37837,7 @@ func (ec *executionContext) fieldContext_Tesla_Mutation_deleteMap(ctx context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Mutation_validateMap(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Mutation_validateMap(ctx context.Context, field graphql.CollectedField, obj *graph4.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Mutation_validateMap(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -37674,7 +37851,7 @@ func (ec *executionContext) _Tesla_Mutation_validateMap(ctx context.Context, fie
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Tesla_Mutation().ValidateMap(rctx, obj, fc.Args["map"].(model3.GameMapInput))
+		return ec.resolvers.Tesla_Mutation().ValidateMap(rctx, obj, fc.Args["map"].(model4.GameMapInput))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -37686,7 +37863,7 @@ func (ec *executionContext) _Tesla_Mutation_validateMap(ctx context.Context, fie
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.MapValidationResult)
+	res := resTmp.(*model4.MapValidationResult)
 	fc.Result = res
 	return ec.marshalNTesla_MapValidationResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMapValidationResult(ctx, field.Selections, res)
 }
@@ -37725,7 +37902,7 @@ func (ec *executionContext) fieldContext_Tesla_Mutation_validateMap(ctx context.
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Position_x(ctx context.Context, field graphql.CollectedField, obj *model3.Position) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Position_x(ctx context.Context, field graphql.CollectedField, obj *model4.Position) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Position_x(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -37769,7 +37946,7 @@ func (ec *executionContext) fieldContext_Tesla_Position_x(_ context.Context, fie
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Position_y(ctx context.Context, field graphql.CollectedField, obj *model3.Position) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Position_y(ctx context.Context, field graphql.CollectedField, obj *model4.Position) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Position_y(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -37813,7 +37990,7 @@ func (ec *executionContext) fieldContext_Tesla_Position_y(_ context.Context, fie
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Query_session(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Query_session(ctx context.Context, field graphql.CollectedField, obj *graph4.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Query_session(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -37839,7 +38016,7 @@ func (ec *executionContext) _Tesla_Query_session(ctx context.Context, field grap
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.Session)
+	res := resTmp.(*model4.Session)
 	fc.Result = res
 	return ec.marshalNTesla_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
@@ -37886,7 +38063,7 @@ func (ec *executionContext) fieldContext_Tesla_Query_session(ctx context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Query_sessions(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Query_sessions(ctx context.Context, field graphql.CollectedField, obj *graph4.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Query_sessions(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -37900,7 +38077,7 @@ func (ec *executionContext) _Tesla_Query_sessions(ctx context.Context, field gra
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Tesla_Query().Sessions(rctx, obj, fc.Args["sort"].(*model3.SessionSort), fc.Args["order"].(*model3.SortOrder), fc.Args["limit"].(*int))
+		return ec.resolvers.Tesla_Query().Sessions(rctx, obj, fc.Args["sort"].(*model4.SessionSort), fc.Args["order"].(*model4.SortOrder), fc.Args["limit"].(*int))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -37912,7 +38089,7 @@ func (ec *executionContext) _Tesla_Query_sessions(ctx context.Context, field gra
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.SessionList)
+	res := resTmp.(*model4.SessionList)
 	fc.Result = res
 	return ec.marshalNTesla_SessionList2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSessionList(ctx, field.Selections, res)
 }
@@ -37953,7 +38130,7 @@ func (ec *executionContext) fieldContext_Tesla_Query_sessions(ctx context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Query_unifiedSessions(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Query_unifiedSessions(ctx context.Context, field graphql.CollectedField, obj *graph4.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Query_unifiedSessions(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -37979,7 +38156,7 @@ func (ec *executionContext) _Tesla_Query_unifiedSessions(ctx context.Context, fi
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.UnifiedSessions)
+	res := resTmp.(*model4.UnifiedSessions)
 	fc.Result = res
 	return ec.marshalNTesla_UnifiedSessions2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐUnifiedSessions(ctx, field.Selections, res)
 }
@@ -38016,7 +38193,7 @@ func (ec *executionContext) fieldContext_Tesla_Query_unifiedSessions(ctx context
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Query_gameState(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Query_gameState(ctx context.Context, field graphql.CollectedField, obj *graph4.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Query_gameState(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -38042,7 +38219,7 @@ func (ec *executionContext) _Tesla_Query_gameState(ctx context.Context, field gr
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.GameState)
+	res := resTmp.(*model4.GameState)
 	fc.Result = res
 	return ec.marshalNTesla_GameState2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameState(ctx, field.Selections, res)
 }
@@ -38115,7 +38292,7 @@ func (ec *executionContext) fieldContext_Tesla_Query_gameState(ctx context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Query_history(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Query_history(ctx context.Context, field graphql.CollectedField, obj *graph4.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Query_history(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -38129,7 +38306,7 @@ func (ec *executionContext) _Tesla_Query_history(ctx context.Context, field grap
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Tesla_Query().History(rctx, obj, fc.Args["sessionID"].(string), fc.Args["page"].(*int), fc.Args["limit"].(*int), fc.Args["order"].(*model3.SortOrder))
+		return ec.resolvers.Tesla_Query().History(rctx, obj, fc.Args["sessionID"].(string), fc.Args["page"].(*int), fc.Args["limit"].(*int), fc.Args["order"].(*model4.SortOrder))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -38141,7 +38318,7 @@ func (ec *executionContext) _Tesla_Query_history(ctx context.Context, field grap
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.HistoryResponse)
+	res := resTmp.(*model4.HistoryResponse)
 	fc.Result = res
 	return ec.marshalNTesla_HistoryResponse2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐHistoryResponse(ctx, field.Selections, res)
 }
@@ -38186,7 +38363,7 @@ func (ec *executionContext) fieldContext_Tesla_Query_history(ctx context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Query_maps(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Query_maps(ctx context.Context, field graphql.CollectedField, obj *graph4.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Query_maps(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -38212,7 +38389,7 @@ func (ec *executionContext) _Tesla_Query_maps(ctx context.Context, field graphql
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model3.MapInfo)
+	res := resTmp.([]*model4.MapInfo)
 	fc.Result = res
 	return ec.marshalNTesla_MapInfo2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMapInfoᚄ(ctx, field.Selections, res)
 }
@@ -38246,7 +38423,7 @@ func (ec *executionContext) fieldContext_Tesla_Query_maps(_ context.Context, fie
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Query_map(ctx context.Context, field graphql.CollectedField, obj *graph3.Resolver) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Query_map(ctx context.Context, field graphql.CollectedField, obj *graph4.Resolver) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Query_map(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -38272,7 +38449,7 @@ func (ec *executionContext) _Tesla_Query_map(ctx context.Context, field graphql.
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.GameMap)
+	res := resTmp.(*model4.GameMap)
 	fc.Result = res
 	return ec.marshalNTesla_GameMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameMap(ctx, field.Selections, res)
 }
@@ -38323,7 +38500,7 @@ func (ec *executionContext) fieldContext_Tesla_Query_map(ctx context.Context, fi
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Session_id(ctx context.Context, field graphql.CollectedField, obj *model3.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Session_id(ctx context.Context, field graphql.CollectedField, obj *model4.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Session_id(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -38367,7 +38544,7 @@ func (ec *executionContext) fieldContext_Tesla_Session_id(_ context.Context, fie
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Session_displayName(ctx context.Context, field graphql.CollectedField, obj *model3.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Session_displayName(ctx context.Context, field graphql.CollectedField, obj *model4.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Session_displayName(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -38408,7 +38585,7 @@ func (ec *executionContext) fieldContext_Tesla_Session_displayName(_ context.Con
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Session_mapName(ctx context.Context, field graphql.CollectedField, obj *model3.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Session_mapName(ctx context.Context, field graphql.CollectedField, obj *model4.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Session_mapName(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -38452,7 +38629,7 @@ func (ec *executionContext) fieldContext_Tesla_Session_mapName(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Session_createdAt(ctx context.Context, field graphql.CollectedField, obj *model3.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Session_createdAt(ctx context.Context, field graphql.CollectedField, obj *model4.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Session_createdAt(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -38496,7 +38673,7 @@ func (ec *executionContext) fieldContext_Tesla_Session_createdAt(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Session_lastActionAt(ctx context.Context, field graphql.CollectedField, obj *model3.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Session_lastActionAt(ctx context.Context, field graphql.CollectedField, obj *model4.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Session_lastActionAt(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -38540,7 +38717,7 @@ func (ec *executionContext) fieldContext_Tesla_Session_lastActionAt(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Session_gameState(ctx context.Context, field graphql.CollectedField, obj *model3.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Session_gameState(ctx context.Context, field graphql.CollectedField, obj *model4.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Session_gameState(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -38566,7 +38743,7 @@ func (ec *executionContext) _Tesla_Session_gameState(ctx context.Context, field 
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.GameState)
+	res := resTmp.(*model4.GameState)
 	fc.Result = res
 	return ec.marshalNTesla_GameState2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameState(ctx, field.Selections, res)
 }
@@ -38628,7 +38805,7 @@ func (ec *executionContext) fieldContext_Tesla_Session_gameState(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Session_gameMap(ctx context.Context, field graphql.CollectedField, obj *model3.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Session_gameMap(ctx context.Context, field graphql.CollectedField, obj *model4.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Session_gameMap(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -38654,7 +38831,7 @@ func (ec *executionContext) _Tesla_Session_gameMap(ctx context.Context, field gr
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.GameMap)
+	res := resTmp.(*model4.GameMap)
 	fc.Result = res
 	return ec.marshalNTesla_GameMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameMap(ctx, field.Selections, res)
 }
@@ -38694,7 +38871,7 @@ func (ec *executionContext) fieldContext_Tesla_Session_gameMap(_ context.Context
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_Session_generatedGridPassword(ctx context.Context, field graphql.CollectedField, obj *model3.Session) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_Session_generatedGridPassword(ctx context.Context, field graphql.CollectedField, obj *model4.Session) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_Session_generatedGridPassword(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -38735,7 +38912,7 @@ func (ec *executionContext) fieldContext_Tesla_Session_generatedGridPassword(_ c
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_SessionList_count(ctx context.Context, field graphql.CollectedField, obj *model3.SessionList) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_SessionList_count(ctx context.Context, field graphql.CollectedField, obj *model4.SessionList) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_SessionList_count(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -38779,7 +38956,7 @@ func (ec *executionContext) fieldContext_Tesla_SessionList_count(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_SessionList_total(ctx context.Context, field graphql.CollectedField, obj *model3.SessionList) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_SessionList_total(ctx context.Context, field graphql.CollectedField, obj *model4.SessionList) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_SessionList_total(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -38823,7 +39000,7 @@ func (ec *executionContext) fieldContext_Tesla_SessionList_total(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_SessionList_sessions(ctx context.Context, field graphql.CollectedField, obj *model3.SessionList) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_SessionList_sessions(ctx context.Context, field graphql.CollectedField, obj *model4.SessionList) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_SessionList_sessions(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -38849,7 +39026,7 @@ func (ec *executionContext) _Tesla_SessionList_sessions(ctx context.Context, fie
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model3.Session)
+	res := resTmp.([]*model4.Session)
 	fc.Result = res
 	return ec.marshalNTesla_Session2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSessionᚄ(ctx, field.Selections, res)
 }
@@ -38885,7 +39062,7 @@ func (ec *executionContext) fieldContext_Tesla_SessionList_sessions(_ context.Co
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_SessionList_sort(ctx context.Context, field graphql.CollectedField, obj *model3.SessionList) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_SessionList_sort(ctx context.Context, field graphql.CollectedField, obj *model4.SessionList) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_SessionList_sort(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -38929,7 +39106,7 @@ func (ec *executionContext) fieldContext_Tesla_SessionList_sort(_ context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_SessionList_order(ctx context.Context, field graphql.CollectedField, obj *model3.SessionList) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_SessionList_order(ctx context.Context, field graphql.CollectedField, obj *model4.SessionList) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_SessionList_order(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -38973,7 +39150,7 @@ func (ec *executionContext) fieldContext_Tesla_SessionList_order(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_StepInfo_idx(ctx context.Context, field graphql.CollectedField, obj *model3.StepInfo) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_StepInfo_idx(ctx context.Context, field graphql.CollectedField, obj *model4.StepInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_StepInfo_idx(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -39017,7 +39194,7 @@ func (ec *executionContext) fieldContext_Tesla_StepInfo_idx(_ context.Context, f
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_StepInfo_dir(ctx context.Context, field graphql.CollectedField, obj *model3.StepInfo) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_StepInfo_dir(ctx context.Context, field graphql.CollectedField, obj *model4.StepInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_StepInfo_dir(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -39061,7 +39238,7 @@ func (ec *executionContext) fieldContext_Tesla_StepInfo_dir(_ context.Context, f
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_StepInfo_from(ctx context.Context, field graphql.CollectedField, obj *model3.StepInfo) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_StepInfo_from(ctx context.Context, field graphql.CollectedField, obj *model4.StepInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_StepInfo_from(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -39087,7 +39264,7 @@ func (ec *executionContext) _Tesla_StepInfo_from(ctx context.Context, field grap
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.Position)
+	res := resTmp.(*model4.Position)
 	fc.Result = res
 	return ec.marshalNTesla_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -39111,7 +39288,7 @@ func (ec *executionContext) fieldContext_Tesla_StepInfo_from(_ context.Context, 
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_StepInfo_to(ctx context.Context, field graphql.CollectedField, obj *model3.StepInfo) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_StepInfo_to(ctx context.Context, field graphql.CollectedField, obj *model4.StepInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_StepInfo_to(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -39137,7 +39314,7 @@ func (ec *executionContext) _Tesla_StepInfo_to(ctx context.Context, field graphq
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.Position)
+	res := resTmp.(*model4.Position)
 	fc.Result = res
 	return ec.marshalNTesla_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
@@ -39161,7 +39338,7 @@ func (ec *executionContext) fieldContext_Tesla_StepInfo_to(_ context.Context, fi
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_StepInfo_tileChar(ctx context.Context, field graphql.CollectedField, obj *model3.StepInfo) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_StepInfo_tileChar(ctx context.Context, field graphql.CollectedField, obj *model4.StepInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_StepInfo_tileChar(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -39205,7 +39382,7 @@ func (ec *executionContext) fieldContext_Tesla_StepInfo_tileChar(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_StepInfo_tileType(ctx context.Context, field graphql.CollectedField, obj *model3.StepInfo) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_StepInfo_tileType(ctx context.Context, field graphql.CollectedField, obj *model4.StepInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_StepInfo_tileType(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -39249,7 +39426,7 @@ func (ec *executionContext) fieldContext_Tesla_StepInfo_tileType(_ context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_StepInfo_batteryBefore(ctx context.Context, field graphql.CollectedField, obj *model3.StepInfo) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_StepInfo_batteryBefore(ctx context.Context, field graphql.CollectedField, obj *model4.StepInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_StepInfo_batteryBefore(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -39293,7 +39470,7 @@ func (ec *executionContext) fieldContext_Tesla_StepInfo_batteryBefore(_ context.
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_StepInfo_batteryAfter(ctx context.Context, field graphql.CollectedField, obj *model3.StepInfo) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_StepInfo_batteryAfter(ctx context.Context, field graphql.CollectedField, obj *model4.StepInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_StepInfo_batteryAfter(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -39337,7 +39514,7 @@ func (ec *executionContext) fieldContext_Tesla_StepInfo_batteryAfter(_ context.C
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_StepInfo_success(ctx context.Context, field graphql.CollectedField, obj *model3.StepInfo) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_StepInfo_success(ctx context.Context, field graphql.CollectedField, obj *model4.StepInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_StepInfo_success(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -39381,7 +39558,7 @@ func (ec *executionContext) fieldContext_Tesla_StepInfo_success(_ context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_StepInfo_charged(ctx context.Context, field graphql.CollectedField, obj *model3.StepInfo) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_StepInfo_charged(ctx context.Context, field graphql.CollectedField, obj *model4.StepInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_StepInfo_charged(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -39425,7 +39602,7 @@ func (ec *executionContext) fieldContext_Tesla_StepInfo_charged(_ context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_StepInfo_park(ctx context.Context, field graphql.CollectedField, obj *model3.StepInfo) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_StepInfo_park(ctx context.Context, field graphql.CollectedField, obj *model4.StepInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_StepInfo_park(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -39469,7 +39646,7 @@ func (ec *executionContext) fieldContext_Tesla_StepInfo_park(_ context.Context, 
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_StepInfo_victory(ctx context.Context, field graphql.CollectedField, obj *model3.StepInfo) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_StepInfo_victory(ctx context.Context, field graphql.CollectedField, obj *model4.StepInfo) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_StepInfo_victory(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -39513,7 +39690,7 @@ func (ec *executionContext) fieldContext_Tesla_StepInfo_victory(_ context.Contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_UnifiedSession_sessionId(ctx context.Context, field graphql.CollectedField, obj *model3.UnifiedSession) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_UnifiedSession_sessionId(ctx context.Context, field graphql.CollectedField, obj *model4.UnifiedSession) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_UnifiedSession_sessionId(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -39557,7 +39734,7 @@ func (ec *executionContext) fieldContext_Tesla_UnifiedSession_sessionId(_ contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_UnifiedSession_createdAt(ctx context.Context, field graphql.CollectedField, obj *model3.UnifiedSession) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_UnifiedSession_createdAt(ctx context.Context, field graphql.CollectedField, obj *model4.UnifiedSession) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_UnifiedSession_createdAt(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -39601,7 +39778,7 @@ func (ec *executionContext) fieldContext_Tesla_UnifiedSession_createdAt(_ contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_UnifiedSession_lastActionAt(ctx context.Context, field graphql.CollectedField, obj *model3.UnifiedSession) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_UnifiedSession_lastActionAt(ctx context.Context, field graphql.CollectedField, obj *model4.UnifiedSession) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_UnifiedSession_lastActionAt(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -39645,7 +39822,7 @@ func (ec *executionContext) fieldContext_Tesla_UnifiedSession_lastActionAt(_ con
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_UnifiedSession_gameState(ctx context.Context, field graphql.CollectedField, obj *model3.UnifiedSession) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_UnifiedSession_gameState(ctx context.Context, field graphql.CollectedField, obj *model4.UnifiedSession) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_UnifiedSession_gameState(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -39671,7 +39848,7 @@ func (ec *executionContext) _Tesla_UnifiedSession_gameState(ctx context.Context,
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.GameState)
+	res := resTmp.(*model4.GameState)
 	fc.Result = res
 	return ec.marshalNTesla_GameState2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameState(ctx, field.Selections, res)
 }
@@ -39733,7 +39910,7 @@ func (ec *executionContext) fieldContext_Tesla_UnifiedSession_gameState(_ contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_UnifiedSession_gameMap(ctx context.Context, field graphql.CollectedField, obj *model3.UnifiedSession) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_UnifiedSession_gameMap(ctx context.Context, field graphql.CollectedField, obj *model4.UnifiedSession) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_UnifiedSession_gameMap(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -39759,7 +39936,7 @@ func (ec *executionContext) _Tesla_UnifiedSession_gameMap(ctx context.Context, f
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model3.GameMap)
+	res := resTmp.(*model4.GameMap)
 	fc.Result = res
 	return ec.marshalNTesla_GameMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameMap(ctx, field.Selections, res)
 }
@@ -39799,7 +39976,7 @@ func (ec *executionContext) fieldContext_Tesla_UnifiedSession_gameMap(_ context.
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_UnifiedSessions_mapName(ctx context.Context, field graphql.CollectedField, obj *model3.UnifiedSessions) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_UnifiedSessions_mapName(ctx context.Context, field graphql.CollectedField, obj *model4.UnifiedSessions) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_UnifiedSessions_mapName(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -39843,7 +40020,7 @@ func (ec *executionContext) fieldContext_Tesla_UnifiedSessions_mapName(_ context
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_UnifiedSessions_count(ctx context.Context, field graphql.CollectedField, obj *model3.UnifiedSessions) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_UnifiedSessions_count(ctx context.Context, field graphql.CollectedField, obj *model4.UnifiedSessions) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_UnifiedSessions_count(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -39887,7 +40064,7 @@ func (ec *executionContext) fieldContext_Tesla_UnifiedSessions_count(_ context.C
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_UnifiedSessions_sessions(ctx context.Context, field graphql.CollectedField, obj *model3.UnifiedSessions) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_UnifiedSessions_sessions(ctx context.Context, field graphql.CollectedField, obj *model4.UnifiedSessions) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_UnifiedSessions_sessions(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -39913,7 +40090,7 @@ func (ec *executionContext) _Tesla_UnifiedSessions_sessions(ctx context.Context,
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model3.UnifiedSession)
+	res := resTmp.([]*model4.UnifiedSession)
 	fc.Result = res
 	return ec.marshalNTesla_UnifiedSession2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐUnifiedSessionᚄ(ctx, field.Selections, res)
 }
@@ -39943,7 +40120,7 @@ func (ec *executionContext) fieldContext_Tesla_UnifiedSessions_sessions(_ contex
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_VisitedPark_id(ctx context.Context, field graphql.CollectedField, obj *model3.VisitedPark) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_VisitedPark_id(ctx context.Context, field graphql.CollectedField, obj *model4.VisitedPark) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_VisitedPark_id(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -39987,7 +40164,7 @@ func (ec *executionContext) fieldContext_Tesla_VisitedPark_id(_ context.Context,
 	return fc, nil
 }
 
-func (ec *executionContext) _Tesla_VisitedPark_visited(ctx context.Context, field graphql.CollectedField, obj *model3.VisitedPark) (ret graphql.Marshaler) {
+func (ec *executionContext) _Tesla_VisitedPark_visited(ctx context.Context, field graphql.CollectedField, obj *model4.VisitedPark) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Tesla_VisitedPark_visited(ctx, field)
 	if err != nil {
 		return graphql.Null
@@ -41982,8 +42159,49 @@ func (ec *executionContext) fieldContext___Type_isOneOf(_ context.Context, field
 
 // region    **************************** input.gotpl *****************************
 
-func (ec *executionContext) unmarshalInputMazes_MapInput(ctx context.Context, obj any) (model1.MapInput, error) {
-	var it model1.MapInput
+func (ec *executionContext) unmarshalInputGlobal_AccountInput(ctx context.Context, obj any) (model1.AccountInput, error) {
+	var it model1.AccountInput
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"handle", "displayName", "profilePublic"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "handle":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("handle"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.Handle = data
+		case "displayName":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("displayName"))
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.DisplayName = data
+		case "profilePublic":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("profilePublic"))
+			data, err := ec.unmarshalOBoolean2ᚖbool(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.ProfilePublic = data
+		}
+	}
+
+	return it, nil
+}
+
+func (ec *executionContext) unmarshalInputMazes_MapInput(ctx context.Context, obj any) (model2.MapInput, error) {
+	var it model2.MapInput
 	asMap := map[string]any{}
 	for k, v := range obj.(map[string]any) {
 		asMap[k] = v
@@ -42044,49 +42262,8 @@ func (ec *executionContext) unmarshalInputMazes_MapInput(ctx context.Context, ob
 	return it, nil
 }
 
-func (ec *executionContext) unmarshalInputMotor_AccountInput(ctx context.Context, obj any) (model2.AccountInput, error) {
-	var it model2.AccountInput
-	asMap := map[string]any{}
-	for k, v := range obj.(map[string]any) {
-		asMap[k] = v
-	}
-
-	fieldsInOrder := [...]string{"handle", "displayName", "profilePublic"}
-	for _, k := range fieldsInOrder {
-		v, ok := asMap[k]
-		if !ok {
-			continue
-		}
-		switch k {
-		case "handle":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("handle"))
-			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
-			if err != nil {
-				return it, err
-			}
-			it.Handle = data
-		case "displayName":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("displayName"))
-			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
-			if err != nil {
-				return it, err
-			}
-			it.DisplayName = data
-		case "profilePublic":
-			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("profilePublic"))
-			data, err := ec.unmarshalOBoolean2ᚖbool(ctx, v)
-			if err != nil {
-				return it, err
-			}
-			it.ProfilePublic = data
-		}
-	}
-
-	return it, nil
-}
-
-func (ec *executionContext) unmarshalInputMotor_MapInput(ctx context.Context, obj any) (model2.MapInput, error) {
-	var it model2.MapInput
+func (ec *executionContext) unmarshalInputMotor_MapInput(ctx context.Context, obj any) (model3.MapInput, error) {
+	var it model3.MapInput
 	asMap := map[string]any{}
 	for k, v := range obj.(map[string]any) {
 		asMap[k] = v
@@ -42175,8 +42352,8 @@ func (ec *executionContext) unmarshalInputMotor_MapInput(ctx context.Context, ob
 	return it, nil
 }
 
-func (ec *executionContext) unmarshalInputMotor_ProgramInput(ctx context.Context, obj any) (model2.ProgramInput, error) {
-	var it model2.ProgramInput
+func (ec *executionContext) unmarshalInputMotor_ProgramInput(ctx context.Context, obj any) (model3.ProgramInput, error) {
+	var it model3.ProgramInput
 	asMap := map[string]any{}
 	for k, v := range obj.(map[string]any) {
 		asMap[k] = v
@@ -42209,8 +42386,8 @@ func (ec *executionContext) unmarshalInputMotor_ProgramInput(ctx context.Context
 	return it, nil
 }
 
-func (ec *executionContext) unmarshalInputMotor_SessionClaimInput(ctx context.Context, obj any) (model2.SessionClaimInput, error) {
-	var it model2.SessionClaimInput
+func (ec *executionContext) unmarshalInputMotor_SessionClaimInput(ctx context.Context, obj any) (model3.SessionClaimInput, error) {
+	var it model3.SessionClaimInput
 	asMap := map[string]any{}
 	for k, v := range obj.(map[string]any) {
 		asMap[k] = v
@@ -42243,8 +42420,8 @@ func (ec *executionContext) unmarshalInputMotor_SessionClaimInput(ctx context.Co
 	return it, nil
 }
 
-func (ec *executionContext) unmarshalInputTesla_CellConfigEntryInput(ctx context.Context, obj any) (model3.CellConfigEntryInput, error) {
-	var it model3.CellConfigEntryInput
+func (ec *executionContext) unmarshalInputTesla_CellConfigEntryInput(ctx context.Context, obj any) (model4.CellConfigEntryInput, error) {
+	var it model4.CellConfigEntryInput
 	asMap := map[string]any{}
 	for k, v := range obj.(map[string]any) {
 		asMap[k] = v
@@ -42284,8 +42461,8 @@ func (ec *executionContext) unmarshalInputTesla_CellConfigEntryInput(ctx context
 	return it, nil
 }
 
-func (ec *executionContext) unmarshalInputTesla_GameMapInput(ctx context.Context, obj any) (model3.GameMapInput, error) {
-	var it model3.GameMapInput
+func (ec *executionContext) unmarshalInputTesla_GameMapInput(ctx context.Context, obj any) (model4.GameMapInput, error) {
+	var it model4.GameMapInput
 	asMap := map[string]any{}
 	for k, v := range obj.(map[string]any) {
 		asMap[k] = v
@@ -42364,8 +42541,8 @@ func (ec *executionContext) unmarshalInputTesla_GameMapInput(ctx context.Context
 	return it, nil
 }
 
-func (ec *executionContext) unmarshalInputTesla_GameMapPatchInput(ctx context.Context, obj any) (model3.GameMapPatchInput, error) {
-	var it model3.GameMapPatchInput
+func (ec *executionContext) unmarshalInputTesla_GameMapPatchInput(ctx context.Context, obj any) (model4.GameMapPatchInput, error) {
+	var it model4.GameMapPatchInput
 	asMap := map[string]any{}
 	for k, v := range obj.(map[string]any) {
 		asMap[k] = v
@@ -42440,8 +42617,8 @@ func (ec *executionContext) unmarshalInputTesla_GameMapPatchInput(ctx context.Co
 	return it, nil
 }
 
-func (ec *executionContext) unmarshalInputTesla_LegendEntryInput(ctx context.Context, obj any) (model3.LegendEntryInput, error) {
-	var it model3.LegendEntryInput
+func (ec *executionContext) unmarshalInputTesla_LegendEntryInput(ctx context.Context, obj any) (model4.LegendEntryInput, error) {
+	var it model4.LegendEntryInput
 	asMap := map[string]any{}
 	for k, v := range obj.(map[string]any) {
 		asMap[k] = v
@@ -44417,9 +44594,554 @@ func (ec *executionContext) _Delivery_UnlockView(ctx context.Context, sel ast.Se
 	return out
 }
 
+var global_AuthProviderImplementors = []string{"Global_AuthProvider"}
+
+func (ec *executionContext) _Global_AuthProvider(ctx context.Context, sel ast.SelectionSet, obj *model1.AuthProvider) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, global_AuthProviderImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Global_AuthProvider")
+		case "id":
+			out.Values[i] = ec._Global_AuthProvider_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "name":
+			out.Values[i] = ec._Global_AuthProvider_name(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var global_MutationImplementors = []string{"Global_Mutation"}
+
+func (ec *executionContext) _Global_Mutation(ctx context.Context, sel ast.SelectionSet, obj *graph1.Resolver) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, global_MutationImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Global_Mutation")
+		case "logout":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Global_Mutation_logout(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "registerWithPassword":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Global_Mutation_registerWithPassword(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "logInWithPassword":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Global_Mutation_logInWithPassword(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "updateAccount":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Global_Mutation_updateAccount(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "changePassword":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Global_Mutation_changePassword(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "deleteAccount":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Global_Mutation_deleteAccount(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var global_ProfileImplementors = []string{"Global_Profile"}
+
+func (ec *executionContext) _Global_Profile(ctx context.Context, sel ast.SelectionSet, obj *model1.Profile) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, global_ProfileImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Global_Profile")
+		case "handle":
+			out.Values[i] = ec._Global_Profile_handle(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "displayName":
+			out.Values[i] = ec._Global_Profile_displayName(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "createdAt":
+			out.Values[i] = ec._Global_Profile_createdAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "isMine":
+			out.Values[i] = ec._Global_Profile_isMine(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var global_QueryImplementors = []string{"Global_Query"}
+
+func (ec *executionContext) _Global_Query(ctx context.Context, sel ast.SelectionSet, obj *graph1.Resolver) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, global_QueryImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Global_Query")
+		case "me":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Global_Query_me(ctx, field, obj)
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "authProviders":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Global_Query_authProviders(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "profile":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Global_Query_profile(ctx, field, obj)
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var global_UserImplementors = []string{"Global_User"}
+
+func (ec *executionContext) _Global_User(ctx context.Context, sel ast.SelectionSet, obj *model1.User) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, global_UserImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Global_User")
+		case "handle":
+			out.Values[i] = ec._Global_User_handle(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "displayName":
+			out.Values[i] = ec._Global_User_displayName(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "profilePublic":
+			out.Values[i] = ec._Global_User_profilePublic(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "createdAt":
+			out.Values[i] = ec._Global_User_createdAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "handleChangeableAt":
+			out.Values[i] = ec._Global_User_handleChangeableAt(ctx, field, obj)
+		case "hasPassword":
+			out.Values[i] = ec._Global_User_hasPassword(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var mazes_AdminMapImplementors = []string{"Mazes_AdminMap"}
 
-func (ec *executionContext) _Mazes_AdminMap(ctx context.Context, sel ast.SelectionSet, obj *model1.AdminMap) graphql.Marshaler {
+func (ec *executionContext) _Mazes_AdminMap(ctx context.Context, sel ast.SelectionSet, obj *model2.AdminMap) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, mazes_AdminMapImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -44519,7 +45241,7 @@ func (ec *executionContext) _Mazes_AdminMap(ctx context.Context, sel ast.Selecti
 
 var mazes_GameStateImplementors = []string{"Mazes_GameState"}
 
-func (ec *executionContext) _Mazes_GameState(ctx context.Context, sel ast.SelectionSet, obj *model1.GameState) graphql.Marshaler {
+func (ec *executionContext) _Mazes_GameState(ctx context.Context, sel ast.SelectionSet, obj *model2.GameState) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, mazes_GameStateImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -44575,7 +45297,7 @@ func (ec *executionContext) _Mazes_GameState(ctx context.Context, sel ast.Select
 
 var mazes_LevelViewImplementors = []string{"Mazes_LevelView"}
 
-func (ec *executionContext) _Mazes_LevelView(ctx context.Context, sel ast.SelectionSet, obj *model1.LevelView) graphql.Marshaler {
+func (ec *executionContext) _Mazes_LevelView(ctx context.Context, sel ast.SelectionSet, obj *model2.LevelView) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, mazes_LevelViewImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -44629,7 +45351,7 @@ func (ec *executionContext) _Mazes_LevelView(ctx context.Context, sel ast.Select
 
 var mazes_MapImplementors = []string{"Mazes_Map"}
 
-func (ec *executionContext) _Mazes_Map(ctx context.Context, sel ast.SelectionSet, obj *model1.Map) graphql.Marshaler {
+func (ec *executionContext) _Mazes_Map(ctx context.Context, sel ast.SelectionSet, obj *model2.Map) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, mazes_MapImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -44714,7 +45436,7 @@ func (ec *executionContext) _Mazes_Map(ctx context.Context, sel ast.SelectionSet
 
 var mazes_MapValidationIssueImplementors = []string{"Mazes_MapValidationIssue"}
 
-func (ec *executionContext) _Mazes_MapValidationIssue(ctx context.Context, sel ast.SelectionSet, obj *model1.MapValidationIssue) graphql.Marshaler {
+func (ec *executionContext) _Mazes_MapValidationIssue(ctx context.Context, sel ast.SelectionSet, obj *model2.MapValidationIssue) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, mazes_MapValidationIssueImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -44753,7 +45475,7 @@ func (ec *executionContext) _Mazes_MapValidationIssue(ctx context.Context, sel a
 
 var mazes_MapValidationResultImplementors = []string{"Mazes_MapValidationResult"}
 
-func (ec *executionContext) _Mazes_MapValidationResult(ctx context.Context, sel ast.SelectionSet, obj *model1.MapValidationResult) graphql.Marshaler {
+func (ec *executionContext) _Mazes_MapValidationResult(ctx context.Context, sel ast.SelectionSet, obj *model2.MapValidationResult) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, mazes_MapValidationResultImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -44808,7 +45530,7 @@ func (ec *executionContext) _Mazes_MapValidationResult(ctx context.Context, sel 
 
 var mazes_MoveEventImplementors = []string{"Mazes_MoveEvent"}
 
-func (ec *executionContext) _Mazes_MoveEvent(ctx context.Context, sel ast.SelectionSet, obj *model1.MoveEvent) graphql.Marshaler {
+func (ec *executionContext) _Mazes_MoveEvent(ctx context.Context, sel ast.SelectionSet, obj *model2.MoveEvent) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, mazes_MoveEventImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -44884,7 +45606,7 @@ func (ec *executionContext) _Mazes_MoveEvent(ctx context.Context, sel ast.Select
 
 var mazes_MutationImplementors = []string{"Mazes_Mutation"}
 
-func (ec *executionContext) _Mazes_Mutation(ctx context.Context, sel ast.SelectionSet, obj *graph1.Resolver) graphql.Marshaler {
+func (ec *executionContext) _Mazes_Mutation(ctx context.Context, sel ast.SelectionSet, obj *graph2.Resolver) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, mazes_MutationImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -45278,7 +46000,7 @@ func (ec *executionContext) _Mazes_Mutation(ctx context.Context, sel ast.Selecti
 
 var mazes_PortalImplementors = []string{"Mazes_Portal"}
 
-func (ec *executionContext) _Mazes_Portal(ctx context.Context, sel ast.SelectionSet, obj *model1.Portal) graphql.Marshaler {
+func (ec *executionContext) _Mazes_Portal(ctx context.Context, sel ast.SelectionSet, obj *model2.Portal) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, mazes_PortalImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -45324,7 +46046,7 @@ func (ec *executionContext) _Mazes_Portal(ctx context.Context, sel ast.Selection
 
 var mazes_PositionImplementors = []string{"Mazes_Position"}
 
-func (ec *executionContext) _Mazes_Position(ctx context.Context, sel ast.SelectionSet, obj *model1.Position) graphql.Marshaler {
+func (ec *executionContext) _Mazes_Position(ctx context.Context, sel ast.SelectionSet, obj *model2.Position) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, mazes_PositionImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -45373,7 +46095,7 @@ func (ec *executionContext) _Mazes_Position(ctx context.Context, sel ast.Selecti
 
 var mazes_QueryImplementors = []string{"Mazes_Query"}
 
-func (ec *executionContext) _Mazes_Query(ctx context.Context, sel ast.SelectionSet, obj *graph1.Resolver) graphql.Marshaler {
+func (ec *executionContext) _Mazes_Query(ctx context.Context, sel ast.SelectionSet, obj *graph2.Resolver) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, mazes_QueryImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -45578,7 +46300,7 @@ func (ec *executionContext) _Mazes_Query(ctx context.Context, sel ast.SelectionS
 
 var mazes_SessionImplementors = []string{"Mazes_Session"}
 
-func (ec *executionContext) _Mazes_Session(ctx context.Context, sel ast.SelectionSet, obj *model1.Session) graphql.Marshaler {
+func (ec *executionContext) _Mazes_Session(ctx context.Context, sel ast.SelectionSet, obj *model2.Session) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, mazes_SessionImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -45666,7 +46388,7 @@ func (ec *executionContext) _Mazes_Session(ctx context.Context, sel ast.Selectio
 
 var mazes_SessionUpdateImplementors = []string{"Mazes_SessionUpdate"}
 
-func (ec *executionContext) _Mazes_SessionUpdate(ctx context.Context, sel ast.SelectionSet, obj *model1.SessionUpdate) graphql.Marshaler {
+func (ec *executionContext) _Mazes_SessionUpdate(ctx context.Context, sel ast.SelectionSet, obj *model2.SessionUpdate) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, mazes_SessionUpdateImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -45710,114 +46432,9 @@ func (ec *executionContext) _Mazes_SessionUpdate(ctx context.Context, sel ast.Se
 	return out
 }
 
-var motor_AccountImplementors = []string{"Motor_Account"}
-
-func (ec *executionContext) _Motor_Account(ctx context.Context, sel ast.SelectionSet, obj *model2.Account) graphql.Marshaler {
-	fields := graphql.CollectFields(ec.OperationContext, sel, motor_AccountImplementors)
-
-	out := graphql.NewFieldSet(fields)
-	deferred := make(map[string]*graphql.FieldSet)
-	for i, field := range fields {
-		switch field.Name {
-		case "__typename":
-			out.Values[i] = graphql.MarshalString("Motor_Account")
-		case "handle":
-			out.Values[i] = ec._Motor_Account_handle(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "displayName":
-			out.Values[i] = ec._Motor_Account_displayName(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "profilePublic":
-			out.Values[i] = ec._Motor_Account_profilePublic(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "createdAt":
-			out.Values[i] = ec._Motor_Account_createdAt(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "handleChangeableAt":
-			out.Values[i] = ec._Motor_Account_handleChangeableAt(ctx, field, obj)
-		case "hasPassword":
-			out.Values[i] = ec._Motor_Account_hasPassword(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		default:
-			panic("unknown field " + strconv.Quote(field.Name))
-		}
-	}
-	out.Dispatch(ctx)
-	if out.Invalids > 0 {
-		return graphql.Null
-	}
-
-	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
-
-	for label, dfs := range deferred {
-		ec.processDeferredGroup(graphql.DeferredGroup{
-			Label:    label,
-			Path:     graphql.GetPath(ctx),
-			FieldSet: dfs,
-			Context:  ctx,
-		})
-	}
-
-	return out
-}
-
-var motor_AuthProviderImplementors = []string{"Motor_AuthProvider"}
-
-func (ec *executionContext) _Motor_AuthProvider(ctx context.Context, sel ast.SelectionSet, obj *model2.AuthProvider) graphql.Marshaler {
-	fields := graphql.CollectFields(ec.OperationContext, sel, motor_AuthProviderImplementors)
-
-	out := graphql.NewFieldSet(fields)
-	deferred := make(map[string]*graphql.FieldSet)
-	for i, field := range fields {
-		switch field.Name {
-		case "__typename":
-			out.Values[i] = graphql.MarshalString("Motor_AuthProvider")
-		case "id":
-			out.Values[i] = ec._Motor_AuthProvider_id(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "name":
-			out.Values[i] = ec._Motor_AuthProvider_name(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		default:
-			panic("unknown field " + strconv.Quote(field.Name))
-		}
-	}
-	out.Dispatch(ctx)
-	if out.Invalids > 0 {
-		return graphql.Null
-	}
-
-	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
-
-	for label, dfs := range deferred {
-		ec.processDeferredGroup(graphql.DeferredGroup{
-			Label:    label,
-			Path:     graphql.GetPath(ctx),
-			FieldSet: dfs,
-			Context:  ctx,
-		})
-	}
-
-	return out
-}
-
 var motor_ConveyorImplementors = []string{"Motor_Conveyor"}
 
-func (ec *executionContext) _Motor_Conveyor(ctx context.Context, sel ast.SelectionSet, obj *model2.Conveyor) graphql.Marshaler {
+func (ec *executionContext) _Motor_Conveyor(ctx context.Context, sel ast.SelectionSet, obj *model3.Conveyor) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, motor_ConveyorImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -45861,7 +46478,7 @@ func (ec *executionContext) _Motor_Conveyor(ctx context.Context, sel ast.Selecti
 
 var motor_DoorTileImplementors = []string{"Motor_DoorTile"}
 
-func (ec *executionContext) _Motor_DoorTile(ctx context.Context, sel ast.SelectionSet, obj *model2.DoorTile) graphql.Marshaler {
+func (ec *executionContext) _Motor_DoorTile(ctx context.Context, sel ast.SelectionSet, obj *model3.DoorTile) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, motor_DoorTileImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -45905,7 +46522,7 @@ func (ec *executionContext) _Motor_DoorTile(ctx context.Context, sel ast.Selecti
 
 var motor_FrameImplementors = []string{"Motor_Frame"}
 
-func (ec *executionContext) _Motor_Frame(ctx context.Context, sel ast.SelectionSet, obj *model2.Frame) graphql.Marshaler {
+func (ec *executionContext) _Motor_Frame(ctx context.Context, sel ast.SelectionSet, obj *model3.Frame) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, motor_FrameImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -45949,7 +46566,7 @@ func (ec *executionContext) _Motor_Frame(ctx context.Context, sel ast.SelectionS
 
 var motor_KeyTileImplementors = []string{"Motor_KeyTile"}
 
-func (ec *executionContext) _Motor_KeyTile(ctx context.Context, sel ast.SelectionSet, obj *model2.KeyTile) graphql.Marshaler {
+func (ec *executionContext) _Motor_KeyTile(ctx context.Context, sel ast.SelectionSet, obj *model3.KeyTile) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, motor_KeyTileImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -45993,7 +46610,7 @@ func (ec *executionContext) _Motor_KeyTile(ctx context.Context, sel ast.Selectio
 
 var motor_LeaderboardImplementors = []string{"Motor_Leaderboard"}
 
-func (ec *executionContext) _Motor_Leaderboard(ctx context.Context, sel ast.SelectionSet, obj *model2.Leaderboard) graphql.Marshaler {
+func (ec *executionContext) _Motor_Leaderboard(ctx context.Context, sel ast.SelectionSet, obj *model3.Leaderboard) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, motor_LeaderboardImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -46049,7 +46666,7 @@ func (ec *executionContext) _Motor_Leaderboard(ctx context.Context, sel ast.Sele
 
 var motor_LeaderboardEntryImplementors = []string{"Motor_LeaderboardEntry"}
 
-func (ec *executionContext) _Motor_LeaderboardEntry(ctx context.Context, sel ast.SelectionSet, obj *model2.LeaderboardEntry) graphql.Marshaler {
+func (ec *executionContext) _Motor_LeaderboardEntry(ctx context.Context, sel ast.SelectionSet, obj *model3.LeaderboardEntry) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, motor_LeaderboardEntryImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -46120,7 +46737,7 @@ func (ec *executionContext) _Motor_LeaderboardEntry(ctx context.Context, sel ast
 
 var motor_MapImplementors = []string{"Motor_Map"}
 
-func (ec *executionContext) _Motor_Map(ctx context.Context, sel ast.SelectionSet, obj *model2.Map) graphql.Marshaler {
+func (ec *executionContext) _Motor_Map(ctx context.Context, sel ast.SelectionSet, obj *model3.Map) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, motor_MapImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -46295,7 +46912,7 @@ func (ec *executionContext) _Motor_Map(ctx context.Context, sel ast.SelectionSet
 
 var motor_MapValidationIssueImplementors = []string{"Motor_MapValidationIssue"}
 
-func (ec *executionContext) _Motor_MapValidationIssue(ctx context.Context, sel ast.SelectionSet, obj *model2.MapValidationIssue) graphql.Marshaler {
+func (ec *executionContext) _Motor_MapValidationIssue(ctx context.Context, sel ast.SelectionSet, obj *model3.MapValidationIssue) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, motor_MapValidationIssueImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -46334,7 +46951,7 @@ func (ec *executionContext) _Motor_MapValidationIssue(ctx context.Context, sel a
 
 var motor_MapValidationResultImplementors = []string{"Motor_MapValidationResult"}
 
-func (ec *executionContext) _Motor_MapValidationResult(ctx context.Context, sel ast.SelectionSet, obj *model2.MapValidationResult) graphql.Marshaler {
+func (ec *executionContext) _Motor_MapValidationResult(ctx context.Context, sel ast.SelectionSet, obj *model3.MapValidationResult) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, motor_MapValidationResultImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -46383,7 +47000,7 @@ func (ec *executionContext) _Motor_MapValidationResult(ctx context.Context, sel 
 
 var motor_MirrorImplementors = []string{"Motor_Mirror"}
 
-func (ec *executionContext) _Motor_Mirror(ctx context.Context, sel ast.SelectionSet, obj *model2.Mirror) graphql.Marshaler {
+func (ec *executionContext) _Motor_Mirror(ctx context.Context, sel ast.SelectionSet, obj *model3.Mirror) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, motor_MirrorImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -46427,7 +47044,7 @@ func (ec *executionContext) _Motor_Mirror(ctx context.Context, sel ast.Selection
 
 var motor_MutationImplementors = []string{"Motor_Mutation"}
 
-func (ec *executionContext) _Motor_Mutation(ctx context.Context, sel ast.SelectionSet, obj *graph2.Resolver) graphql.Marshaler {
+func (ec *executionContext) _Motor_Mutation(ctx context.Context, sel ast.SelectionSet, obj *graph3.Resolver) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, motor_MutationImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -46724,222 +47341,6 @@ func (ec *executionContext) _Motor_Mutation(ctx context.Context, sel ast.Selecti
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
-		case "logout":
-			field := field
-
-			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._Motor_Mutation_logout(ctx, field, obj)
-				if res == graphql.Null {
-					atomic.AddUint32(&fs.Invalids, 1)
-				}
-				return res
-			}
-
-			if field.Deferrable != nil {
-				dfs, ok := deferred[field.Deferrable.Label]
-				di := 0
-				if ok {
-					dfs.AddField(field)
-					di = len(dfs.Values) - 1
-				} else {
-					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
-					deferred[field.Deferrable.Label] = dfs
-				}
-				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
-					return innerFunc(ctx, dfs)
-				})
-
-				// don't run the out.Concurrently() call below
-				out.Values[i] = graphql.Null
-				continue
-			}
-
-			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
-		case "registerWithPassword":
-			field := field
-
-			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._Motor_Mutation_registerWithPassword(ctx, field, obj)
-				if res == graphql.Null {
-					atomic.AddUint32(&fs.Invalids, 1)
-				}
-				return res
-			}
-
-			if field.Deferrable != nil {
-				dfs, ok := deferred[field.Deferrable.Label]
-				di := 0
-				if ok {
-					dfs.AddField(field)
-					di = len(dfs.Values) - 1
-				} else {
-					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
-					deferred[field.Deferrable.Label] = dfs
-				}
-				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
-					return innerFunc(ctx, dfs)
-				})
-
-				// don't run the out.Concurrently() call below
-				out.Values[i] = graphql.Null
-				continue
-			}
-
-			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
-		case "logInWithPassword":
-			field := field
-
-			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._Motor_Mutation_logInWithPassword(ctx, field, obj)
-				if res == graphql.Null {
-					atomic.AddUint32(&fs.Invalids, 1)
-				}
-				return res
-			}
-
-			if field.Deferrable != nil {
-				dfs, ok := deferred[field.Deferrable.Label]
-				di := 0
-				if ok {
-					dfs.AddField(field)
-					di = len(dfs.Values) - 1
-				} else {
-					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
-					deferred[field.Deferrable.Label] = dfs
-				}
-				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
-					return innerFunc(ctx, dfs)
-				})
-
-				// don't run the out.Concurrently() call below
-				out.Values[i] = graphql.Null
-				continue
-			}
-
-			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
-		case "updateAccount":
-			field := field
-
-			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._Motor_Mutation_updateAccount(ctx, field, obj)
-				if res == graphql.Null {
-					atomic.AddUint32(&fs.Invalids, 1)
-				}
-				return res
-			}
-
-			if field.Deferrable != nil {
-				dfs, ok := deferred[field.Deferrable.Label]
-				di := 0
-				if ok {
-					dfs.AddField(field)
-					di = len(dfs.Values) - 1
-				} else {
-					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
-					deferred[field.Deferrable.Label] = dfs
-				}
-				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
-					return innerFunc(ctx, dfs)
-				})
-
-				// don't run the out.Concurrently() call below
-				out.Values[i] = graphql.Null
-				continue
-			}
-
-			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
-		case "changePassword":
-			field := field
-
-			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._Motor_Mutation_changePassword(ctx, field, obj)
-				if res == graphql.Null {
-					atomic.AddUint32(&fs.Invalids, 1)
-				}
-				return res
-			}
-
-			if field.Deferrable != nil {
-				dfs, ok := deferred[field.Deferrable.Label]
-				di := 0
-				if ok {
-					dfs.AddField(field)
-					di = len(dfs.Values) - 1
-				} else {
-					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
-					deferred[field.Deferrable.Label] = dfs
-				}
-				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
-					return innerFunc(ctx, dfs)
-				})
-
-				// don't run the out.Concurrently() call below
-				out.Values[i] = graphql.Null
-				continue
-			}
-
-			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
-		case "deleteAccount":
-			field := field
-
-			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._Motor_Mutation_deleteAccount(ctx, field, obj)
-				if res == graphql.Null {
-					atomic.AddUint32(&fs.Invalids, 1)
-				}
-				return res
-			}
-
-			if field.Deferrable != nil {
-				dfs, ok := deferred[field.Deferrable.Label]
-				di := 0
-				if ok {
-					dfs.AddField(field)
-					di = len(dfs.Values) - 1
-				} else {
-					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
-					deferred[field.Deferrable.Label] = dfs
-				}
-				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
-					return innerFunc(ctx, dfs)
-				})
-
-				// don't run the out.Concurrently() call below
-				out.Values[i] = graphql.Null
-				continue
-			}
-
-			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "claimSessions":
 			field := field
 
@@ -47145,7 +47546,7 @@ func (ec *executionContext) _Motor_Mutation(ctx context.Context, sel ast.Selecti
 
 var motor_PlayerRunImplementors = []string{"Motor_PlayerRun"}
 
-func (ec *executionContext) _Motor_PlayerRun(ctx context.Context, sel ast.SelectionSet, obj *model2.PlayerRun) graphql.Marshaler {
+func (ec *executionContext) _Motor_PlayerRun(ctx context.Context, sel ast.SelectionSet, obj *model3.PlayerRun) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, motor_PlayerRunImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -47194,7 +47595,7 @@ func (ec *executionContext) _Motor_PlayerRun(ctx context.Context, sel ast.Select
 
 var motor_PortalImplementors = []string{"Motor_Portal"}
 
-func (ec *executionContext) _Motor_Portal(ctx context.Context, sel ast.SelectionSet, obj *model2.Portal) graphql.Marshaler {
+func (ec *executionContext) _Motor_Portal(ctx context.Context, sel ast.SelectionSet, obj *model3.Portal) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, motor_PortalImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -47238,7 +47639,7 @@ func (ec *executionContext) _Motor_Portal(ctx context.Context, sel ast.Selection
 
 var motor_PositionImplementors = []string{"Motor_Position"}
 
-func (ec *executionContext) _Motor_Position(ctx context.Context, sel ast.SelectionSet, obj *model2.Position) graphql.Marshaler {
+func (ec *executionContext) _Motor_Position(ctx context.Context, sel ast.SelectionSet, obj *model3.Position) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, motor_PositionImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -47280,68 +47681,9 @@ func (ec *executionContext) _Motor_Position(ctx context.Context, sel ast.Selecti
 	return out
 }
 
-var motor_ProfileImplementors = []string{"Motor_Profile"}
-
-func (ec *executionContext) _Motor_Profile(ctx context.Context, sel ast.SelectionSet, obj *model2.Profile) graphql.Marshaler {
-	fields := graphql.CollectFields(ec.OperationContext, sel, motor_ProfileImplementors)
-
-	out := graphql.NewFieldSet(fields)
-	deferred := make(map[string]*graphql.FieldSet)
-	for i, field := range fields {
-		switch field.Name {
-		case "__typename":
-			out.Values[i] = graphql.MarshalString("Motor_Profile")
-		case "handle":
-			out.Values[i] = ec._Motor_Profile_handle(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "displayName":
-			out.Values[i] = ec._Motor_Profile_displayName(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "createdAt":
-			out.Values[i] = ec._Motor_Profile_createdAt(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "isMine":
-			out.Values[i] = ec._Motor_Profile_isMine(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "runs":
-			out.Values[i] = ec._Motor_Profile_runs(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		default:
-			panic("unknown field " + strconv.Quote(field.Name))
-		}
-	}
-	out.Dispatch(ctx)
-	if out.Invalids > 0 {
-		return graphql.Null
-	}
-
-	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
-
-	for label, dfs := range deferred {
-		ec.processDeferredGroup(graphql.DeferredGroup{
-			Label:    label,
-			Path:     graphql.GetPath(ctx),
-			FieldSet: dfs,
-			Context:  ctx,
-		})
-	}
-
-	return out
-}
-
 var motor_ProgramImplementors = []string{"Motor_Program"}
 
-func (ec *executionContext) _Motor_Program(ctx context.Context, sel ast.SelectionSet, obj *model2.Program) graphql.Marshaler {
+func (ec *executionContext) _Motor_Program(ctx context.Context, sel ast.SelectionSet, obj *model3.Program) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, motor_ProgramImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -47385,7 +47727,7 @@ func (ec *executionContext) _Motor_Program(ctx context.Context, sel ast.Selectio
 
 var motor_QueryImplementors = []string{"Motor_Query"}
 
-func (ec *executionContext) _Motor_Query(ctx context.Context, sel ast.SelectionSet, obj *graph2.Resolver) graphql.Marshaler {
+func (ec *executionContext) _Motor_Query(ctx context.Context, sel ast.SelectionSet, obj *graph3.Resolver) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, motor_QueryImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -47394,108 +47736,6 @@ func (ec *executionContext) _Motor_Query(ctx context.Context, sel ast.SelectionS
 		switch field.Name {
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("Motor_Query")
-		case "me":
-			field := field
-
-			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._Motor_Query_me(ctx, field, obj)
-				return res
-			}
-
-			if field.Deferrable != nil {
-				dfs, ok := deferred[field.Deferrable.Label]
-				di := 0
-				if ok {
-					dfs.AddField(field)
-					di = len(dfs.Values) - 1
-				} else {
-					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
-					deferred[field.Deferrable.Label] = dfs
-				}
-				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
-					return innerFunc(ctx, dfs)
-				})
-
-				// don't run the out.Concurrently() call below
-				out.Values[i] = graphql.Null
-				continue
-			}
-
-			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
-		case "authProviders":
-			field := field
-
-			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._Motor_Query_authProviders(ctx, field, obj)
-				if res == graphql.Null {
-					atomic.AddUint32(&fs.Invalids, 1)
-				}
-				return res
-			}
-
-			if field.Deferrable != nil {
-				dfs, ok := deferred[field.Deferrable.Label]
-				di := 0
-				if ok {
-					dfs.AddField(field)
-					di = len(dfs.Values) - 1
-				} else {
-					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
-					deferred[field.Deferrable.Label] = dfs
-				}
-				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
-					return innerFunc(ctx, dfs)
-				})
-
-				// don't run the out.Concurrently() call below
-				out.Values[i] = graphql.Null
-				continue
-			}
-
-			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
-		case "profile":
-			field := field
-
-			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
-				defer func() {
-					if r := recover(); r != nil {
-						ec.Error(ctx, ec.Recover(ctx, r))
-					}
-				}()
-				res = ec._Motor_Query_profile(ctx, field, obj)
-				return res
-			}
-
-			if field.Deferrable != nil {
-				dfs, ok := deferred[field.Deferrable.Label]
-				di := 0
-				if ok {
-					dfs.AddField(field)
-					di = len(dfs.Values) - 1
-				} else {
-					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
-					deferred[field.Deferrable.Label] = dfs
-				}
-				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
-					return innerFunc(ctx, dfs)
-				})
-
-				// don't run the out.Concurrently() call below
-				out.Values[i] = graphql.Null
-				continue
-			}
-
-			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "maps":
 			field := field
 
@@ -47739,6 +47979,42 @@ func (ec *executionContext) _Motor_Query(ctx context.Context, sel ast.SelectionS
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "playerRunsFor":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Motor_Query_playerRunsFor(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -47764,7 +48040,7 @@ func (ec *executionContext) _Motor_Query(ctx context.Context, sel ast.SelectionS
 
 var motor_SessionImplementors = []string{"Motor_Session"}
 
-func (ec *executionContext) _Motor_Session(ctx context.Context, sel ast.SelectionSet, obj *model2.Session) graphql.Marshaler {
+func (ec *executionContext) _Motor_Session(ctx context.Context, sel ast.SelectionSet, obj *model3.Session) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, motor_SessionImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -47861,7 +48137,7 @@ func (ec *executionContext) _Motor_Session(ctx context.Context, sel ast.Selectio
 
 var motor_SessionClaimResultImplementors = []string{"Motor_SessionClaimResult"}
 
-func (ec *executionContext) _Motor_SessionClaimResult(ctx context.Context, sel ast.SelectionSet, obj *model2.SessionClaimResult) graphql.Marshaler {
+func (ec *executionContext) _Motor_SessionClaimResult(ctx context.Context, sel ast.SelectionSet, obj *model3.SessionClaimResult) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, motor_SessionClaimResultImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -47905,7 +48181,7 @@ func (ec *executionContext) _Motor_SessionClaimResult(ctx context.Context, sel a
 
 var motor_SessionUpdateImplementors = []string{"Motor_SessionUpdate"}
 
-func (ec *executionContext) _Motor_SessionUpdate(ctx context.Context, sel ast.SelectionSet, obj *model2.SessionUpdate) graphql.Marshaler {
+func (ec *executionContext) _Motor_SessionUpdate(ctx context.Context, sel ast.SelectionSet, obj *model3.SessionUpdate) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, motor_SessionUpdateImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -47951,7 +48227,7 @@ func (ec *executionContext) _Motor_SessionUpdate(ctx context.Context, sel ast.Se
 
 var motor_StepEventImplementors = []string{"Motor_StepEvent"}
 
-func (ec *executionContext) _Motor_StepEvent(ctx context.Context, sel ast.SelectionSet, obj *model2.StepEvent) graphql.Marshaler {
+func (ec *executionContext) _Motor_StepEvent(ctx context.Context, sel ast.SelectionSet, obj *model3.StepEvent) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, motor_StepEventImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -48068,7 +48344,7 @@ func (ec *executionContext) _Motor_StepEvent(ctx context.Context, sel ast.Select
 
 var motor_VMStateImplementors = []string{"Motor_VMState"}
 
-func (ec *executionContext) _Motor_VMState(ctx context.Context, sel ast.SelectionSet, obj *model2.VMState) graphql.Marshaler {
+func (ec *executionContext) _Motor_VMState(ctx context.Context, sel ast.SelectionSet, obj *model3.VMState) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, motor_VMStateImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -48161,6 +48437,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		switch field.Name {
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("Mutation")
+		case "account":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_account(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "delivery":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_delivery(ctx, field)
@@ -48231,6 +48514,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 		switch field.Name {
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("Query")
+		case "account":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_account(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "delivery":
 			field := field
 
@@ -48380,7 +48685,7 @@ func (ec *executionContext) _Subscription(ctx context.Context, sel ast.Selection
 
 var tesla_AttemptInfoImplementors = []string{"Tesla_AttemptInfo"}
 
-func (ec *executionContext) _Tesla_AttemptInfo(ctx context.Context, sel ast.SelectionSet, obj *model3.AttemptInfo) graphql.Marshaler {
+func (ec *executionContext) _Tesla_AttemptInfo(ctx context.Context, sel ast.SelectionSet, obj *model4.AttemptInfo) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, tesla_AttemptInfoImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -48439,7 +48744,7 @@ func (ec *executionContext) _Tesla_AttemptInfo(ctx context.Context, sel ast.Sele
 
 var tesla_BulkMoveResultImplementors = []string{"Tesla_BulkMoveResult"}
 
-func (ec *executionContext) _Tesla_BulkMoveResult(ctx context.Context, sel ast.SelectionSet, obj *model3.BulkMoveResult) graphql.Marshaler {
+func (ec *executionContext) _Tesla_BulkMoveResult(ctx context.Context, sel ast.SelectionSet, obj *model4.BulkMoveResult) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, tesla_BulkMoveResultImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -48585,7 +48890,7 @@ func (ec *executionContext) _Tesla_BulkMoveResult(ctx context.Context, sel ast.S
 
 var tesla_CellImplementors = []string{"Tesla_Cell"}
 
-func (ec *executionContext) _Tesla_Cell(ctx context.Context, sel ast.SelectionSet, obj *model3.Cell) graphql.Marshaler {
+func (ec *executionContext) _Tesla_Cell(ctx context.Context, sel ast.SelectionSet, obj *model4.Cell) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, tesla_CellImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -48649,7 +48954,7 @@ func (ec *executionContext) _Tesla_Cell(ctx context.Context, sel ast.SelectionSe
 
 var tesla_CellConfigEntryImplementors = []string{"Tesla_CellConfigEntry"}
 
-func (ec *executionContext) _Tesla_CellConfigEntry(ctx context.Context, sel ast.SelectionSet, obj *model3.CellConfigEntry) graphql.Marshaler {
+func (ec *executionContext) _Tesla_CellConfigEntry(ctx context.Context, sel ast.SelectionSet, obj *model4.CellConfigEntry) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, tesla_CellConfigEntryImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -48698,7 +49003,7 @@ func (ec *executionContext) _Tesla_CellConfigEntry(ctx context.Context, sel ast.
 
 var tesla_DeleteSessionResultImplementors = []string{"Tesla_DeleteSessionResult"}
 
-func (ec *executionContext) _Tesla_DeleteSessionResult(ctx context.Context, sel ast.SelectionSet, obj *model3.DeleteSessionResult) graphql.Marshaler {
+func (ec *executionContext) _Tesla_DeleteSessionResult(ctx context.Context, sel ast.SelectionSet, obj *model4.DeleteSessionResult) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, tesla_DeleteSessionResultImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -48737,7 +49042,7 @@ func (ec *executionContext) _Tesla_DeleteSessionResult(ctx context.Context, sel 
 
 var tesla_GameEventImplementors = []string{"Tesla_GameEvent"}
 
-func (ec *executionContext) _Tesla_GameEvent(ctx context.Context, sel ast.SelectionSet, obj *model3.GameEvent) graphql.Marshaler {
+func (ec *executionContext) _Tesla_GameEvent(ctx context.Context, sel ast.SelectionSet, obj *model4.GameEvent) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, tesla_GameEventImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -48791,7 +49096,7 @@ func (ec *executionContext) _Tesla_GameEvent(ctx context.Context, sel ast.Select
 
 var tesla_GameMapImplementors = []string{"Tesla_GameMap"}
 
-func (ec *executionContext) _Tesla_GameMap(ctx context.Context, sel ast.SelectionSet, obj *model3.GameMap) graphql.Marshaler {
+func (ec *executionContext) _Tesla_GameMap(ctx context.Context, sel ast.SelectionSet, obj *model4.GameMap) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, tesla_GameMapImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -48903,7 +49208,7 @@ func (ec *executionContext) _Tesla_GameMap(ctx context.Context, sel ast.Selectio
 
 var tesla_GameStateImplementors = []string{"Tesla_GameState"}
 
-func (ec *executionContext) _Tesla_GameState(ctx context.Context, sel ast.SelectionSet, obj *model3.GameState) graphql.Marshaler {
+func (ec *executionContext) _Tesla_GameState(ctx context.Context, sel ast.SelectionSet, obj *model4.GameState) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, tesla_GameStateImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -49073,7 +49378,7 @@ func (ec *executionContext) _Tesla_GameState(ctx context.Context, sel ast.Select
 
 var tesla_HistoryResponseImplementors = []string{"Tesla_HistoryResponse"}
 
-func (ec *executionContext) _Tesla_HistoryResponse(ctx context.Context, sel ast.SelectionSet, obj *model3.HistoryResponse) graphql.Marshaler {
+func (ec *executionContext) _Tesla_HistoryResponse(ctx context.Context, sel ast.SelectionSet, obj *model4.HistoryResponse) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, tesla_HistoryResponseImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -49142,7 +49447,7 @@ func (ec *executionContext) _Tesla_HistoryResponse(ctx context.Context, sel ast.
 
 var tesla_LegendEntryImplementors = []string{"Tesla_LegendEntry"}
 
-func (ec *executionContext) _Tesla_LegendEntry(ctx context.Context, sel ast.SelectionSet, obj *model3.LegendEntry) graphql.Marshaler {
+func (ec *executionContext) _Tesla_LegendEntry(ctx context.Context, sel ast.SelectionSet, obj *model4.LegendEntry) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, tesla_LegendEntryImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -49186,7 +49491,7 @@ func (ec *executionContext) _Tesla_LegendEntry(ctx context.Context, sel ast.Sele
 
 var tesla_MapInfoImplementors = []string{"Tesla_MapInfo"}
 
-func (ec *executionContext) _Tesla_MapInfo(ctx context.Context, sel ast.SelectionSet, obj *model3.MapInfo) graphql.Marshaler {
+func (ec *executionContext) _Tesla_MapInfo(ctx context.Context, sel ast.SelectionSet, obj *model4.MapInfo) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, tesla_MapInfoImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -49255,7 +49560,7 @@ func (ec *executionContext) _Tesla_MapInfo(ctx context.Context, sel ast.Selectio
 
 var tesla_MapValidationResultImplementors = []string{"Tesla_MapValidationResult"}
 
-func (ec *executionContext) _Tesla_MapValidationResult(ctx context.Context, sel ast.SelectionSet, obj *model3.MapValidationResult) graphql.Marshaler {
+func (ec *executionContext) _Tesla_MapValidationResult(ctx context.Context, sel ast.SelectionSet, obj *model4.MapValidationResult) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, tesla_MapValidationResultImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -49306,7 +49611,7 @@ func (ec *executionContext) _Tesla_MapValidationResult(ctx context.Context, sel 
 
 var tesla_MoveHistoryEntryImplementors = []string{"Tesla_MoveHistoryEntry"}
 
-func (ec *executionContext) _Tesla_MoveHistoryEntry(ctx context.Context, sel ast.SelectionSet, obj *model3.MoveHistoryEntry) graphql.Marshaler {
+func (ec *executionContext) _Tesla_MoveHistoryEntry(ctx context.Context, sel ast.SelectionSet, obj *model4.MoveHistoryEntry) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, tesla_MoveHistoryEntryImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -49375,7 +49680,7 @@ func (ec *executionContext) _Tesla_MoveHistoryEntry(ctx context.Context, sel ast
 
 var tesla_MoveResultImplementors = []string{"Tesla_MoveResult"}
 
-func (ec *executionContext) _Tesla_MoveResult(ctx context.Context, sel ast.SelectionSet, obj *model3.MoveResult) graphql.Marshaler {
+func (ec *executionContext) _Tesla_MoveResult(ctx context.Context, sel ast.SelectionSet, obj *model4.MoveResult) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, tesla_MoveResultImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -49433,7 +49738,7 @@ func (ec *executionContext) _Tesla_MoveResult(ctx context.Context, sel ast.Selec
 
 var tesla_MutationImplementors = []string{"Tesla_Mutation"}
 
-func (ec *executionContext) _Tesla_Mutation(ctx context.Context, sel ast.SelectionSet, obj *graph3.Resolver) graphql.Marshaler {
+func (ec *executionContext) _Tesla_Mutation(ctx context.Context, sel ast.SelectionSet, obj *graph4.Resolver) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, tesla_MutationImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -49827,7 +50132,7 @@ func (ec *executionContext) _Tesla_Mutation(ctx context.Context, sel ast.Selecti
 
 var tesla_PositionImplementors = []string{"Tesla_Position"}
 
-func (ec *executionContext) _Tesla_Position(ctx context.Context, sel ast.SelectionSet, obj *model3.Position) graphql.Marshaler {
+func (ec *executionContext) _Tesla_Position(ctx context.Context, sel ast.SelectionSet, obj *model4.Position) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, tesla_PositionImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -49871,7 +50176,7 @@ func (ec *executionContext) _Tesla_Position(ctx context.Context, sel ast.Selecti
 
 var tesla_QueryImplementors = []string{"Tesla_Query"}
 
-func (ec *executionContext) _Tesla_Query(ctx context.Context, sel ast.SelectionSet, obj *graph3.Resolver) graphql.Marshaler {
+func (ec *executionContext) _Tesla_Query(ctx context.Context, sel ast.SelectionSet, obj *graph4.Resolver) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, tesla_QueryImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -50157,7 +50462,7 @@ func (ec *executionContext) _Tesla_Query(ctx context.Context, sel ast.SelectionS
 
 var tesla_SessionImplementors = []string{"Tesla_Session"}
 
-func (ec *executionContext) _Tesla_Session(ctx context.Context, sel ast.SelectionSet, obj *model3.Session) graphql.Marshaler {
+func (ec *executionContext) _Tesla_Session(ctx context.Context, sel ast.SelectionSet, obj *model4.Session) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, tesla_SessionImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -50225,7 +50530,7 @@ func (ec *executionContext) _Tesla_Session(ctx context.Context, sel ast.Selectio
 
 var tesla_SessionListImplementors = []string{"Tesla_SessionList"}
 
-func (ec *executionContext) _Tesla_SessionList(ctx context.Context, sel ast.SelectionSet, obj *model3.SessionList) graphql.Marshaler {
+func (ec *executionContext) _Tesla_SessionList(ctx context.Context, sel ast.SelectionSet, obj *model4.SessionList) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, tesla_SessionListImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -50284,7 +50589,7 @@ func (ec *executionContext) _Tesla_SessionList(ctx context.Context, sel ast.Sele
 
 var tesla_StepInfoImplementors = []string{"Tesla_StepInfo"}
 
-func (ec *executionContext) _Tesla_StepInfo(ctx context.Context, sel ast.SelectionSet, obj *model3.StepInfo) graphql.Marshaler {
+func (ec *executionContext) _Tesla_StepInfo(ctx context.Context, sel ast.SelectionSet, obj *model4.StepInfo) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, tesla_StepInfoImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -50378,7 +50683,7 @@ func (ec *executionContext) _Tesla_StepInfo(ctx context.Context, sel ast.Selecti
 
 var tesla_UnifiedSessionImplementors = []string{"Tesla_UnifiedSession"}
 
-func (ec *executionContext) _Tesla_UnifiedSession(ctx context.Context, sel ast.SelectionSet, obj *model3.UnifiedSession) graphql.Marshaler {
+func (ec *executionContext) _Tesla_UnifiedSession(ctx context.Context, sel ast.SelectionSet, obj *model4.UnifiedSession) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, tesla_UnifiedSessionImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -50437,7 +50742,7 @@ func (ec *executionContext) _Tesla_UnifiedSession(ctx context.Context, sel ast.S
 
 var tesla_UnifiedSessionsImplementors = []string{"Tesla_UnifiedSessions"}
 
-func (ec *executionContext) _Tesla_UnifiedSessions(ctx context.Context, sel ast.SelectionSet, obj *model3.UnifiedSessions) graphql.Marshaler {
+func (ec *executionContext) _Tesla_UnifiedSessions(ctx context.Context, sel ast.SelectionSet, obj *model4.UnifiedSessions) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, tesla_UnifiedSessionsImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -50486,7 +50791,7 @@ func (ec *executionContext) _Tesla_UnifiedSessions(ctx context.Context, sel ast.
 
 var tesla_VisitedParkImplementors = []string{"Tesla_VisitedPark"}
 
-func (ec *executionContext) _Tesla_VisitedPark(ctx context.Context, sel ast.SelectionSet, obj *model3.VisitedPark) graphql.Marshaler {
+func (ec *executionContext) _Tesla_VisitedPark(ctx context.Context, sel ast.SelectionSet, obj *model4.VisitedPark) graphql.Marshaler {
 	fields := graphql.CollectFields(ec.OperationContext, sel, tesla_VisitedParkImplementors)
 
 	out := graphql.NewFieldSet(fields)
@@ -51613,6 +51918,107 @@ func (ec *executionContext) marshalNFloat2float64(ctx context.Context, sel ast.S
 	return res
 }
 
+func (ec *executionContext) unmarshalNGlobal_AccountInput2githubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚋmodelᚐAccountInput(ctx context.Context, v any) (model1.AccountInput, error) {
+	res, err := ec.unmarshalInputGlobal_AccountInput(ctx, v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNGlobal_AuthProvider2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚋmodelᚐAuthProviderᚄ(ctx context.Context, sel ast.SelectionSet, v []*model1.AuthProvider) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNGlobal_AuthProvider2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚋmodelᚐAuthProvider(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNGlobal_AuthProvider2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚋmodelᚐAuthProvider(ctx context.Context, sel ast.SelectionSet, v *model1.AuthProvider) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Global_AuthProvider(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNGlobal_Mutation2githubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v graph1.Resolver) graphql.Marshaler {
+	return ec._Global_Mutation(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNGlobal_Mutation2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v *graph1.Resolver) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Global_Mutation(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNGlobal_Query2githubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v graph1.Resolver) graphql.Marshaler {
+	return ec._Global_Query(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNGlobal_Query2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v *graph1.Resolver) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Global_Query(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNGlobal_User2githubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚋmodelᚐUser(ctx context.Context, sel ast.SelectionSet, v model1.User) graphql.Marshaler {
+	return ec._Global_User(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNGlobal_User2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚋmodelᚐUser(ctx context.Context, sel ast.SelectionSet, v *model1.User) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Global_User(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalNID2string(ctx context.Context, v any) (string, error) {
 	res, err := graphql.UnmarshalID(v)
 	return res, graphql.ErrorOnPath(ctx, err)
@@ -51705,11 +52111,11 @@ func (ec *executionContext) marshalNInt2ᚕintᚄ(ctx context.Context, sel ast.S
 	return ret
 }
 
-func (ec *executionContext) marshalNMazes_AdminMap2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐAdminMap(ctx context.Context, sel ast.SelectionSet, v model1.AdminMap) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_AdminMap2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐAdminMap(ctx context.Context, sel ast.SelectionSet, v model2.AdminMap) graphql.Marshaler {
 	return ec._Mazes_AdminMap(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNMazes_AdminMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐAdminMap(ctx context.Context, sel ast.SelectionSet, v *model1.AdminMap) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_AdminMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐAdminMap(ctx context.Context, sel ast.SelectionSet, v *model2.AdminMap) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -51719,21 +52125,21 @@ func (ec *executionContext) marshalNMazes_AdminMap2ᚖgithubᚗcomᚋwricardoᚋ
 	return ec._Mazes_AdminMap(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNMazes_Direction2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐDirection(ctx context.Context, v any) (model1.Direction, error) {
-	var res model1.Direction
+func (ec *executionContext) unmarshalNMazes_Direction2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐDirection(ctx context.Context, v any) (model2.Direction, error) {
+	var res model2.Direction
 	err := res.UnmarshalGQL(v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNMazes_Direction2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐDirection(ctx context.Context, sel ast.SelectionSet, v model1.Direction) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_Direction2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐDirection(ctx context.Context, sel ast.SelectionSet, v model2.Direction) graphql.Marshaler {
 	return v
 }
 
-func (ec *executionContext) unmarshalNMazes_Direction2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐDirectionᚄ(ctx context.Context, v any) ([]model1.Direction, error) {
+func (ec *executionContext) unmarshalNMazes_Direction2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐDirectionᚄ(ctx context.Context, v any) ([]model2.Direction, error) {
 	var vSlice []any
 	vSlice = graphql.CoerceList(v)
 	var err error
-	res := make([]model1.Direction, len(vSlice))
+	res := make([]model2.Direction, len(vSlice))
 	for i := range vSlice {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
 		res[i], err = ec.unmarshalNMazes_Direction2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐDirection(ctx, vSlice[i])
@@ -51744,7 +52150,7 @@ func (ec *executionContext) unmarshalNMazes_Direction2ᚕgithubᚗcomᚋwricardo
 	return res, nil
 }
 
-func (ec *executionContext) marshalNMazes_Direction2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐDirectionᚄ(ctx context.Context, sel ast.SelectionSet, v []model1.Direction) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_Direction2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐDirectionᚄ(ctx context.Context, sel ast.SelectionSet, v []model2.Direction) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -51788,7 +52194,7 @@ func (ec *executionContext) marshalNMazes_Direction2ᚕgithubᚗcomᚋwricardo�
 	return ret
 }
 
-func (ec *executionContext) marshalNMazes_GameState2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐGameState(ctx context.Context, sel ast.SelectionSet, v *model1.GameState) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_GameState2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐGameState(ctx context.Context, sel ast.SelectionSet, v *model2.GameState) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -51798,7 +52204,7 @@ func (ec *executionContext) marshalNMazes_GameState2ᚖgithubᚗcomᚋwricardo�
 	return ec._Mazes_GameState(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNMazes_LevelView2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐLevelView(ctx context.Context, sel ast.SelectionSet, v *model1.LevelView) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_LevelView2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐLevelView(ctx context.Context, sel ast.SelectionSet, v *model2.LevelView) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -51808,7 +52214,7 @@ func (ec *executionContext) marshalNMazes_LevelView2ᚖgithubᚗcomᚋwricardo�
 	return ec._Mazes_LevelView(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNMazes_Map2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapᚄ(ctx context.Context, sel ast.SelectionSet, v []*model1.Map) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_Map2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapᚄ(ctx context.Context, sel ast.SelectionSet, v []*model2.Map) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -51852,7 +52258,7 @@ func (ec *executionContext) marshalNMazes_Map2ᚕᚖgithubᚗcomᚋwricardoᚋdr
 	return ret
 }
 
-func (ec *executionContext) marshalNMazes_Map2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMap(ctx context.Context, sel ast.SelectionSet, v *model1.Map) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_Map2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMap(ctx context.Context, sel ast.SelectionSet, v *model2.Map) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -51862,12 +52268,12 @@ func (ec *executionContext) marshalNMazes_Map2ᚖgithubᚗcomᚋwricardoᚋdrbra
 	return ec._Mazes_Map(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNMazes_MapInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapInput(ctx context.Context, v any) (model1.MapInput, error) {
+func (ec *executionContext) unmarshalNMazes_MapInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapInput(ctx context.Context, v any) (model2.MapInput, error) {
 	res, err := ec.unmarshalInputMazes_MapInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNMazes_MapValidationIssue2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapValidationIssueᚄ(ctx context.Context, sel ast.SelectionSet, v []*model1.MapValidationIssue) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_MapValidationIssue2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapValidationIssueᚄ(ctx context.Context, sel ast.SelectionSet, v []*model2.MapValidationIssue) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -51911,7 +52317,7 @@ func (ec *executionContext) marshalNMazes_MapValidationIssue2ᚕᚖgithubᚗcom�
 	return ret
 }
 
-func (ec *executionContext) marshalNMazes_MapValidationIssue2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapValidationIssue(ctx context.Context, sel ast.SelectionSet, v *model1.MapValidationIssue) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_MapValidationIssue2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapValidationIssue(ctx context.Context, sel ast.SelectionSet, v *model2.MapValidationIssue) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -51921,11 +52327,11 @@ func (ec *executionContext) marshalNMazes_MapValidationIssue2ᚖgithubᚗcomᚋw
 	return ec._Mazes_MapValidationIssue(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNMazes_MapValidationResult2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapValidationResult(ctx context.Context, sel ast.SelectionSet, v model1.MapValidationResult) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_MapValidationResult2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapValidationResult(ctx context.Context, sel ast.SelectionSet, v model2.MapValidationResult) graphql.Marshaler {
 	return ec._Mazes_MapValidationResult(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNMazes_MapValidationResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapValidationResult(ctx context.Context, sel ast.SelectionSet, v *model1.MapValidationResult) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_MapValidationResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapValidationResult(ctx context.Context, sel ast.SelectionSet, v *model2.MapValidationResult) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -51935,11 +52341,11 @@ func (ec *executionContext) marshalNMazes_MapValidationResult2ᚖgithubᚗcomᚋ
 	return ec._Mazes_MapValidationResult(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNMazes_Mutation2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v graph1.Resolver) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_Mutation2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v graph2.Resolver) graphql.Marshaler {
 	return ec._Mazes_Mutation(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNMazes_Mutation2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v *graph1.Resolver) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_Mutation2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v *graph2.Resolver) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -51949,7 +52355,7 @@ func (ec *executionContext) marshalNMazes_Mutation2ᚖgithubᚗcomᚋwricardoᚋ
 	return ec._Mazes_Mutation(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNMazes_Portal2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPortalᚄ(ctx context.Context, sel ast.SelectionSet, v []*model1.Portal) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_Portal2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPortalᚄ(ctx context.Context, sel ast.SelectionSet, v []*model2.Portal) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -51993,7 +52399,7 @@ func (ec *executionContext) marshalNMazes_Portal2ᚕᚖgithubᚗcomᚋwricardo�
 	return ret
 }
 
-func (ec *executionContext) marshalNMazes_Portal2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPortal(ctx context.Context, sel ast.SelectionSet, v *model1.Portal) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_Portal2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPortal(ctx context.Context, sel ast.SelectionSet, v *model2.Portal) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -52003,7 +52409,7 @@ func (ec *executionContext) marshalNMazes_Portal2ᚖgithubᚗcomᚋwricardoᚋdr
 	return ec._Mazes_Portal(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNMazes_Position2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPositionᚄ(ctx context.Context, sel ast.SelectionSet, v []*model1.Position) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_Position2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPositionᚄ(ctx context.Context, sel ast.SelectionSet, v []*model2.Position) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -52047,7 +52453,7 @@ func (ec *executionContext) marshalNMazes_Position2ᚕᚖgithubᚗcomᚋwricardo
 	return ret
 }
 
-func (ec *executionContext) marshalNMazes_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPosition(ctx context.Context, sel ast.SelectionSet, v *model1.Position) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPosition(ctx context.Context, sel ast.SelectionSet, v *model2.Position) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -52057,11 +52463,11 @@ func (ec *executionContext) marshalNMazes_Position2ᚖgithubᚗcomᚋwricardoᚋ
 	return ec._Mazes_Position(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNMazes_Query2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v graph1.Resolver) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_Query2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v graph2.Resolver) graphql.Marshaler {
 	return ec._Mazes_Query(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNMazes_Query2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v *graph1.Resolver) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_Query2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v *graph2.Resolver) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -52071,11 +52477,11 @@ func (ec *executionContext) marshalNMazes_Query2ᚖgithubᚗcomᚋwricardoᚋdrb
 	return ec._Mazes_Query(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNMazes_Session2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx context.Context, sel ast.SelectionSet, v model1.Session) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_Session2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx context.Context, sel ast.SelectionSet, v model2.Session) graphql.Marshaler {
 	return ec._Mazes_Session(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNMazes_Session2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSessionᚄ(ctx context.Context, sel ast.SelectionSet, v []*model1.Session) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_Session2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSessionᚄ(ctx context.Context, sel ast.SelectionSet, v []*model2.Session) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -52119,7 +52525,7 @@ func (ec *executionContext) marshalNMazes_Session2ᚕᚖgithubᚗcomᚋwricardo�
 	return ret
 }
 
-func (ec *executionContext) marshalNMazes_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx context.Context, sel ast.SelectionSet, v *model1.Session) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx context.Context, sel ast.SelectionSet, v *model2.Session) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -52129,11 +52535,11 @@ func (ec *executionContext) marshalNMazes_Session2ᚖgithubᚗcomᚋwricardoᚋd
 	return ec._Mazes_Session(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNMazes_SessionUpdate2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSessionUpdate(ctx context.Context, sel ast.SelectionSet, v model1.SessionUpdate) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_SessionUpdate2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSessionUpdate(ctx context.Context, sel ast.SelectionSet, v model2.SessionUpdate) graphql.Marshaler {
 	return ec._Mazes_SessionUpdate(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNMazes_SessionUpdate2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSessionUpdate(ctx context.Context, sel ast.SelectionSet, v *model1.SessionUpdate) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_SessionUpdate2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSessionUpdate(ctx context.Context, sel ast.SelectionSet, v *model2.SessionUpdate) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -52143,110 +52549,37 @@ func (ec *executionContext) marshalNMazes_SessionUpdate2ᚖgithubᚗcomᚋwricar
 	return ec._Mazes_SessionUpdate(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNMazes_Status2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐStatus(ctx context.Context, v any) (model1.Status, error) {
-	var res model1.Status
+func (ec *executionContext) unmarshalNMazes_Status2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐStatus(ctx context.Context, v any) (model2.Status, error) {
+	var res model2.Status
 	err := res.UnmarshalGQL(v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNMazes_Status2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐStatus(ctx context.Context, sel ast.SelectionSet, v model1.Status) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_Status2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐStatus(ctx context.Context, sel ast.SelectionSet, v model2.Status) graphql.Marshaler {
 	return v
 }
 
-func (ec *executionContext) unmarshalNMazes_Via2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐVia(ctx context.Context, v any) (model1.Via, error) {
-	var res model1.Via
+func (ec *executionContext) unmarshalNMazes_Via2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐVia(ctx context.Context, v any) (model2.Via, error) {
+	var res model2.Via
 	err := res.UnmarshalGQL(v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNMazes_Via2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐVia(ctx context.Context, sel ast.SelectionSet, v model1.Via) graphql.Marshaler {
+func (ec *executionContext) marshalNMazes_Via2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐVia(ctx context.Context, sel ast.SelectionSet, v model2.Via) graphql.Marshaler {
 	return v
 }
 
-func (ec *executionContext) marshalNMotor_Account2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐAccount(ctx context.Context, sel ast.SelectionSet, v model2.Account) graphql.Marshaler {
-	return ec._Motor_Account(ctx, sel, &v)
-}
-
-func (ec *executionContext) marshalNMotor_Account2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐAccount(ctx context.Context, sel ast.SelectionSet, v *model2.Account) graphql.Marshaler {
-	if v == nil {
-		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
-			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
-		}
-		return graphql.Null
-	}
-	return ec._Motor_Account(ctx, sel, v)
-}
-
-func (ec *executionContext) unmarshalNMotor_AccountInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐAccountInput(ctx context.Context, v any) (model2.AccountInput, error) {
-	res, err := ec.unmarshalInputMotor_AccountInput(ctx, v)
-	return res, graphql.ErrorOnPath(ctx, err)
-}
-
-func (ec *executionContext) marshalNMotor_AuthProvider2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐAuthProviderᚄ(ctx context.Context, sel ast.SelectionSet, v []*model2.AuthProvider) graphql.Marshaler {
-	ret := make(graphql.Array, len(v))
-	var wg sync.WaitGroup
-	isLen1 := len(v) == 1
-	if !isLen1 {
-		wg.Add(len(v))
-	}
-	for i := range v {
-		i := i
-		fc := &graphql.FieldContext{
-			Index:  &i,
-			Result: &v[i],
-		}
-		ctx := graphql.WithFieldContext(ctx, fc)
-		f := func(i int) {
-			defer func() {
-				if r := recover(); r != nil {
-					ec.Error(ctx, ec.Recover(ctx, r))
-					ret = nil
-				}
-			}()
-			if !isLen1 {
-				defer wg.Done()
-			}
-			ret[i] = ec.marshalNMotor_AuthProvider2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐAuthProvider(ctx, sel, v[i])
-		}
-		if isLen1 {
-			f(i)
-		} else {
-			go f(i)
-		}
-
-	}
-	wg.Wait()
-
-	for _, e := range ret {
-		if e == graphql.Null {
-			return graphql.Null
-		}
-	}
-
-	return ret
-}
-
-func (ec *executionContext) marshalNMotor_AuthProvider2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐAuthProvider(ctx context.Context, sel ast.SelectionSet, v *model2.AuthProvider) graphql.Marshaler {
-	if v == nil {
-		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
-			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
-		}
-		return graphql.Null
-	}
-	return ec._Motor_AuthProvider(ctx, sel, v)
-}
-
-func (ec *executionContext) unmarshalNMotor_ClaimStatus2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐClaimStatus(ctx context.Context, v any) (model2.ClaimStatus, error) {
-	var res model2.ClaimStatus
+func (ec *executionContext) unmarshalNMotor_ClaimStatus2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐClaimStatus(ctx context.Context, v any) (model3.ClaimStatus, error) {
+	var res model3.ClaimStatus
 	err := res.UnmarshalGQL(v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNMotor_ClaimStatus2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐClaimStatus(ctx context.Context, sel ast.SelectionSet, v model2.ClaimStatus) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_ClaimStatus2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐClaimStatus(ctx context.Context, sel ast.SelectionSet, v model3.ClaimStatus) graphql.Marshaler {
 	return v
 }
 
-func (ec *executionContext) marshalNMotor_Conveyor2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐConveyorᚄ(ctx context.Context, sel ast.SelectionSet, v []*model2.Conveyor) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Conveyor2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐConveyorᚄ(ctx context.Context, sel ast.SelectionSet, v []*model3.Conveyor) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -52290,7 +52623,7 @@ func (ec *executionContext) marshalNMotor_Conveyor2ᚕᚖgithubᚗcomᚋwricardo
 	return ret
 }
 
-func (ec *executionContext) marshalNMotor_Conveyor2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐConveyor(ctx context.Context, sel ast.SelectionSet, v *model2.Conveyor) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Conveyor2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐConveyor(ctx context.Context, sel ast.SelectionSet, v *model3.Conveyor) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -52300,7 +52633,7 @@ func (ec *executionContext) marshalNMotor_Conveyor2ᚖgithubᚗcomᚋwricardoᚋ
 	return ec._Motor_Conveyor(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNMotor_DoorTile2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐDoorTileᚄ(ctx context.Context, sel ast.SelectionSet, v []*model2.DoorTile) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_DoorTile2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐDoorTileᚄ(ctx context.Context, sel ast.SelectionSet, v []*model3.DoorTile) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -52344,7 +52677,7 @@ func (ec *executionContext) marshalNMotor_DoorTile2ᚕᚖgithubᚗcomᚋwricardo
 	return ret
 }
 
-func (ec *executionContext) marshalNMotor_DoorTile2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐDoorTile(ctx context.Context, sel ast.SelectionSet, v *model2.DoorTile) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_DoorTile2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐDoorTile(ctx context.Context, sel ast.SelectionSet, v *model3.DoorTile) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -52354,17 +52687,17 @@ func (ec *executionContext) marshalNMotor_DoorTile2ᚖgithubᚗcomᚋwricardoᚋ
 	return ec._Motor_DoorTile(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNMotor_Facing2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐFacing(ctx context.Context, v any) (model2.Facing, error) {
-	var res model2.Facing
+func (ec *executionContext) unmarshalNMotor_Facing2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐFacing(ctx context.Context, v any) (model3.Facing, error) {
+	var res model3.Facing
 	err := res.UnmarshalGQL(v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNMotor_Facing2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐFacing(ctx context.Context, sel ast.SelectionSet, v model2.Facing) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Facing2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐFacing(ctx context.Context, sel ast.SelectionSet, v model3.Facing) graphql.Marshaler {
 	return v
 }
 
-func (ec *executionContext) marshalNMotor_Frame2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐFrameᚄ(ctx context.Context, sel ast.SelectionSet, v []*model2.Frame) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Frame2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐFrameᚄ(ctx context.Context, sel ast.SelectionSet, v []*model3.Frame) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -52408,7 +52741,7 @@ func (ec *executionContext) marshalNMotor_Frame2ᚕᚖgithubᚗcomᚋwricardoᚋ
 	return ret
 }
 
-func (ec *executionContext) marshalNMotor_Frame2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐFrame(ctx context.Context, sel ast.SelectionSet, v *model2.Frame) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Frame2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐFrame(ctx context.Context, sel ast.SelectionSet, v *model3.Frame) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -52418,21 +52751,21 @@ func (ec *executionContext) marshalNMotor_Frame2ᚖgithubᚗcomᚋwricardoᚋdrb
 	return ec._Motor_Frame(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNMotor_Instruction2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐInstruction(ctx context.Context, v any) (model2.Instruction, error) {
-	var res model2.Instruction
+func (ec *executionContext) unmarshalNMotor_Instruction2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐInstruction(ctx context.Context, v any) (model3.Instruction, error) {
+	var res model3.Instruction
 	err := res.UnmarshalGQL(v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNMotor_Instruction2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐInstruction(ctx context.Context, sel ast.SelectionSet, v model2.Instruction) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Instruction2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐInstruction(ctx context.Context, sel ast.SelectionSet, v model3.Instruction) graphql.Marshaler {
 	return v
 }
 
-func (ec *executionContext) unmarshalNMotor_Instruction2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐInstructionᚄ(ctx context.Context, v any) ([]model2.Instruction, error) {
+func (ec *executionContext) unmarshalNMotor_Instruction2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐInstructionᚄ(ctx context.Context, v any) ([]model3.Instruction, error) {
 	var vSlice []any
 	vSlice = graphql.CoerceList(v)
 	var err error
-	res := make([]model2.Instruction, len(vSlice))
+	res := make([]model3.Instruction, len(vSlice))
 	for i := range vSlice {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
 		res[i], err = ec.unmarshalNMotor_Instruction2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐInstruction(ctx, vSlice[i])
@@ -52443,7 +52776,7 @@ func (ec *executionContext) unmarshalNMotor_Instruction2ᚕgithubᚗcomᚋwricar
 	return res, nil
 }
 
-func (ec *executionContext) marshalNMotor_Instruction2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐInstructionᚄ(ctx context.Context, sel ast.SelectionSet, v []model2.Instruction) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Instruction2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐInstructionᚄ(ctx context.Context, sel ast.SelectionSet, v []model3.Instruction) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -52487,11 +52820,11 @@ func (ec *executionContext) marshalNMotor_Instruction2ᚕgithubᚗcomᚋwricardo
 	return ret
 }
 
-func (ec *executionContext) unmarshalNMotor_Instruction2ᚕᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐInstructionᚄ(ctx context.Context, v any) ([][]model2.Instruction, error) {
+func (ec *executionContext) unmarshalNMotor_Instruction2ᚕᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐInstructionᚄ(ctx context.Context, v any) ([][]model3.Instruction, error) {
 	var vSlice []any
 	vSlice = graphql.CoerceList(v)
 	var err error
-	res := make([][]model2.Instruction, len(vSlice))
+	res := make([][]model3.Instruction, len(vSlice))
 	for i := range vSlice {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
 		res[i], err = ec.unmarshalNMotor_Instruction2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐInstructionᚄ(ctx, vSlice[i])
@@ -52502,7 +52835,7 @@ func (ec *executionContext) unmarshalNMotor_Instruction2ᚕᚕgithubᚗcomᚋwri
 	return res, nil
 }
 
-func (ec *executionContext) marshalNMotor_Instruction2ᚕᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐInstructionᚄ(ctx context.Context, sel ast.SelectionSet, v [][]model2.Instruction) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Instruction2ᚕᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐInstructionᚄ(ctx context.Context, sel ast.SelectionSet, v [][]model3.Instruction) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -52546,7 +52879,7 @@ func (ec *executionContext) marshalNMotor_Instruction2ᚕᚕgithubᚗcomᚋwrica
 	return ret
 }
 
-func (ec *executionContext) marshalNMotor_KeyTile2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐKeyTileᚄ(ctx context.Context, sel ast.SelectionSet, v []*model2.KeyTile) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_KeyTile2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐKeyTileᚄ(ctx context.Context, sel ast.SelectionSet, v []*model3.KeyTile) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -52590,7 +52923,7 @@ func (ec *executionContext) marshalNMotor_KeyTile2ᚕᚖgithubᚗcomᚋwricardo�
 	return ret
 }
 
-func (ec *executionContext) marshalNMotor_KeyTile2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐKeyTile(ctx context.Context, sel ast.SelectionSet, v *model2.KeyTile) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_KeyTile2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐKeyTile(ctx context.Context, sel ast.SelectionSet, v *model3.KeyTile) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -52600,7 +52933,7 @@ func (ec *executionContext) marshalNMotor_KeyTile2ᚖgithubᚗcomᚋwricardoᚋd
 	return ec._Motor_KeyTile(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNMotor_LeaderboardEntry2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLeaderboardEntryᚄ(ctx context.Context, sel ast.SelectionSet, v []*model2.LeaderboardEntry) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_LeaderboardEntry2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLeaderboardEntryᚄ(ctx context.Context, sel ast.SelectionSet, v []*model3.LeaderboardEntry) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -52644,7 +52977,7 @@ func (ec *executionContext) marshalNMotor_LeaderboardEntry2ᚕᚖgithubᚗcomᚋ
 	return ret
 }
 
-func (ec *executionContext) marshalNMotor_LeaderboardEntry2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLeaderboardEntry(ctx context.Context, sel ast.SelectionSet, v *model2.LeaderboardEntry) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_LeaderboardEntry2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLeaderboardEntry(ctx context.Context, sel ast.SelectionSet, v *model3.LeaderboardEntry) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -52654,21 +52987,21 @@ func (ec *executionContext) marshalNMotor_LeaderboardEntry2ᚖgithubᚗcomᚋwri
 	return ec._Motor_LeaderboardEntry(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNMotor_LeaderboardOrder2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLeaderboardOrder(ctx context.Context, v any) (model2.LeaderboardOrder, error) {
-	var res model2.LeaderboardOrder
+func (ec *executionContext) unmarshalNMotor_LeaderboardOrder2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLeaderboardOrder(ctx context.Context, v any) (model3.LeaderboardOrder, error) {
+	var res model3.LeaderboardOrder
 	err := res.UnmarshalGQL(v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNMotor_LeaderboardOrder2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLeaderboardOrder(ctx context.Context, sel ast.SelectionSet, v model2.LeaderboardOrder) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_LeaderboardOrder2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLeaderboardOrder(ctx context.Context, sel ast.SelectionSet, v model3.LeaderboardOrder) graphql.Marshaler {
 	return v
 }
 
-func (ec *executionContext) marshalNMotor_Map2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMap(ctx context.Context, sel ast.SelectionSet, v model2.Map) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Map2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMap(ctx context.Context, sel ast.SelectionSet, v model3.Map) graphql.Marshaler {
 	return ec._Motor_Map(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNMotor_Map2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMapᚄ(ctx context.Context, sel ast.SelectionSet, v []*model2.Map) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Map2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMapᚄ(ctx context.Context, sel ast.SelectionSet, v []*model3.Map) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -52712,7 +53045,7 @@ func (ec *executionContext) marshalNMotor_Map2ᚕᚖgithubᚗcomᚋwricardoᚋdr
 	return ret
 }
 
-func (ec *executionContext) marshalNMotor_Map2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMap(ctx context.Context, sel ast.SelectionSet, v *model2.Map) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Map2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMap(ctx context.Context, sel ast.SelectionSet, v *model3.Map) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -52722,12 +53055,12 @@ func (ec *executionContext) marshalNMotor_Map2ᚖgithubᚗcomᚋwricardoᚋdrbra
 	return ec._Motor_Map(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNMotor_MapInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMapInput(ctx context.Context, v any) (model2.MapInput, error) {
+func (ec *executionContext) unmarshalNMotor_MapInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMapInput(ctx context.Context, v any) (model3.MapInput, error) {
 	res, err := ec.unmarshalInputMotor_MapInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNMotor_MapValidationIssue2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMapValidationIssueᚄ(ctx context.Context, sel ast.SelectionSet, v []*model2.MapValidationIssue) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_MapValidationIssue2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMapValidationIssueᚄ(ctx context.Context, sel ast.SelectionSet, v []*model3.MapValidationIssue) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -52771,7 +53104,7 @@ func (ec *executionContext) marshalNMotor_MapValidationIssue2ᚕᚖgithubᚗcom�
 	return ret
 }
 
-func (ec *executionContext) marshalNMotor_MapValidationIssue2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMapValidationIssue(ctx context.Context, sel ast.SelectionSet, v *model2.MapValidationIssue) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_MapValidationIssue2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMapValidationIssue(ctx context.Context, sel ast.SelectionSet, v *model3.MapValidationIssue) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -52781,11 +53114,11 @@ func (ec *executionContext) marshalNMotor_MapValidationIssue2ᚖgithubᚗcomᚋw
 	return ec._Motor_MapValidationIssue(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNMotor_MapValidationResult2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMapValidationResult(ctx context.Context, sel ast.SelectionSet, v model2.MapValidationResult) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_MapValidationResult2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMapValidationResult(ctx context.Context, sel ast.SelectionSet, v model3.MapValidationResult) graphql.Marshaler {
 	return ec._Motor_MapValidationResult(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNMotor_MapValidationResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMapValidationResult(ctx context.Context, sel ast.SelectionSet, v *model2.MapValidationResult) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_MapValidationResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMapValidationResult(ctx context.Context, sel ast.SelectionSet, v *model3.MapValidationResult) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -52795,7 +53128,7 @@ func (ec *executionContext) marshalNMotor_MapValidationResult2ᚖgithubᚗcomᚋ
 	return ec._Motor_MapValidationResult(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNMotor_Mirror2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMirrorᚄ(ctx context.Context, sel ast.SelectionSet, v []*model2.Mirror) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Mirror2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMirrorᚄ(ctx context.Context, sel ast.SelectionSet, v []*model3.Mirror) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -52839,7 +53172,7 @@ func (ec *executionContext) marshalNMotor_Mirror2ᚕᚖgithubᚗcomᚋwricardo�
 	return ret
 }
 
-func (ec *executionContext) marshalNMotor_Mirror2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMirror(ctx context.Context, sel ast.SelectionSet, v *model2.Mirror) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Mirror2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMirror(ctx context.Context, sel ast.SelectionSet, v *model3.Mirror) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -52849,11 +53182,11 @@ func (ec *executionContext) marshalNMotor_Mirror2ᚖgithubᚗcomᚋwricardoᚋdr
 	return ec._Motor_Mirror(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNMotor_Mutation2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v graph2.Resolver) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Mutation2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v graph3.Resolver) graphql.Marshaler {
 	return ec._Motor_Mutation(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNMotor_Mutation2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v *graph2.Resolver) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Mutation2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v *graph3.Resolver) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -52863,7 +53196,7 @@ func (ec *executionContext) marshalNMotor_Mutation2ᚖgithubᚗcomᚋwricardoᚋ
 	return ec._Motor_Mutation(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNMotor_PlayerRun2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPlayerRunᚄ(ctx context.Context, sel ast.SelectionSet, v []*model2.PlayerRun) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_PlayerRun2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPlayerRunᚄ(ctx context.Context, sel ast.SelectionSet, v []*model3.PlayerRun) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -52907,7 +53240,7 @@ func (ec *executionContext) marshalNMotor_PlayerRun2ᚕᚖgithubᚗcomᚋwricard
 	return ret
 }
 
-func (ec *executionContext) marshalNMotor_PlayerRun2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPlayerRun(ctx context.Context, sel ast.SelectionSet, v *model2.PlayerRun) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_PlayerRun2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPlayerRun(ctx context.Context, sel ast.SelectionSet, v *model3.PlayerRun) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -52917,7 +53250,7 @@ func (ec *executionContext) marshalNMotor_PlayerRun2ᚖgithubᚗcomᚋwricardo�
 	return ec._Motor_PlayerRun(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNMotor_Portal2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPortalᚄ(ctx context.Context, sel ast.SelectionSet, v []*model2.Portal) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Portal2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPortalᚄ(ctx context.Context, sel ast.SelectionSet, v []*model3.Portal) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -52961,7 +53294,7 @@ func (ec *executionContext) marshalNMotor_Portal2ᚕᚖgithubᚗcomᚋwricardo�
 	return ret
 }
 
-func (ec *executionContext) marshalNMotor_Portal2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPortal(ctx context.Context, sel ast.SelectionSet, v *model2.Portal) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Portal2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPortal(ctx context.Context, sel ast.SelectionSet, v *model3.Portal) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -52971,7 +53304,7 @@ func (ec *executionContext) marshalNMotor_Portal2ᚖgithubᚗcomᚋwricardoᚋdr
 	return ec._Motor_Portal(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNMotor_Position2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPositionᚄ(ctx context.Context, sel ast.SelectionSet, v []*model2.Position) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Position2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPositionᚄ(ctx context.Context, sel ast.SelectionSet, v []*model3.Position) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -53015,7 +53348,7 @@ func (ec *executionContext) marshalNMotor_Position2ᚕᚖgithubᚗcomᚋwricardo
 	return ret
 }
 
-func (ec *executionContext) marshalNMotor_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPosition(ctx context.Context, sel ast.SelectionSet, v *model2.Position) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPosition(ctx context.Context, sel ast.SelectionSet, v *model3.Position) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -53025,16 +53358,16 @@ func (ec *executionContext) marshalNMotor_Position2ᚖgithubᚗcomᚋwricardoᚋ
 	return ec._Motor_Position(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNMotor_ProgramInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐProgramInput(ctx context.Context, v any) (model2.ProgramInput, error) {
+func (ec *executionContext) unmarshalNMotor_ProgramInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐProgramInput(ctx context.Context, v any) (model3.ProgramInput, error) {
 	res, err := ec.unmarshalInputMotor_ProgramInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNMotor_Query2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v graph2.Resolver) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Query2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v graph3.Resolver) graphql.Marshaler {
 	return ec._Motor_Query(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNMotor_Query2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v *graph2.Resolver) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Query2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v *graph3.Resolver) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -53044,11 +53377,11 @@ func (ec *executionContext) marshalNMotor_Query2ᚖgithubᚗcomᚋwricardoᚋdrb
 	return ec._Motor_Query(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNMotor_Session2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSession(ctx context.Context, sel ast.SelectionSet, v model2.Session) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Session2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSession(ctx context.Context, sel ast.SelectionSet, v model3.Session) graphql.Marshaler {
 	return ec._Motor_Session(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNMotor_Session2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSessionᚄ(ctx context.Context, sel ast.SelectionSet, v []*model2.Session) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Session2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSessionᚄ(ctx context.Context, sel ast.SelectionSet, v []*model3.Session) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -53092,7 +53425,7 @@ func (ec *executionContext) marshalNMotor_Session2ᚕᚖgithubᚗcomᚋwricardo�
 	return ret
 }
 
-func (ec *executionContext) marshalNMotor_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSession(ctx context.Context, sel ast.SelectionSet, v *model2.Session) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSession(ctx context.Context, sel ast.SelectionSet, v *model3.Session) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -53102,11 +53435,11 @@ func (ec *executionContext) marshalNMotor_Session2ᚖgithubᚗcomᚋwricardoᚋd
 	return ec._Motor_Session(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNMotor_SessionClaimInput2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSessionClaimInputᚄ(ctx context.Context, v any) ([]*model2.SessionClaimInput, error) {
+func (ec *executionContext) unmarshalNMotor_SessionClaimInput2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSessionClaimInputᚄ(ctx context.Context, v any) ([]*model3.SessionClaimInput, error) {
 	var vSlice []any
 	vSlice = graphql.CoerceList(v)
 	var err error
-	res := make([]*model2.SessionClaimInput, len(vSlice))
+	res := make([]*model3.SessionClaimInput, len(vSlice))
 	for i := range vSlice {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
 		res[i], err = ec.unmarshalNMotor_SessionClaimInput2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSessionClaimInput(ctx, vSlice[i])
@@ -53117,12 +53450,12 @@ func (ec *executionContext) unmarshalNMotor_SessionClaimInput2ᚕᚖgithubᚗcom
 	return res, nil
 }
 
-func (ec *executionContext) unmarshalNMotor_SessionClaimInput2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSessionClaimInput(ctx context.Context, v any) (*model2.SessionClaimInput, error) {
+func (ec *executionContext) unmarshalNMotor_SessionClaimInput2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSessionClaimInput(ctx context.Context, v any) (*model3.SessionClaimInput, error) {
 	res, err := ec.unmarshalInputMotor_SessionClaimInput(ctx, v)
 	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNMotor_SessionClaimResult2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSessionClaimResultᚄ(ctx context.Context, sel ast.SelectionSet, v []*model2.SessionClaimResult) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_SessionClaimResult2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSessionClaimResultᚄ(ctx context.Context, sel ast.SelectionSet, v []*model3.SessionClaimResult) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -53166,7 +53499,7 @@ func (ec *executionContext) marshalNMotor_SessionClaimResult2ᚕᚖgithubᚗcom�
 	return ret
 }
 
-func (ec *executionContext) marshalNMotor_SessionClaimResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSessionClaimResult(ctx context.Context, sel ast.SelectionSet, v *model2.SessionClaimResult) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_SessionClaimResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSessionClaimResult(ctx context.Context, sel ast.SelectionSet, v *model3.SessionClaimResult) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -53176,11 +53509,11 @@ func (ec *executionContext) marshalNMotor_SessionClaimResult2ᚖgithubᚗcomᚋw
 	return ec._Motor_SessionClaimResult(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNMotor_SessionUpdate2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSessionUpdate(ctx context.Context, sel ast.SelectionSet, v model2.SessionUpdate) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_SessionUpdate2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSessionUpdate(ctx context.Context, sel ast.SelectionSet, v model3.SessionUpdate) graphql.Marshaler {
 	return ec._Motor_SessionUpdate(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNMotor_SessionUpdate2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSessionUpdate(ctx context.Context, sel ast.SelectionSet, v *model2.SessionUpdate) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_SessionUpdate2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSessionUpdate(ctx context.Context, sel ast.SelectionSet, v *model3.SessionUpdate) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -53190,17 +53523,17 @@ func (ec *executionContext) marshalNMotor_SessionUpdate2ᚖgithubᚗcomᚋwricar
 	return ec._Motor_SessionUpdate(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNMotor_Status2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐStatus(ctx context.Context, v any) (model2.Status, error) {
-	var res model2.Status
+func (ec *executionContext) unmarshalNMotor_Status2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐStatus(ctx context.Context, v any) (model3.Status, error) {
+	var res model3.Status
 	err := res.UnmarshalGQL(v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNMotor_Status2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐStatus(ctx context.Context, sel ast.SelectionSet, v model2.Status) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_Status2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐStatus(ctx context.Context, sel ast.SelectionSet, v model3.Status) graphql.Marshaler {
 	return v
 }
 
-func (ec *executionContext) marshalNMotor_VMState2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐVMState(ctx context.Context, sel ast.SelectionSet, v *model2.VMState) graphql.Marshaler {
+func (ec *executionContext) marshalNMotor_VMState2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐVMState(ctx context.Context, sel ast.SelectionSet, v *model3.VMState) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -53286,11 +53619,11 @@ func (ec *executionContext) marshalNString2ᚕᚕstringᚄ(ctx context.Context, 
 	return ret
 }
 
-func (ec *executionContext) marshalNTesla_BulkMoveResult2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐBulkMoveResult(ctx context.Context, sel ast.SelectionSet, v model3.BulkMoveResult) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_BulkMoveResult2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐBulkMoveResult(ctx context.Context, sel ast.SelectionSet, v model4.BulkMoveResult) graphql.Marshaler {
 	return ec._Tesla_BulkMoveResult(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNTesla_BulkMoveResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐBulkMoveResult(ctx context.Context, sel ast.SelectionSet, v *model3.BulkMoveResult) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_BulkMoveResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐBulkMoveResult(ctx context.Context, sel ast.SelectionSet, v *model4.BulkMoveResult) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -53300,7 +53633,7 @@ func (ec *executionContext) marshalNTesla_BulkMoveResult2ᚖgithubᚗcomᚋwrica
 	return ec._Tesla_BulkMoveResult(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNTesla_Cell2ᚕᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐCellᚄ(ctx context.Context, sel ast.SelectionSet, v [][]*model3.Cell) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_Cell2ᚕᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐCellᚄ(ctx context.Context, sel ast.SelectionSet, v [][]*model4.Cell) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -53344,7 +53677,7 @@ func (ec *executionContext) marshalNTesla_Cell2ᚕᚕᚖgithubᚗcomᚋwricardo�
 	return ret
 }
 
-func (ec *executionContext) marshalNTesla_Cell2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐCellᚄ(ctx context.Context, sel ast.SelectionSet, v []*model3.Cell) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_Cell2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐCellᚄ(ctx context.Context, sel ast.SelectionSet, v []*model4.Cell) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -53388,7 +53721,7 @@ func (ec *executionContext) marshalNTesla_Cell2ᚕᚖgithubᚗcomᚋwricardoᚋd
 	return ret
 }
 
-func (ec *executionContext) marshalNTesla_Cell2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐCell(ctx context.Context, sel ast.SelectionSet, v *model3.Cell) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_Cell2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐCell(ctx context.Context, sel ast.SelectionSet, v *model4.Cell) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -53398,7 +53731,7 @@ func (ec *executionContext) marshalNTesla_Cell2ᚖgithubᚗcomᚋwricardoᚋdrbr
 	return ec._Tesla_Cell(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNTesla_CellConfigEntry2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐCellConfigEntryᚄ(ctx context.Context, sel ast.SelectionSet, v []*model3.CellConfigEntry) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_CellConfigEntry2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐCellConfigEntryᚄ(ctx context.Context, sel ast.SelectionSet, v []*model4.CellConfigEntry) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -53442,7 +53775,7 @@ func (ec *executionContext) marshalNTesla_CellConfigEntry2ᚕᚖgithubᚗcomᚋw
 	return ret
 }
 
-func (ec *executionContext) marshalNTesla_CellConfigEntry2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐCellConfigEntry(ctx context.Context, sel ast.SelectionSet, v *model3.CellConfigEntry) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_CellConfigEntry2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐCellConfigEntry(ctx context.Context, sel ast.SelectionSet, v *model4.CellConfigEntry) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -53452,16 +53785,16 @@ func (ec *executionContext) marshalNTesla_CellConfigEntry2ᚖgithubᚗcomᚋwric
 	return ec._Tesla_CellConfigEntry(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNTesla_CellConfigEntryInput2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐCellConfigEntryInput(ctx context.Context, v any) (*model3.CellConfigEntryInput, error) {
+func (ec *executionContext) unmarshalNTesla_CellConfigEntryInput2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐCellConfigEntryInput(ctx context.Context, v any) (*model4.CellConfigEntryInput, error) {
 	res, err := ec.unmarshalInputTesla_CellConfigEntryInput(ctx, v)
 	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNTesla_DeleteSessionResult2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐDeleteSessionResult(ctx context.Context, sel ast.SelectionSet, v model3.DeleteSessionResult) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_DeleteSessionResult2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐDeleteSessionResult(ctx context.Context, sel ast.SelectionSet, v model4.DeleteSessionResult) graphql.Marshaler {
 	return ec._Tesla_DeleteSessionResult(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNTesla_DeleteSessionResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐDeleteSessionResult(ctx context.Context, sel ast.SelectionSet, v *model3.DeleteSessionResult) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_DeleteSessionResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐDeleteSessionResult(ctx context.Context, sel ast.SelectionSet, v *model4.DeleteSessionResult) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -53471,21 +53804,21 @@ func (ec *executionContext) marshalNTesla_DeleteSessionResult2ᚖgithubᚗcomᚋ
 	return ec._Tesla_DeleteSessionResult(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNTesla_Direction2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐDirection(ctx context.Context, v any) (model3.Direction, error) {
-	var res model3.Direction
+func (ec *executionContext) unmarshalNTesla_Direction2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐDirection(ctx context.Context, v any) (model4.Direction, error) {
+	var res model4.Direction
 	err := res.UnmarshalGQL(v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNTesla_Direction2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐDirection(ctx context.Context, sel ast.SelectionSet, v model3.Direction) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_Direction2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐDirection(ctx context.Context, sel ast.SelectionSet, v model4.Direction) graphql.Marshaler {
 	return v
 }
 
-func (ec *executionContext) unmarshalNTesla_Direction2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐDirectionᚄ(ctx context.Context, v any) ([]model3.Direction, error) {
+func (ec *executionContext) unmarshalNTesla_Direction2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐDirectionᚄ(ctx context.Context, v any) ([]model4.Direction, error) {
 	var vSlice []any
 	vSlice = graphql.CoerceList(v)
 	var err error
-	res := make([]model3.Direction, len(vSlice))
+	res := make([]model4.Direction, len(vSlice))
 	for i := range vSlice {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
 		res[i], err = ec.unmarshalNTesla_Direction2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐDirection(ctx, vSlice[i])
@@ -53496,7 +53829,7 @@ func (ec *executionContext) unmarshalNTesla_Direction2ᚕgithubᚗcomᚋwricardo
 	return res, nil
 }
 
-func (ec *executionContext) marshalNTesla_Direction2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐDirectionᚄ(ctx context.Context, sel ast.SelectionSet, v []model3.Direction) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_Direction2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐDirectionᚄ(ctx context.Context, sel ast.SelectionSet, v []model4.Direction) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -53540,7 +53873,7 @@ func (ec *executionContext) marshalNTesla_Direction2ᚕgithubᚗcomᚋwricardo�
 	return ret
 }
 
-func (ec *executionContext) marshalNTesla_GameEvent2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameEventᚄ(ctx context.Context, sel ast.SelectionSet, v []*model3.GameEvent) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_GameEvent2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameEventᚄ(ctx context.Context, sel ast.SelectionSet, v []*model4.GameEvent) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -53584,7 +53917,7 @@ func (ec *executionContext) marshalNTesla_GameEvent2ᚕᚖgithubᚗcomᚋwricard
 	return ret
 }
 
-func (ec *executionContext) marshalNTesla_GameEvent2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameEvent(ctx context.Context, sel ast.SelectionSet, v *model3.GameEvent) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_GameEvent2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameEvent(ctx context.Context, sel ast.SelectionSet, v *model4.GameEvent) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -53594,11 +53927,11 @@ func (ec *executionContext) marshalNTesla_GameEvent2ᚖgithubᚗcomᚋwricardo�
 	return ec._Tesla_GameEvent(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNTesla_GameMap2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameMap(ctx context.Context, sel ast.SelectionSet, v model3.GameMap) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_GameMap2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameMap(ctx context.Context, sel ast.SelectionSet, v model4.GameMap) graphql.Marshaler {
 	return ec._Tesla_GameMap(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNTesla_GameMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameMap(ctx context.Context, sel ast.SelectionSet, v *model3.GameMap) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_GameMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameMap(ctx context.Context, sel ast.SelectionSet, v *model4.GameMap) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -53608,21 +53941,21 @@ func (ec *executionContext) marshalNTesla_GameMap2ᚖgithubᚗcomᚋwricardoᚋd
 	return ec._Tesla_GameMap(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNTesla_GameMapInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameMapInput(ctx context.Context, v any) (model3.GameMapInput, error) {
+func (ec *executionContext) unmarshalNTesla_GameMapInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameMapInput(ctx context.Context, v any) (model4.GameMapInput, error) {
 	res, err := ec.unmarshalInputTesla_GameMapInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) unmarshalNTesla_GameMapPatchInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameMapPatchInput(ctx context.Context, v any) (model3.GameMapPatchInput, error) {
+func (ec *executionContext) unmarshalNTesla_GameMapPatchInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameMapPatchInput(ctx context.Context, v any) (model4.GameMapPatchInput, error) {
 	res, err := ec.unmarshalInputTesla_GameMapPatchInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNTesla_GameState2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameState(ctx context.Context, sel ast.SelectionSet, v model3.GameState) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_GameState2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameState(ctx context.Context, sel ast.SelectionSet, v model4.GameState) graphql.Marshaler {
 	return ec._Tesla_GameState(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNTesla_GameState2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameState(ctx context.Context, sel ast.SelectionSet, v *model3.GameState) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_GameState2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameState(ctx context.Context, sel ast.SelectionSet, v *model4.GameState) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -53632,11 +53965,11 @@ func (ec *executionContext) marshalNTesla_GameState2ᚖgithubᚗcomᚋwricardo�
 	return ec._Tesla_GameState(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNTesla_HistoryResponse2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐHistoryResponse(ctx context.Context, sel ast.SelectionSet, v model3.HistoryResponse) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_HistoryResponse2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐHistoryResponse(ctx context.Context, sel ast.SelectionSet, v model4.HistoryResponse) graphql.Marshaler {
 	return ec._Tesla_HistoryResponse(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNTesla_HistoryResponse2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐHistoryResponse(ctx context.Context, sel ast.SelectionSet, v *model3.HistoryResponse) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_HistoryResponse2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐHistoryResponse(ctx context.Context, sel ast.SelectionSet, v *model4.HistoryResponse) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -53646,7 +53979,7 @@ func (ec *executionContext) marshalNTesla_HistoryResponse2ᚖgithubᚗcomᚋwric
 	return ec._Tesla_HistoryResponse(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNTesla_LegendEntry2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐLegendEntryᚄ(ctx context.Context, sel ast.SelectionSet, v []*model3.LegendEntry) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_LegendEntry2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐLegendEntryᚄ(ctx context.Context, sel ast.SelectionSet, v []*model4.LegendEntry) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -53690,7 +54023,7 @@ func (ec *executionContext) marshalNTesla_LegendEntry2ᚕᚖgithubᚗcomᚋwrica
 	return ret
 }
 
-func (ec *executionContext) marshalNTesla_LegendEntry2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐLegendEntry(ctx context.Context, sel ast.SelectionSet, v *model3.LegendEntry) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_LegendEntry2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐLegendEntry(ctx context.Context, sel ast.SelectionSet, v *model4.LegendEntry) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -53700,11 +54033,11 @@ func (ec *executionContext) marshalNTesla_LegendEntry2ᚖgithubᚗcomᚋwricardo
 	return ec._Tesla_LegendEntry(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNTesla_LegendEntryInput2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐLegendEntryInputᚄ(ctx context.Context, v any) ([]*model3.LegendEntryInput, error) {
+func (ec *executionContext) unmarshalNTesla_LegendEntryInput2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐLegendEntryInputᚄ(ctx context.Context, v any) ([]*model4.LegendEntryInput, error) {
 	var vSlice []any
 	vSlice = graphql.CoerceList(v)
 	var err error
-	res := make([]*model3.LegendEntryInput, len(vSlice))
+	res := make([]*model4.LegendEntryInput, len(vSlice))
 	for i := range vSlice {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
 		res[i], err = ec.unmarshalNTesla_LegendEntryInput2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐLegendEntryInput(ctx, vSlice[i])
@@ -53715,12 +54048,12 @@ func (ec *executionContext) unmarshalNTesla_LegendEntryInput2ᚕᚖgithubᚗcom�
 	return res, nil
 }
 
-func (ec *executionContext) unmarshalNTesla_LegendEntryInput2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐLegendEntryInput(ctx context.Context, v any) (*model3.LegendEntryInput, error) {
+func (ec *executionContext) unmarshalNTesla_LegendEntryInput2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐLegendEntryInput(ctx context.Context, v any) (*model4.LegendEntryInput, error) {
 	res, err := ec.unmarshalInputTesla_LegendEntryInput(ctx, v)
 	return &res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNTesla_MapInfo2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMapInfoᚄ(ctx context.Context, sel ast.SelectionSet, v []*model3.MapInfo) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_MapInfo2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMapInfoᚄ(ctx context.Context, sel ast.SelectionSet, v []*model4.MapInfo) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -53764,7 +54097,7 @@ func (ec *executionContext) marshalNTesla_MapInfo2ᚕᚖgithubᚗcomᚋwricardo�
 	return ret
 }
 
-func (ec *executionContext) marshalNTesla_MapInfo2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMapInfo(ctx context.Context, sel ast.SelectionSet, v *model3.MapInfo) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_MapInfo2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMapInfo(ctx context.Context, sel ast.SelectionSet, v *model4.MapInfo) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -53774,11 +54107,11 @@ func (ec *executionContext) marshalNTesla_MapInfo2ᚖgithubᚗcomᚋwricardoᚋd
 	return ec._Tesla_MapInfo(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNTesla_MapValidationResult2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMapValidationResult(ctx context.Context, sel ast.SelectionSet, v model3.MapValidationResult) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_MapValidationResult2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMapValidationResult(ctx context.Context, sel ast.SelectionSet, v model4.MapValidationResult) graphql.Marshaler {
 	return ec._Tesla_MapValidationResult(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNTesla_MapValidationResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMapValidationResult(ctx context.Context, sel ast.SelectionSet, v *model3.MapValidationResult) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_MapValidationResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMapValidationResult(ctx context.Context, sel ast.SelectionSet, v *model4.MapValidationResult) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -53788,7 +54121,7 @@ func (ec *executionContext) marshalNTesla_MapValidationResult2ᚖgithubᚗcomᚋ
 	return ec._Tesla_MapValidationResult(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNTesla_MoveHistoryEntry2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMoveHistoryEntryᚄ(ctx context.Context, sel ast.SelectionSet, v []*model3.MoveHistoryEntry) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_MoveHistoryEntry2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMoveHistoryEntryᚄ(ctx context.Context, sel ast.SelectionSet, v []*model4.MoveHistoryEntry) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -53832,7 +54165,7 @@ func (ec *executionContext) marshalNTesla_MoveHistoryEntry2ᚕᚖgithubᚗcomᚋ
 	return ret
 }
 
-func (ec *executionContext) marshalNTesla_MoveHistoryEntry2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMoveHistoryEntry(ctx context.Context, sel ast.SelectionSet, v *model3.MoveHistoryEntry) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_MoveHistoryEntry2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMoveHistoryEntry(ctx context.Context, sel ast.SelectionSet, v *model4.MoveHistoryEntry) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -53842,11 +54175,11 @@ func (ec *executionContext) marshalNTesla_MoveHistoryEntry2ᚖgithubᚗcomᚋwri
 	return ec._Tesla_MoveHistoryEntry(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNTesla_MoveResult2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMoveResult(ctx context.Context, sel ast.SelectionSet, v model3.MoveResult) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_MoveResult2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMoveResult(ctx context.Context, sel ast.SelectionSet, v model4.MoveResult) graphql.Marshaler {
 	return ec._Tesla_MoveResult(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNTesla_MoveResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMoveResult(ctx context.Context, sel ast.SelectionSet, v *model3.MoveResult) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_MoveResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMoveResult(ctx context.Context, sel ast.SelectionSet, v *model4.MoveResult) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -53856,11 +54189,11 @@ func (ec *executionContext) marshalNTesla_MoveResult2ᚖgithubᚗcomᚋwricardo�
 	return ec._Tesla_MoveResult(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNTesla_Mutation2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v graph3.Resolver) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_Mutation2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v graph4.Resolver) graphql.Marshaler {
 	return ec._Tesla_Mutation(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNTesla_Mutation2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v *graph3.Resolver) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_Mutation2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v *graph4.Resolver) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -53870,7 +54203,7 @@ func (ec *executionContext) marshalNTesla_Mutation2ᚖgithubᚗcomᚋwricardoᚋ
 	return ec._Tesla_Mutation(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNTesla_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐPosition(ctx context.Context, sel ast.SelectionSet, v *model3.Position) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐPosition(ctx context.Context, sel ast.SelectionSet, v *model4.Position) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -53880,11 +54213,11 @@ func (ec *executionContext) marshalNTesla_Position2ᚖgithubᚗcomᚋwricardoᚋ
 	return ec._Tesla_Position(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNTesla_Query2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v graph3.Resolver) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_Query2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v graph4.Resolver) graphql.Marshaler {
 	return ec._Tesla_Query(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNTesla_Query2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v *graph3.Resolver) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_Query2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚐResolver(ctx context.Context, sel ast.SelectionSet, v *graph4.Resolver) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -53894,11 +54227,11 @@ func (ec *executionContext) marshalNTesla_Query2ᚖgithubᚗcomᚋwricardoᚋdrb
 	return ec._Tesla_Query(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNTesla_Session2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSession(ctx context.Context, sel ast.SelectionSet, v model3.Session) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_Session2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSession(ctx context.Context, sel ast.SelectionSet, v model4.Session) graphql.Marshaler {
 	return ec._Tesla_Session(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNTesla_Session2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSessionᚄ(ctx context.Context, sel ast.SelectionSet, v []*model3.Session) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_Session2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSessionᚄ(ctx context.Context, sel ast.SelectionSet, v []*model4.Session) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -53942,7 +54275,7 @@ func (ec *executionContext) marshalNTesla_Session2ᚕᚖgithubᚗcomᚋwricardo�
 	return ret
 }
 
-func (ec *executionContext) marshalNTesla_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSession(ctx context.Context, sel ast.SelectionSet, v *model3.Session) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSession(ctx context.Context, sel ast.SelectionSet, v *model4.Session) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -53952,11 +54285,11 @@ func (ec *executionContext) marshalNTesla_Session2ᚖgithubᚗcomᚋwricardoᚋd
 	return ec._Tesla_Session(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNTesla_SessionList2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSessionList(ctx context.Context, sel ast.SelectionSet, v model3.SessionList) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_SessionList2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSessionList(ctx context.Context, sel ast.SelectionSet, v model4.SessionList) graphql.Marshaler {
 	return ec._Tesla_SessionList(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNTesla_SessionList2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSessionList(ctx context.Context, sel ast.SelectionSet, v *model3.SessionList) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_SessionList2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSessionList(ctx context.Context, sel ast.SelectionSet, v *model4.SessionList) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -53966,7 +54299,7 @@ func (ec *executionContext) marshalNTesla_SessionList2ᚖgithubᚗcomᚋwricardo
 	return ec._Tesla_SessionList(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNTesla_StepInfo2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐStepInfoᚄ(ctx context.Context, sel ast.SelectionSet, v []*model3.StepInfo) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_StepInfo2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐStepInfoᚄ(ctx context.Context, sel ast.SelectionSet, v []*model4.StepInfo) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -54010,7 +54343,7 @@ func (ec *executionContext) marshalNTesla_StepInfo2ᚕᚖgithubᚗcomᚋwricardo
 	return ret
 }
 
-func (ec *executionContext) marshalNTesla_StepInfo2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐStepInfo(ctx context.Context, sel ast.SelectionSet, v *model3.StepInfo) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_StepInfo2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐStepInfo(ctx context.Context, sel ast.SelectionSet, v *model4.StepInfo) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -54020,7 +54353,7 @@ func (ec *executionContext) marshalNTesla_StepInfo2ᚖgithubᚗcomᚋwricardoᚋ
 	return ec._Tesla_StepInfo(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNTesla_UnifiedSession2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐUnifiedSessionᚄ(ctx context.Context, sel ast.SelectionSet, v []*model3.UnifiedSession) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_UnifiedSession2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐUnifiedSessionᚄ(ctx context.Context, sel ast.SelectionSet, v []*model4.UnifiedSession) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -54064,7 +54397,7 @@ func (ec *executionContext) marshalNTesla_UnifiedSession2ᚕᚖgithubᚗcomᚋwr
 	return ret
 }
 
-func (ec *executionContext) marshalNTesla_UnifiedSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐUnifiedSession(ctx context.Context, sel ast.SelectionSet, v *model3.UnifiedSession) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_UnifiedSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐUnifiedSession(ctx context.Context, sel ast.SelectionSet, v *model4.UnifiedSession) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -54074,11 +54407,11 @@ func (ec *executionContext) marshalNTesla_UnifiedSession2ᚖgithubᚗcomᚋwrica
 	return ec._Tesla_UnifiedSession(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNTesla_UnifiedSessions2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐUnifiedSessions(ctx context.Context, sel ast.SelectionSet, v model3.UnifiedSessions) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_UnifiedSessions2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐUnifiedSessions(ctx context.Context, sel ast.SelectionSet, v model4.UnifiedSessions) graphql.Marshaler {
 	return ec._Tesla_UnifiedSessions(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNTesla_UnifiedSessions2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐUnifiedSessions(ctx context.Context, sel ast.SelectionSet, v *model3.UnifiedSessions) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_UnifiedSessions2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐUnifiedSessions(ctx context.Context, sel ast.SelectionSet, v *model4.UnifiedSessions) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -54088,7 +54421,7 @@ func (ec *executionContext) marshalNTesla_UnifiedSessions2ᚖgithubᚗcomᚋwric
 	return ec._Tesla_UnifiedSessions(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNTesla_VisitedPark2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐVisitedParkᚄ(ctx context.Context, sel ast.SelectionSet, v []*model3.VisitedPark) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_VisitedPark2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐVisitedParkᚄ(ctx context.Context, sel ast.SelectionSet, v []*model4.VisitedPark) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -54132,7 +54465,7 @@ func (ec *executionContext) marshalNTesla_VisitedPark2ᚕᚖgithubᚗcomᚋwrica
 	return ret
 }
 
-func (ec *executionContext) marshalNTesla_VisitedPark2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐVisitedPark(ctx context.Context, sel ast.SelectionSet, v *model3.VisitedPark) graphql.Marshaler {
+func (ec *executionContext) marshalNTesla_VisitedPark2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐVisitedPark(ctx context.Context, sel ast.SelectionSet, v *model4.VisitedPark) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -54473,6 +54806,20 @@ func (ec *executionContext) marshalODelivery_RejectReason2ᚖgithubᚗcomᚋwric
 	return v
 }
 
+func (ec *executionContext) marshalOGlobal_Profile2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚋmodelᚐProfile(ctx context.Context, sel ast.SelectionSet, v *model1.Profile) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._Global_Profile(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOGlobal_User2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚋmodelᚐUser(ctx context.Context, sel ast.SelectionSet, v *model1.User) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._Global_User(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalOID2ᚕstringᚄ(ctx context.Context, v any) ([]string, error) {
 	if v == nil {
 		return nil, nil
@@ -54581,111 +54928,14 @@ func (ec *executionContext) marshalOInt2ᚖint(ctx context.Context, sel ast.Sele
 	return res
 }
 
-func (ec *executionContext) marshalOMazes_AdminMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐAdminMap(ctx context.Context, sel ast.SelectionSet, v *model1.AdminMap) graphql.Marshaler {
+func (ec *executionContext) marshalOMazes_AdminMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐAdminMap(ctx context.Context, sel ast.SelectionSet, v *model2.AdminMap) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._Mazes_AdminMap(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalOMazes_LossReason2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐLossReason(ctx context.Context, v any) (*model1.LossReason, error) {
-	if v == nil {
-		return nil, nil
-	}
-	var res = new(model1.LossReason)
-	err := res.UnmarshalGQL(v)
-	return res, graphql.ErrorOnPath(ctx, err)
-}
-
-func (ec *executionContext) marshalOMazes_LossReason2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐLossReason(ctx context.Context, sel ast.SelectionSet, v *model1.LossReason) graphql.Marshaler {
-	if v == nil {
-		return graphql.Null
-	}
-	return v
-}
-
-func (ec *executionContext) marshalOMazes_Map2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMap(ctx context.Context, sel ast.SelectionSet, v *model1.Map) graphql.Marshaler {
-	if v == nil {
-		return graphql.Null
-	}
-	return ec._Mazes_Map(ctx, sel, v)
-}
-
-func (ec *executionContext) marshalOMazes_MoveEvent2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMoveEvent(ctx context.Context, sel ast.SelectionSet, v *model1.MoveEvent) graphql.Marshaler {
-	if v == nil {
-		return graphql.Null
-	}
-	return ec._Mazes_MoveEvent(ctx, sel, v)
-}
-
-func (ec *executionContext) marshalOMazes_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPosition(ctx context.Context, sel ast.SelectionSet, v *model1.Position) graphql.Marshaler {
-	if v == nil {
-		return graphql.Null
-	}
-	return ec._Mazes_Position(ctx, sel, v)
-}
-
-func (ec *executionContext) marshalOMazes_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx context.Context, sel ast.SelectionSet, v *model1.Session) graphql.Marshaler {
-	if v == nil {
-		return graphql.Null
-	}
-	return ec._Mazes_Session(ctx, sel, v)
-}
-
-func (ec *executionContext) unmarshalOMazes_SessionSort2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSessionSort(ctx context.Context, v any) (*model1.SessionSort, error) {
-	if v == nil {
-		return nil, nil
-	}
-	var res = new(model1.SessionSort)
-	err := res.UnmarshalGQL(v)
-	return res, graphql.ErrorOnPath(ctx, err)
-}
-
-func (ec *executionContext) marshalOMazes_SessionSort2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSessionSort(ctx context.Context, sel ast.SelectionSet, v *model1.SessionSort) graphql.Marshaler {
-	if v == nil {
-		return graphql.Null
-	}
-	return v
-}
-
-func (ec *executionContext) marshalOMotor_Account2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐAccount(ctx context.Context, sel ast.SelectionSet, v *model2.Account) graphql.Marshaler {
-	if v == nil {
-		return graphql.Null
-	}
-	return ec._Motor_Account(ctx, sel, v)
-}
-
-func (ec *executionContext) marshalOMotor_Leaderboard2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLeaderboard(ctx context.Context, sel ast.SelectionSet, v *model2.Leaderboard) graphql.Marshaler {
-	if v == nil {
-		return graphql.Null
-	}
-	return ec._Motor_Leaderboard(ctx, sel, v)
-}
-
-func (ec *executionContext) marshalOMotor_LeaderboardEntry2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLeaderboardEntry(ctx context.Context, sel ast.SelectionSet, v *model2.LeaderboardEntry) graphql.Marshaler {
-	if v == nil {
-		return graphql.Null
-	}
-	return ec._Motor_LeaderboardEntry(ctx, sel, v)
-}
-
-func (ec *executionContext) unmarshalOMotor_LeaderboardOrder2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLeaderboardOrder(ctx context.Context, v any) (*model2.LeaderboardOrder, error) {
-	if v == nil {
-		return nil, nil
-	}
-	var res = new(model2.LeaderboardOrder)
-	err := res.UnmarshalGQL(v)
-	return res, graphql.ErrorOnPath(ctx, err)
-}
-
-func (ec *executionContext) marshalOMotor_LeaderboardOrder2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLeaderboardOrder(ctx context.Context, sel ast.SelectionSet, v *model2.LeaderboardOrder) graphql.Marshaler {
-	if v == nil {
-		return graphql.Null
-	}
-	return v
-}
-
-func (ec *executionContext) unmarshalOMotor_LossReason2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLossReason(ctx context.Context, v any) (*model2.LossReason, error) {
+func (ec *executionContext) unmarshalOMazes_LossReason2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐLossReason(ctx context.Context, v any) (*model2.LossReason, error) {
 	if v == nil {
 		return nil, nil
 	}
@@ -54694,49 +54944,42 @@ func (ec *executionContext) unmarshalOMotor_LossReason2ᚖgithubᚗcomᚋwricard
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalOMotor_LossReason2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLossReason(ctx context.Context, sel ast.SelectionSet, v *model2.LossReason) graphql.Marshaler {
+func (ec *executionContext) marshalOMazes_LossReason2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐLossReason(ctx context.Context, sel ast.SelectionSet, v *model2.LossReason) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return v
 }
 
-func (ec *executionContext) marshalOMotor_Map2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMap(ctx context.Context, sel ast.SelectionSet, v *model2.Map) graphql.Marshaler {
+func (ec *executionContext) marshalOMazes_Map2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMap(ctx context.Context, sel ast.SelectionSet, v *model2.Map) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
-	return ec._Motor_Map(ctx, sel, v)
+	return ec._Mazes_Map(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOMotor_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPosition(ctx context.Context, sel ast.SelectionSet, v *model2.Position) graphql.Marshaler {
+func (ec *executionContext) marshalOMazes_MoveEvent2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMoveEvent(ctx context.Context, sel ast.SelectionSet, v *model2.MoveEvent) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
-	return ec._Motor_Position(ctx, sel, v)
+	return ec._Mazes_MoveEvent(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOMotor_Profile2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐProfile(ctx context.Context, sel ast.SelectionSet, v *model2.Profile) graphql.Marshaler {
+func (ec *executionContext) marshalOMazes_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPosition(ctx context.Context, sel ast.SelectionSet, v *model2.Position) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
-	return ec._Motor_Profile(ctx, sel, v)
+	return ec._Mazes_Position(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOMotor_Program2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐProgram(ctx context.Context, sel ast.SelectionSet, v *model2.Program) graphql.Marshaler {
+func (ec *executionContext) marshalOMazes_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx context.Context, sel ast.SelectionSet, v *model2.Session) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
-	return ec._Motor_Program(ctx, sel, v)
+	return ec._Mazes_Session(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOMotor_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSession(ctx context.Context, sel ast.SelectionSet, v *model2.Session) graphql.Marshaler {
-	if v == nil {
-		return graphql.Null
-	}
-	return ec._Motor_Session(ctx, sel, v)
-}
-
-func (ec *executionContext) unmarshalOMotor_SessionSort2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSessionSort(ctx context.Context, v any) (*model2.SessionSort, error) {
+func (ec *executionContext) unmarshalOMazes_SessionSort2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSessionSort(ctx context.Context, v any) (*model2.SessionSort, error) {
 	if v == nil {
 		return nil, nil
 	}
@@ -54745,14 +54988,104 @@ func (ec *executionContext) unmarshalOMotor_SessionSort2ᚖgithubᚗcomᚋwricar
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalOMotor_SessionSort2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSessionSort(ctx context.Context, sel ast.SelectionSet, v *model2.SessionSort) graphql.Marshaler {
+func (ec *executionContext) marshalOMazes_SessionSort2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSessionSort(ctx context.Context, sel ast.SelectionSet, v *model2.SessionSort) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return v
 }
 
-func (ec *executionContext) marshalOMotor_StepEvent2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐStepEvent(ctx context.Context, sel ast.SelectionSet, v *model2.StepEvent) graphql.Marshaler {
+func (ec *executionContext) marshalOMotor_Leaderboard2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLeaderboard(ctx context.Context, sel ast.SelectionSet, v *model3.Leaderboard) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._Motor_Leaderboard(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOMotor_LeaderboardEntry2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLeaderboardEntry(ctx context.Context, sel ast.SelectionSet, v *model3.LeaderboardEntry) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._Motor_LeaderboardEntry(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalOMotor_LeaderboardOrder2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLeaderboardOrder(ctx context.Context, v any) (*model3.LeaderboardOrder, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var res = new(model3.LeaderboardOrder)
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOMotor_LeaderboardOrder2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLeaderboardOrder(ctx context.Context, sel ast.SelectionSet, v *model3.LeaderboardOrder) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return v
+}
+
+func (ec *executionContext) unmarshalOMotor_LossReason2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLossReason(ctx context.Context, v any) (*model3.LossReason, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var res = new(model3.LossReason)
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOMotor_LossReason2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐLossReason(ctx context.Context, sel ast.SelectionSet, v *model3.LossReason) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return v
+}
+
+func (ec *executionContext) marshalOMotor_Map2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMap(ctx context.Context, sel ast.SelectionSet, v *model3.Map) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._Motor_Map(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOMotor_Position2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐPosition(ctx context.Context, sel ast.SelectionSet, v *model3.Position) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._Motor_Position(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOMotor_Program2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐProgram(ctx context.Context, sel ast.SelectionSet, v *model3.Program) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._Motor_Program(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOMotor_Session2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSession(ctx context.Context, sel ast.SelectionSet, v *model3.Session) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._Motor_Session(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalOMotor_SessionSort2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSessionSort(ctx context.Context, v any) (*model3.SessionSort, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var res = new(model3.SessionSort)
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOMotor_SessionSort2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐSessionSort(ctx context.Context, sel ast.SelectionSet, v *model3.SessionSort) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return v
+}
+
+func (ec *executionContext) marshalOMotor_StepEvent2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐStepEvent(ctx context.Context, sel ast.SelectionSet, v *model3.StepEvent) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -54813,21 +55146,21 @@ func (ec *executionContext) marshalOString2ᚖstring(ctx context.Context, sel as
 	return res
 }
 
-func (ec *executionContext) marshalOTesla_AttemptInfo2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐAttemptInfo(ctx context.Context, sel ast.SelectionSet, v *model3.AttemptInfo) graphql.Marshaler {
+func (ec *executionContext) marshalOTesla_AttemptInfo2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐAttemptInfo(ctx context.Context, sel ast.SelectionSet, v *model4.AttemptInfo) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._Tesla_AttemptInfo(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalOTesla_CellConfigEntryInput2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐCellConfigEntryInputᚄ(ctx context.Context, v any) ([]*model3.CellConfigEntryInput, error) {
+func (ec *executionContext) unmarshalOTesla_CellConfigEntryInput2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐCellConfigEntryInputᚄ(ctx context.Context, v any) ([]*model4.CellConfigEntryInput, error) {
 	if v == nil {
 		return nil, nil
 	}
 	var vSlice []any
 	vSlice = graphql.CoerceList(v)
 	var err error
-	res := make([]*model3.CellConfigEntryInput, len(vSlice))
+	res := make([]*model4.CellConfigEntryInput, len(vSlice))
 	for i := range vSlice {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
 		res[i], err = ec.unmarshalNTesla_CellConfigEntryInput2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐCellConfigEntryInput(ctx, vSlice[i])
@@ -54838,14 +55171,14 @@ func (ec *executionContext) unmarshalOTesla_CellConfigEntryInput2ᚕᚖgithubᚗ
 	return res, nil
 }
 
-func (ec *executionContext) unmarshalOTesla_LegendEntryInput2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐLegendEntryInputᚄ(ctx context.Context, v any) ([]*model3.LegendEntryInput, error) {
+func (ec *executionContext) unmarshalOTesla_LegendEntryInput2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐLegendEntryInputᚄ(ctx context.Context, v any) ([]*model4.LegendEntryInput, error) {
 	if v == nil {
 		return nil, nil
 	}
 	var vSlice []any
 	vSlice = graphql.CoerceList(v)
 	var err error
-	res := make([]*model3.LegendEntryInput, len(vSlice))
+	res := make([]*model4.LegendEntryInput, len(vSlice))
 	for i := range vSlice {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
 		res[i], err = ec.unmarshalNTesla_LegendEntryInput2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐLegendEntryInput(ctx, vSlice[i])
@@ -54856,39 +55189,39 @@ func (ec *executionContext) unmarshalOTesla_LegendEntryInput2ᚕᚖgithubᚗcom�
 	return res, nil
 }
 
-func (ec *executionContext) unmarshalOTesla_SessionSort2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSessionSort(ctx context.Context, v any) (*model3.SessionSort, error) {
+func (ec *executionContext) unmarshalOTesla_SessionSort2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSessionSort(ctx context.Context, v any) (*model4.SessionSort, error) {
 	if v == nil {
 		return nil, nil
 	}
-	var res = new(model3.SessionSort)
+	var res = new(model4.SessionSort)
 	err := res.UnmarshalGQL(v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalOTesla_SessionSort2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSessionSort(ctx context.Context, sel ast.SelectionSet, v *model3.SessionSort) graphql.Marshaler {
+func (ec *executionContext) marshalOTesla_SessionSort2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSessionSort(ctx context.Context, sel ast.SelectionSet, v *model4.SessionSort) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return v
 }
 
-func (ec *executionContext) unmarshalOTesla_SortOrder2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSortOrder(ctx context.Context, v any) (*model3.SortOrder, error) {
+func (ec *executionContext) unmarshalOTesla_SortOrder2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSortOrder(ctx context.Context, v any) (*model4.SortOrder, error) {
 	if v == nil {
 		return nil, nil
 	}
-	var res = new(model3.SortOrder)
+	var res = new(model4.SortOrder)
 	err := res.UnmarshalGQL(v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalOTesla_SortOrder2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSortOrder(ctx context.Context, sel ast.SelectionSet, v *model3.SortOrder) graphql.Marshaler {
+func (ec *executionContext) marshalOTesla_SortOrder2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐSortOrder(ctx context.Context, sel ast.SelectionSet, v *model4.SortOrder) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return v
 }
 
-func (ec *executionContext) marshalOTesla_StepInfo2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐStepInfo(ctx context.Context, sel ast.SelectionSet, v *model3.StepInfo) graphql.Marshaler {
+func (ec *executionContext) marshalOTesla_StepInfo2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐStepInfo(ctx context.Context, sel ast.SelectionSet, v *model4.StepInfo) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}

@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/wricardo/drbrain/games/motor/game/service"
+	"github.com/wricardo/drbrain/platform/account"
 )
 
 var guestShape = regexp.MustCompile(`^[A-Z][a-z]+[A-Z][a-z]+$`)
@@ -14,7 +15,7 @@ var guestShape = regexp.MustCompile(`^[A-Z][a-z]+[A-Z][a-z]+$`)
 func TestGuestName(t *testing.T) {
 	seen := map[string]bool{}
 	for range 500 {
-		n := service.GuestName(0)
+		n := account.GuestName(0)
 		if !guestShape.MatchString(n) {
 			t.Fatalf("guest name %q is not <Adjective><Noun>", n)
 		}
@@ -26,7 +27,7 @@ func TestGuestName(t *testing.T) {
 	if len(seen) < 100 {
 		t.Fatalf("only %d distinct names in 500 draws: the generator is not random enough", len(seen))
 	}
-	if n := service.GuestName(5); utf8.RuneCountInString(n) > 5 {
+	if n := account.GuestName(5); utf8.RuneCountInString(n) > 5 {
 		t.Fatalf("GuestName(5) = %q, want at most 5 characters", n)
 	}
 }

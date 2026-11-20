@@ -12,12 +12,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wricardo/drbrain/games/motor/game/account"
 	"github.com/wricardo/drbrain/games/motor/game/config"
 	"github.com/wricardo/drbrain/games/motor/game/engine"
 	"github.com/wricardo/drbrain/games/motor/game/service"
 	"github.com/wricardo/drbrain/games/motor/game/session"
-	"github.com/wricardo/drbrain/games/motor/internal/pgdb/pgtest"
+	"github.com/wricardo/drbrain/platform/account"
+	"github.com/wricardo/drbrain/platform/pgdb/pgtest"
 )
 
 const (
@@ -102,7 +102,7 @@ func writeFiles(t *testing.T) Dirs {
 			t.Fatal(err)
 		}
 		now := time.Now().UTC().Truncate(time.Second)
-		if err := store.PutLogin(service.Login{TokenHash: strings.Repeat(string(rune('a'+i)), 64), AccountID: id, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}); err != nil {
+		if err := store.PutLogin(account.Login{TokenHash: strings.Repeat(string(rune('a'+i)), 64), AccountID: id, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}); err != nil {
 			t.Fatal(err)
 		}
 	}

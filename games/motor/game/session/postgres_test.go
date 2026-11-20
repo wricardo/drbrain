@@ -12,7 +12,7 @@ import (
 
 	"github.com/wricardo/drbrain/games/motor/game/engine"
 	"github.com/wricardo/drbrain/games/motor/game/service"
-	"github.com/wricardo/drbrain/games/motor/internal/pgdb/pgtest"
+	"github.com/wricardo/drbrain/platform/pgdb/pgtest"
 )
 
 const acctID = "0123456789abcdef01234567"

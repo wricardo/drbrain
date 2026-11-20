@@ -16,7 +16,7 @@ import (
 func testHandler(t *testing.T, opts Options) http.Handler {
 	t.Helper()
 	if opts.Resolver == nil {
-		opts.Resolver = New(&deliverygraph.Resolver{}, &mazesgraph.Resolver{}, &motorgraph.Resolver{}, &teslagraph.Resolver{})
+		opts.Resolver = New(nil, &deliverygraph.Resolver{}, &mazesgraph.Resolver{}, &motorgraph.Resolver{}, &teslagraph.Resolver{})
 	}
 	return NewHandler(opts)
 }
@@ -126,7 +126,7 @@ func TestIntrospectionListsNamespaces(t *testing.T) {
 	for _, f := range fields {
 		names = append(names, f.(map[string]any)["name"].(string))
 	}
-	want := []string{"delivery", "mazes", "motorProgramming", "tesla"}
+	want := []string{"account", "delivery", "mazes", "motorProgramming", "tesla"}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("Query fields = %v, want %v", names, want)
 	}
@@ -148,7 +148,7 @@ func TestAliasFragmentAndTypename(t *testing.T) {
 }
 
 func TestDisabledNamespaceReportsError(t *testing.T) {
-	h := testHandler(t, Options{Resolver: New(&deliverygraph.Resolver{}, nil, nil, nil)})
+	h := testHandler(t, Options{Resolver: New(nil, &deliverygraph.Resolver{}, nil, nil, nil)})
 	out := postJSON(t, h, `{"query":"{ tesla { maps { mapId } } }"}`)
 	errs, ok := out["errors"].([]any)
 	if !ok || len(errs) == 0 {

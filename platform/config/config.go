@@ -31,6 +31,20 @@ type Config struct {
 	// AllowedOrigins is the comma-separated origin allowlist for CORS and
 	// websocket upgrades. Empty or "*" allows every origin.
 	AllowedOrigins string `envconfig:"DRBRAIN_ALLOWED_ORIGINS"`
+	// DatabaseURL enables PostgreSQL for accounts and, when a game chooses to
+	// use it, sessions and maps. Empty keeps file storage.
+	DatabaseURL string `envconfig:"DRBRAIN_DATABASE_URL"`
+	// AccountsDir is the file-backed account store root (when DatabaseURL is empty).
+	AccountsDir string `envconfig:"DRBRAIN_ACCOUNTS_DIR" default:"accounts"`
+	// AuthPassword enables username/password sign-up and sign-in.
+	AuthPassword bool `envconfig:"DRBRAIN_AUTH_PASSWORD" default:"true"`
+	// OAuth providers are enabled when both their id and secret are set.
+	GoogleClientID     string `envconfig:"DRBRAIN_AUTH_GOOGLE_CLIENT_ID"`
+	GoogleClientSecret string `envconfig:"DRBRAIN_AUTH_GOOGLE_CLIENT_SECRET"`
+	GitHubClientID     string `envconfig:"DRBRAIN_AUTH_GITHUB_CLIENT_ID"`
+	GitHubClientSecret string `envconfig:"DRBRAIN_AUTH_GITHUB_CLIENT_SECRET"`
+	// AuthDevFake adds a local-only fake provider.
+	AuthDevFake bool `envconfig:"DRBRAIN_AUTH_DEV_FAKE"`
 }
 
 // Load reads Config from the environment and validates it.
@@ -60,6 +74,9 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.StaticDir) == "" {
 		return errors.New("DRBRAIN_STATIC_DIR is empty")
+	}
+	if strings.TrimSpace(c.AccountsDir) == "" {
+		return errors.New("DRBRAIN_ACCOUNTS_DIR is empty")
 	}
 	for _, name := range c.EnabledGames() {
 		if name == "" {

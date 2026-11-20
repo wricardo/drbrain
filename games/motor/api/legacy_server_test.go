@@ -22,12 +22,12 @@ import (
 	"github.com/99designs/gqlgen/graphql/playground"
 	"github.com/gorilla/mux"
 	gorillaws "github.com/gorilla/websocket"
-	"github.com/wricardo/drbrain/games/motor/auth"
 	"github.com/wricardo/drbrain/games/motor/game/service"
 	"github.com/wricardo/drbrain/games/motor/graph"
 	"github.com/wricardo/drbrain/games/motor/graph/generated"
 	"github.com/wricardo/drbrain/games/motor/graph/model"
 	"github.com/wricardo/drbrain/games/motor/transport/websocket"
+	"github.com/wricardo/drbrain/platform/auth"
 )
 
 const (
@@ -138,12 +138,6 @@ func newGraphQLServer(svc service.GameService, hub *websocket.Hub, opts Options)
 	}
 	resolver := graph.NewResolver(svc, hub)
 	resolver.Admin = graph.Admin{Key: opts.AdminKey, AllowUnauthenticated: opts.AllowUnauthenticatedAdmin}
-	if opts.Auth != nil {
-		resolver.Passwords = opts.Auth
-		for _, p := range opts.Auth.Providers() {
-			resolver.Providers = append(resolver.Providers, graph.Provider{ID: p.ID, Name: p.Name})
-		}
-	}
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{
 		Resolvers:  resolver,
 		Complexity: complexityRoot(),
@@ -195,8 +189,8 @@ func complexityRoot() generated.ComplexityRoot {
 	c.Query.PlayerRuns = func(child int, _ []string, _ *string) int {
 		return safeMul(child, playerRunsRowCost) + leaderboardBaseCost
 	}
-	// profile: the same scan plus one row per map.
-	c.Query.Profile = func(child int, _ string) int {
+	// playerRunsFor: the same scan plus one row per map.
+	c.Query.PlayerRunsFor = func(child int, _ string) int {
 		return safeMul(child, playerRunsRowCost) + leaderboardBaseCost
 	}
 	// claimSessions: bounded by the service (service.MaxClaims); each claim is a lookup.
@@ -288,17 +282,18 @@ func withViewer(a *auth.Auth, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost || isWebSocketUpgrade(r) {
 			if acct, token := a.Viewer(r); acct != nil {
-				v := &graph.Viewer{Account: acct, Token: token, ClearSession: func() { a.ClearSession(w, r) }}
-				r = r.WithContext(context.WithValue(r.Context(), graph.ViewerKey{}, v))
+				r = r.WithContext(auth.WithViewer(r.Context(), &auth.Viewer{
+					Account: acct, Token: token, ClearSession: func() { a.ClearSession(w, r) },
+				}))
 			}
 			// The upgrade has no HTTP response to set a cookie on, so the hooks
 			// carry OverHTTP=false: a password mutation over a subscription is
 			// refused instead of minting a login the browser could never send back.
-			signIn := &graph.SignIn{
+			signIn := &auth.SignIn{
 				OverHTTP:   !isWebSocketUpgrade(r),
 				SetSession: func(token string, expires time.Time) { a.SetSession(w, r, token, expires) },
 			}
-			r = r.WithContext(context.WithValue(r.Context(), graph.SignInKey{}, signIn))
+			r = r.WithContext(auth.WithSignIn(r.Context(), signIn))
 		}
 		next.ServeHTTP(w, r)
 	})

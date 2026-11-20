@@ -10,6 +10,7 @@ import (
 	"github.com/wricardo/drbrain/games/motor/game/engine"
 	"github.com/wricardo/drbrain/games/motor/game/service"
 	"github.com/wricardo/drbrain/games/motor/game/session"
+	"github.com/wricardo/drbrain/platform/account"
 )
 
 // ---- maps ------------------------------------------------------------------
@@ -224,6 +225,34 @@ type env struct {
 	pers *spyPersistence
 	maps *fakeMaps
 	rec  *recorder
+}
+
+// acctEnv adds a real file-backed account service to env.
+type acctEnv struct {
+	*env
+	store    *account.Store
+	accounts *account.Service
+}
+
+func newAcctEnv(t *testing.T, opts service.Options) *acctEnv {
+	t.Helper()
+	store, err := account.Open(t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accounts := account.New(account.Options{Store: store})
+	opts.Accounts = accounts
+	e := newEnv(t, envOpts{svcOpts: opts}, wideCfg, corridorCfg, longCfg, spinCfg, noSubsCfg)
+	return &acctEnv{env: e, store: store, accounts: accounts}
+}
+
+func (e *acctEnv) signIn(t *testing.T, handle string) *account.Account {
+	t.Helper()
+	a, _, err := e.accounts.SignIn("dev", handle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return a
 }
 
 type envOpts struct {

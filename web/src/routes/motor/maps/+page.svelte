@@ -9,7 +9,7 @@
 	import { DIFFICULTY_FILTERS, countByDifficulty, filterMaps, groupMaps, isOfficial, sortMaps, type DifficultyFilter } from '$lib/motor/maps';
 	import { CREATE_SESSION_MUTATION, MAPS_QUERY } from '$lib/motor/queries';
 	import { newSessionName, rememberSession } from '$lib/motor/sessions';
-	import { account } from '$lib/motor/stores/account';
+	import { account } from '$lib/account/stores/account';
 	import type { GameMap, Session } from '$lib/motor/types';
 
 	const client = getContextClient();

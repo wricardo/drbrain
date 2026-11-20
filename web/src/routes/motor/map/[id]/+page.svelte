@@ -11,7 +11,7 @@
 	import { recursionChip } from '$lib/motor/recursion';
 	import { CREATE_SESSION_MUTATION, MAP_QUERY } from '$lib/motor/queries';
 	import { newSessionName, rememberSession, statusLine } from '$lib/motor/sessions';
-	import { account } from '$lib/motor/stores/account';
+	import { account } from '$lib/account/stores/account';
 	import type { GameMap, Session } from '$lib/motor/types';
 
 	const client = getContextClient();

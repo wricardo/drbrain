@@ -15,7 +15,7 @@ func TestNamespaceRootsReturnTheirGameResolver(t *testing.T) {
 	m := &mazesgraph.Resolver{}
 	p := &motorgraph.Resolver{}
 	x := &teslagraph.Resolver{}
-	r := New(d, m, p, x)
+	r := New(nil, d, m, p, x)
 	ctx := context.Background()
 
 	for name, tc := range map[string]struct {
@@ -53,7 +53,7 @@ func TestComplexityUsesNamespacedRoots(t *testing.T) {
 		t.Fatal("mazes sessions complexity is not wired")
 	}
 	if c.Motor_Query.Sessions == nil || c.Motor_Query.Leaderboard == nil ||
-		c.Motor_Query.PlayerRuns == nil || c.Motor_Query.Profile == nil ||
+		c.Motor_Query.PlayerRuns == nil || c.Motor_Query.PlayerRunsFor == nil ||
 		c.Motor_Mutation.ClaimSessions == nil {
 		t.Fatal("motor complexity is not fully wired")
 	}

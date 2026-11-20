@@ -2,9 +2,9 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/sve
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readable } from 'svelte/store';
 import AccountMenu from './AccountMenu.svelte';
-import SignInDialog from './SignInDialog.svelte';
-import { setMe } from '$lib/motor/stores/account';
-import type { Account } from '$lib/motor/types';
+import SignInDialog from '$lib/account/components/SignInDialog.svelte';
+import { setMe, refreshAccount } from '$lib/account/stores/account';
+import type { Account } from '$lib/account/types';
 
 vi.mock('$app/stores', () => ({
 	page: readable({ url: new URL('http://localhost/leaderboard?map=a') })
@@ -15,8 +15,7 @@ const me: Account = { handle: 'speedy_fox', displayName: 'Speedy', profilePublic
 
 // The store is module-level, so each test sets the state through refreshAccount with a fake client.
 async function load(data: { me: Account | null; authProviders: { id: string; name: string }[] }) {
-	const { refreshAccount } = await import('$lib/motor/stores/account');
-	await refreshAccount({ query: () => ({ toPromise: () => Promise.resolve({ data }) }) } as never);
+	await refreshAccount({ query: () => ({ toPromise: () => Promise.resolve({ data: { account: data } }) }) } as never);
 }
 
 function mount(mutation = vi.fn(() => ({ toPromise: () => Promise.resolve({ data: { logout: true } }) }))) {
@@ -42,9 +41,9 @@ describe('AccountMenu', () => {
 		const dialog = screen.getByRole('dialog', { name: 'Sign in' });
 		expect(dialog).toHaveTextContent(/keep playing as a guest/i);
 		const google = within(dialog).getByRole('link', { name: 'Continue with Google' });
-		expect(google).toHaveAttribute('href', '/motor/auth/google/login?next=%2Fleaderboard%3Fmap%3Da');
+		expect(google).toHaveAttribute('href', '/auth/google/login?next=%2Fleaderboard%3Fmap%3Da');
 		expect(google).toHaveAttribute('data-sveltekit-reload');
-		expect(within(dialog).getByRole('link', { name: 'Continue with GitHub' })).toHaveAttribute('href', expect.stringContaining('/motor/auth/github/login'));
+		expect(within(dialog).getByRole('link', { name: 'Continue with GitHub' })).toHaveAttribute('href', expect.stringContaining('/auth/github/login'));
 		await fireEvent.keyDown(window, { key: 'Escape' });
 		expect(screen.queryByRole('dialog')).toBeNull();
 	});
@@ -59,9 +58,9 @@ describe('AccountMenu', () => {
 		await fireEvent.click(button);
 		expect(button).toHaveAttribute('aria-expanded', 'true');
 		const menu = screen.getByRole('menu', { name: 'Account' });
-		expect(within(menu).getByRole('menuitem', { name: 'My profile' })).toHaveAttribute('href', '/motor/u/speedy_fox');
+		expect(within(menu).getByRole('menuitem', { name: 'My profile' })).toHaveAttribute('href', '/u/speedy_fox');
 		expect(within(menu).getByRole('menuitem', { name: 'My runs' })).toHaveAttribute('href', '/motor/runs');
-		expect(within(menu).getByRole('menuitem', { name: 'Settings' })).toHaveAttribute('href', '/motor/settings');
+		expect(within(menu).getByRole('menuitem', { name: 'Settings' })).toHaveAttribute('href', '/settings');
 		await fireEvent.keyDown(window, { key: 'Escape' });
 		expect(screen.queryByRole('menu')).toBeNull();
 	});
@@ -89,7 +88,7 @@ describe('SignInDialog', () => {
 	it('lists one button per provider, says what is kept, and closes with the button', async () => {
 		const onclose = vi.fn();
 		render(SignInDialog, { props: { providers: [{ id: 'google', name: 'Google' }], next: '/', onclose } });
-		expect(screen.getByTestId('signin-google')).toHaveAttribute('href', '/motor/auth/google/login?next=%2F');
+		expect(screen.getByTestId('signin-google')).toHaveAttribute('href', '/auth/google/login?next=%2F');
 		expect(screen.getByRole('dialog')).toHaveTextContent(/never your email/i);
 		await fireEvent.click(screen.getByRole('button', { name: 'Close' }));
 		expect(onclose).toHaveBeenCalled();
@@ -97,6 +96,6 @@ describe('SignInDialog', () => {
 
 	it('never lets a hostile return path through', () => {
 		render(SignInDialog, { props: { providers: [{ id: 'google', name: 'Google' }], next: 'https://evil.example/x', onclose: () => {} } });
-		expect(screen.getByTestId('signin-google')).toHaveAttribute('href', '/motor/auth/google/login?next=%2F');
+		expect(screen.getByTestId('signin-google')).toHaveAttribute('href', '/auth/google/login?next=%2F');
 	});
 });

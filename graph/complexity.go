@@ -53,7 +53,7 @@ func Complexity() generated.ComplexityRoot {
 	c.Motor_Query.PlayerRuns = func(child int, _ []string, _ *string) int {
 		return safeMul(child, playerRunsRowCost) + leaderboardBaseCost
 	}
-	c.Motor_Query.Profile = func(child int, _ string) int {
+	c.Motor_Query.PlayerRunsFor = func(child int, _ string) int {
 		return safeMul(child, playerRunsRowCost) + leaderboardBaseCost
 	}
 	c.Motor_Mutation.ClaimSessions = func(child int, claims []*motormodel.SessionClaimInput) int {

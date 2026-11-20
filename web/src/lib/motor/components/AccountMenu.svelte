@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	import { getContextClient } from '@urql/svelte';
-	import { profileHref } from '$lib/motor/account';
-	import { account, signOut } from '$lib/motor/stores/account';
-	import SignInDialog from './SignInDialog.svelte';
+	import { profileHref } from '$lib/account/account';
+	import { account, signOut } from '$lib/account/stores/account';
+	import SignInDialog from '$lib/account/components/SignInDialog.svelte';
 
 	/**
 	 * Header control. Hidden while loading and when the server offers no way to sign in (the
@@ -60,7 +60,7 @@
 				<div role="menu" aria-label="Account" class="absolute right-0 z-40 mt-1 w-48 rounded-xl border border-indigo-200 bg-white p-1 shadow-lg">
 					<a role="menuitem" href={profileHref($account.me.handle)} class={item} onclick={() => (open = false)}>My profile</a>
 					<a role="menuitem" href="/motor/runs" class={item} onclick={() => (open = false)}>My runs</a>
-					<a role="menuitem" href="/motor/settings" class={item} onclick={() => (open = false)}>Settings</a>
+					<a role="menuitem" href="/settings" class={item} onclick={() => (open = false)}>Settings</a>
 					<button role="menuitem" type="button" class={item} disabled={signingOut} onclick={logout} data-testid="signout">Sign out</button>
 				</div>
 			{/if}

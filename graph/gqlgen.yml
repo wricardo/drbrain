@@ -114,6 +114,38 @@ models:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.Snapshot
   Delivery_UnlockView:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.UnlockView
+  Global_AccountInput:
+    model: github.com/wricardo/drbrain/platform/account/graph/model.AccountInput
+  Global_AuthProvider:
+    model: github.com/wricardo/drbrain/platform/account/graph/model.AuthProvider
+  Global_Mutation:
+    model: github.com/wricardo/drbrain/platform/account/graph.Resolver
+    fields:
+      logout:
+        resolver: true
+      registerWithPassword:
+        resolver: true
+      logInWithPassword:
+        resolver: true
+      updateAccount:
+        resolver: true
+      changePassword:
+        resolver: true
+      deleteAccount:
+        resolver: true
+  Global_Profile:
+    model: github.com/wricardo/drbrain/platform/account/graph/model.Profile
+  Global_Query:
+    model: github.com/wricardo/drbrain/platform/account/graph.Resolver
+    fields:
+      me:
+        resolver: true
+      authProviders:
+        resolver: true
+      profile:
+        resolver: true
+  Global_User:
+    model: github.com/wricardo/drbrain/platform/account/graph/model.User
   Mazes_AdminMap:
     model: github.com/wricardo/drbrain/games/mazes/graph/model.AdminMap
   Mazes_Direction:
@@ -184,12 +216,6 @@ models:
     model: github.com/wricardo/drbrain/games/mazes/graph/model.Status
   Mazes_Via:
     model: github.com/wricardo/drbrain/games/mazes/graph/model.Via
-  Motor_Account:
-    model: github.com/wricardo/drbrain/games/motor/graph/model.Account
-  Motor_AccountInput:
-    model: github.com/wricardo/drbrain/games/motor/graph/model.AccountInput
-  Motor_AuthProvider:
-    model: github.com/wricardo/drbrain/games/motor/graph/model.AuthProvider
   Motor_ClaimStatus:
     model: github.com/wricardo/drbrain/games/motor/graph/model.ClaimStatus
   Motor_Conveyor:
@@ -244,18 +270,6 @@ models:
         resolver: true
       reset:
         resolver: true
-      logout:
-        resolver: true
-      registerWithPassword:
-        resolver: true
-      logInWithPassword:
-        resolver: true
-      updateAccount:
-        resolver: true
-      changePassword:
-        resolver: true
-      deleteAccount:
-        resolver: true
       claimSessions:
         resolver: true
       createMap:
@@ -272,8 +286,6 @@ models:
     model: github.com/wricardo/drbrain/games/motor/graph/model.Portal
   Motor_Position:
     model: github.com/wricardo/drbrain/games/motor/graph/model.Position
-  Motor_Profile:
-    model: github.com/wricardo/drbrain/games/motor/graph/model.Profile
   Motor_Program:
     model: github.com/wricardo/drbrain/games/motor/graph/model.Program
   Motor_ProgramInput:
@@ -281,12 +293,6 @@ models:
   Motor_Query:
     model: github.com/wricardo/drbrain/games/motor/graph.Resolver
     fields:
-      me:
-        resolver: true
-      authProviders:
-        resolver: true
-      profile:
-        resolver: true
       maps:
         resolver: true
       map:
@@ -300,6 +306,8 @@ models:
       leaderboard:
         resolver: true
       playerRuns:
+        resolver: true
+      playerRunsFor:
         resolver: true
   Motor_Session:
     model: github.com/wricardo/drbrain/games/motor/graph/model.Session

@@ -16,6 +16,7 @@ import (
 	mazesgraph "github.com/wricardo/drbrain/games/mazes/graph"
 	motorgraph "github.com/wricardo/drbrain/games/motor/graph"
 	teslagraph "github.com/wricardo/drbrain/games/tesla/graph"
+	accountgraph "github.com/wricardo/drbrain/platform/account/graph"
 )
 
 // errGameDisabled is returned when a query touches a namespace whose game was
@@ -25,6 +26,7 @@ var errGameDisabled = errors.New("game is not enabled")
 // Resolver is the gqlgen root. Each namespace field returns the game resolver
 // object it was bound to, so field adapters are delegations, not copies.
 type Resolver struct {
+	Account  *accountgraph.Resolver
 	Delivery *deliverygraph.Resolver
 	Mazes    *mazesgraph.Resolver
 	Motor    *motorgraph.Resolver
@@ -33,6 +35,6 @@ type Resolver struct {
 
 // New returns the root resolver for the enabled games. A nil game resolver is
 // a programming error: the host only serves the games it mounted.
-func New(delivery *deliverygraph.Resolver, mazes *mazesgraph.Resolver, motor *motorgraph.Resolver, tesla *teslagraph.Resolver) *Resolver {
-	return &Resolver{Delivery: delivery, Mazes: mazes, Motor: motor, Tesla: tesla}
+func New(account *accountgraph.Resolver, delivery *deliverygraph.Resolver, mazes *mazesgraph.Resolver, motor *motorgraph.Resolver, tesla *teslagraph.Resolver) *Resolver {
+	return &Resolver{Account: account, Delivery: delivery, Mazes: mazes, Motor: motor, Tesla: tesla}
 }

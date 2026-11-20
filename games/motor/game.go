@@ -8,20 +8,13 @@ import (
 	_ "embed"
 	"fmt"
 	"net/http"
-	"os"
-	"strings"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kelseyhightower/envconfig"
-	"github.com/wricardo/drbrain/games/motor/api"
-	"github.com/wricardo/drbrain/games/motor/auth"
-	"github.com/wricardo/drbrain/games/motor/game/account"
 	motorconfig "github.com/wricardo/drbrain/games/motor/game/config"
 	"github.com/wricardo/drbrain/games/motor/game/service"
 	"github.com/wricardo/drbrain/games/motor/game/session"
 	"github.com/wricardo/drbrain/games/motor/graph"
 	"github.com/wricardo/drbrain/games/motor/internal/appconfig"
-	"github.com/wricardo/drbrain/games/motor/internal/pgdb"
 	"github.com/wricardo/drbrain/games/motor/transport/websocket"
 	"github.com/wricardo/drbrain/platform"
 )
@@ -40,9 +33,7 @@ type Env struct {
 	MapsDir      string `envconfig:"MAPS_DIR" default:"maps"`
 	UserMapsDir  string `envconfig:"USER_MAPS_DIR" default:"maps-user"`
 	SessionsDir  string `envconfig:"SESSIONS_DIR" default:"sessions"`
-	AccountsDir  string `envconfig:"ACCOUNTS_DIR" default:"accounts"`
 	SolutionsDir string `envconfig:"SOLUTIONS_DIR" default:"solutions"`
-	DatabaseURL  string `envconfig:"DATABASE_URL"`
 	PublicURL    string `envconfig:"PUBLIC_URL"`
 	Debug        bool   `envconfig:"DEBUG"`
 	// MaxSessions zero means "use the existing MAX_SESSIONS setting".
@@ -57,15 +48,13 @@ func loadEnv() (Env, error) {
 	return e, nil
 }
 
-// Game is Dr Brain - Motor Programming on the platform. Postgres and the
-// account code stay here; the host only owns the listener and lifecycle.
+// Game is Dr Brain - Motor Programming on the platform. Accounts, auth and the
+// PostgreSQL pool come from the platform; the game owns sessions and maps.
 type Game struct {
 	env       Env
 	publicURL string
 	svc       service.GameService
-	pool      *pgxpool.Pool
 	resolver  *graph.Resolver
-	auth      *auth.Auth
 }
 
 // New returns the game for the compiled-in registry. Work happens in Mount so
@@ -74,13 +63,10 @@ func New() *Game { return &Game{} }
 
 func (g *Game) Name() string   { return "motor" }
 func (g *Game) Prefix() string { return prefix }
-func (g *Game) API() []string  { return []string{"/auth/"} }
+func (g *Game) API() []string  { return nil }
 
 // GraphQLResolver implements platform.GraphQLResolver.
 func (g *Game) GraphQLResolver() any { return g.resolver }
-
-// GraphQLAuth implements platform.GraphQLAuth.
-func (g *Game) GraphQLAuth() any { return g.auth }
 
 // LLMSTemplate implements platform.LLMSProvider.
 func (g *Game) LLMSTemplate() string { return llmsTemplate }
@@ -106,21 +92,9 @@ func (g *Game) Mount(mux *http.ServeMux, deps platform.Deps) error {
 		return fmt.Errorf("configuration: %w", err)
 	}
 
-	// Storage: with a database URL, sessions, accounts, logins and player maps
-	// live in PostgreSQL; without one they stay JSON files (the rollback path).
-	// A configured but unreachable database is a startup error, never a silent
-	// fallback to files.
-	dbURL := strings.TrimSpace(env.DatabaseURL)
-	if dbURL == "" {
-		dbURL = cfg.DatabaseURL
-	}
-	if dbURL != "" {
-		pool, err := pgdb.Open(context.Background(), dbURL)
-		if err != nil {
-			return fmt.Errorf("database: %w", err)
-		}
-		g.pool = pool
-	}
+	// Storage: the platform pool is shared with the global account service. It
+	// is nil when file storage is configured.
+	pool := deps.DB
 
 	maxSessions := env.MaxSessions
 	if maxSessions <= 0 {
@@ -132,10 +106,10 @@ func (g *Game) Mount(mux *http.ServeMux, deps platform.Deps) error {
 		MaxUserMaps: cfg.MaxUserMaps.Int(),
 	}
 	var persistence session.SessionPersistence
-	if g.pool != nil {
+	if pool != nil {
 		mapOpts.UserDir = ""
-		mapOpts.UserStore = motorconfig.NewPostgresUserMaps(g.pool)
-		persistence = session.NewPostgresPersistence(g.pool)
+		mapOpts.UserStore = motorconfig.NewPostgresUserMaps(pool)
+		persistence = session.NewPostgresPersistence(pool)
 	} else {
 		fp, err := session.NewStorePersistence(env.SessionsDir, maxSessions)
 		if err != nil {
@@ -152,97 +126,32 @@ func (g *Game) Mount(mux *http.ServeMux, deps platform.Deps) error {
 		deps.Logger.Warn("loading persisted sessions", "err", err)
 	}
 
-	// Sign-in: username/password accounts are on by default; OAuth providers are
-	// each on when both their id and secret are set. With neither, nothing is
-	// created and the server behaves as before.
-	providers, err := auth.Providers(auth.ProvidersConfig{
-		GoogleID:     cfg.AuthGoogleClientID,
-		GoogleSecret: cfg.AuthGoogleClientSecret,
-		GitHubID:     cfg.AuthGitHubClientID,
-		GitHubSecret: cfg.AuthGitHubClientSecret,
-		DevFake:      cfg.AuthDevFake.Bool(),
-		BasePath:     prefix,
-	}, g.publicURL)
-	if err != nil {
-		return fmt.Errorf("sign-in configuration: %w", err)
-	}
-	passwordSignIn := cfg.AuthPassword.Bool()
-	var accounts service.AccountStore
-	switch {
-	case g.pool != nil:
-		if len(providers) > 0 || passwordSignIn {
-			accounts = account.NewPostgresStore(g.pool)
-		}
-	case len(providers) > 0 || passwordSignIn || dirExists(env.AccountsDir):
-		fileAccounts, err := account.Open(env.AccountsDir, nil)
-		if err != nil {
-			return fmt.Errorf("accounts: %w", err)
-		}
-		accounts = fileAccounts
-	}
-
 	hub := websocket.NewHub()
-	svcOpts := service.Options{
-		SessionTTL:     cfg.SessionTTL.Duration(),
-		SweepInterval:  cfg.SessionSweepInterval.Duration(),
-		MaxAccounts:    cfg.MaxAccounts.Int(),
-		PasswordSignIn: passwordSignIn,
-	}
-	if accounts != nil {
-		svcOpts.Accounts = accounts
-	}
-	svc := service.New(maps, sessions, hub, svcOpts)
-
-	var authHandler *auth.Auth
-	if len(providers) > 0 || passwordSignIn {
-		authHandler, err = auth.New(auth.Config{
-			Providers: providers, Accounts: svc, PublicURL: g.publicURL, AllowedOrigins: cfg.AllowedOrigins,
-			Password: passwordSignIn, BasePath: prefix,
-		})
-		if err != nil {
-			return fmt.Errorf("sign-in: %w", err)
-		}
-		if passwordSignIn && g.publicURL == "" {
-			deps.Logger.Warn("no MOTOR_PUBLIC_URL: sign-in is accepted only on localhost hosts or ALLOWED_ORIGINS")
-		}
+	svc := service.New(maps, sessions, hub, service.Options{
+		SessionTTL:    cfg.SessionTTL.Duration(),
+		SweepInterval: cfg.SessionSweepInterval.Duration(),
+		Accounts:      deps.Accounts,
+	})
+	if deps.Accounts != nil {
+		deps.Accounts.SetOnDelete(svc.DetachAccount)
 	}
 
 	resolver := graph.NewResolver(svc, hub)
+	resolver.Accounts = deps.Accounts
 	resolver.Admin = graph.Admin{
 		Key:                  cfg.AdminKey,
 		AllowUnauthenticated: cfg.AllowUnauthenticatedAdmin.Bool(),
 	}
-	if authHandler != nil {
-		resolver.Passwords = authHandler
-		for _, p := range authHandler.Providers() {
-			resolver.Providers = append(resolver.Providers, graph.Provider{ID: p.ID, Name: p.Name})
-		}
-	}
 	g.resolver = resolver
-	g.auth = authHandler
-
-	if authHandler != nil {
-		mux.Handle("/auth/", api.NewAuthRoutes(authHandler))
-	}
 
 	g.svc = svc
 	return nil
 }
 
-// Shutdown persists every session, then closes the database pool. The service
-// logs individual save failures and is idempotent.
+// Shutdown persists every session. The shared pool is closed by the process.
 func (g *Game) Shutdown(context.Context) error {
 	if g.svc != nil {
 		g.svc.Shutdown()
 	}
-	if g.pool != nil {
-		g.pool.Close()
-	}
 	return nil
-}
-
-// dirExists reports whether path is an existing directory.
-func dirExists(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.IsDir()
 }

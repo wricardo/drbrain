@@ -31,7 +31,7 @@
 	} from '$lib/motor/queries';
 	import { newSessionName, ownerTokenFor, rememberSession, runTitle, statusLine } from '$lib/motor/sessions';
 	import { serialRunner } from '$lib/motor/serialRunner';
-	import { account } from '$lib/motor/stores/account';
+	import { account } from '$lib/account/stores/account';
 	import { replayTo, stepBackTarget } from '$lib/motor/stepBack';
 	import { initialSpeed, saveSpeed, savedSpeed } from '$lib/motor/speed';
 	import { blockedCallNotice } from '$lib/motor/recursion';

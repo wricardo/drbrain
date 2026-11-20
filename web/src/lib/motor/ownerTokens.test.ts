@@ -77,7 +77,7 @@ describe('leaderboard rows of accounts', () => {
 	});
 
 	it('link to the profile, the runs by name, or nowhere', () => {
-		expect(playerHref({ displayName: 'Ada L', handle: 'ada' })).toBe('/motor/u/ada');
+		expect(playerHref({ displayName: 'Ada L', handle: 'ada' })).toBe('/u/ada');
 		expect(playerHref({ displayName: 'BraveOtter', handle: null })).toBe('/motor/runs?name=BraveOtter');
 		expect(playerHref({ displayName: 'Private player', handle: null })).toBeNull();
 		expect(playerHref({ displayName: 'Anonymous', handle: null })).toBeNull();

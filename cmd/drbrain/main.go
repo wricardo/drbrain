@@ -15,19 +15,23 @@ import (
 	"syscall"
 	"text/tabwriter"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/wricardo/drbrain/games/delivery"
 	deliverygraph "github.com/wricardo/drbrain/games/delivery/graph"
 	"github.com/wricardo/drbrain/games/mazes"
 	mazesgraph "github.com/wricardo/drbrain/games/mazes/graph"
 	"github.com/wricardo/drbrain/games/motor"
-	motorauth "github.com/wricardo/drbrain/games/motor/auth"
 	motorgraph "github.com/wricardo/drbrain/games/motor/graph"
 	"github.com/wricardo/drbrain/games/tesla"
 	teslagraph "github.com/wricardo/drbrain/games/tesla/graph"
 	"github.com/wricardo/drbrain/graph"
 	"github.com/wricardo/drbrain/platform"
+	"github.com/wricardo/drbrain/platform/account"
+	accountgraph "github.com/wricardo/drbrain/platform/account/graph"
+	"github.com/wricardo/drbrain/platform/auth"
 	"github.com/wricardo/drbrain/platform/config"
 	"github.com/wricardo/drbrain/platform/host"
+	"github.com/wricardo/drbrain/platform/pgdb"
 )
 
 func main() {
@@ -54,17 +58,14 @@ func builtinGraphQL(cfg config.Config) host.GraphQLBuilder {
 		mazes, _ := b.Resolvers["mazes"].(*mazesgraph.Resolver)
 		motor, _ := b.Resolvers["motor"].(*motorgraph.Resolver)
 		tesla, _ := b.Resolvers["tesla"].(*teslagraph.Resolver)
-		var auth *motorauth.Auth
-		if v, ok := b.Auth["motor"]; ok {
-			auth, _ = v.(*motorauth.Auth)
-		}
+		accountResolver := accountgraph.New(b.Accounts, b.Authn)
 		mux := http.NewServeMux()
 		mux.Handle("/graphql", graph.NewHandler(graph.Options{
-			Resolver:       graph.New(delivery, mazes, motor, tesla),
+			Resolver:       graph.New(accountResolver, delivery, mazes, motor, tesla),
 			AllowedOrigins: cfg.AllowedOrigins,
 			Introspection:  true,
 			Playground:     true,
-			Auth:           auth,
+			Auth:           b.Authn,
 		}))
 		mux.Handle("/graphql/playground", graph.Playground())
 		return mux, nil
@@ -143,7 +144,59 @@ func runServe(args []string, games []platform.Game, stdout, stderr io.Writer) in
 		return 1
 	}
 	logger := newLogger(stderr, cfg.Debug)
-	h := host.New(cfg, reg, logger, host.WithGraphQL(builtinGraphQL(cfg)))
+
+	var pool *pgxpool.Pool
+	if strings.TrimSpace(cfg.DatabaseURL) != "" {
+		pool, err = pgdb.Open(context.Background(), cfg.DatabaseURL)
+		if err != nil {
+			fmt.Fprintf(stderr, "drbrain serve: database: %v\n", err)
+			return 1
+		}
+		defer pool.Close()
+	}
+
+	var accountsRepo account.Repository
+	if pool != nil {
+		accountsRepo = account.NewPostgresStore(pool)
+	} else {
+		accountsRepo, err = account.Open(cfg.AccountsDir, nil)
+		if err != nil {
+			fmt.Fprintf(stderr, "drbrain serve: accounts: %v\n", err)
+			return 1
+		}
+	}
+	accounts := account.New(account.Options{
+		Store:          accountsRepo,
+		PasswordSignIn: cfg.AuthPassword,
+	})
+	providers, err := auth.Providers(auth.ProvidersConfig{
+		GoogleID:     cfg.GoogleClientID,
+		GoogleSecret: cfg.GoogleClientSecret,
+		GitHubID:     cfg.GitHubClientID,
+		GitHubSecret: cfg.GitHubClientSecret,
+		DevFake:      cfg.AuthDevFake,
+	}, cfg.PublicURL)
+	if err != nil {
+		fmt.Fprintf(stderr, "drbrain serve: sign-in: %v\n", err)
+		return 1
+	}
+	var authn *auth.Auth
+	if len(providers) > 0 || cfg.AuthPassword {
+		authn, err = auth.New(auth.Config{
+			Providers: providers, Accounts: accounts, PublicURL: cfg.PublicURL,
+			AllowedOrigins: cfg.AllowedOrigins, Password: cfg.AuthPassword,
+		})
+		if err != nil {
+			fmt.Fprintf(stderr, "drbrain serve: sign-in: %v\n", err)
+			return 1
+		}
+	}
+
+	h := host.New(cfg, reg, logger,
+		host.WithGraphQL(builtinGraphQL(cfg)),
+		host.WithDB(pool),
+		host.WithServices(accounts, authn),
+	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

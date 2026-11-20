@@ -127,32 +127,10 @@ type GameService interface {
 	// or a display name (see RunsQuery). Errors: INVALID_ARGUMENT.
 	GetPlayerRuns(q RunsQuery) ([]PlayerRun, error)
 
-	// Accounts. All of these fail with FORBIDDEN when AccountsEnabled is false.
-	AccountsEnabled() bool
-	// SignIn finds or creates the account of a provider identity.
-	SignIn(provider, providerUserID string) (acct *Account, created bool, err error)
-	// StartLogin makes a new login for the account and returns the cookie token.
-	StartLogin(accountID string) (token string, expires time.Time, err error)
-	Authenticate(token string) (*Account, bool)
-	EndLogin(token string)
-	GetAccount(id string) (*Account, error)
-	UpdateAccount(id string, u AccountUpdate) (*Account, error)
-	// HandleChangeableAt is when the account may change its handle (zero = now).
-	HandleChangeableAt(a *Account) time.Time
-	// DeleteAccount removes the account, its logins and its links to runs.
-	DeleteAccount(id string) error
-	// GetProfile is NOT_FOUND for unknown handles and for private profiles
-	// unless viewerAccountID is the owner.
-	GetProfile(handle, viewerAccountID string) (*Profile, error)
-	// RegisterPassword creates a username/password account (username = handle).
-	// VerifyPassword checks a login: every failure is ErrBadCredentials.
-	// ChangePassword needs the current password and ends the account's other logins.
-	// All three need AUTH_PASSWORD and fail with FORBIDDEN otherwise.
-	RegisterPassword(handle, password string) (*Account, error)
-	VerifyPassword(handle, password string) (*Account, error)
-	ChangePassword(accountID, current, next, keepToken string) error
 	// ClaimSessions attaches sessions to an account using their owner tokens.
 	ClaimSessions(accountID string, claims []SessionClaim) ([]ClaimResult, error)
+	// DetachAccount turns sessions owned by a deleted account into guest runs.
+	DetachAccount(accountID string) error
 
 	ListMaps() []*engine.Map
 	GetMap(id string) (*engine.Map, error)

@@ -1,27 +1,21 @@
 package service
 
-import "fmt"
+import "github.com/wricardo/drbrain/platform/errs"
 
 // Error codes surfaced as GraphQL extensions.code.
 const (
-	CodeNotFound        = "NOT_FOUND"
-	CodeInvalidProgram  = "INVALID_PROGRAM"
-	CodeSessionPlaying  = "SESSION_PLAYING"
-	CodeSessionTerminal = "SESSION_TERMINAL"
-	CodeInvalidArgument = "INVALID_ARGUMENT"
-	CodeForbidden       = "FORBIDDEN"
-	CodeLimit           = "LIMIT_REACHED"
+	CodeNotFound        = errs.CodeNotFound
+	CodeInvalidProgram  = errs.CodeInvalidProgram
+	CodeSessionPlaying  = errs.CodeSessionPlaying
+	CodeSessionTerminal = errs.CodeSessionTerminal
+	CodeInvalidArgument = errs.CodeInvalidArgument
+	CodeUnauthenticated = errs.CodeUnauthenticated
+	CodeForbidden       = errs.CodeForbidden
+	CodeLimit           = errs.CodeLimit
 )
 
 // Error is a coded service error.
-type Error struct {
-	Code string
-	Msg  string
-}
-
-func (e *Error) Error() string { return e.Msg }
+type Error = errs.Error
 
 // Errorf builds a coded error.
-func Errorf(code, format string, a ...any) *Error {
-	return &Error{Code: code, Msg: fmt.Sprintf(format, a...)}
-}
+var Errorf = errs.Errorf

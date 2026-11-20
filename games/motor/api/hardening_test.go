@@ -68,10 +68,7 @@ const (
 	mapSel     = `id name description difficulty builtin width height layout start { x y } startFacing rocks { x y } treats { x y } conveyors { pos { x y } dir } mirrors { pos { x y } slash } keys { pos { x y } letter } doors { pos { x y } letter } portals { pos { x y } pair } mainTapeLength subTapeLengths maxSteps maxCallDepth allowRecursion`
 	eventSel   = `step instruction tapeIndex slotIndex from { x y } to { x y } facingBefore facingAfter blocked callBlocked pushed pushBlocked mirrored collectedKey teleported { x y } collected { x y } callStack { tape pc } status lossReason`
 	sessionSel = `id displayName mapId map { ` + mapSel + ` } program { main subs } vm { pos { x y } facing treatsRemaining { x y } callStack { tape pc } steps status lossReason visited { x y } openDoors } playing speedMs seq createdAt lastActionAt attempts bestSteps lastEvent { ` + eventSel + ` }`
-	// The frontend's account and profile queries (frontend/src/lib/queries.ts).
-	accountQ  = `query Account { me { handle displayName profilePublic createdAt handleChangeableAt hasPassword } authProviders { id name } }`
-	profileQ  = `query Profile($handle: String!) { profile(handle: $handle) { handle displayName createdAt isMine runs { mapId total entry { rank sessionId displayName handle mine slots steps achievedAt } } } }`
-	sessionsQ = `query Sessions($limit: Int, $sort: SessionSort, $mapId: ID) { sessions(sort: $sort, limit: $limit, mapId: $mapId) { id displayName mapId playing createdAt lastActionAt map { name } vm { status steps treatsRemaining { x y } } } }`
+	sessionsQ  = `query Sessions($limit: Int, $sort: SessionSort, $mapId: ID) { sessions(sort: $sort, limit: $limit, mapId: $mapId) { id displayName mapId playing createdAt lastActionAt map { name } vm { status steps treatsRemaining { x y } } } }`
 )
 
 func queryComplexity(t *testing.T, query string, vars map[string]any) int {
@@ -98,11 +95,7 @@ func TestFrontendQueriesStayUnderComplexityLimit(t *testing.T) {
 		{"leaderboard (limit 100)", leaderboardQ, map[string]any{"mapId": "x", "limit": json.Number("100"), "sessionId": "y"}},
 		{"leaderboard default limit", leaderboardQ, map[string]any{"mapId": "x"}},
 		{"player runs", playerRunsQ, map[string]any{"name": "x"}},
-		{"account", accountQ, nil},
-		{"profile", profileQ, map[string]any{"handle": "x"}},
 		{"create session with owner token", `mutation($m: ID!) { createSession(mapID: $m) { ` + sessionSel + ` ownerToken } }`, map[string]any{"m": "x"}},
-		{"register with password", `mutation($h: String!, $p: String!) { registerWithPassword(handle: $h, password: $p) { handle displayName profilePublic createdAt handleChangeableAt hasPassword } }`, map[string]any{"h": "x", "p": "y"}},
-		{"log in with password", `mutation($h: String!, $p: String!) { logInWithPassword(handle: $h, password: $p) { handle displayName profilePublic createdAt handleChangeableAt hasPassword } }`, map[string]any{"h": "x", "p": "y"}},
 		{"mutation with full session", `mutation($sessionID: ID!) { run(sessionID: $sessionID) { ` + sessionSel + ` } }`, map[string]any{"sessionID": "x"}},
 		{"can play session", `query($id: ID!) { canPlaySession(id: $id) }`, map[string]any{"id": "x"}},
 		{"subscription", `subscription($sessionID: ID!) { sessionUpdated(sessionID: $sessionID) { seq session { ` + sessionSel + ` } event { ` + eventSel + ` } } }`, map[string]any{"sessionID": "x"}},
