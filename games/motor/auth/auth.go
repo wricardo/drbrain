@@ -202,8 +202,9 @@ func (a *Auth) secure(r *http.Request) bool {
 
 // SetSession stores the login token in an HttpOnly, SameSite=Lax cookie that
 // expires with the login (Secure unless the site is plain-http localhost).
-// The cookie is scoped to the game's mount path, never the site root, so one
-// origin can host several games without leaking the login between them.
+// The cookie is origin-wide because GraphQL lives at /graphql; its name keeps
+// it distinct from other games' cookies. Flow cookies remain under the auth
+// prefix.
 func (a *Auth) SetSession(w http.ResponseWriter, r *http.Request, token string, expires time.Time) {
 	http.SetCookie(w, &http.Cookie{
 		Name: SessionCookie, Value: token, Path: a.cookiePath(), Expires: expires, MaxAge: int(expires.Sub(a.now()).Seconds()),
@@ -219,13 +220,11 @@ func (a *Auth) ClearSession(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// cookiePath is the login cookie's Path attribute: the game's mount prefix,
-// or "/" for a game that owns the root.
+// cookiePath is the login cookie's Path attribute. The unified GraphQL API is
+// served at the site root, so the login cookie must be sent to /graphql; the
+// name (motor_session) keeps it distinct from any other game's cookie.
 func (a *Auth) cookiePath() string {
-	if a.basePath == "" {
-		return "/"
-	}
-	return a.basePath
+	return "/"
 }
 
 // flowPath scopes the in-progress sign-in cookie to the callback routes.

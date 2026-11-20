@@ -31,7 +31,7 @@
 	<div class="min-w-0">
 		<h3 class="text-lg font-light text-[#171a20] truncate">
 			<a
-				href={`/maps/${encodeURIComponent(map.mapId)}`}
+				href={`/tesla/maps/${encodeURIComponent(map.mapId)}`}
 				title={`Open ${name}`}
 				class="hover:text-red-600 hover:underline underline-offset-2 transition-colors"
 			>{name}</a>

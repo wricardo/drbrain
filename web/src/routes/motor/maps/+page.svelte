@@ -45,7 +45,7 @@
 				client.mutation(CREATE_SESSION_MUTATION, { mapID: map.id, displayName: newSessionName(!!$account.me) })
 			);
 			rememberSession(data.createSession.id, data.createSession.displayName, data.createSession.ownerToken);
-			await goto(`/play/${data.createSession.id}`);
+			await goto(`/motor/play/${data.createSession.id}`);
 		} catch (e) {
 			error = describeError(e);
 		} finally {
@@ -123,7 +123,7 @@
 				{/if}
 				<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 					{#each group.maps as map (map.id)}
-						<MapCard {map} {busy} onplay={play} editHref="/editor?map={encodeURIComponent(map.id)}" />
+						<MapCard {map} {busy} onplay={play} editHref="/motor/editor?map={encodeURIComponent(map.id)}" />
 					{/each}
 				</div>
 			</section>

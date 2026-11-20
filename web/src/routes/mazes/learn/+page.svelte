@@ -179,5 +179,5 @@
 		</div>
 	</section>
 
-	<p><a href="/mazes/" class="inline-block rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">Pick a map</a></p>
+	<p><a href="/mazes" class="inline-block rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700">Pick a map</a></p>
 </div>

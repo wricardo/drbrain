@@ -16,7 +16,7 @@
 // stream — a paused city can legitimately sit for minutes — is not dropped by
 // an intermediary.
 
-import type { Snapshot } from './api';
+import type { Delivery_Snapshot as Snapshot } from '../graphql-types';
 
 /** Frames the server emits, mapped to the state a caller sees. */
 export interface SessionSubscriptionHandlers {
@@ -31,7 +31,8 @@ export interface SessionSubscriptionHandlers {
 }
 
 /** Query text for the subscription. Mirrors SNAPSHOT_FIELDS in api.ts. */
-const SUBSCRIPTION = (fields: string) => `subscription ($id: ID!) { session(id: $id) { ${fields} } }`;
+const SUBSCRIPTION = (fields: string) =>
+	`subscription ($id: ID!) { deliverySession(id: $id) { ${fields} } }`;
 
 /**
  * subscribeToSession opens an SSE stream for one session.
@@ -51,7 +52,7 @@ export function subscribeToSession(
 	void (async () => {
 		let res: Response;
 		try {
-			res = await fetch('/delivery/graphql', {
+			res = await fetch('/graphql', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
 				body: JSON.stringify({ query: SUBSCRIPTION(fields), variables: { id } }),
@@ -131,14 +132,14 @@ function handleFrame(frame: string, handlers: SessionSubscriptionHandlers): void
 	if (data.length === 0) return;
 	try {
 		const parsed = JSON.parse(data.join('\n')) as {
-			data?: { session?: Snapshot };
+			data?: { deliverySession?: Snapshot };
 			errors?: { message: string }[];
 		};
 		if (parsed.errors?.length) {
 			handlers.closed(parsed.errors[0].message);
 			return;
 		}
-		const snapshot = parsed.data?.session;
+		const snapshot = parsed.data?.deliverySession;
 		if (snapshot) handlers.next(snapshot);
 	} catch {
 		// A malformed frame is not worth tearing the stream down over.

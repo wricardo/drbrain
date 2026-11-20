@@ -98,7 +98,7 @@
 				client.mutation(CREATE_SESSION_MUTATION, { mapID: map.id, displayName: newSessionName(!!$account.me) })
 			);
 			rememberSession(data.createSession.id, undefined, data.createSession.ownerToken);
-			await goto(`/play/${data.createSession.id}`);
+			await goto(`/motor/play/${data.createSession.id}`);
 		} catch (e) {
 			error = describeError(e);
 		} finally {

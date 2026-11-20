@@ -130,14 +130,6 @@ func NewPlaygroundHandler(endpoint string) http.Handler {
 	return playground.Handler("Dr Brain - Motor Programming GraphQL playground", endpoint)
 }
 
-// NewAuthRoutes returns the sign-in routes as a handler. The gorilla patterns
-// stay relative ("/auth/..."); the platform strips the game prefix first.
-func NewAuthRoutes(a *auth.Auth) http.Handler {
-	r := mux.NewRouter()
-	a.Routes(r)
-	return r
-}
-
 // newGraphQLServer builds the gqlgen handler with transports and guards.
 func newGraphQLServer(svc service.GameService, hub *websocket.Hub, opts Options) *handler.Server {
 	initTimeout := opts.WSInitTimeout

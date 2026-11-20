@@ -90,7 +90,7 @@
 	}
 
 	function watchSelected() {
-		void goto(`/multi?ids=${selected.map(encodeURIComponent).join(',')}`);
+		void goto(`/mazes/multi?ids=${selected.map(encodeURIComponent).join(',')}`);
 	}
 
 	const statusClass: Record<string, string> = {
@@ -213,7 +213,7 @@
 		<p class="rounded-xl border border-indigo-200 bg-white px-4 py-6 text-sm text-slate-600">
 			{#if sessions.length === 0}
 				No sessions yet.
-				<a href="/mazes/" class="ml-2 inline-block rounded-lg bg-indigo-600 px-3 py-1.5 font-semibold text-white hover:bg-indigo-700">Start a map</a>
+				<a href="/mazes" class="ml-2 inline-block rounded-lg bg-indigo-600 px-3 py-1.5 font-semibold text-white hover:bg-indigo-700">Start a map</a>
 			{:else}
 				No sessions match these filters.
 				<button

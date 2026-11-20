@@ -1,19 +1,19 @@
-import { createClient, cacheExchange, fetchExchange, subscriptionExchange, type Client } from '@urql/svelte';
+import { createClient, cacheExchange, fetchExchange, mapExchange, subscriptionExchange, type Client } from '@urql/svelte';
 import { createClient as createWsClient, type Client as WsClient } from 'graphql-ws';
 import { getAdminKey } from './admin';
 
 const GRAPHQL_URL =
 	typeof window !== 'undefined' && import.meta.env?.PUBLIC_GRAPHQL_URL
 		? import.meta.env.PUBLIC_GRAPHQL_URL
-		: '/mazes/graphql';
+		: '/graphql';
 
 const WS_URL =
 	typeof window !== 'undefined' && import.meta.env?.PUBLIC_WS_URL
 		? import.meta.env.PUBLIC_WS_URL
 		: typeof window !== 'undefined'
-			? `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/mazes/graphql`
+			? `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/graphql`
 			: import.meta.env?.DEV
-				? 'ws://localhost:8080/mazes/graphql'
+				? 'ws://localhost:8080/graphql'
 				: '';
 
 let wsClient: WsClient | null = null;
@@ -39,6 +39,21 @@ export function makeClient(): Client {
 			return key ? { headers: { 'X-Admin-Key': key } } : {};
 		},
 		exchanges: [
+			// Documents select under the `mazes` namespace; unwrap it so every
+			// existing screen keeps reading the game-local shape.
+			mapExchange({
+				onResult(result) {
+					if (!result.data) return result;
+					const data = result.data as Record<string, unknown>;
+					if ('mazes' in data) {
+						return { ...result, data: data.mazes as Record<string, unknown> };
+					}
+					if ('mazesSessionUpdated' in data) {
+						return { ...result, data: { sessionUpdated: data.mazesSessionUpdated } };
+					}
+					return result;
+				}
+			}),
 			cacheExchange,
 			fetchExchange,
 			subscriptionExchange({

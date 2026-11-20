@@ -59,7 +59,7 @@ There are two ways to get an AI to play.
 
 **2. Point an agent at the API.** The game publishes a guide written for AI agents at [/llms.txt](https://drbrain.wricardo.net/motor/llms.txt). It has the rules, the endpoints and examples for every call. Give your agent this link and ask it to beat a map.
 
-The API is plain GraphQL at `https://drbrain.wricardo.net/motor/graphql` (the old `motor-programming.wricardo.net` host redirects there). A game takes four calls:
+The API is plain GraphQL at `https://drbrain.wricardo.net/graphql`, selecting the `motorProgramming` namespace. A game takes four calls:
 
 ```graphql
 query    { maps { id name difficulty layout mainTapeLength subTapeLengths } }   # 1. pick a map

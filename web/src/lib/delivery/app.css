@@ -35,20 +35,6 @@
 	--color-warn: #fbbf24;
 }
 
-html,
-body {
-	height: 100%;
-	background-color: var(--color-ink-950);
-	color: var(--color-fog-300);
-	font-family:
-		ui-sans-serif,
-		system-ui,
-		-apple-system,
-		'Segoe UI',
-		sans-serif;
-	font-variant-numeric: tabular-nums;
-}
-
 /* A visible focus ring everywhere: this UI is driven by keyboard as much as
    the mouse, and the map is the primary surface. */
 :focus-visible {

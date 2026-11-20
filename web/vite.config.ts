@@ -4,20 +4,26 @@ import { defineConfig, type UserConfig } from 'vite';
 
 // The `test` block is read by vitest at runtime. vitest ships its own vite typings
 // (a different major than the app's vite), so the config is asserted as a plain vite UserConfig.
+// One backend for the whole app; override for a deployed host.
+const backend = process.env.DEV_BACKEND ?? 'http://localhost:8080';
+
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
 	resolve: {
 		conditions: ['browser']
 	},
 	server: {
-		// One backend for all four game prefixes; override for a deployed host.
-		proxy: Object.fromEntries(
-			['mazes', 'motor', 'tesla', 'delivery'].flatMap((game) => [
-				[`/${game}/graphql`, { target: process.env.DEV_BACKEND ?? 'http://localhost:8080', ws: true }],
-				[`/${game}/auth`, { target: process.env.DEV_BACKEND ?? 'http://localhost:8080' }],
-				[`/${game}/llms.txt`, { target: process.env.DEV_BACKEND ?? 'http://localhost:8080' }]
-			])
-		)
+		// All games share the one namespaced GraphQL endpoint; the remaining
+		// per-game routes below are non-GraphQL APIs.
+		proxy: {
+			'/graphql': { target: backend, ws: true },
+			'/mazes/llms.txt': { target: backend },
+			'/motor/auth': { target: backend },
+			'/motor/llms.txt': { target: backend },
+			'/tesla/mcp': { target: backend },
+			'/tesla/llms.txt': { target: backend },
+			'/delivery/llms.txt': { target: backend }
+		}
 	},
 	test: {
 		environment: 'jsdom',

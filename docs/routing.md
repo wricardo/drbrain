@@ -1,41 +1,67 @@
 # Routing
 
-One listener, one port, path-based routing. The platform mounts each game's
-declared API surface under its prefix; everything else falls through to the
+One listener, one port, one GraphQL API, path-based routing for everything
+else. The platform mounts the unified GraphQL surface at the root and each
+game's non-GraphQL API under its prefix; everything else falls through to the
 single SvelteKit app.
 
 | path | owner |
 |---|---|
-| `/<game>/graphql` | that game's GraphQL handler |
+| `/graphql`, `/graphql/` | platform: one gqlgen executor, namespaced per game |
+| `/graphql/playground` | platform: GraphQL playground |
 | `/<game>/mcp` | that game's MCP transport (where it has one) |
 | `/<game>/llms.txt` | platform, rendered from the game's template |
+| `/<game>/auth/...` | motor sign-in routes |
 | `/<game>/...` | the SvelteKit app |
 
-Games see paths with their prefix stripped, so their own mux keeps absolute
-paths such as `/graphql`.
+## GraphQL namespaces
 
-## Removed legacy routes
+Queries and mutations select a namespace:
 
-Tesla used to serve a REST surface (`/api/sessions`, `/api/sessions/{id}/...`)
-and a raw `/ws` endpoint. Both existed for the terminal client and older
-scripts. They were deleted with `games/tesla/cmd/tui` in the Tesla migration:
+```graphql
+query {
+  delivery { sessions { id } }
+  mazes { maps { id } }
+  motorProgramming { maps { id } }
+  tesla { maps { mapId } }
+}
+```
 
-- GraphQL at `/tesla/graphql` is the only game API.
-- MCP is Streamable HTTP at `/tesla/mcp`, opt-in via `TESLA_MCP_ENABLED=true`.
-- There is no stdio MCP mode (`drbrain mcp` fails with an explicit message).
+Subscriptions are flat prefixed root fields, because GraphQL only permits a
+stream at the operation root:
 
-No unprefixed route survives; the old domains only redirect (deploy cutover).
+```graphql
+subscription {
+  deliverySession(id: "…") { id tick }
+  mazesSessionUpdated(sessionID: "…") { seq }
+  motorProgrammingSessionUpdated(sessionID: "…") { seq }
+  teslaSessionUpdated(sessionID: "…") { battery }
+  teslaLobbyUpdated { mapName }
+}
+```
+
+Types are prefixed (`Delivery_Snapshot`, `Mazes_Map`, `Motor_Session`,
+`Tesla_GameState`) so the four schemas cannot collide. The shared `Time` scalar
+is emitted once.
+
+## Removing the old per-game endpoints
+
+`/<game>/graphql` and `/<game>/playground` were removed. A game's GraphQL
+handler is no longer built or mounted; each game exposes its resolver root to
+the platform, which serves the one executor. `/motor/auth/...` and
+`/tesla/mcp` stay where they were.
+
+Motor's login cookie is now origin-scoped (`Path=/`) so `/graphql` can read it;
+the cookie name (`motor_session`) still distinguishes it from other games.
 
 ## Disabling a game
 
 `DRBRAIN_GAMES` (or `--games`) selects which compiled-in games mount at startup.
-A game that is built in but not selected reserves its whole prefix with `404`:
-`/<game>`, `/<game>/graphql`, `/<game>/llms.txt` and every SPA path below it
-return 404 instead of the app shell, while `/healthz` lists only the selected
-games. Re-adding the name and restarting restores it without a rebuild.
+A disabled game's prefix returns 404 instead of the app shell, and its
+namespace answers `game is not enabled`. `/graphql` and the other enabled
+namespaces stay up.
 
 ```sh
 DRBRAIN_GAMES=mazes,motor,tesla,delivery   # all four
-DRBRAIN_GAMES=mazes,tesla,delivery          # motor 404s, others stay up
+DRBRAIN_GAMES=mazes,tesla,delivery          # motor 404s, its namespace reports disabled
 ```
-

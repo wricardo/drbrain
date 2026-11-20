@@ -1,3 +1,6 @@
+//go:generate go run github.com/wricardo/drbrain/cmd/split-schema
+//go:generate go run github.com/99designs/gqlgen generate
+
 package tesla
 
 import (
@@ -8,17 +11,11 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/99designs/gqlgen/graphql"
-	"github.com/99designs/gqlgen/graphql/handler"
-	"github.com/99designs/gqlgen/graphql/handler/extension"
-	"github.com/99designs/gqlgen/graphql/handler/transport"
-	"github.com/99designs/gqlgen/graphql/playground"
 	"github.com/wricardo/drbrain/games/tesla/appconfig"
 	"github.com/wricardo/drbrain/games/tesla/game/config"
 	"github.com/wricardo/drbrain/games/tesla/game/service"
 	"github.com/wricardo/drbrain/games/tesla/game/session"
 	"github.com/wricardo/drbrain/games/tesla/graph"
-	"github.com/wricardo/drbrain/games/tesla/graph/generated"
 	mcptransport "github.com/wricardo/drbrain/games/tesla/transport/mcp"
 	"github.com/wricardo/drbrain/games/tesla/transport/websocket"
 	"github.com/wricardo/drbrain/platform"
@@ -35,6 +32,7 @@ var llmsTemplate string
 type Game struct {
 	publicURL string
 	cancel    context.CancelFunc
+	resolver  *graph.Resolver
 }
 
 // New returns the game for the compiled-in registry.
@@ -42,7 +40,10 @@ func New() *Game { return &Game{} }
 
 func (g *Game) Name() string   { return "tesla" }
 func (g *Game) Prefix() string { return prefix }
-func (g *Game) API() []string  { return []string{"/graphql", "/playground", "/mcp"} }
+func (g *Game) API() []string  { return []string{"/mcp"} }
+
+// GraphQLResolver implements platform.GraphQLResolver.
+func (g *Game) GraphQLResolver() any { return g.resolver }
 
 // LLMSTemplate implements platform.LLMSProvider.
 func (g *Game) LLMSTemplate() string { return llmsTemplate }
@@ -86,29 +87,8 @@ func (g *Game) Mount(mux *http.ServeMux, deps platform.Deps) error {
 	go hub.Run()
 
 	resolver := graph.NewResolver(gameService, hub, graph.WithAdminPolicy(cfg.Admin()))
-	gqlSrv := handler.New(generated.NewExecutableSchema(generated.Config{Resolvers: resolver}))
-	enableGraphQLOperationLogging(gqlSrv)
-	if bool(cfg.GraphQLIntrospection) {
-		gqlSrv.Use(extension.Introspection{})
-	}
-	gqlSrv.AddTransport(transport.POST{})
-	gqlSrv.AddTransport(transport.GET{})
-	gqlSrv.AddTransport(transport.Options{})
-	gqlSrv.AddTransport(&transport.Websocket{
-		KeepAlivePingInterval: 10 * time.Second,
-		// graphql-transport-ws clients must answer pings; connections that miss
-		// pongs for 2x this interval are closed so dead peers do not hold
-		// subscriptions open until the kernel TCP timeout.
-		PingPongInterval: 10 * time.Second,
-		Upgrader:         websocket.NewUpgrader(cfg.AllowedOrigins),
-	})
-	gqlHandler := withHTTPRequest(gqlSrv)
-	mux.Handle("/graphql", gqlHandler)
-	mux.Handle("/graphql/", gqlHandler)
+	g.resolver = resolver
 
-	if bool(cfg.GraphQLPlayground) {
-		mux.Handle("/playground", playground.Handler("GraphQL playground", prefix+"/graphql"))
-	}
 	if bool(cfg.MCPEnabled) {
 		mcpSrv := mcptransport.NewServer(gameService, hub, mcptransport.WithAdminPolicy(cfg.Admin()))
 		mux.Handle("/mcp", mcpSrv.Handler())
@@ -129,42 +109,6 @@ func (g *Game) Shutdown(context.Context) error {
 		g.cancel()
 	}
 	return nil
-}
-
-// withHTTPRequest stores the *http.Request in context so resolvers can read
-// headers (e.g. X-Admin-Key).
-func withHTTPRequest(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := context.WithValue(r.Context(), graph.HTTPRequestKey{}, r)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-// enableGraphQLOperationLogging logs every GraphQL operation on completion.
-func enableGraphQLOperationLogging(gqlSrv *handler.Server) {
-	gqlSrv.AroundOperations(func(ctx context.Context, next graphql.OperationHandler) graphql.ResponseHandler {
-		opCtx := graphql.GetOperationContext(ctx)
-		opName := "<anonymous>"
-		if opCtx.OperationName != "" {
-			opName = opCtx.OperationName
-		}
-		opType := "unknown"
-		if opCtx.Operation != nil {
-			opType = string(opCtx.Operation.Operation)
-		}
-		start := time.Now()
-		responseHandler := next(ctx)
-		return func(ctx context.Context) *graphql.Response {
-			resp := responseHandler(ctx)
-			errCount := 0
-			if resp != nil {
-				errCount = len(resp.Errors)
-			}
-			log.Printf("[graphql] op.end name=%q type=%s duration=%s errors=%d",
-				opName, opType, time.Since(start), errCount)
-			return resp
-		}
-	})
 }
 
 // sessionCleanupRoutine periodically removes sessions not accessed within 24h.

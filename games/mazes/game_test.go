@@ -14,18 +14,12 @@ func TestGameMetadata(t *testing.T) {
 	if g.Prefix() != "/mazes" {
 		t.Errorf("Prefix = %q", g.Prefix())
 	}
-	want := []string{"/graphql", "/graphql/"}
-	got := g.API()
-	if len(got) != len(want) {
-		t.Fatalf("API = %v, want %v", got, want)
+	// GraphQL moved to the platform root; mazes exposes no game-local API.
+	if got := g.API(); len(got) != 0 {
+		t.Errorf("API = %v, want none", got)
 	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("API[%d] = %q, want %q", i, got[i], want[i])
-		}
-	}
-	if !strings.Contains(g.LLMSTemplate(), "{{.BaseURL}}/graphql") {
-		t.Error("llms template does not render the base URL")
+	if !strings.Contains(g.LLMSTemplate(), "{{.GraphQLURL}}") {
+		t.Error("llms template does not render the GraphQL URL")
 	}
 }
 

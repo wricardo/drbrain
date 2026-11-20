@@ -1044,234 +1044,263 @@ func (ec *executionContext) introspectType(name string) (*introspection.Type, er
 }
 
 var sources = []*ast.Source{
-	{Name: "../schema.graphqls", Input: `scalar Time
+	{Name: "../schema.graphqls", Input: `# Code generated from graph/schema.graphqls by cmd/split-schema. DO NOT EDIT.
 
 enum Direction {
-  UP
-  RIGHT
-  DOWN
-  LEFT
+	UP
+	RIGHT
+	DOWN
+	LEFT
 }
-
 enum Status {
-  READY
-  PLAYING
-  WON
-  LOST
+	READY
+	PLAYING
+	WON
+	LOST
 }
-
 enum LossReason {
-  MOVE_LIMIT
+	MOVE_LIMIT
 }
-
-"How a move changed the position."
+"""
+How a move changed the position.
+"""
 enum Via {
-  "Blocked by void or the edge: nothing happened and the move is not counted."
-  NONE
-  WALK
-  STAIRS_UP
-  STAIRS_DOWN
-  PORTAL
+	"""
+	Blocked by void or the edge: nothing happened and the move is not counted.
+	"""
+	NONE
+	WALK
+	STAIRS_UP
+	STAIRS_DOWN
+	PORTAL
 }
-
 enum SessionSort {
-  RECENT
-  CREATED
+	RECENT
+	CREATED
 }
-
-"A tile coordinate in the tower. level 0 is the bottom; x = column, y = row (row 0 on top)."
+"""
+A tile coordinate in the tower. level 0 is the bottom; x = column, y = row (row 0 on top).
+"""
 type Position {
-  level: Int!
-  x: Int!
-  y: Int!
+	level: Int!
+	x: Int!
+	y: Int!
 }
-
 """
 Two linked holes sharing a glyph digit ('1'..'9'); stepping on one teleports you to the other.
 In a LevelView only the ends on that level are listed: ` + "`" + `a` + "`" + ` is always on the viewed level and
 ` + "`" + `b` + "`" + ` is set only when the twin is on the same level (otherwise the twin's location is hidden).
 """
 type Portal {
-  glyph: String!
-  a: Position!
-  b: Position
+	glyph: String!
+	a: Position!
+	b: Position
 }
-
 """
 Public catalog entry. The start is always on level 0 and the finish on the top level
 (levelCount - 1). Layouts of other levels are hidden: players discover them by playing.
 """
 type Map {
-  id: ID!
-  name: String!
-  description: String!
-  difficulty: String!
-  width: Int!
-  height: Int!
-  levelCount: Int!
-  "Glyph rows of level 0, the level every game starts on."
-  preview: [String!]!
-  maxMoves: Int!
-  "Length of the shortest winning route; null if the finish is unreachable."
-  parMoves: Int
-  """
-  Fewest stairs any winning route takes (levelCount - 1 + 2 * forcedDescents);
-  null if the finish is unreachable.
-  """
-  minLevelChanges: Int
-  """
-  Fewest down stairs any winning route takes: 0 means you can climb straight up.
-  Null if the finish is unreachable.
-  """
-  forcedDescents: Int
+	id: ID!
+	name: String!
+	description: String!
+	difficulty: String!
+	width: Int!
+	height: Int!
+	levelCount: Int!
+	"""
+	Glyph rows of level 0, the level every game starts on.
+	"""
+	preview: [String!]!
+	maxMoves: Int!
+	"""
+	Length of the shortest winning route; null if the finish is unreachable.
+	"""
+	parMoves: Int
+	"""
+	Fewest stairs any winning route takes (levelCount - 1 + 2 * forcedDescents);
+	null if the finish is unreachable.
+	"""
+	minLevelChanges: Int
+	"""
+	Fewest down stairs any winning route takes: 0 means you can climb straight up.
+	Null if the finish is unreachable.
+	"""
+	forcedDescents: Int
 }
-
-"Full map for the editor (admin only)."
+"""
+Full map for the editor (admin only).
+"""
 type AdminMap {
-  id: ID!
-  name: String!
-  description: String!
-  difficulty: String!
-  width: Int!
-  height: Int!
-  levelCount: Int!
-  """
-  Layout glyphs per level (index 0 = bottom), each a list of rows.
-  . void, o stone, S start, F finish, U stairs up, D stairs down, 1-9 portal holes.
-  """
-  levels: [[String!]!]!
-  start: Position!
-  finish: Position!
-  portals: [Portal!]!
-  maxMoves: Int!
-  parMoves: Int
-  minLevelChanges: Int
-  forcedDescents: Int
+	id: ID!
+	name: String!
+	description: String!
+	difficulty: String!
+	width: Int!
+	height: Int!
+	levelCount: Int!
+	"""
+	Layout glyphs per level (index 0 = bottom), each a list of rows.
+	. void, o stone, S start, F finish, U stairs up, D stairs down, 1-9 portal holes.
+	"""
+	levels: [[String!]!]!
+	start: Position!
+	finish: Position!
+	portals: [Portal!]!
+	maxMoves: Int!
+	parMoves: Int
+	minLevelChanges: Int
+	forcedDescents: Int
 }
-
 """
 What a player can see: one level only. Rows use the layout glyphs
 (. void, o stone, S start, F finish, U stairs up, D stairs down, 1-9 portal holes).
 Stairs lead to the same x,y on level+1 (U) or level-1 (D).
 """
 type LevelView {
-  "The level the player is on (0 = bottom)."
-  level: Int!
-  levelCount: Int!
-  rows: [String!]!
-  portals: [Portal!]!
+	"""
+	The level the player is on (0 = bottom).
+	"""
+	level: Int!
+	levelCount: Int!
+	rows: [String!]!
+	portals: [Portal!]!
 }
-
 type GameState {
-  pos: Position!
-  "Counted moves so far (blocked attempts are free)."
-  moves: Int!
-  status: Status!
-  lossReason: LossReason
-  "Every tile entered, in order, starting with the start tile. Stairs and portal moves add the tile stepped on and the landing tile."
-  path: [Position!]!
+	pos: Position!
+	"""
+	Counted moves so far (blocked attempts are free).
+	"""
+	moves: Int!
+	status: Status!
+	lossReason: LossReason
+	"""
+	Every tile entered, in order, starting with the start tile. Stairs and portal moves add the tile stepped on and the landing tile.
+	"""
+	path: [Position!]!
 }
-
 type MoveEvent {
-  "Counted-move index after this attempt (unchanged when blocked)."
-  move: Int!
-  direction: Direction!
-  from: Position!
-  "The tile entered by the step; equals from when blocked."
-  stepped: Position!
-  "Final position after stairs/portal; equals from when blocked."
-  to: Position!
-  blocked: Boolean!
-  via: Via!
-  status: Status!
-  lossReason: LossReason
+	"""
+	Counted-move index after this attempt (unchanged when blocked).
+	"""
+	move: Int!
+	direction: Direction!
+	from: Position!
+	"""
+	The tile entered by the step; equals from when blocked.
+	"""
+	stepped: Position!
+	"""
+	Final position after stairs/portal; equals from when blocked.
+	"""
+	to: Position!
+	blocked: Boolean!
+	via: Via!
+	status: Status!
+	lossReason: LossReason
 }
-
 type Session {
-  id: ID!
-  displayName: String!
-  mapId: ID!
-  "Catalog entry of the map this session plays. Reveals nothing beyond the start level."
-  map: Map!
-  "Fog: the only part of the map a player can see, the level the player stands on right now."
-  view: LevelView!
-  state: GameState!
-  "Increments on every state change; clients ignore updates with seq <= last seen."
-  seq: Int!
-  createdAt: Time!
-  lastActionAt: Time!
-  "Games finished (won or lost) in this session."
-  attempts: Int!
-  "Fewest moves in a won game of this session."
-  bestMoves: Int
-  lastEvent: MoveEvent
+	id: ID!
+	displayName: String!
+	mapId: ID!
+	"""
+	Catalog entry of the map this session plays. Reveals nothing beyond the start level.
+	"""
+	map: Map!
+	"""
+	Fog: the only part of the map a player can see, the level the player stands on right now.
+	"""
+	view: LevelView!
+	state: GameState!
+	"""
+	Increments on every state change; clients ignore updates with seq <= last seen.
+	"""
+	seq: Int!
+	createdAt: Time!
+	lastActionAt: Time!
+	"""
+	Games finished (won or lost) in this session.
+	"""
+	attempts: Int!
+	"""
+	Fewest moves in a won game of this session.
+	"""
+	bestMoves: Int
+	lastEvent: MoveEvent
 }
-
 type SessionUpdate {
-  seq: Int!
-  session: Session!
-  event: MoveEvent
+	seq: Int!
+	session: Session!
+	event: MoveEvent
 }
-
 type MapValidationIssue {
-  message: String!
+	message: String!
 }
-
 type MapValidationResult {
-  valid: Boolean!
-  issues: [MapValidationIssue!]!
-  "Set when the map parses but the finish cannot be reached from the start."
-  finishReachable: Boolean!
-  parMoves: Int
-  minLevelChanges: Int
-  forcedDescents: Int
+	valid: Boolean!
+	issues: [MapValidationIssue!]!
+	"""
+	Set when the map parses but the finish cannot be reached from the start.
+	"""
+	finishReachable: Boolean!
+	parMoves: Int
+	minLevelChanges: Int
+	forcedDescents: Int
 }
-
 input MapInput {
-  id: ID!
-  name: String!
-  description: String
-  difficulty: String
-  levels: [[String!]!]!
-  maxMoves: Int
+	id: ID!
+	name: String!
+	description: String
+	difficulty: String
+	levels: [[String!]!]!
+	maxMoves: Int
 }
-
+scalar Time
 type Query {
-  "Public catalog. Never exposes layouts beyond the start level (see Map.preview)."
-  maps: [Map!]!
-  map(id: ID!): Map
-  "Admin (X-Admin-Key): the full layout of every level, for the map editor."
-  adminMap(id: ID!): AdminMap
-  session(id: ID!): Session
-  sessions(sort: SessionSort = RECENT, limit: Int = 50, mapId: ID): [Session!]!
+	"""
+	Public catalog. Never exposes layouts beyond the start level (see Map.preview).
+	"""
+	maps: [Map!]!
+	map(id: ID!): Map
+	"""
+	Admin (X-Admin-Key): the full layout of every level, for the map editor.
+	"""
+	adminMap(id: ID!): AdminMap
+	session(id: ID!): Session
+	sessions(sort: SessionSort = RECENT, limit: Int = 50, mapId: ID): [Session!]!
 }
-
 type Mutation {
-  createSession(mapID: ID!, displayName: String): Session!
-  deleteSession(id: ID!): Boolean!
-  renameSession(id: ID!, displayName: String!): Session!
-  "One move. A blocked attempt succeeds but changes nothing (lastEvent.blocked)."
-  move(sessionID: ID!, direction: Direction!): Session!
-  """
-  Several moves in order; stops early once the game is WON or LOST. With stopOnBlocked (the
-  default) it also stops at the first blocked attempt, so a wrong plan cannot keep running
-  from the wrong tile: check lastEvent.blocked and state.pos, then send a corrected plan.
-  Pass stopOnBlocked: false to skip blocked moves and carry on.
-  """
-  bulkMove(sessionID: ID!, directions: [Direction!]!, stopOnBlocked: Boolean = true): Session!
-  "Back to the start of the same map; keeps attempts and bestMoves."
-  reset(sessionID: ID!): Session!
-
-  "Admin (X-Admin-Key) mutations."
-  createMap(map: MapInput!): AdminMap!
-  updateMap(map: MapInput!): AdminMap!
-  deleteMap(id: ID!): Boolean!
-  validateMap(map: MapInput!): MapValidationResult!
+	createSession(mapID: ID!, displayName: String): Session!
+	deleteSession(id: ID!): Boolean!
+	renameSession(id: ID!, displayName: String!): Session!
+	"""
+	One move. A blocked attempt succeeds but changes nothing (lastEvent.blocked).
+	"""
+	move(sessionID: ID!, direction: Direction!): Session!
+	"""
+	Several moves in order; stops early once the game is WON or LOST. With stopOnBlocked (the
+	default) it also stops at the first blocked attempt, so a wrong plan cannot keep running
+	from the wrong tile: check lastEvent.blocked and state.pos, then send a corrected plan.
+	Pass stopOnBlocked: false to skip blocked moves and carry on.
+	"""
+	bulkMove(sessionID: ID!, directions: [Direction!]!, stopOnBlocked: Boolean = true): Session!
+	"""
+	Back to the start of the same map; keeps attempts and bestMoves.
+	"""
+	reset(sessionID: ID!): Session!
+	"""
+	Admin (X-Admin-Key) mutations.
+	"""
+	createMap(map: MapInput!): AdminMap!
+	updateMap(map: MapInput!): AdminMap!
+	deleteMap(id: ID!): Boolean!
+	validateMap(map: MapInput!): MapValidationResult!
 }
-
 type Subscription {
-  "Emits the current snapshot immediately, then every change."
-  sessionUpdated(sessionID: ID!): SessionUpdate!
+	"""
+	Emits the current snapshot immediately, then every change.
+	"""
+	sessionUpdated(sessionID: ID!): SessionUpdate!
 }
 `, BuiltIn: false},
 }
@@ -1330,7 +1359,7 @@ func (ec *executionContext) field_Mutation_bulkMove_argsDirections(
 
 	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("directions"))
 	if tmp, ok := rawArgs["directions"]; ok {
-		return ec.unmarshalNDirection2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐDirectionᚄ(ctx, tmp)
+		return ec.unmarshalNDirection2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐDirectionᚄ(ctx, tmp)
 	}
 
 	var zeroVal []model.Direction
@@ -1376,7 +1405,7 @@ func (ec *executionContext) field_Mutation_createMap_argsMap(
 
 	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("map"))
 	if tmp, ok := rawArgs["map"]; ok {
-		return ec.unmarshalNMapInput2githubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐMapInput(ctx, tmp)
+		return ec.unmarshalNMapInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapInput(ctx, tmp)
 	}
 
 	var zeroVal model.MapInput
@@ -1534,7 +1563,7 @@ func (ec *executionContext) field_Mutation_move_argsDirection(
 
 	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("direction"))
 	if tmp, ok := rawArgs["direction"]; ok {
-		return ec.unmarshalNDirection2githubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐDirection(ctx, tmp)
+		return ec.unmarshalNDirection2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐDirection(ctx, tmp)
 	}
 
 	var zeroVal model.Direction
@@ -1641,7 +1670,7 @@ func (ec *executionContext) field_Mutation_updateMap_argsMap(
 
 	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("map"))
 	if tmp, ok := rawArgs["map"]; ok {
-		return ec.unmarshalNMapInput2githubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐMapInput(ctx, tmp)
+		return ec.unmarshalNMapInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapInput(ctx, tmp)
 	}
 
 	var zeroVal model.MapInput
@@ -1669,7 +1698,7 @@ func (ec *executionContext) field_Mutation_validateMap_argsMap(
 
 	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("map"))
 	if tmp, ok := rawArgs["map"]; ok {
-		return ec.unmarshalNMapInput2githubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐMapInput(ctx, tmp)
+		return ec.unmarshalNMapInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapInput(ctx, tmp)
 	}
 
 	var zeroVal model.MapInput
@@ -1819,7 +1848,7 @@ func (ec *executionContext) field_Query_sessions_argsSort(
 
 	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("sort"))
 	if tmp, ok := rawArgs["sort"]; ok {
-		return ec.unmarshalOSessionSort2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐSessionSort(ctx, tmp)
+		return ec.unmarshalOSessionSort2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSessionSort(ctx, tmp)
 	}
 
 	var zeroVal *model.SessionSort
@@ -2390,7 +2419,7 @@ func (ec *executionContext) _AdminMap_start(ctx context.Context, field graphql.C
 	}
 	res := resTmp.(*model.Position)
 	fc.Result = res
-	return ec.marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
+	return ec.marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_AdminMap_start(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -2442,7 +2471,7 @@ func (ec *executionContext) _AdminMap_finish(ctx context.Context, field graphql.
 	}
 	res := resTmp.(*model.Position)
 	fc.Result = res
-	return ec.marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
+	return ec.marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_AdminMap_finish(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -2494,7 +2523,7 @@ func (ec *executionContext) _AdminMap_portals(ctx context.Context, field graphql
 	}
 	res := resTmp.([]*model.Portal)
 	fc.Result = res
-	return ec.marshalNPortal2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐPortalᚄ(ctx, field.Selections, res)
+	return ec.marshalNPortal2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPortalᚄ(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_AdminMap_portals(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -2713,7 +2742,7 @@ func (ec *executionContext) _GameState_pos(ctx context.Context, field graphql.Co
 	}
 	res := resTmp.(*model.Position)
 	fc.Result = res
-	return ec.marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
+	return ec.marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_GameState_pos(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -2809,7 +2838,7 @@ func (ec *executionContext) _GameState_status(ctx context.Context, field graphql
 	}
 	res := resTmp.(model.Status)
 	fc.Result = res
-	return ec.marshalNStatus2githubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐStatus(ctx, field.Selections, res)
+	return ec.marshalNStatus2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐStatus(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_GameState_status(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -2850,7 +2879,7 @@ func (ec *executionContext) _GameState_lossReason(ctx context.Context, field gra
 	}
 	res := resTmp.(*model.LossReason)
 	fc.Result = res
-	return ec.marshalOLossReason2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐLossReason(ctx, field.Selections, res)
+	return ec.marshalOLossReason2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐLossReason(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_GameState_lossReason(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -2894,7 +2923,7 @@ func (ec *executionContext) _GameState_path(ctx context.Context, field graphql.C
 	}
 	res := resTmp.([]*model.Position)
 	fc.Result = res
-	return ec.marshalNPosition2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐPositionᚄ(ctx, field.Selections, res)
+	return ec.marshalNPosition2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPositionᚄ(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_GameState_path(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -3078,7 +3107,7 @@ func (ec *executionContext) _LevelView_portals(ctx context.Context, field graphq
 	}
 	res := resTmp.([]*model.Portal)
 	fc.Result = res
-	return ec.marshalNPortal2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐPortalᚄ(ctx, field.Selections, res)
+	return ec.marshalNPortal2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPortalᚄ(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_LevelView_portals(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -3737,7 +3766,7 @@ func (ec *executionContext) _MapValidationResult_issues(ctx context.Context, fie
 	}
 	res := resTmp.([]*model.MapValidationIssue)
 	fc.Result = res
-	return ec.marshalNMapValidationIssue2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐMapValidationIssueᚄ(ctx, field.Selections, res)
+	return ec.marshalNMapValidationIssue2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapValidationIssueᚄ(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_MapValidationResult_issues(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -3996,7 +4025,7 @@ func (ec *executionContext) _MoveEvent_direction(ctx context.Context, field grap
 	}
 	res := resTmp.(model.Direction)
 	fc.Result = res
-	return ec.marshalNDirection2githubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐDirection(ctx, field.Selections, res)
+	return ec.marshalNDirection2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐDirection(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_MoveEvent_direction(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -4040,7 +4069,7 @@ func (ec *executionContext) _MoveEvent_from(ctx context.Context, field graphql.C
 	}
 	res := resTmp.(*model.Position)
 	fc.Result = res
-	return ec.marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
+	return ec.marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_MoveEvent_from(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -4092,7 +4121,7 @@ func (ec *executionContext) _MoveEvent_stepped(ctx context.Context, field graphq
 	}
 	res := resTmp.(*model.Position)
 	fc.Result = res
-	return ec.marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
+	return ec.marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_MoveEvent_stepped(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -4144,7 +4173,7 @@ func (ec *executionContext) _MoveEvent_to(ctx context.Context, field graphql.Col
 	}
 	res := resTmp.(*model.Position)
 	fc.Result = res
-	return ec.marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
+	return ec.marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_MoveEvent_to(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -4240,7 +4269,7 @@ func (ec *executionContext) _MoveEvent_via(ctx context.Context, field graphql.Co
 	}
 	res := resTmp.(model.Via)
 	fc.Result = res
-	return ec.marshalNVia2githubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐVia(ctx, field.Selections, res)
+	return ec.marshalNVia2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐVia(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_MoveEvent_via(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -4284,7 +4313,7 @@ func (ec *executionContext) _MoveEvent_status(ctx context.Context, field graphql
 	}
 	res := resTmp.(model.Status)
 	fc.Result = res
-	return ec.marshalNStatus2githubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐStatus(ctx, field.Selections, res)
+	return ec.marshalNStatus2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐStatus(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_MoveEvent_status(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -4325,7 +4354,7 @@ func (ec *executionContext) _MoveEvent_lossReason(ctx context.Context, field gra
 	}
 	res := resTmp.(*model.LossReason)
 	fc.Result = res
-	return ec.marshalOLossReason2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐLossReason(ctx, field.Selections, res)
+	return ec.marshalOLossReason2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐLossReason(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_MoveEvent_lossReason(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -4369,7 +4398,7 @@ func (ec *executionContext) _Mutation_createSession(ctx context.Context, field g
 	}
 	res := resTmp.(*model.Session)
 	fc.Result = res
-	return ec.marshalNSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
+	return ec.marshalNSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Mutation_createSession(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -4505,7 +4534,7 @@ func (ec *executionContext) _Mutation_renameSession(ctx context.Context, field g
 	}
 	res := resTmp.(*model.Session)
 	fc.Result = res
-	return ec.marshalNSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
+	return ec.marshalNSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Mutation_renameSession(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -4586,7 +4615,7 @@ func (ec *executionContext) _Mutation_move(ctx context.Context, field graphql.Co
 	}
 	res := resTmp.(*model.Session)
 	fc.Result = res
-	return ec.marshalNSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
+	return ec.marshalNSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Mutation_move(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -4667,7 +4696,7 @@ func (ec *executionContext) _Mutation_bulkMove(ctx context.Context, field graphq
 	}
 	res := resTmp.(*model.Session)
 	fc.Result = res
-	return ec.marshalNSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
+	return ec.marshalNSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Mutation_bulkMove(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -4748,7 +4777,7 @@ func (ec *executionContext) _Mutation_reset(ctx context.Context, field graphql.C
 	}
 	res := resTmp.(*model.Session)
 	fc.Result = res
-	return ec.marshalNSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
+	return ec.marshalNSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Mutation_reset(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -4829,7 +4858,7 @@ func (ec *executionContext) _Mutation_createMap(ctx context.Context, field graph
 	}
 	res := resTmp.(*model.AdminMap)
 	fc.Result = res
-	return ec.marshalNAdminMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐAdminMap(ctx, field.Selections, res)
+	return ec.marshalNAdminMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐAdminMap(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Mutation_createMap(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -4916,7 +4945,7 @@ func (ec *executionContext) _Mutation_updateMap(ctx context.Context, field graph
 	}
 	res := resTmp.(*model.AdminMap)
 	fc.Result = res
-	return ec.marshalNAdminMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐAdminMap(ctx, field.Selections, res)
+	return ec.marshalNAdminMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐAdminMap(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Mutation_updateMap(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -5058,7 +5087,7 @@ func (ec *executionContext) _Mutation_validateMap(ctx context.Context, field gra
 	}
 	res := resTmp.(*model.MapValidationResult)
 	fc.Result = res
-	return ec.marshalNMapValidationResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐMapValidationResult(ctx, field.Selections, res)
+	return ec.marshalNMapValidationResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapValidationResult(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Mutation_validateMap(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -5171,7 +5200,7 @@ func (ec *executionContext) _Portal_a(ctx context.Context, field graphql.Collect
 	}
 	res := resTmp.(*model.Position)
 	fc.Result = res
-	return ec.marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
+	return ec.marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Portal_a(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -5220,7 +5249,7 @@ func (ec *executionContext) _Portal_b(ctx context.Context, field graphql.Collect
 	}
 	res := resTmp.(*model.Position)
 	fc.Result = res
-	return ec.marshalOPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
+	return ec.marshalOPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPosition(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Portal_b(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -5404,7 +5433,7 @@ func (ec *executionContext) _Query_maps(ctx context.Context, field graphql.Colle
 	}
 	res := resTmp.([]*model.Map)
 	fc.Result = res
-	return ec.marshalNMap2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐMapᚄ(ctx, field.Selections, res)
+	return ec.marshalNMap2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapᚄ(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_maps(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -5471,7 +5500,7 @@ func (ec *executionContext) _Query_map(ctx context.Context, field graphql.Collec
 	}
 	res := resTmp.(*model.Map)
 	fc.Result = res
-	return ec.marshalOMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐMap(ctx, field.Selections, res)
+	return ec.marshalOMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMap(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_map(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -5549,7 +5578,7 @@ func (ec *executionContext) _Query_adminMap(ctx context.Context, field graphql.C
 	}
 	res := resTmp.(*model.AdminMap)
 	fc.Result = res
-	return ec.marshalOAdminMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐAdminMap(ctx, field.Selections, res)
+	return ec.marshalOAdminMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐAdminMap(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_adminMap(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -5633,7 +5662,7 @@ func (ec *executionContext) _Query_session(ctx context.Context, field graphql.Co
 	}
 	res := resTmp.(*model.Session)
 	fc.Result = res
-	return ec.marshalOSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
+	return ec.marshalOSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_session(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -5714,7 +5743,7 @@ func (ec *executionContext) _Query_sessions(ctx context.Context, field graphql.C
 	}
 	res := resTmp.([]*model.Session)
 	fc.Result = res
-	return ec.marshalNSession2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐSessionᚄ(ctx, field.Selections, res)
+	return ec.marshalNSession2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSessionᚄ(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Query_sessions(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -6058,7 +6087,7 @@ func (ec *executionContext) _Session_map(ctx context.Context, field graphql.Coll
 	}
 	res := resTmp.(*model.Map)
 	fc.Result = res
-	return ec.marshalNMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐMap(ctx, field.Selections, res)
+	return ec.marshalNMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMap(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Session_map(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -6128,7 +6157,7 @@ func (ec *executionContext) _Session_view(ctx context.Context, field graphql.Col
 	}
 	res := resTmp.(*model.LevelView)
 	fc.Result = res
-	return ec.marshalNLevelView2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐLevelView(ctx, field.Selections, res)
+	return ec.marshalNLevelView2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐLevelView(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Session_view(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -6182,7 +6211,7 @@ func (ec *executionContext) _Session_state(ctx context.Context, field graphql.Co
 	}
 	res := resTmp.(*model.GameState)
 	fc.Result = res
-	return ec.marshalNGameState2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐGameState(ctx, field.Selections, res)
+	return ec.marshalNGameState2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐGameState(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Session_state(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -6452,7 +6481,7 @@ func (ec *executionContext) _Session_lastEvent(ctx context.Context, field graphq
 	}
 	res := resTmp.(*model.MoveEvent)
 	fc.Result = res
-	return ec.marshalOMoveEvent2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐMoveEvent(ctx, field.Selections, res)
+	return ec.marshalOMoveEvent2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMoveEvent(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Session_lastEvent(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -6560,7 +6589,7 @@ func (ec *executionContext) _SessionUpdate_session(ctx context.Context, field gr
 	}
 	res := resTmp.(*model.Session)
 	fc.Result = res
-	return ec.marshalNSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
+	return ec.marshalNSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_SessionUpdate_session(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -6627,7 +6656,7 @@ func (ec *executionContext) _SessionUpdate_event(ctx context.Context, field grap
 	}
 	res := resTmp.(*model.MoveEvent)
 	fc.Result = res
-	return ec.marshalOMoveEvent2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐMoveEvent(ctx, field.Selections, res)
+	return ec.marshalOMoveEvent2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMoveEvent(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_SessionUpdate_event(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -6699,7 +6728,7 @@ func (ec *executionContext) _Subscription_sessionUpdated(ctx context.Context, fi
 				w.Write([]byte{'{'})
 				graphql.MarshalString(field.Alias).MarshalGQL(w)
 				w.Write([]byte{':'})
-				ec.marshalNSessionUpdate2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐSessionUpdate(ctx, field.Selections, res).MarshalGQL(w)
+				ec.marshalNSessionUpdate2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSessionUpdate(ctx, field.Selections, res).MarshalGQL(w)
 				w.Write([]byte{'}'})
 			})
 		case <-ctx.Done():
@@ -10073,11 +10102,11 @@ func (ec *executionContext) ___Type(ctx context.Context, sel ast.SelectionSet, o
 
 // region    ***************************** type.gotpl *****************************
 
-func (ec *executionContext) marshalNAdminMap2githubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐAdminMap(ctx context.Context, sel ast.SelectionSet, v model.AdminMap) graphql.Marshaler {
+func (ec *executionContext) marshalNAdminMap2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐAdminMap(ctx context.Context, sel ast.SelectionSet, v model.AdminMap) graphql.Marshaler {
 	return ec._AdminMap(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNAdminMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐAdminMap(ctx context.Context, sel ast.SelectionSet, v *model.AdminMap) graphql.Marshaler {
+func (ec *executionContext) marshalNAdminMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐAdminMap(ctx context.Context, sel ast.SelectionSet, v *model.AdminMap) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -10103,24 +10132,24 @@ func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.Se
 	return res
 }
 
-func (ec *executionContext) unmarshalNDirection2githubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐDirection(ctx context.Context, v any) (model.Direction, error) {
+func (ec *executionContext) unmarshalNDirection2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐDirection(ctx context.Context, v any) (model.Direction, error) {
 	var res model.Direction
 	err := res.UnmarshalGQL(v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNDirection2githubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐDirection(ctx context.Context, sel ast.SelectionSet, v model.Direction) graphql.Marshaler {
+func (ec *executionContext) marshalNDirection2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐDirection(ctx context.Context, sel ast.SelectionSet, v model.Direction) graphql.Marshaler {
 	return v
 }
 
-func (ec *executionContext) unmarshalNDirection2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐDirectionᚄ(ctx context.Context, v any) ([]model.Direction, error) {
+func (ec *executionContext) unmarshalNDirection2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐDirectionᚄ(ctx context.Context, v any) ([]model.Direction, error) {
 	var vSlice []any
 	vSlice = graphql.CoerceList(v)
 	var err error
 	res := make([]model.Direction, len(vSlice))
 	for i := range vSlice {
 		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
-		res[i], err = ec.unmarshalNDirection2githubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐDirection(ctx, vSlice[i])
+		res[i], err = ec.unmarshalNDirection2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐDirection(ctx, vSlice[i])
 		if err != nil {
 			return nil, err
 		}
@@ -10128,7 +10157,7 @@ func (ec *executionContext) unmarshalNDirection2ᚕgithubᚗcomᚋwricardoᚋdrb
 	return res, nil
 }
 
-func (ec *executionContext) marshalNDirection2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐDirectionᚄ(ctx context.Context, sel ast.SelectionSet, v []model.Direction) graphql.Marshaler {
+func (ec *executionContext) marshalNDirection2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐDirectionᚄ(ctx context.Context, sel ast.SelectionSet, v []model.Direction) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -10152,7 +10181,7 @@ func (ec *executionContext) marshalNDirection2ᚕgithubᚗcomᚋwricardoᚋdrbra
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalNDirection2githubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐDirection(ctx, sel, v[i])
+			ret[i] = ec.marshalNDirection2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐDirection(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -10172,7 +10201,7 @@ func (ec *executionContext) marshalNDirection2ᚕgithubᚗcomᚋwricardoᚋdrbra
 	return ret
 }
 
-func (ec *executionContext) marshalNGameState2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐGameState(ctx context.Context, sel ast.SelectionSet, v *model.GameState) graphql.Marshaler {
+func (ec *executionContext) marshalNGameState2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐGameState(ctx context.Context, sel ast.SelectionSet, v *model.GameState) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -10214,7 +10243,7 @@ func (ec *executionContext) marshalNInt2int(ctx context.Context, sel ast.Selecti
 	return res
 }
 
-func (ec *executionContext) marshalNLevelView2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐLevelView(ctx context.Context, sel ast.SelectionSet, v *model.LevelView) graphql.Marshaler {
+func (ec *executionContext) marshalNLevelView2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐLevelView(ctx context.Context, sel ast.SelectionSet, v *model.LevelView) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -10224,7 +10253,7 @@ func (ec *executionContext) marshalNLevelView2ᚖgithubᚗcomᚋwricardoᚋdrbra
 	return ec._LevelView(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNMap2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐMapᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Map) graphql.Marshaler {
+func (ec *executionContext) marshalNMap2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Map) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -10248,7 +10277,7 @@ func (ec *executionContext) marshalNMap2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrain�
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalNMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐMap(ctx, sel, v[i])
+			ret[i] = ec.marshalNMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMap(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -10268,7 +10297,7 @@ func (ec *executionContext) marshalNMap2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrain�
 	return ret
 }
 
-func (ec *executionContext) marshalNMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐMap(ctx context.Context, sel ast.SelectionSet, v *model.Map) graphql.Marshaler {
+func (ec *executionContext) marshalNMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMap(ctx context.Context, sel ast.SelectionSet, v *model.Map) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -10278,12 +10307,12 @@ func (ec *executionContext) marshalNMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑm
 	return ec._Map(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNMapInput2githubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐMapInput(ctx context.Context, v any) (model.MapInput, error) {
+func (ec *executionContext) unmarshalNMapInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapInput(ctx context.Context, v any) (model.MapInput, error) {
 	res, err := ec.unmarshalInputMapInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNMapValidationIssue2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐMapValidationIssueᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.MapValidationIssue) graphql.Marshaler {
+func (ec *executionContext) marshalNMapValidationIssue2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapValidationIssueᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.MapValidationIssue) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -10307,7 +10336,7 @@ func (ec *executionContext) marshalNMapValidationIssue2ᚕᚖgithubᚗcomᚋwric
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalNMapValidationIssue2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐMapValidationIssue(ctx, sel, v[i])
+			ret[i] = ec.marshalNMapValidationIssue2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapValidationIssue(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -10327,7 +10356,7 @@ func (ec *executionContext) marshalNMapValidationIssue2ᚕᚖgithubᚗcomᚋwric
 	return ret
 }
 
-func (ec *executionContext) marshalNMapValidationIssue2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐMapValidationIssue(ctx context.Context, sel ast.SelectionSet, v *model.MapValidationIssue) graphql.Marshaler {
+func (ec *executionContext) marshalNMapValidationIssue2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapValidationIssue(ctx context.Context, sel ast.SelectionSet, v *model.MapValidationIssue) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -10337,11 +10366,11 @@ func (ec *executionContext) marshalNMapValidationIssue2ᚖgithubᚗcomᚋwricard
 	return ec._MapValidationIssue(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNMapValidationResult2githubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐMapValidationResult(ctx context.Context, sel ast.SelectionSet, v model.MapValidationResult) graphql.Marshaler {
+func (ec *executionContext) marshalNMapValidationResult2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapValidationResult(ctx context.Context, sel ast.SelectionSet, v model.MapValidationResult) graphql.Marshaler {
 	return ec._MapValidationResult(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNMapValidationResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐMapValidationResult(ctx context.Context, sel ast.SelectionSet, v *model.MapValidationResult) graphql.Marshaler {
+func (ec *executionContext) marshalNMapValidationResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapValidationResult(ctx context.Context, sel ast.SelectionSet, v *model.MapValidationResult) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -10351,7 +10380,7 @@ func (ec *executionContext) marshalNMapValidationResult2ᚖgithubᚗcomᚋwricar
 	return ec._MapValidationResult(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNPortal2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐPortalᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Portal) graphql.Marshaler {
+func (ec *executionContext) marshalNPortal2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPortalᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Portal) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -10375,7 +10404,7 @@ func (ec *executionContext) marshalNPortal2ᚕᚖgithubᚗcomᚋwricardoᚋdrbra
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalNPortal2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐPortal(ctx, sel, v[i])
+			ret[i] = ec.marshalNPortal2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPortal(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -10395,7 +10424,7 @@ func (ec *executionContext) marshalNPortal2ᚕᚖgithubᚗcomᚋwricardoᚋdrbra
 	return ret
 }
 
-func (ec *executionContext) marshalNPortal2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐPortal(ctx context.Context, sel ast.SelectionSet, v *model.Portal) graphql.Marshaler {
+func (ec *executionContext) marshalNPortal2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPortal(ctx context.Context, sel ast.SelectionSet, v *model.Portal) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -10405,7 +10434,7 @@ func (ec *executionContext) marshalNPortal2ᚖgithubᚗcomᚋwricardoᚋdrbrain�
 	return ec._Portal(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNPosition2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐPositionᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Position) graphql.Marshaler {
+func (ec *executionContext) marshalNPosition2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPositionᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Position) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -10429,7 +10458,7 @@ func (ec *executionContext) marshalNPosition2ᚕᚖgithubᚗcomᚋwricardoᚋdrb
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐPosition(ctx, sel, v[i])
+			ret[i] = ec.marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPosition(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -10449,7 +10478,7 @@ func (ec *executionContext) marshalNPosition2ᚕᚖgithubᚗcomᚋwricardoᚋdrb
 	return ret
 }
 
-func (ec *executionContext) marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐPosition(ctx context.Context, sel ast.SelectionSet, v *model.Position) graphql.Marshaler {
+func (ec *executionContext) marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPosition(ctx context.Context, sel ast.SelectionSet, v *model.Position) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -10459,11 +10488,11 @@ func (ec *executionContext) marshalNPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrai
 	return ec._Position(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNSession2githubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐSession(ctx context.Context, sel ast.SelectionSet, v model.Session) graphql.Marshaler {
+func (ec *executionContext) marshalNSession2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx context.Context, sel ast.SelectionSet, v model.Session) graphql.Marshaler {
 	return ec._Session(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNSession2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐSessionᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Session) graphql.Marshaler {
+func (ec *executionContext) marshalNSession2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSessionᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Session) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
 	isLen1 := len(v) == 1
@@ -10487,7 +10516,7 @@ func (ec *executionContext) marshalNSession2ᚕᚖgithubᚗcomᚋwricardoᚋdrbr
 			if !isLen1 {
 				defer wg.Done()
 			}
-			ret[i] = ec.marshalNSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐSession(ctx, sel, v[i])
+			ret[i] = ec.marshalNSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx, sel, v[i])
 		}
 		if isLen1 {
 			f(i)
@@ -10507,7 +10536,7 @@ func (ec *executionContext) marshalNSession2ᚕᚖgithubᚗcomᚋwricardoᚋdrbr
 	return ret
 }
 
-func (ec *executionContext) marshalNSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐSession(ctx context.Context, sel ast.SelectionSet, v *model.Session) graphql.Marshaler {
+func (ec *executionContext) marshalNSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx context.Context, sel ast.SelectionSet, v *model.Session) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -10517,11 +10546,11 @@ func (ec *executionContext) marshalNSession2ᚖgithubᚗcomᚋwricardoᚋdrbrain
 	return ec._Session(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalNSessionUpdate2githubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐSessionUpdate(ctx context.Context, sel ast.SelectionSet, v model.SessionUpdate) graphql.Marshaler {
+func (ec *executionContext) marshalNSessionUpdate2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSessionUpdate(ctx context.Context, sel ast.SelectionSet, v model.SessionUpdate) graphql.Marshaler {
 	return ec._SessionUpdate(ctx, sel, &v)
 }
 
-func (ec *executionContext) marshalNSessionUpdate2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐSessionUpdate(ctx context.Context, sel ast.SelectionSet, v *model.SessionUpdate) graphql.Marshaler {
+func (ec *executionContext) marshalNSessionUpdate2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSessionUpdate(ctx context.Context, sel ast.SelectionSet, v *model.SessionUpdate) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
 			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
@@ -10531,13 +10560,13 @@ func (ec *executionContext) marshalNSessionUpdate2ᚖgithubᚗcomᚋwricardoᚋd
 	return ec._SessionUpdate(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalNStatus2githubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐStatus(ctx context.Context, v any) (model.Status, error) {
+func (ec *executionContext) unmarshalNStatus2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐStatus(ctx context.Context, v any) (model.Status, error) {
 	var res model.Status
 	err := res.UnmarshalGQL(v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNStatus2githubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐStatus(ctx context.Context, sel ast.SelectionSet, v model.Status) graphql.Marshaler {
+func (ec *executionContext) marshalNStatus2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐStatus(ctx context.Context, sel ast.SelectionSet, v model.Status) graphql.Marshaler {
 	return v
 }
 
@@ -10633,13 +10662,13 @@ func (ec *executionContext) marshalNTime2timeᚐTime(ctx context.Context, sel as
 	return res
 }
 
-func (ec *executionContext) unmarshalNVia2githubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐVia(ctx context.Context, v any) (model.Via, error) {
+func (ec *executionContext) unmarshalNVia2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐVia(ctx context.Context, v any) (model.Via, error) {
 	var res model.Via
 	err := res.UnmarshalGQL(v)
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalNVia2githubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐVia(ctx context.Context, sel ast.SelectionSet, v model.Via) graphql.Marshaler {
+func (ec *executionContext) marshalNVia2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐVia(ctx context.Context, sel ast.SelectionSet, v model.Via) graphql.Marshaler {
 	return v
 }
 
@@ -10896,7 +10925,7 @@ func (ec *executionContext) marshalN__TypeKind2string(ctx context.Context, sel a
 	return res
 }
 
-func (ec *executionContext) marshalOAdminMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐAdminMap(ctx context.Context, sel ast.SelectionSet, v *model.AdminMap) graphql.Marshaler {
+func (ec *executionContext) marshalOAdminMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐAdminMap(ctx context.Context, sel ast.SelectionSet, v *model.AdminMap) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
@@ -10969,7 +10998,7 @@ func (ec *executionContext) marshalOInt2ᚖint(ctx context.Context, sel ast.Sele
 	return res
 }
 
-func (ec *executionContext) unmarshalOLossReason2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐLossReason(ctx context.Context, v any) (*model.LossReason, error) {
+func (ec *executionContext) unmarshalOLossReason2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐLossReason(ctx context.Context, v any) (*model.LossReason, error) {
 	if v == nil {
 		return nil, nil
 	}
@@ -10978,42 +11007,42 @@ func (ec *executionContext) unmarshalOLossReason2ᚖgithubᚗcomᚋwricardoᚋdr
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalOLossReason2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐLossReason(ctx context.Context, sel ast.SelectionSet, v *model.LossReason) graphql.Marshaler {
+func (ec *executionContext) marshalOLossReason2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐLossReason(ctx context.Context, sel ast.SelectionSet, v *model.LossReason) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return v
 }
 
-func (ec *executionContext) marshalOMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐMap(ctx context.Context, sel ast.SelectionSet, v *model.Map) graphql.Marshaler {
+func (ec *executionContext) marshalOMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMap(ctx context.Context, sel ast.SelectionSet, v *model.Map) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._Map(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOMoveEvent2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐMoveEvent(ctx context.Context, sel ast.SelectionSet, v *model.MoveEvent) graphql.Marshaler {
+func (ec *executionContext) marshalOMoveEvent2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMoveEvent(ctx context.Context, sel ast.SelectionSet, v *model.MoveEvent) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._MoveEvent(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐPosition(ctx context.Context, sel ast.SelectionSet, v *model.Position) graphql.Marshaler {
+func (ec *executionContext) marshalOPosition2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐPosition(ctx context.Context, sel ast.SelectionSet, v *model.Position) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._Position(ctx, sel, v)
 }
 
-func (ec *executionContext) marshalOSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐSession(ctx context.Context, sel ast.SelectionSet, v *model.Session) graphql.Marshaler {
+func (ec *executionContext) marshalOSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx context.Context, sel ast.SelectionSet, v *model.Session) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}
 	return ec._Session(ctx, sel, v)
 }
 
-func (ec *executionContext) unmarshalOSessionSort2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐSessionSort(ctx context.Context, v any) (*model.SessionSort, error) {
+func (ec *executionContext) unmarshalOSessionSort2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSessionSort(ctx context.Context, v any) (*model.SessionSort, error) {
 	if v == nil {
 		return nil, nil
 	}
@@ -11022,7 +11051,7 @@ func (ec *executionContext) unmarshalOSessionSort2ᚖgithubᚗcomᚋwricardoᚋd
 	return res, graphql.ErrorOnPath(ctx, err)
 }
 
-func (ec *executionContext) marshalOSessionSort2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚑmazesᚋgraphᚋmodelᚐSessionSort(ctx context.Context, sel ast.SelectionSet, v *model.SessionSort) graphql.Marshaler {
+func (ec *executionContext) marshalOSessionSort2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSessionSort(ctx context.Context, sel ast.SelectionSet, v *model.SessionSort) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}

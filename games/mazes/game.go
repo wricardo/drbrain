@@ -1,3 +1,6 @@
+//go:generate go run github.com/wricardo/drbrain/cmd/split-schema
+//go:generate go run github.com/99designs/gqlgen generate
+
 package mazes
 
 import (
@@ -9,10 +12,10 @@ import (
 	"time"
 
 	"github.com/kelseyhightower/envconfig"
-	"github.com/wricardo/drbrain/games/mazes/api"
 	mazeconfig "github.com/wricardo/drbrain/games/mazes/game/config"
 	"github.com/wricardo/drbrain/games/mazes/game/service"
 	"github.com/wricardo/drbrain/games/mazes/game/session"
+	"github.com/wricardo/drbrain/games/mazes/graph"
 	"github.com/wricardo/drbrain/games/mazes/transport/websocket"
 	"github.com/wricardo/drbrain/platform"
 )
@@ -48,6 +51,7 @@ type Game struct {
 	svc       service.GameService
 	sessions  *session.Manager
 	hub       *websocket.Hub
+	resolver  *graph.Resolver
 	publicURL string
 }
 
@@ -56,7 +60,10 @@ func New() *Game { return &Game{} }
 
 func (g *Game) Name() string   { return "mazes" }
 func (g *Game) Prefix() string { return "/mazes" }
-func (g *Game) API() []string  { return []string{"/graphql", "/graphql/"} }
+func (g *Game) API() []string  { return nil }
+
+// GraphQLResolver implements platform.GraphQLResolver.
+func (g *Game) GraphQLResolver() any { return g.resolver }
 
 // LLMSTemplate implements platform.LLMSProvider.
 func (g *Game) LLMSTemplate() string { return llmsTemplate }
@@ -92,27 +99,10 @@ func (g *Game) Mount(mux *http.ServeMux, deps platform.Deps) error {
 		SessionTTL: envDuration("SESSION_TTL", 7*24*time.Hour),
 	})
 
-	opts := api.Options{
-		Introspection:  envBool("GRAPHQL_INTROSPECTION", true),
-		Playground:     envBool("GRAPHQL_PLAYGROUND", true),
-		AllowedOrigins: os.Getenv("ALLOWED_ORIGINS"),
-		PublicURL:      env.PublicURL,
-		LLMSTemplate:   llmsTemplate,
-	}
-	deps.Logger.Debug("graphql settings",
-		"introspection", opts.Introspection,
-		"playground", opts.Playground,
-		"maps_dir", env.MapsDir,
-		"sessions_dir", env.SessionsDir)
-
-	gql := api.NewGraphQLHandler(svc, hub, opts)
-	mux.Handle("/graphql", gql)
-	mux.Handle("/graphql/", gql)
-	mux.Handle("/graphql/playground", api.NewPlaygroundHandler("/mazes/graphql"))
-
 	g.svc = svc
 	g.sessions = sessions
 	g.hub = hub
+	g.resolver = graph.NewResolver(svc, hub)
 	return nil
 }
 
@@ -123,18 +113,6 @@ func (g *Game) Shutdown(context.Context) error {
 		g.svc.Shutdown()
 	}
 	return nil
-}
-
-// envBool reads a boolean env var; unset returns def.
-func envBool(key string, def bool) bool {
-	switch os.Getenv(key) {
-	case "":
-		return def
-	case "true", "1", "yes":
-		return true
-	default:
-		return false
-	}
 }
 
 // envDuration reads a duration env var; unset or invalid returns def.

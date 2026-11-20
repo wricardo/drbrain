@@ -1609,362 +1609,457 @@ func (ec *executionContext) introspectType(name string) (*introspection.Type, er
 }
 
 var sources = []*ast.Source{
-	{Name: "../schema.graphqls", Input: `# DrBrain Delivery GraphQL schema.
-#
-# This is the only transport. The field names mirror the Go view structs in
-# game/session/view.go, which are bound in gqlgen.yml, so the schema and the
-# server types cannot drift apart silently: if a struct field is renamed,
-# gqlgen generation fails.
-
-scalar Time
-
-type Query {
-  "Liveness probe."
-  health: Health!
-  "The static city with every district revealed."
-  city: CityView!
-  "Every save on disk, newest first."
-  sessions: [SessionSummary!]!
-  "One session's full state. Rehydrates from disk when not in memory."
-  session(id: ID!): Snapshot!
-  "A window of the city around one car, for cheap agent polling."
-  carView(id: ID!, carId: ID!, radius: Int! = 2): CarWindow!
-  "Events newer than a tick, so a client can poll for deltas."
-  events(id: ID!, sinceTick: Int! = 0): [EventView!]!
-}
-
-type Mutation {
-  "Start a new city. Both fields optional; a seed makes it reproducible."
-  createSession(id: ID, seed: Int): Snapshot!
-
-  "Queue one step for one car. Does NOT advance the clock."
-  moveCar(id: ID!, carId: ID!, direction: Direction!): Snapshot!
-
-  "Advance the world manually. Useful when paused."
-  tick(id: ID!, count: Int! = 1): Snapshot!
-
-  "Set the clock multiplier. 0 pauses."
-  setSpeed(id: ID!, speed: Int!): Snapshot!
-
-  "Point an order at a car; refreshes its deadline from that car's position."
-  assignOrder(id: ID!, orderId: ID!, carId: ID!): Snapshot!
-  unassignOrder(id: ID!, orderId: ID!): Snapshot!
-
-  "Buy a vehicle at a depot."
-  buyCar(id: ID!, className: String!, depotId: String! = "d_main"): Snapshot!
-
-  "Return a stranded car to its nearest depot for a fee."
-  towCar(id: ID!, carId: ID!): Snapshot!
-
-  "Purchase an unlocked build; mutates the map atomically."
-  build(id: ID!, buildId: ID!): Snapshot!
-
-  "Write the save to disk."
-  saveSession(id: ID!): Snapshot!
-  "Save, then drop from memory. The next read rehydrates."
-  evictSession(id: ID!): Boolean!
-  "Delete the save file permanently."
-  deleteSession(id: ID!): Boolean!
-}
+	{Name: "../schema.graphqls", Input: `# Code generated from graph/schema.graphqls by cmd/split-schema. DO NOT EDIT.
 
 enum Direction {
-  NORTH
-  SOUTH
-  EAST
-  WEST
+	NORTH
+	SOUTH
+	EAST
+	WEST
 }
-
 type Health {
-  status: String!
+	status: String!
 }
-
-type Subscription {
-  """
-  Every state change of one session, pushed as it happens.
-
-  Emitted once per tick while the clock runs, and once per mutation otherwise
-  (a manual step, a queued move, a speed change, a purchase). Sessions start
-  paused, so a client that subscribed only to the clock would never see a
-  hand-played game move.
-
-  This replaces polling: the payload is the same Snapshot the query returns,
-  except that finished orders are trimmed to the most recent few. Order history
-  is ~96% of a late-game snapshot and never shrinks, so streaming all of it per
-  tick would cost more than polling did.
-
-  Coalesced, not queued: if the client cannot keep up, it receives the next
-  snapshot once it can, rather than a backlog of every intermediate tick.
-  """
-  session(id: ID!): Snapshot!
-}
-
 type SessionSummary {
-  id: ID!
-  createdAt: Time!
-  tick: Int!
-  speed: Int!
-  money: Int!
-  reputation: Float!
-  deliveries: Int!
-  loaded: Boolean!
+	id: ID!
+	createdAt: Time!
+	tick: Int!
+	speed: Int!
+	money: Int!
+	reputation: Float!
+	deliveries: Int!
+	loaded: Boolean!
 }
-
-"The full client view of a session at one tick."
+"""
+The full client view of a session at one tick.
+"""
 type Snapshot {
-  id: ID!
-  createdAt: Time!
-  tick: Int!
-  "Clock multiplier: 0 paused, 1/2/4 running."
-  speed: Int!
-  paused: Boolean!
-  "Wall-clock length of one tick at 1x, from the city config."
-  tickMs: Int!
-
-  city: CityView!
-  cars: [CarView!]!
-  orders: [OrderView!]!
-  ledger: LedgerView!
-  "The purchasable catalogue with per-session unlock and affordability flags, cheapest first."
-  carClasses: [CarClassView!]!
-
-  achievements: [AchievementView!]!
-  unlocks: [UnlockView!]!
-  builds: [BuildView!]!
-  events: [EventView!]!
-
-  "Street works currently closing part of the map."
-  closures: [ClosureView!]!
+	id: ID!
+	createdAt: Time!
+	tick: Int!
+	"""
+	Clock multiplier: 0 paused, 1/2/4 running.
+	"""
+	speed: Int!
+	paused: Boolean!
+	"""
+	Wall-clock length of one tick at 1x, from the city config.
+	"""
+	tickMs: Int!
+	city: CityView!
+	cars: [CarView!]!
+	orders: [OrderView!]!
+	ledger: LedgerView!
+	"""
+	The purchasable catalogue with per-session unlock and affordability flags, cheapest first.
+	"""
+	carClasses: [CarClassView!]!
+	achievements: [AchievementView!]!
+	unlocks: [UnlockView!]!
+	builds: [BuildView!]!
+	events: [EventView!]!
+	"""
+	Street works currently closing part of the map.
+	"""
+	closures: [ClosureView!]!
 }
-
-"A window of the city around one car, for cheap polling."
+"""
+A window of the city around one car, for cheap polling.
+"""
 type CarWindow {
-  car: CarView!
-  rowSpan: Int!
-  colSpan: Int!
-  "Row-major glyph rows for the window only."
-  rows: [String!]!
-  "Origin of rows[0][0] in city coordinates."
-  originX: Int!
-  originY: Int!
-  visibleCars: [CarView!]!
-  nearbyOrders: [OrderView!]!
+	car: CarView!
+	rowSpan: Int!
+	colSpan: Int!
+	"""
+	Row-major glyph rows for the window only.
+	"""
+	rows: [String!]!
+	"""
+	Origin of rows[0][0] in city coordinates.
+	"""
+	originX: Int!
+	originY: Int!
+	visibleCars: [CarView!]!
+	nearbyOrders: [OrderView!]!
 }
-
 type CityView {
-  name: String!
-  gridSize: Int!
-  "Full map as glyph rows. Unexplored tiles render '?'."
-  rows: [String!]!
-  "Tiles still unexplored. Always 0 on the static city query, which reveals all."
-  hiddenTiles: Int!
-  kitchens: [PointView!]!
-  customers: [PointView!]!
-  depots: [PointView!]!
-  chargers: [PointView!]!
+	name: String!
+	gridSize: Int!
+	"""
+	Full map as glyph rows. Unexplored tiles render '?'.
+	"""
+	rows: [String!]!
+	"""
+	Tiles still unexplored. Always 0 on the static city query, which reveals all.
+	"""
+	hiddenTiles: Int!
+	kitchens: [PointView!]!
+	customers: [PointView!]!
+	depots: [PointView!]!
+	chargers: [PointView!]!
 }
-
 type PointView {
-  id: ID!
-  name: String!
-  x: Int!
-  y: Int!
+	id: ID!
+	name: String!
+	x: Int!
+	y: Int!
 }
-
 type CarView {
-  id: ID!
-  name: String!
-  className: String!
-  x: Int!
-  y: Int!
-  battery: Int!
-  maxBattery: Int!
-  batteryPct: Int!
-  "Hold size in boxes."
-  capacity: Int!
-  "Boxes currently in the hold."
-  load: Int!
-  "Boxes still free."
-  freeBoxes: Int!
-  cargo: [ID!]!
-  state: CarState!
-  "The move queued for the next tick, if any."
-  queuedMove: Direction
-  "Why the most recent move was rejected, if it was."
-  lastReject: RejectReason
+	id: ID!
+	name: String!
+	className: String!
+	x: Int!
+	y: Int!
+	battery: Int!
+	maxBattery: Int!
+	batteryPct: Int!
+	"""
+	Hold size in boxes.
+	"""
+	capacity: Int!
+	"""
+	Boxes currently in the hold.
+	"""
+	load: Int!
+	"""
+	Boxes still free.
+	"""
+	freeBoxes: Int!
+	cargo: [ID!]!
+	state: CarState!
+	"""
+	The move queued for the next tick, if any.
+	"""
+	queuedMove: Direction
+	"""
+	Why the most recent move was rejected, if it was.
+	"""
+	lastReject: RejectReason
 }
-
 enum CarState {
-  IDLE
-  CARRYING
-  CHARGING
-  STRANDED
+	IDLE
+	CARRYING
+	CHARGING
+	STRANDED
 }
-
 enum RejectReason {
-  BAD_DIRECTION
-  OFF_GRID
-  BLOCKED
-  NO_BATTERY
-  "The tile is closed for street works."
-  CLOSED
-  "Another car already holds that tile, or it is at capacity."
-  OCCUPIED
+	BAD_DIRECTION
+	OFF_GRID
+	BLOCKED
+	NO_BATTERY
+	"""
+	The tile is closed for street works.
+	"""
+	CLOSED
+	"""
+	Another car already holds that tile, or it is at capacity.
+	"""
+	OCCUPIED
 }
-
 type CarClassView {
-  className: String!
-  price: Int!
-  "Hold size in boxes."
-  capacity: Int!
-  maxBattery: Int!
-  stepCost: Int!
-  "True once a build has granted this class, or it never needed one."
-  unlocked: Boolean!
-  affordable: Boolean!
+	className: String!
+	price: Int!
+	"""
+	Hold size in boxes.
+	"""
+	capacity: Int!
+	maxBattery: Int!
+	stepCost: Int!
+	"""
+	True once a build has granted this class, or it never needed one.
+	"""
+	unlocked: Boolean!
+	affordable: Boolean!
 }
-
 type OrderView {
-  id: ID!
-  item: String!
-  itemName: String!
-  "How many boxes the customer asked for."
-  quantity: Int!
-  kitchenId: ID!
-  kitchenName: String!
-  customerId: ID!
-  customerName: String!
-  state: OrderState!
-  "The car holding or holding-to-be. Kept after DONE, so read it as history once state is terminal."
-  assignedCar: ID
-  createdTick: Int!
-  deadlineTick: Int!
-  "Ticks until the deadline. Signed: negative means already past it but not yet swept."
-  ticksLeft: Int!
-  "What the job would pay if delivered now."
-  reward: Int!
-  "What it actually paid. Zero until state is DONE."
-  paid: Int!
-  "Delivered past the deadline, therefore paid at the late multiplier."
-  late: Boolean!
+	id: ID!
+	item: String!
+	itemName: String!
+	"""
+	How many boxes the customer asked for.
+	"""
+	quantity: Int!
+	kitchenId: ID!
+	kitchenName: String!
+	customerId: ID!
+	customerName: String!
+	state: OrderState!
+	"""
+	The car holding or holding-to-be. Kept after DONE, so read it as history once state is terminal.
+	"""
+	assignedCar: ID
+	createdTick: Int!
+	deadlineTick: Int!
+	"""
+	Ticks until the deadline. Signed: negative means already past it but not yet swept.
+	"""
+	ticksLeft: Int!
+	"""
+	What the job would pay if delivered now.
+	"""
+	reward: Int!
+	"""
+	What it actually paid. Zero until state is DONE.
+	"""
+	paid: Int!
+	"""
+	Delivered past the deadline, therefore paid at the late multiplier.
+	"""
+	late: Boolean!
 }
-
 enum OrderState {
-  PENDING
-  ASSIGNED
-  PICKED_UP
-  DONE
-  EXPIRED
+	PENDING
+	ASSIGNED
+	PICKED_UP
+	DONE
+	EXPIRED
 }
-
 type LedgerView {
-  "Spendable balance. Buying a car or build reduces it."
-  money: Int!
-  "Lifetime earnings; never decreases. Achievements read this, not money."
-  moneyEarned: Int!
-  "0-5, clamped. Grants and deliveries cannot push it past the scale."
-  reputation: Float!
-  "On-time deliveries only. A late delivery increments lateDeliveries instead."
-  deliveries: Int!
-  lateDeliveries: Int!
-  expiredOrders: Int!
-  "Every order ever raised, including the ones that later expired."
-  ordersSpawned: Int!
-  "Consecutive on-time deliveries. Both a late delivery and an expiry reset it to 0."
-  onTimeStreak: Int!
-  tows: Int!
-  "Completed builds. Chapter() derives from this, capped at 4."
-  buildsCompleted: Int!
-  "Delivered ORDERS per item, not boxes: a two-box delivery adds 1."
-  deliveriesByItem: [ItemCount!]!
-  """
-  Lifetime fleet running cost paid, cumulative. Zero when the map disables
-  upkeep. Not subtracted from moneyEarned: upkeep is a cost, not negative
-  income, and achievements read moneyEarned.
-  """
-  upkeepPaid: Int!
-  "Lifetime spend on tows, cumulative. A tow costs towFeePerTile x route distance, floored at towFeeMin, and is clamped to the balance."
-  towFees: Int!
-  """
-  What the fleet would be charged on the next upkeep interval, given where the
-  cars are standing right now. A car on a depot tile contributes zero. Lets a
-  client show the drain before it lands rather than only after.
-  """
-  upkeepDue: Int!
+	"""
+	Spendable balance. Buying a car or build reduces it.
+	"""
+	money: Int!
+	"""
+	Lifetime earnings; never decreases. Achievements read this, not money.
+	"""
+	moneyEarned: Int!
+	"""
+	0-5, clamped. Grants and deliveries cannot push it past the scale.
+	"""
+	reputation: Float!
+	"""
+	On-time deliveries only. A late delivery increments lateDeliveries instead.
+	"""
+	deliveries: Int!
+	lateDeliveries: Int!
+	expiredOrders: Int!
+	"""
+	Every order ever raised, including the ones that later expired.
+	"""
+	ordersSpawned: Int!
+	"""
+	Consecutive on-time deliveries. Both a late delivery and an expiry reset it to 0.
+	"""
+	onTimeStreak: Int!
+	tows: Int!
+	"""
+	Completed builds. Chapter() derives from this, capped at 4.
+	"""
+	buildsCompleted: Int!
+	"""
+	Delivered ORDERS per item, not boxes: a two-box delivery adds 1.
+	"""
+	deliveriesByItem: [ItemCount!]!
+	"""
+	Lifetime fleet running cost paid, cumulative. Zero when the map disables
+	upkeep. Not subtracted from moneyEarned: upkeep is a cost, not negative
+	income, and achievements read moneyEarned.
+	"""
+	upkeepPaid: Int!
+	"""
+	Lifetime spend on tows, cumulative. A tow costs towFeePerTile x route distance, floored at towFeeMin, and is clamped to the balance.
+	"""
+	towFees: Int!
+	"""
+	What the fleet would be charged on the next upkeep interval, given where the
+	cars are standing right now. A car on a depot tile contributes zero. Lets a
+	client show the drain before it lands rather than only after.
+	"""
+	upkeepDue: Int!
 }
-
 type ItemCount {
-  item: String!
-  count: Int!
+	item: String!
+	count: Int!
 }
-
 type AchievementView {
-  id: ID!
-  title: String!
-  description: String!
-  done: Boolean!
-  "Progress toward target, in that requirement's own units."
-  progress: Int!
-  target: Int!
+	id: ID!
+	title: String!
+	description: String!
+	done: Boolean!
+	"""
+	Progress toward target, in that requirement's own units.
+	"""
+	progress: Int!
+	target: Int!
 }
-
 type UnlockView {
-  id: ID!
-  title: String!
-  description: String!
-  "The gate in words, e.g. \"5 deliveries\" or \"earn $2000\"."
-  requires: String!
-  earned: Boolean!
-  "Progress toward the strictest requirement, in that requirement's own units."
-  progress: Int!
-  "The target that progress is measured against."
-  target: Int!
-  "The build ids this unlock makes purchasable."
-  builds: [ID!]!
+	id: ID!
+	title: String!
+	description: String!
+	"""
+	The gate in words, e.g. "5 deliveries" or "earn $2000".
+	"""
+	requires: String!
+	earned: Boolean!
+	"""
+	Progress toward the strictest requirement, in that requirement's own units.
+	"""
+	progress: Int!
+	"""
+	The target that progress is measured against.
+	"""
+	target: Int!
+	"""
+	The build ids this unlock makes purchasable.
+	"""
+	builds: [ID!]!
 }
-
 type BuildView {
-  id: ID!
-  title: String!
-  description: String!
-  cost: Int!
-  "The right to build has been earned."
-  unlocked: Boolean!
-  completed: Boolean!
-  "Money covers the cost right now."
-  affordable: Boolean!
-  "A legal placement exists right now."
-  applicable: Boolean!
-  "Why the build cannot be placed, when it cannot."
-  problem: String
+	id: ID!
+	title: String!
+	description: String!
+	cost: Int!
+	"""
+	The right to build has been earned.
+	"""
+	unlocked: Boolean!
+	completed: Boolean!
+	"""
+	Money covers the cost right now.
+	"""
+	affordable: Boolean!
+	"""
+	A legal placement exists right now.
+	"""
+	applicable: Boolean!
+	"""
+	Why the build cannot be placed, when it cannot.
+	"""
+	problem: String
 }
-
 type EventView {
-  tick: Int!
-  "One of the car_* / order_* / build_* / unlock_* / closure_* names the engine emits."
-  type: String!
-  message: String!
-  "Null for world events (spawns, builds, closures); set for anything a car caused."
-  carId: ID
-  "Position of the event, or 0,0 when it has none — non-null, so 0,0 is ambiguous."
-  x: Int!
-  y: Int!
+	tick: Int!
+	"""
+	One of the car_* / order_* / build_* / unlock_* / closure_* names the engine emits.
+	"""
+	type: String!
+	message: String!
+	"""
+	Null for world events (spawns, builds, closures); set for anything a car caused.
+	"""
+	carId: ID
+	"""
+	Position of the event, or 0,0 when it has none — non-null, so 0,0 is ambiguous.
+	"""
+	x: Int!
+	y: Int!
 }
-
-"A stretch of street closed for works."
+"""
+A stretch of street closed for works.
+"""
 type ClosureView {
-  id: ID!
-  reason: String!
-  startTick: Int!
-  endTick: Int!
-  "Ticks until it reopens; negative when it has already ended."
-  ticksLeft: Int!
-  "The closed tiles, so a client can draw them without guessing."
-  tiles: [PointView!]!
-  "Bounding box of the closed tiles, for camera moves."
-  minX: Int!
-  minY: Int!
-  maxX: Int!
-  maxY: Int!
+	id: ID!
+	reason: String!
+	startTick: Int!
+	endTick: Int!
+	"""
+	Ticks until it reopens; negative when it has already ended.
+	"""
+	ticksLeft: Int!
+	"""
+	The closed tiles, so a client can draw them without guessing.
+	"""
+	tiles: [PointView!]!
+	"""
+	Bounding box of the closed tiles, for camera moves.
+	"""
+	minX: Int!
+	minY: Int!
+	maxX: Int!
+	maxY: Int!
+}
+scalar Time
+type Query {
+	"""
+	Liveness probe.
+	"""
+	health: Health!
+	"""
+	The static city with every district revealed.
+	"""
+	city: CityView!
+	"""
+	Every save on disk, newest first.
+	"""
+	sessions: [SessionSummary!]!
+	"""
+	One session's full state. Rehydrates from disk when not in memory.
+	"""
+	session(id: ID!): Snapshot!
+	"""
+	A window of the city around one car, for cheap agent polling.
+	"""
+	carView(id: ID!, carId: ID!, radius: Int! = 2): CarWindow!
+	"""
+	Events newer than a tick, so a client can poll for deltas.
+	"""
+	events(id: ID!, sinceTick: Int! = 0): [EventView!]!
+}
+type Mutation {
+	"""
+	Start a new city. Both fields optional; a seed makes it reproducible.
+	"""
+	createSession(id: ID, seed: Int): Snapshot!
+	"""
+	Queue one step for one car. Does NOT advance the clock.
+	"""
+	moveCar(id: ID!, carId: ID!, direction: Direction!): Snapshot!
+	"""
+	Advance the world manually. Useful when paused.
+	"""
+	tick(id: ID!, count: Int! = 1): Snapshot!
+	"""
+	Set the clock multiplier. 0 pauses.
+	"""
+	setSpeed(id: ID!, speed: Int!): Snapshot!
+	"""
+	Point an order at a car; refreshes its deadline from that car's position.
+	"""
+	assignOrder(id: ID!, orderId: ID!, carId: ID!): Snapshot!
+	unassignOrder(id: ID!, orderId: ID!): Snapshot!
+	"""
+	Buy a vehicle at a depot.
+	"""
+	buyCar(id: ID!, className: String!, depotId: String! = "d_main"): Snapshot!
+	"""
+	Return a stranded car to its nearest depot for a fee.
+	"""
+	towCar(id: ID!, carId: ID!): Snapshot!
+	"""
+	Purchase an unlocked build; mutates the map atomically.
+	"""
+	build(id: ID!, buildId: ID!): Snapshot!
+	"""
+	Write the save to disk.
+	"""
+	saveSession(id: ID!): Snapshot!
+	"""
+	Save, then drop from memory. The next read rehydrates.
+	"""
+	evictSession(id: ID!): Boolean!
+	"""
+	Delete the save file permanently.
+	"""
+	deleteSession(id: ID!): Boolean!
+}
+type Subscription {
+	"""
+	Every state change of one session, pushed as it happens.
+	
+	Emitted once per tick while the clock runs, and once per mutation otherwise
+	(a manual step, a queued move, a speed change, a purchase). Sessions start
+	paused, so a client that subscribed only to the clock would never see a
+	hand-played game move.
+	
+	This replaces polling: the payload is the same Snapshot the query returns,
+	except that finished orders are trimmed to the most recent few. Order history
+	is ~96% of a late-game snapshot and never shrinks, so streaming all of it per
+	tick would cost more than polling did.
+	
+	Coalesced, not queued: if the client cannot keep up, it receives the next
+	snapshot once it can, rather than a backlog of every intermediate tick.
+	"""
+	session(id: ID!): Snapshot!
 }
 `, BuiltIn: false},
 }

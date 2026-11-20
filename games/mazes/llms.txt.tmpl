@@ -9,9 +9,9 @@ within the move limit to win. The tower is fogged: you only ever see the level y
 Humans: open {{.BaseURL}}/ , pick a map and walk with the arrow keys. Tutorial: {{.BaseURL}}/learn
 Spectate a session live: {{.BaseURL}}/watch/SESSION_ID
 
-GraphQL endpoint:       POST {{.BaseURL}}/graphql
-GraphQL subscriptions:  {{.WSURL}}/graphql  (graphql-ws protocol)
-Playground:             GET  {{.BaseURL}}/playground
+GraphQL endpoint:       POST {{.GraphQLURL}}   (one schema, namespace: mazes)
+GraphQL subscriptions:  {{.GraphQLWSURL}}  (graphql-ws protocol)
+Playground:             GET  {{.PlaygroundURL}}
 Introspection:          enabled unless the operator disabled it — query __schema/__type
 
 Every example below is valid against the live schema. Replace SESSION_ID with an id returned by
@@ -94,19 +94,31 @@ for players. At most 20000 directions per
 1. List maps (public catalog, level 0 preview only):
 
 ```graphql
-query { maps { id name difficulty width height levelCount preview maxMoves parMoves minLevelChanges forcedDescents } }
+query {
+  mazes {
+  maps { id name difficulty width height levelCount preview maxMoves parMoves minLevelChanges forcedDescents }
+  }
+}
 ```
 
 2. Create a session and read the level you start on:
 
 ```graphql
-mutation { createSession(mapID: "MAP_ID", displayName: "my agent") { id state { pos { level x y } status } view { level levelCount rows portals { glyph a { level x y } b { level x y } } } map { maxMoves parMoves } } }
+mutation {
+  mazes {
+  createSession(mapID: "MAP_ID", displayName: "my agent") { id state { pos { level x y } status } view { level levelCount rows portals { glyph a { level x y } b { level x y } } } map { maxMoves parMoves } }
+  }
+}
 ```
 
 3. Move one tile at a time and read the new `view` (it changes level on stairs and portals):
 
 ```graphql
-mutation { move(sessionID: "SESSION_ID", direction: RIGHT) { seq state { pos { level x y } moves status lossReason } view { level rows portals { glyph a { level x y } b { level x y } } } lastEvent { blocked via stepped { level x y } to { level x y } } } }
+mutation {
+  mazes {
+  move(sessionID: "SESSION_ID", direction: RIGHT) { seq state { pos { level x y } moves status lossReason } view { level rows portals { glyph a { level x y } b { level x y } } } lastEvent { blocked via stepped { level x y } to { level x y } } }
+  }
+}
 ```
 
 4. Or send several moves at once. It stops early once the game is WON or LOST, and at the first
@@ -116,21 +128,33 @@ mutation { move(sessionID: "SESSION_ID", direction: RIGHT) { seq state { pos { l
    final `view`:
 
 ```graphql
-mutation { bulkMove(sessionID: "SESSION_ID", directions: [RIGHT, RIGHT, DOWN]) { state { pos { level x y } moves status } view { level rows } lastEvent { blocked direction } bestMoves attempts } }
+mutation {
+  mazes {
+  bulkMove(sessionID: "SESSION_ID", directions: [RIGHT, RIGHT, DOWN]) { state { pos { level x y } moves status } view { level rows } lastEvent { blocked direction } bestMoves attempts }
+  }
+}
 ```
 
 5. Start over, or read / watch the session:
 
 ```graphql
-mutation { reset(sessionID: "SESSION_ID") { state { status moves } view { level rows } attempts bestMoves } }
+mutation {
+  mazes {
+  reset(sessionID: "SESSION_ID") { state { status moves } view { level rows } attempts bestMoves }
+  }
+}
 ```
 
 ```graphql
-query { session(id: "SESSION_ID") { seq attempts bestMoves view { level levelCount rows } state { pos { level x y } moves status lossReason path { level x y } } lastEvent { blocked via } } }
+query {
+  mazes {
+  session(id: "SESSION_ID") { seq attempts bestMoves view { level levelCount rows } state { pos { level x y } moves status lossReason path { level x y } } lastEvent { blocked via } }
+  }
+}
 ```
 
 ```graphql
-subscription { sessionUpdated(sessionID: "SESSION_ID") { seq event { move direction blocked via } session { view { level rows } state { pos { level x y } moves status } } } }
+subscription { mazesSessionUpdated(sessionID: "SESSION_ID") { seq event { move direction blocked via } session { view { level rows } state { pos { level x y } moves status } } } }
 ```
 
 The subscription emits the current snapshot immediately, then every change. Every update is a

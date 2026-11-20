@@ -1,7 +1,6 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: 'Inter', system-ui, sans-serif;
   --color-tesla-white: #f7f7f7;
   --color-tesla-gray: #393c41;
   --color-tesla-light: #e8e8e8;
@@ -13,12 +12,6 @@
      ~4.8:1 and text-gray-500 ~7:1 while keeping the visual hierarchy. */
   --color-gray-400: #6b7280;
   --color-gray-500: #4b5563;
-}
-
-body {
-  font-family: var(--font-sans);
-  background-color: var(--color-tesla-white);
-  color: var(--color-tesla-gray);
 }
 
 /* Visible keyboard focus everywhere (many inputs use focus:outline-none). */

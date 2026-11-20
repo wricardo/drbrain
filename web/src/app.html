@@ -8,15 +8,20 @@
 		<!-- Applies the saved or OS theme before first paint, so there is no flash. Mirrors src/lib/theme.ts. -->
 		<script>
 			(function () {
+				var path = location.pathname;
+				var inMotor = path === '/motor' || path.indexOf('/motor/') === 0;
 				var saved = null;
-				try {
-					saved = localStorage.getItem('drbrain-motor-programming.theme');
-				} catch (e) {}
-				var dark = saved === 'dark';
-				if (saved !== 'dark' && saved !== 'light') {
+				var dark = false;
+				if (inMotor) {
 					try {
-						dark = matchMedia('(prefers-color-scheme: dark)').matches;
+						saved = localStorage.getItem('drbrain-motor-programming.theme');
 					} catch (e) {}
+					dark = saved === 'dark';
+					if (saved !== 'dark' && saved !== 'light') {
+						try {
+							dark = matchMedia('(prefers-color-scheme: dark)').matches;
+						} catch (e) {}
+					}
 				}
 				var root = document.documentElement;
 				root.classList.toggle('dark', dark);

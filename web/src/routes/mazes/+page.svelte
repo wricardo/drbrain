@@ -64,7 +64,7 @@
 		creating = true;
 		error = null;
 		try {
-			await goto(`/play/${await startSession(client, map.id, displayName)}`);
+			await goto(`/mazes/play/${await startSession(client, map.id, displayName)}`);
 		} catch (e) {
 			error = describeError(e);
 		} finally {

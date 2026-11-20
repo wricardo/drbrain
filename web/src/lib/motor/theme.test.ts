@@ -115,7 +115,8 @@ describe('applyTheme', () => {
 describe('app.html first-paint script', () => {
 	const script = /<script>([\s\S]*?)<\/script>/.exec(appHtml)?.[1] ?? '';
 
-	function runScript() {
+	function runScript(path = '/motor') {
+		history.replaceState(null, '', path);
 		new Function(script)();
 		return { dark: document.documentElement.classList.contains('dark'), scheme: document.documentElement.style.colorScheme };
 	}
@@ -154,5 +155,13 @@ describe('app.html first-paint script', () => {
 		stubMatchMedia(true);
 		runScript();
 		expect(document.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe(THEME_COLORS.dark);
+	});
+
+	it('leaves non-motor pages light even when the OS or storage asks for dark', () => {
+		stubMatchMedia(true);
+		localStorage.setItem(THEME_KEY, 'dark');
+		expect(runScript('/')).toEqual({ dark: false, scheme: 'light' });
+		expect(runScript('/mazes')).toEqual({ dark: false, scheme: 'light' });
+		expect(runScript('/tesla/watch/abc')).toEqual({ dark: false, scheme: 'light' });
 	});
 });

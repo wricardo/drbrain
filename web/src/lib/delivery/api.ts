@@ -8,17 +8,33 @@
 // snapshot, so the client never needs a follow-up read to know the new state.
 
 import type {
-	CarWindow,
-	Direction,
-	EventView,
-	Query,
-	SessionSummary,
-	Snapshot
-} from './api-types';
+	Delivery_CarWindow as CarWindow,
+	Delivery_Direction as Direction,
+	Delivery_EventView as EventView,
+	Delivery_Query as Query,
+	Delivery_SessionSummary as SessionSummary,
+	Delivery_Snapshot as Snapshot
+} from '../graphql-types';
 
-export * from './api-types';
+export * from '../graphql-types';
 
-const ENDPOINT = '/delivery/graphql';
+// Keep the delivery-local names the UI already uses.
+export type {
+	Delivery_AchievementView as AchievementView,
+	Delivery_BuildView as BuildView,
+	Delivery_CarState as CarState,
+	Delivery_CarView as CarView,
+	Delivery_CityView as CityView,
+	Delivery_ClosureView as ClosureView,
+	Delivery_Direction as Direction,
+	Delivery_OrderState as OrderState,
+	Delivery_OrderView as OrderView,
+	Delivery_SessionSummary as SessionSummary,
+	Delivery_Snapshot as Snapshot,
+	Delivery_UnlockView as UnlockView
+} from '../graphql-types';
+
+const ENDPOINT = '/graphql';
 
 /** ApiError carries the server's machine-readable code, not just prose. */
 export class ApiError extends Error {
@@ -55,7 +71,7 @@ async function post<T>(query: string, variables?: Record<string, unknown>): Prom
 		throw new ApiError(`HTTP ${res.status} ${res.statusText}`, 'http_error');
 	}
 
-	const body = (await res.json()) as GraphQLResponse<T>;
+	const body = (await res.json()) as GraphQLResponse<{ delivery?: T }>;
 	if (body.errors && body.errors.length > 0) {
 		const first = body.errors[0];
 		const msg = first.message;
@@ -66,10 +82,11 @@ async function post<T>(query: string, variables?: Record<string, unknown>): Prom
 		}
 		throw new ApiError(msg, 'graphql_error');
 	}
-	if (!body.data) {
+	const data = body.data?.delivery;
+	if (!data) {
 		throw new ApiError('empty GraphQL response', 'empty_response');
 	}
-	return body.data;
+	return data;
 }
 
 // --- field selections ------------------------------------------------------
@@ -127,19 +144,23 @@ export const SNAPSHOT_FIELDS = `
 export const api = {
 	/** Liveness probe. */
 	health: async () => {
-		const d = await post<{ health: { status: string } }>(`query { health { status } }`);
+		const d = await post<{ health: { status: string } }>(
+			`query { delivery { health { status } } }`
+		);
 		return d.health;
 	},
 
 	/** The static city with every district revealed. */
 	city: async () => {
 		const d = await post<Pick<Query, 'city'>>(`query {
-			city {
-				name gridSize rows hiddenTiles
-				kitchens { id name x y }
-				customers { id name x y }
-				depots { id name x y }
-				chargers { id name x y }
+			delivery {
+				city {
+					name gridSize rows hiddenTiles
+					kitchens { id name x y }
+					customers { id name x y }
+					depots { id name x y }
+					chargers { id name x y }
+				}
 			}
 		}`);
 		return d.city;
@@ -147,14 +168,14 @@ export const api = {
 
 	sessions: async (): Promise<SessionSummary[]> => {
 		const d = await post<{ sessions: SessionSummary[] }>(`query {
-			sessions { id createdAt tick speed money reputation deliveries loaded }
+			delivery { sessions { id createdAt tick speed money reputation deliveries loaded } }
 		}`);
 		return d.sessions ?? [];
 	},
 
 	session: async (id: string): Promise<Snapshot> => {
 		const d = await post<{ session: Snapshot }>(
-			`query ($id: ID!) { session(id: $id) { ${SNAPSHOT_FIELDS} } }`,
+			`query ($id: ID!) { delivery { session(id: $id) { ${SNAPSHOT_FIELDS} } } }`,
 			{ id }
 		);
 		return d.session;
@@ -164,11 +185,13 @@ export const api = {
 	carView: async (id: string, carId: string, radius = 2): Promise<CarWindow> => {
 		const d = await post<{ carView: CarWindow }>(
 			`query ($id: ID!, $carId: ID!, $radius: Int!) {
-				carView(id: $id, carId: $carId, radius: $radius) {
-					rowSpan colSpan rows originX originY
-					car { ${CAR_FIELDS} }
-					visibleCars { ${CAR_FIELDS} }
-					nearbyOrders { ${ORDER_FIELDS} }
+				delivery {
+					carView(id: $id, carId: $carId, radius: $radius) {
+						rowSpan colSpan rows originX originY
+						car { ${CAR_FIELDS} }
+						visibleCars { ${CAR_FIELDS} }
+						nearbyOrders { ${ORDER_FIELDS} }
+					}
 				}
 			}`,
 			{ id, carId, radius }
@@ -180,7 +203,7 @@ export const api = {
 	events: async (id: string, sinceTick = 0): Promise<EventView[]> => {
 		const d = await post<{ events: EventView[] }>(
 			`query ($id: ID!, $sinceTick: Int!) {
-				events(id: $id, sinceTick: $sinceTick) { tick type message carId x y }
+				delivery { events(id: $id, sinceTick: $sinceTick) { tick type message carId x y } }
 			}`,
 			{ id, sinceTick }
 		);
@@ -192,7 +215,7 @@ export const api = {
 	createSession: async (id?: string, seed?: number): Promise<Snapshot> => {
 		const d = await post<{ createSession: Snapshot }>(
 			`mutation ($id: ID, $seed: Int) {
-				createSession(id: $id, seed: $seed) { ${SNAPSHOT_FIELDS} }
+				delivery { createSession(id: $id, seed: $seed) { ${SNAPSHOT_FIELDS} } }
 			}`,
 			{ id: id ?? null, seed: seed ?? null }
 		);
@@ -202,8 +225,8 @@ export const api = {
 	/** Queue one step for one car. Does not advance the clock. */
 	moveCar: async (id: string, carId: string, direction: Direction): Promise<Snapshot> => {
 		const d = await post<{ moveCar: Snapshot }>(
-			`mutation ($id: ID!, $carId: ID!, $direction: Direction!) {
-				moveCar(id: $id, carId: $carId, direction: $direction) { ${SNAPSHOT_FIELDS} }
+			`mutation ($id: ID!, $carId: ID!, $direction: Delivery_Direction!) {
+				delivery { moveCar(id: $id, carId: $carId, direction: $direction) { ${SNAPSHOT_FIELDS} } }
 			}`,
 			{ id, carId, direction }
 		);
@@ -213,7 +236,7 @@ export const api = {
 	tick: async (id: string, count = 1): Promise<Snapshot> => {
 		const d = await post<{ tick: Snapshot }>(
 			`mutation ($id: ID!, $count: Int!) {
-				tick(id: $id, count: $count) { ${SNAPSHOT_FIELDS} }
+				delivery { tick(id: $id, count: $count) { ${SNAPSHOT_FIELDS} } }
 			}`,
 			{ id, count }
 		);
@@ -223,7 +246,7 @@ export const api = {
 	setSpeed: async (id: string, speed: number): Promise<Snapshot> => {
 		const d = await post<{ setSpeed: Snapshot }>(
 			`mutation ($id: ID!, $speed: Int!) {
-				setSpeed(id: $id, speed: $speed) { ${SNAPSHOT_FIELDS} }
+				delivery { setSpeed(id: $id, speed: $speed) { ${SNAPSHOT_FIELDS} } }
 			}`,
 			{ id, speed }
 		);
@@ -233,7 +256,7 @@ export const api = {
 	assignOrder: async (id: string, orderId: string, carId: string): Promise<Snapshot> => {
 		const d = await post<{ assignOrder: Snapshot }>(
 			`mutation ($id: ID!, $orderId: ID!, $carId: ID!) {
-				assignOrder(id: $id, orderId: $orderId, carId: $carId) { ${SNAPSHOT_FIELDS} }
+				delivery { assignOrder(id: $id, orderId: $orderId, carId: $carId) { ${SNAPSHOT_FIELDS} } }
 			}`,
 			{ id, orderId, carId }
 		);
@@ -243,7 +266,7 @@ export const api = {
 	unassignOrder: async (id: string, orderId: string): Promise<Snapshot> => {
 		const d = await post<{ unassignOrder: Snapshot }>(
 			`mutation ($id: ID!, $orderId: ID!) {
-				unassignOrder(id: $id, orderId: $orderId) { ${SNAPSHOT_FIELDS} }
+				delivery { unassignOrder(id: $id, orderId: $orderId) { ${SNAPSHOT_FIELDS} } }
 			}`,
 			{ id, orderId }
 		);
@@ -253,7 +276,7 @@ export const api = {
 	buyCar: async (id: string, className: string, depotId = 'd_main'): Promise<Snapshot> => {
 		const d = await post<{ buyCar: Snapshot }>(
 			`mutation ($id: ID!, $className: String!, $depotId: String!) {
-				buyCar(id: $id, className: $className, depotId: $depotId) { ${SNAPSHOT_FIELDS} }
+				delivery { buyCar(id: $id, className: $className, depotId: $depotId) { ${SNAPSHOT_FIELDS} } }
 			}`,
 			{ id, className, depotId }
 		);
@@ -263,7 +286,7 @@ export const api = {
 	towCar: async (id: string, carId: string): Promise<Snapshot> => {
 		const d = await post<{ towCar: Snapshot }>(
 			`mutation ($id: ID!, $carId: ID!) {
-				towCar(id: $id, carId: $carId) { ${SNAPSHOT_FIELDS} }
+				delivery { towCar(id: $id, carId: $carId) { ${SNAPSHOT_FIELDS} } }
 			}`,
 			{ id, carId }
 		);
@@ -273,7 +296,7 @@ export const api = {
 	build: async (id: string, buildId: string): Promise<Snapshot> => {
 		const d = await post<{ build: Snapshot }>(
 			`mutation ($id: ID!, $buildId: ID!) {
-				build(id: $id, buildId: $buildId) { ${SNAPSHOT_FIELDS} }
+				delivery { build(id: $id, buildId: $buildId) { ${SNAPSHOT_FIELDS} } }
 			}`,
 			{ id, buildId }
 		);
@@ -282,7 +305,7 @@ export const api = {
 
 	saveSession: async (id: string): Promise<Snapshot> => {
 		const d = await post<{ saveSession: Snapshot }>(
-			`mutation ($id: ID!) { saveSession(id: $id) { ${SNAPSHOT_FIELDS} } }`,
+			`mutation ($id: ID!) { delivery { saveSession(id: $id) { ${SNAPSHOT_FIELDS} } } }`,
 			{ id }
 		);
 		return d.saveSession;
@@ -290,7 +313,7 @@ export const api = {
 
 	deleteSession: async (id: string): Promise<boolean> => {
 		const d = await post<{ deleteSession: boolean }>(
-			`mutation ($id: ID!) { deleteSession(id: $id) }`,
+			`mutation ($id: ID!) { delivery { deleteSession(id: $id) } }`,
 			{ id }
 		);
 		return d.deleteSession;

@@ -24,10 +24,18 @@ func llmsHandler(tmpl *template.Template, prefix, publicURL string) http.Handler
 			base = scheme + "://" + r.Host
 		}
 		base += prefix
+		origin := strings.TrimSuffix(base, prefix)
 
-		data := struct{ BaseURL, WSURL string }{
-			BaseURL: base,
-			WSURL:   "ws" + strings.TrimPrefix(base, "http"),
+		data := struct {
+			BaseURL, WSURL           string
+			GraphQLURL, GraphQLWSURL string
+			PlaygroundURL            string
+		}{
+			BaseURL:       base,
+			WSURL:         "ws" + strings.TrimPrefix(base, "http"),
+			GraphQLURL:    origin + "/graphql",
+			GraphQLWSURL:  "ws" + strings.TrimPrefix(origin, "http") + "/graphql",
+			PlaygroundURL: origin + "/graphql/playground",
 		}
 		var buf bytes.Buffer
 		if err := tmpl.Execute(&buf, data); err != nil {

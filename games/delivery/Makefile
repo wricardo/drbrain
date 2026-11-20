@@ -84,11 +84,11 @@ generate: ## run gqlgen (Go types from the schema)
 
 .PHONY: types
 types: ## regenerate ../../web/src/lib/delivery/api-types.ts from the GraphQL schema
-	$(GO) run ./cmd/gentypes
+	$(GO) run ../../cmd/gentypes
 
 .PHONY: types-check
 types-check: ## fail if the generated types are stale
-	$(GO) run ./cmd/gentypes -check
+	$(GO) run ../../cmd/gentypes -check
 
 .PHONY: check
 check: fmt vet generate types-check test ## fmt + vet + regenerate + typecheck

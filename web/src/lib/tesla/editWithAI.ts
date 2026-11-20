@@ -11,8 +11,8 @@ export function graphqlEndpointUrl(): string {
 	const configured =
 		typeof import.meta !== 'undefined' ? import.meta.env?.PUBLIC_GRAPHQL_URL : undefined;
 	if (configured) return configured;
-	if (typeof window !== 'undefined') return `${window.location.origin}/tesla/graphql`;
-	return '/tesla/graphql';
+	if (typeof window !== 'undefined') return `${window.location.origin}/graphql`;
+	return '/graphql';
 }
 
 export type EditPromptInput = {
@@ -64,11 +64,13 @@ HOW TO DO IT
 1. Read the current map first (this requires no credentials):
 
     query GetMap {
-      map(name: "${map.mapId}", password: "tesla-ui-map") {
-        name description gridSize maxBattery startingBattery
-        layout
-        legend { key value }
-        cellConfigs { key type allowedDirections }
+      tesla {
+        map(name: "${map.mapId}", password: "tesla-ui-map") {
+          name description gridSize maxBattery startingBattery
+          layout
+          legend { key value }
+          cellConfigs { key type allowedDirections }
+        }
       }
     }
 
@@ -89,9 +91,11 @@ HOW TO DO IT
 
 3. ${saveInstruction}
 
-    mutation UpdateMap($name: String!, $patch: GameMapPatchInput!, $editKey: String) {
-      updateMap(name: $name, patch: $patch, editKey: $editKey) {
-        name gridSize maxBattery
+    mutation UpdateMap($name: String!, $patch: Tesla_GameMapPatchInput!, $editKey: String) {
+      tesla {
+        updateMap(name: $name, patch: $patch, editKey: $editKey) {
+          name gridSize maxBattery
+        }
       }
     }
 

@@ -270,7 +270,7 @@
 			);
 			rememberSession(data.createSession.id, data.createSession.displayName, data.createSession.ownerToken);
 			// Full navigation: this page keeps one session store for its lifetime.
-			window.location.assign(`/play/${data.createSession.id}`);
+			window.location.assign(`/motor/play/${data.createSession.id}`);
 		});
 
 	const shortcutKeys = $derived<[string, string][]>([

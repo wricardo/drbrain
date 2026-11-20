@@ -3,39 +3,43 @@
 	import { goto } from '$app/navigation';
 	import { getContextClient, queryStore, gql } from '@urql/svelte';
 	import { createClient as createWsClient } from 'graphql-ws';
-	import { onMount, untrack } from 'svelte';
+	import { onMount, onDestroy, untrack } from 'svelte';
 	import { SESSIONS_QUERY, MAPS_QUERY } from '$lib/tesla/queries';
 	import { directionGlyph, hasDirections, terrainGlyph } from '$lib/tesla/directional';
 	import { prettyMapName } from '$lib/tesla/maps';
 
 	const GAME_STATE_QUERY = `
 		query GameState($sessionID: ID!) {
-			gameState(sessionID: $sessionID) {
-				battery maxBattery score victory gameOver totalMoves
-				fogEnabled fogRadius
-				playerPos { x y }
-				grid { type visited id allowedDirections }
-				nearbyGrid { type visited id allowedDirections }
-				currentMoves { fromPosition { x y } toPosition { x y } success }
+			tesla {
+				gameState(sessionID: $sessionID) {
+					battery maxBattery score victory gameOver totalMoves
+					fogEnabled fogRadius
+					playerPos { x y }
+					grid { type visited id allowedDirections }
+					nearbyGrid { type visited id allowedDirections }
+					currentMoves { fromPosition { x y } toPosition { x y } success }
+				}
 			}
 		}
 	`;
 
 	const FOG_GAME_STATE_QUERY = `
 		query GameState($sessionID: ID!) {
-			gameState(sessionID: $sessionID) {
-				battery maxBattery score victory gameOver totalMoves
-				fogEnabled fogRadius
-				playerPos { x y }
-				nearbyGrid { type visited id allowedDirections }
-				currentMoves { fromPosition { x y } toPosition { x y } success }
+			tesla {
+				gameState(sessionID: $sessionID) {
+					battery maxBattery score victory gameOver totalMoves
+					fogEnabled fogRadius
+					playerPos { x y }
+					nearbyGrid { type visited id allowedDirections }
+					currentMoves { fromPosition { x y } toPosition { x y } success }
+				}
 			}
 		}
 	`;
 
 	const SESSION_SUBSCRIPTION = `
 		subscription SessionUpdated($sessionID: ID!) {
-			sessionUpdated(sessionID: $sessionID) {
+			teslaSessionUpdated(sessionID: $sessionID) {
 				battery maxBattery score victory gameOver totalMoves
 				fogEnabled fogRadius
 				playerPos { x y }
@@ -48,7 +52,7 @@
 
 	const FOG_SESSION_SUBSCRIPTION = `
 		subscription SessionUpdated($sessionID: ID!) {
-			sessionUpdated(sessionID: $sessionID) {
+			teslaSessionUpdated(sessionID: $sessionID) {
 				battery maxBattery score victory gameOver totalMoves
 				fogEnabled fogRadius
 				playerPos { x y }
@@ -349,19 +353,19 @@
 	const carColors = ['🚗','🚕','🚙','🏎️','🚓','🚑','🚒','🛻'];
 	const dotColors = ['#3b82f6','#f59e0b','#10b981','#ef4444','#8b5cf6','#f97316','#06b6d4','#ec4899'];
 
-	const wsUnsubs = new Map<string, () => void>();
+	const wsUnsubs = new Map<string, { unsub: () => void; dispose: () => void }>();
 
 	async function subscribeSession(id: string) {
 		if (wsUnsubs.has(id)) return;
 		// mark slot so duplicate calls don't race
-		wsUnsubs.set(id, () => {});
+		wsUnsubs.set(id, { unsub() {}, dispose() {} });
 
 		// initial state via fetch
 		const meta = sessionMetaByID.get(id);
 		const isFogSession = !!meta?.fogEnabled;
 		const graphqlUrl = typeof window !== 'undefined'
-			? `${window.location.origin}/tesla/graphql`
-			: (import.meta.env.DEV ? 'http://localhost:8080/tesla/graphql' : '');
+			? `${window.location.origin}/graphql`
+			: (import.meta.env.DEV ? 'http://localhost:8080/graphql' : '');
 		try {
 			const res = await fetch(graphqlUrl, {
 				method: 'POST',
@@ -369,31 +373,33 @@
 				body: JSON.stringify({ query: isFogSession ? FOG_GAME_STATE_QUERY : GAME_STATE_QUERY, variables: { sessionID: id } })
 			});
 			const json = await res.json();
-			const gs = json?.data?.gameState;
+			const gs = json?.data?.tesla?.gameState;
 			if (gs) setSessionState(id, { id, ...gs });
 		} catch {}
 
 		// live updates via WS
 		const WS_URL = typeof window !== 'undefined'
-			? `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/tesla/graphql`
-			: (import.meta.env.DEV ? 'ws://localhost:8080/tesla/graphql' : '');
+			? `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/graphql`
+			: (import.meta.env.DEV ? 'ws://localhost:8080/graphql' : '');
 		const wsc = createWsClient({ url: WS_URL });
 		const unsub = wsc.subscribe(
 			{ query: isFogSession ? FOG_SESSION_SUBSCRIPTION : SESSION_SUBSCRIPTION, variables: { sessionID: id } },
 			{
-				next(data: { data?: { sessionUpdated?: Omit<SessionState, 'id'> } }) {
-					const gs = data.data?.sessionUpdated;
+				next(data: { data?: { teslaSessionUpdated?: Omit<SessionState, 'id'> } }) {
+					const gs = data.data?.teslaSessionUpdated;
 					if (gs) setSessionState(id, { id, ...gs });
 				},
 				error() {},
 				complete() {}
 			}
 		);
-		wsUnsubs.set(id, unsub);
+		wsUnsubs.set(id, { unsub, dispose: () => void wsc.dispose() });
 	}
 
 	function unsubscribeSession(id: string) {
-		wsUnsubs.get(id)?.();
+		const stream = wsUnsubs.get(id);
+		stream?.unsub();
+		stream?.dispose();
 		wsUnsubs.delete(id);
 		stopAnimation(id);
 		animationSignatures.delete(id);
@@ -408,6 +414,15 @@
 		for (const id of wsUnsubs.keys()) {
 			if (!ids.has(id)) unsubscribeSession(id);
 		}
+	});
+
+	// The page owns one socket per watched session; close them all on leave.
+	onDestroy(() => {
+		for (const stream of wsUnsubs.values()) {
+			stream.unsub();
+			stream.dispose();
+		}
+		wsUnsubs.clear();
 	});
 
 	function selectMap(id: string) {
@@ -447,7 +462,11 @@
 			u1();
 			u2();
 			clearInterval(pollInterval);
-			for (const f of wsUnsubs.values()) f();
+			for (const stream of wsUnsubs.values()) {
+				stream.unsub();
+				stream.dispose();
+			}
+			wsUnsubs.clear();
 			for (const timer of animationTimers.values()) clearTimeout(timer);
 		};
 	});

@@ -1,451 +1,550 @@
-scalar Time
+# Code generated from graph/schema.graphqls by cmd/split-schema. DO NOT EDIT.
 
 enum Instruction {
-  EMPTY
-  TURN_LEFT
-  TURN_RIGHT
-  MOVE_FORWARD
-  CALL_SUB_1
-  CALL_SUB_2
-  CALL_SUB_3
-  CALL_SUB_4
-  CALL_SUB_5
-  CALL_SUB_6
-  CALL_SUB_7
-  CALL_SUB_8
-  CALL_SUB_9
-  CALL_SUB_10
+	EMPTY
+	TURN_LEFT
+	TURN_RIGHT
+	MOVE_FORWARD
+	CALL_SUB_1
+	CALL_SUB_2
+	CALL_SUB_3
+	CALL_SUB_4
+	CALL_SUB_5
+	CALL_SUB_6
+	CALL_SUB_7
+	CALL_SUB_8
+	CALL_SUB_9
+	CALL_SUB_10
 }
-
 enum Facing {
-  UP
-  RIGHT
-  DOWN
-  LEFT
+	UP
+	RIGHT
+	DOWN
+	LEFT
 }
-
 enum Status {
-  READY
-  RUNNING
-  WON
-  LOST
+	READY
+	RUNNING
+	WON
+	LOST
 }
-
 enum LossReason {
-  STEP_LIMIT
-  CALL_DEPTH
-  PROGRAM_ENDED
+	STEP_LIMIT
+	CALL_DEPTH
+	PROGRAM_ENDED
 }
-
 enum SessionSort {
-  RECENT
-  CREATED
+	RECENT
+	CREATED
 }
-
 type Position {
-  x: Int!
-  y: Int!
+	x: Int!
+	y: Int!
 }
-
 type Frame {
-  "Tape index; -1 is the main tape."
-  tape: Int!
-  "Index of the next instruction to run on that tape."
-  pc: Int!
+	"""
+	Tape index; -1 is the main tape.
+	"""
+	tape: Int!
+	"""
+	Index of the next instruction to run on that tape.
+	"""
+	pc: Int!
 }
-
 type Conveyor {
-  pos: Position!
-  "Direction the robot is carried after moving onto this tile."
-  dir: Facing!
+	pos: Position!
+	"""
+	Direction the robot is carried after moving onto this tile.
+	"""
+	dir: Facing!
 }
-
 type Mirror {
-  pos: Position!
-  "True for '/', false for '\\\\'."
-  slash: Boolean!
+	pos: Position!
+	"""
+	True for '/', false for '\\'.
+	"""
+	slash: Boolean!
 }
-
 type KeyTile {
-  pos: Position!
-  "Lower-case key letter ('a'..'c')."
-  letter: String!
+	pos: Position!
+	"""
+	Lower-case key letter ('a'..'c').
+	"""
+	letter: String!
 }
-
 type DoorTile {
-  pos: Position!
-  "Upper-case door letter ('A'..'C')."
-  letter: String!
+	pos: Position!
+	"""
+	Upper-case door letter ('A'..'C').
+	"""
+	letter: String!
 }
-
 type Portal {
-  pos: Position!
-  "Digit shared by the two ends of the pair."
-  pair: String!
+	pos: Position!
+	"""
+	Digit shared by the two ends of the pair.
+	"""
+	pair: String!
 }
-
 type Map {
-  id: ID!
-  name: String!
-  description: String!
-  difficulty: String!
-  "True for a map shipped with the game: only an admin may change or delete it."
-  builtin: Boolean!
-  width: Int!
-  height: Int!
-  layout: [String!]!
-  start: Position!
-  startFacing: Facing!
-  rocks: [Position!]!
-  treats: [Position!]!
-  "One-way tiles: a move onto one is carried one extra cell in Conveyor.dir."
-  conveyors: [Conveyor!]!
-  "Mirrors force a 90-degree turn on arrival: slash=true is '/', false is '\\\\'."
-  mirrors: [Mirror!]!
-  "Collectable keys ('a'..'c'); each opens every matching door."
-  keys: [KeyTile!]!
-  "Doors ('A'..'C'), impassable until their key is collected."
-  doors: [DoorTile!]!
-  "Portal pairs ('1'..'9'); arriving on one teleports to the other."
-  portals: [Portal!]!
-  mainTapeLength: Int!
-  subTapeLengths: [Int!]!
-  maxSteps: Int!
-  maxCallDepth: Int!
-  allowRecursion: Boolean!
+	id: ID!
+	name: String!
+	description: String!
+	difficulty: String!
+	"""
+	True for a map shipped with the game: only an admin may change or delete it.
+	"""
+	builtin: Boolean!
+	width: Int!
+	height: Int!
+	layout: [String!]!
+	start: Position!
+	startFacing: Facing!
+	rocks: [Position!]!
+	treats: [Position!]!
+	"""
+	One-way tiles: a move onto one is carried one extra cell in Conveyor.dir.
+	"""
+	conveyors: [Conveyor!]!
+	"""
+	Mirrors force a 90-degree turn on arrival: slash=true is '/', false is '\\'.
+	"""
+	mirrors: [Mirror!]!
+	"""
+	Collectable keys ('a'..'c'); each opens every matching door.
+	"""
+	keys: [KeyTile!]!
+	"""
+	Doors ('A'..'C'), impassable until their key is collected.
+	"""
+	doors: [DoorTile!]!
+	"""
+	Portal pairs ('1'..'9'); arriving on one teleports to the other.
+	"""
+	portals: [Portal!]!
+	mainTapeLength: Int!
+	subTapeLengths: [Int!]!
+	maxSteps: Int!
+	maxCallDepth: Int!
+	allowRecursion: Boolean!
 }
-
 type Program {
-  main: [Instruction!]!
-  subs: [[Instruction!]!]!
+	main: [Instruction!]!
+	subs: [[Instruction!]!]!
 }
-
 input ProgramInput {
-  main: [Instruction!]!
-  subs: [[Instruction!]!]!
+	main: [Instruction!]!
+	subs: [[Instruction!]!]!
 }
-
 type VMState {
-  pos: Position!
-  facing: Facing!
-  treatsRemaining: [Position!]!
-  "Bottom frame is main; the last frame is the active tape."
-  callStack: [Frame!]!
-  steps: Int!
-  status: Status!
-  lossReason: LossReason
-  visited: [Position!]!
-  "Lower-case letters of the doors this run has opened."
-  openDoors: [String!]!
+	pos: Position!
+	facing: Facing!
+	treatsRemaining: [Position!]!
+	"""
+	Bottom frame is main; the last frame is the active tape.
+	"""
+	callStack: [Frame!]!
+	steps: Int!
+	status: Status!
+	lossReason: LossReason
+	visited: [Position!]!
+	"""
+	Lower-case letters of the doors this run has opened.
+	"""
+	openDoors: [String!]!
 }
-
 type StepEvent {
-  step: Int!
-  instruction: Instruction!
-  tapeIndex: Int!
-  slotIndex: Int!
-  from: Position!
-  to: Position!
-  facingBefore: Facing!
-  facingAfter: Facing!
-  blocked: Boolean!
-  "True when a CALL_SUB_k was ignored because the map has allowRecursion: false and that sub is already on the call stack. The step is still spent."
-  callBlocked: Boolean!
-  "True when the move landed on a conveyor and was carried one extra cell (same step)."
-  pushed: Boolean!
-  "True when that carry was blocked, so the robot stayed on the conveyor."
-  pushBlocked: Boolean!
-  "True when the arrival tile was a mirror and reflected the facing."
-  mirrored: Boolean!
-  "The key letter picked up on this step, or null."
-  collectedKey: String
-  "Portal destination when the arrival tile was a portal."
-  teleported: Position
-  collected: Position
-  callStack: [Frame!]!
-  status: Status!
-  lossReason: LossReason
+	step: Int!
+	instruction: Instruction!
+	tapeIndex: Int!
+	slotIndex: Int!
+	from: Position!
+	to: Position!
+	facingBefore: Facing!
+	facingAfter: Facing!
+	blocked: Boolean!
+	"""
+	True when a CALL_SUB_k was ignored because the map has allowRecursion: false and that sub is already on the call stack. The step is still spent.
+	"""
+	callBlocked: Boolean!
+	"""
+	True when the move landed on a conveyor and was carried one extra cell (same step).
+	"""
+	pushed: Boolean!
+	"""
+	True when that carry was blocked, so the robot stayed on the conveyor.
+	"""
+	pushBlocked: Boolean!
+	"""
+	True when the arrival tile was a mirror and reflected the facing.
+	"""
+	mirrored: Boolean!
+	"""
+	The key letter picked up on this step, or null.
+	"""
+	collectedKey: String
+	"""
+	Portal destination when the arrival tile was a portal.
+	"""
+	teleported: Position
+	collected: Position
+	callStack: [Frame!]!
+	status: Status!
+	lossReason: LossReason
 }
-
 type Session {
-  id: ID!
-  displayName: String!
-  mapId: ID!
-  "Snapshot of the map taken when the session was created."
-  map: Map!
-  """
-  The robot's program. Only a caller who may change it sees it: the ownerToken holder or the owning
-  account's login. Spectators — a shared /watch link, the session lists — get null, so a program is
-  never a public answer key. Driving playback (run, step, pause, reset) does not reveal it either.
-  """
-  program: Program
-  vm: VMState!
-  playing: Boolean!
-  speedMs: Int!
-  "Increments on every state change; clients ignore updates with seq <= last seen."
-  seq: Int!
-  createdAt: Time!
-  lastActionAt: Time!
-  attempts: Int!
-  bestSteps: Int
-  lastEvent: StepEvent
-  """
-  Secret that proves the caller created this session; keep it private. Returned only by the
-  createSession response that made the session and null everywhere else (queries, lists,
-  subscriptions). It is the credential for playing the session (pass it to setProgram, run, step,
-  pause and reset) and for changing or attaching it (deleteSession, renameSession, claimSessions).
-  Sharing it is how a session is handed to a second person or an AI agent. Optional: clients that
-  never select it are unaffected.
-  """
-  ownerToken: String
+	id: ID!
+	displayName: String!
+	mapId: ID!
+	"""
+	Snapshot of the map taken when the session was created.
+	"""
+	map: Map!
+	"""
+	The robot's program. Only a caller who may change it sees it: the ownerToken holder or the owning
+	account's login. Spectators — a shared /watch link, the session lists — get null, so a program is
+	never a public answer key. Driving playback (run, step, pause, reset) does not reveal it either.
+	"""
+	program: Program
+	vm: VMState!
+	playing: Boolean!
+	speedMs: Int!
+	"""
+	Increments on every state change; clients ignore updates with seq <= last seen.
+	"""
+	seq: Int!
+	createdAt: Time!
+	lastActionAt: Time!
+	attempts: Int!
+	bestSteps: Int
+	lastEvent: StepEvent
+	"""
+	Secret that proves the caller created this session; keep it private. Returned only by the
+	createSession response that made the session and null everywhere else (queries, lists,
+	subscriptions). It is the credential for playing the session (pass it to setProgram, run, step,
+	pause and reset) and for changing or attaching it (deleteSession, renameSession, claimSessions).
+	Sharing it is how a session is handed to a second person or an AI agent. Optional: clients that
+	never select it are unaffected.
+	"""
+	ownerToken: String
 }
-
 type SessionUpdate {
-  seq: Int!
-  session: Session!
-  event: StepEvent
+	seq: Int!
+	session: Session!
+	event: StepEvent
 }
-
 type MapValidationIssue {
-  message: String!
+	message: String!
 }
-
 type MapValidationResult {
-  valid: Boolean!
-  issues: [MapValidationIssue!]!
-  "Cells reachable check result: treats unreachable from start."
-  unreachableTreats: [Position!]!
+	valid: Boolean!
+	issues: [MapValidationIssue!]!
+	"""
+	Cells reachable check result: treats unreachable from start.
+	"""
+	unreachableTreats: [Position!]!
 }
-
 input MapInput {
-  id: ID!
-  name: String!
-  description: String
-  difficulty: String
-  layout: [String!]!
-  mainTapeLength: Int
-  subTapeLengths: [Int!]
-  maxSteps: Int
-  maxCallDepth: Int
-  allowRecursion: Boolean
+	id: ID!
+	name: String!
+	description: String
+	difficulty: String
+	layout: [String!]!
+	mainTapeLength: Int
+	subTapeLengths: [Int!]
+	maxSteps: Int
+	maxCallDepth: Int
+	allowRecursion: Boolean
 }
-
 enum LeaderboardOrder {
-  "Fewest slots used first; ties by fewest steps, then earliest. The default."
-  SLOTS
-  "Fewest steps first; ties by fewest slots, then earliest."
-  STEPS
+	"""
+	Fewest slots used first; ties by fewest steps, then earliest. The default.
+	"""
+	SLOTS
+	"""
+	Fewest steps first; ties by fewest slots, then earliest.
+	"""
+	STEPS
 }
-
-"One ranked result. Slots and steps are recorded by the server when the run is won, never supplied by a client."
+"""
+One ranked result. Slots and steps are recorded by the server when the run is won, never supplied by a client.
+"""
 type LeaderboardEntry {
-  "1-based. Entries that tie on both slots and steps share a rank."
-  rank: Int!
-  "The winning session; spectate it at /watch/<sessionId>."
-  sessionId: ID!
-  "Empty names are shown as Anonymous. An account's entry shows its display name, or \"Private player\" when its profile is private."
-  displayName: String!
-  "Handle of the signed-in player who owns this entry (profile at /u/<handle>); null for guests and private profiles."
-  handle: String
-  "True when the entry belongs to the signed-in viewer's account (always false for guests)."
-  mine: Boolean!
-  "Non-EMPTY instructions in the winning program, across main and all subs."
-  slots: Int!
-  "Steps the winning run took."
-  steps: Int!
-  "When the result was achieved."
-  achievedAt: Time!
+	"""
+	1-based. Entries that tie on both slots and steps share a rank.
+	"""
+	rank: Int!
+	"""
+	The winning session; spectate it at /watch/<sessionId>.
+	"""
+	sessionId: ID!
+	"""
+	Empty names are shown as Anonymous. An account's entry shows its display name, or "Private player" when its profile is private.
+	"""
+	displayName: String!
+	"""
+	Handle of the signed-in player who owns this entry (profile at /u/<handle>); null for guests and private profiles.
+	"""
+	handle: String
+	"""
+	True when the entry belongs to the signed-in viewer's account (always false for guests).
+	"""
+	mine: Boolean!
+	"""
+	Non-EMPTY instructions in the winning program, across main and all subs.
+	"""
+	slots: Int!
+	"""
+	Steps the winning run took.
+	"""
+	steps: Int!
+	"""
+	When the result was achieved.
+	"""
+	achievedAt: Time!
 }
-
 """
 The ranking of one map. A guest session appears at most once, with its best result under the
 chosen order; the sessions of one account are collapsed into the account's single best entry.
 Only sessions that played the map's current rules count.
 """
 type Leaderboard {
-  mapId: ID!
-  order: LeaderboardOrder!
-  "Ranked sessions on this board, not just the rows returned."
-  total: Int!
-  entries: [LeaderboardEntry!]!
-  "The signed-in viewer's entry, else the entry of the requested sessionId, even beyond the returned rows; null when it has not won."
-  yours: LeaderboardEntry
+	mapId: ID!
+	order: LeaderboardOrder!
+	"""
+	Ranked sessions on this board, not just the rows returned.
+	"""
+	total: Int!
+	entries: [LeaderboardEntry!]!
+	"""
+	The signed-in viewer's entry, else the entry of the requested sessionId, even beyond the returned rows; null when it has not won.
+	"""
+	yours: LeaderboardEntry
 }
-
 """
 A player's best result on one map: their best winning session on the SLOTS board
 and where it ranks there.
 """
 type PlayerRun {
-  mapId: ID!
-  "Ranked sessions on that map's SLOTS board."
-  total: Int!
-  "The winning session's row; entry.rank is its current rank."
-  entry: LeaderboardEntry!
+	mapId: ID!
+	"""
+	Ranked sessions on that map's SLOTS board.
+	"""
+	total: Int!
+	"""
+	The winning session's row; entry.rank is its current rank.
+	"""
+	entry: LeaderboardEntry!
 }
-
-"A signed-in player. Nothing about the person beyond the public handle and name is stored: no email, no avatar."
+"""
+A signed-in player. Nothing about the person beyond the public handle and name is stored: no email, no avatar.
+"""
 type Account {
-  "Unique public name, 3-20 of a-z 0-9 _; the profile lives at /u/<handle>."
-  handle: String!
-  displayName: String!
-  "When false the profile page is hidden and board entries read \"Private player\"."
-  profilePublic: Boolean!
-  createdAt: Time!
-  "When the handle may be changed again; null when it can be changed now."
-  handleChangeableAt: Time
-  "True for a username/password account (the only kind that can change a password)."
-  hasPassword: Boolean!
+	"""
+	Unique public name, 3-20 of a-z 0-9 _; the profile lives at /u/<handle>.
+	"""
+	handle: String!
+	displayName: String!
+	"""
+	When false the profile page is hidden and board entries read "Private player".
+	"""
+	profilePublic: Boolean!
+	createdAt: Time!
+	"""
+	When the handle may be changed again; null when it can be changed now.
+	"""
+	handleChangeableAt: Time
+	"""
+	True for a username/password account (the only kind that can change a password).
+	"""
+	hasPassword: Boolean!
 }
-
-"A way to sign in, enabled on this server. Sign in by navigating to /auth/<id>/login."
+"""
+A way to sign in, enabled on this server. Sign in by navigating to /auth/<id>/login.
+"""
 type AuthProvider {
-  id: ID!
-  name: String!
+	id: ID!
+	name: String!
 }
-
-"A public profile page: the account and its best run per map."
+"""
+A public profile page: the account and its best run per map.
+"""
 type Profile {
-  handle: String!
-  displayName: String!
-  createdAt: Time!
-  "True when the viewer is this player (a private profile is visible only to its owner)."
-  isMine: Boolean!
-  "Best run per map won (SLOTS board), ordered by map id."
-  runs: [PlayerRun!]!
+	handle: String!
+	displayName: String!
+	createdAt: Time!
+	"""
+	True when the viewer is this player (a private profile is visible only to its owner).
+	"""
+	isMine: Boolean!
+	"""
+	Best run per map won (SLOTS board), ordered by map id.
+	"""
+	runs: [PlayerRun!]!
 }
-
 enum ClaimStatus {
-  "The session now belongs to your account."
-  ATTACHED
-  "It already belonged to your account."
-  ALREADY_YOURS
-  "Unknown session, no or wrong owner token, or it belongs to another account."
-  REJECTED
+	"""
+	The session now belongs to your account.
+	"""
+	ATTACHED
+	"""
+	It already belonged to your account.
+	"""
+	ALREADY_YOURS
+	"""
+	Unknown session, no or wrong owner token, or it belongs to another account.
+	"""
+	REJECTED
 }
-
 input SessionClaimInput {
-  sessionID: ID!
-  ownerToken: String!
+	sessionID: ID!
+	ownerToken: String!
 }
-
 type SessionClaimResult {
-  sessionID: ID!
-  status: ClaimStatus!
+	sessionID: ID!
+	status: ClaimStatus!
 }
-
 input AccountInput {
-  "New handle (3-20 of a-z 0-9 _, case-insensitive, unique); limited to one change per day."
-  handle: String
-  "Public display name; empty falls back to the handle."
-  displayName: String
-  profilePublic: Boolean
+	"""
+	New handle (3-20 of a-z 0-9 _, case-insensitive, unique); limited to one change per day.
+	"""
+	handle: String
+	"""
+	Public display name; empty falls back to the handle.
+	"""
+	displayName: String
+	profilePublic: Boolean
 }
-
+scalar Time
 type Query {
-  "The signed-in player, or null."
-  me: Account
-  "Sign-in providers enabled on this server; empty means sign-in is off."
-  authProviders: [AuthProvider!]!
-  "A player's public profile; null when the handle is unknown or the profile is private (unless it is yours)."
-  profile(handle: String!): Profile
-  maps: [Map!]!
-  map(id: ID!): Map
-  """
-  One session. The program is included only for a caller who may change it; pass the ownerToken
-  (or be signed in as the owning account) to read it.
-  """
-  session(id: ID!, ownerToken: String): Session
-  """
-  Whether this caller may change the session's program (setProgram) and read it back: true when they
-  created it — a signed-in owner by their login, anyone else by passing the ownerToken — or when the
-  session predates owner tokens. False for a spectator, even though the public id is enough to drive
-  playback at /watch; a play page uses it to decide between editing and a read-only view.
-  """
-  canPlaySession(id: ID!, ownerToken: String): Boolean!
-  sessions(sort: SessionSort = RECENT, limit: Int = 50, mapId: ID): [Session!]!
-  "Ranks the winning sessions of a map (limit defaults to 20, at most 100). Null when the map does not exist."
-  leaderboard(mapId: ID!, order: LeaderboardOrder = SLOTS, limit: Int = 20, sessionId: ID): Leaderboard
-  """
-  A player's best run per map they have won (maps never won are absent), ordered by map id.
-  Give exactly one of sessionIds (up to 200; exact) or name (case-insensitive; matches every
-  session with that display name, so it can mix people who picked the same name; guest sessions only).
-  When signed in, the account's own runs are included with sessionIds, and sessionIds may be left out.
-  """
-  playerRuns(sessionIds: [ID!], name: String): [PlayerRun!]!
+	"""
+	The signed-in player, or null.
+	"""
+	me: Account
+	"""
+	Sign-in providers enabled on this server; empty means sign-in is off.
+	"""
+	authProviders: [AuthProvider!]!
+	"""
+	A player's public profile; null when the handle is unknown or the profile is private (unless it is yours).
+	"""
+	profile(handle: String!): Profile
+	maps: [Map!]!
+	map(id: ID!): Map
+	"""
+	One session. The program is included only for a caller who may change it; pass the ownerToken
+	(or be signed in as the owning account) to read it.
+	"""
+	session(id: ID!, ownerToken: String): Session
+	"""
+	Whether this caller may change the session's program (setProgram) and read it back: true when they
+	created it — a signed-in owner by their login, anyone else by passing the ownerToken — or when the
+	session predates owner tokens. False for a spectator, even though the public id is enough to drive
+	playback at /watch; a play page uses it to decide between editing and a read-only view.
+	"""
+	canPlaySession(id: ID!, ownerToken: String): Boolean!
+	sessions(sort: SessionSort = RECENT, limit: Int = 50, mapId: ID): [Session!]!
+	"""
+	Ranks the winning sessions of a map (limit defaults to 20, at most 100). Null when the map does not exist.
+	"""
+	leaderboard(mapId: ID!, order: LeaderboardOrder = SLOTS, limit: Int = 20, sessionId: ID): Leaderboard
+	"""
+	A player's best run per map they have won (maps never won are absent), ordered by map id.
+	Give exactly one of sessionIds (up to 200; exact) or name (case-insensitive; matches every
+	session with that display name, so it can mix people who picked the same name; guest sessions only).
+	When signed in, the account's own runs are included with sessionIds, and sessionIds may be left out.
+	"""
+	playerRuns(sessionIds: [ID!], name: String): [PlayerRun!]!
 }
-
 type Mutation {
-  """
-  Starts a session. The response carries the secret `ownerToken`: it is needed to play the session
-  (setProgram, run, step, pause, reset) and to rename, delete or claim it, so keep it.
-  """
-  createSession(mapID: ID!, displayName: String): Session!
-  """
-  Deletes a session. A guest session can be deleted by anyone who knows its id. A session that belongs to a
-  signed-in player can only be deleted by that player's signed-in browser, or by passing the ownerToken
-  that createSession returned (FORBIDDEN otherwise).
-  """
-  deleteSession(id: ID!, ownerToken: String): Boolean!
-  "Renames a session; the same rule as deleteSession applies. Its program is included only for a caller who may change it."
-  renameSession(id: ID!, displayName: String!, ownerToken: String): Session!
-  """
-  Stores the program and resets the robot. Only the session's creator may do it: pass the
-  ownerToken that createSession returned, or be signed in to the account that owns the session
-  (FORBIDDEN otherwise). Sessions created before owner tokens stay open. The program is private, so
-  watching a run never grants this.
-  """
-  setProgram(sessionID: ID!, program: ProgramInput!, ownerToken: String): Session!
-  """
-  Starts the program. Anyone who knows the session id may drive playback — that is what a /watch
-  link is for — and the response carries the program only for a caller who may change it.
-  """
-  run(sessionID: ID!, speedMs: Int = 500, ownerToken: String): Session!
-  "Pauses playback. Open to anyone who knows the session id; the program stays hidden from spectators."
-  pause(sessionID: ID!, ownerToken: String): Session!
-  "Executes one step. Open to anyone who knows the session id; the program stays hidden from spectators."
-  step(sessionID: ID!, ownerToken: String): Session!
-  "Puts the robot back at the start. Open to anyone who knows the session id; the program stays hidden from spectators."
-  reset(sessionID: ID!, ownerToken: String): Session!
-
-  "Signs the player out (clears the login cookie). Always true."
-  logout: Boolean!
-  """
-  Creates a username/password account and signs the browser in with it. The username is the public
-  handle. Refused cross-site, so another site cannot create accounts through a victim's browser.
-  Errors: INVALID_ARGUMENT (bad handle, weak or taken password), LIMIT_REACHED, FORBIDDEN (password
-  sign-in is off, or no cookie can be set: a subscription connection).
-  """
-  registerWithPassword(handle: String!, password: String!): Account!
-  """
-  Signs in with a username and password, rotating the browser's previous login. Refused cross-site.
-  An unknown username and a wrong password are answered identically (UNAUTHENTICATED). Repeated
-  failures lock the (address, username) pair and then the username: LIMIT_REACHED, refused before
-  any hashing. FORBIDDEN when password sign-in is off or no cookie can be set.
-  """
-  logInWithPassword(handle: String!, password: String!): Account!
-  "Changes the signed-in player's handle, display name or profile visibility."
-  updateAccount(input: AccountInput!): Account!
-  "Changes the password of a username/password account and signs out its other browsers. There is no email, so there is no password reset."
-  changePassword(currentPassword: String!, newPassword: String!): Boolean!
-  "Permanently deletes the account and signs out. confirmHandle must equal the current handle. Its runs stay on the boards as guest entries."
-  deleteAccount(confirmHandle: String!): Boolean!
-  "Attaches guest sessions of this browser to the signed-in account; each needs its owner token (up to 100 per call)."
-  claimSessions(claims: [SessionClaimInput!]!): [SessionClaimResult!]!
-
-  "Creating a map needs a signed-in player (UNAUTHENTICATED otherwise); validateMap is open to everyone."
-  createMap(map: MapInput!): Map!
-  validateMap(map: MapInput!): MapValidationResult!
-
-  "Anyone may change or remove a player-created map; shipped maps need X-Admin-Key."
-  updateMap(map: MapInput!): Map!
-  deleteMap(id: ID!): Boolean!
+	"""
+	Starts a session. The response carries the secret `ownerToken`: it is needed to play the session
+	(setProgram, run, step, pause, reset) and to rename, delete or claim it, so keep it.
+	"""
+	createSession(mapID: ID!, displayName: String): Session!
+	"""
+	Deletes a session. A guest session can be deleted by anyone who knows its id. A session that belongs to a
+	signed-in player can only be deleted by that player's signed-in browser, or by passing the ownerToken
+	that createSession returned (FORBIDDEN otherwise).
+	"""
+	deleteSession(id: ID!, ownerToken: String): Boolean!
+	"""
+	Renames a session; the same rule as deleteSession applies. Its program is included only for a caller who may change it.
+	"""
+	renameSession(id: ID!, displayName: String!, ownerToken: String): Session!
+	"""
+	Stores the program and resets the robot. Only the session's creator may do it: pass the
+	ownerToken that createSession returned, or be signed in to the account that owns the session
+	(FORBIDDEN otherwise). Sessions created before owner tokens stay open. The program is private, so
+	watching a run never grants this.
+	"""
+	setProgram(sessionID: ID!, program: ProgramInput!, ownerToken: String): Session!
+	"""
+	Starts the program. Anyone who knows the session id may drive playback — that is what a /watch
+	link is for — and the response carries the program only for a caller who may change it.
+	"""
+	run(sessionID: ID!, speedMs: Int = 500, ownerToken: String): Session!
+	"""
+	Pauses playback. Open to anyone who knows the session id; the program stays hidden from spectators.
+	"""
+	pause(sessionID: ID!, ownerToken: String): Session!
+	"""
+	Executes one step. Open to anyone who knows the session id; the program stays hidden from spectators.
+	"""
+	step(sessionID: ID!, ownerToken: String): Session!
+	"""
+	Puts the robot back at the start. Open to anyone who knows the session id; the program stays hidden from spectators.
+	"""
+	reset(sessionID: ID!, ownerToken: String): Session!
+	"""
+	Signs the player out (clears the login cookie). Always true.
+	"""
+	logout: Boolean!
+	"""
+	Creates a username/password account and signs the browser in with it. The username is the public
+	handle. Refused cross-site, so another site cannot create accounts through a victim's browser.
+	Errors: INVALID_ARGUMENT (bad handle, weak or taken password), LIMIT_REACHED, FORBIDDEN (password
+	sign-in is off, or no cookie can be set: a subscription connection).
+	"""
+	registerWithPassword(handle: String!, password: String!): Account!
+	"""
+	Signs in with a username and password, rotating the browser's previous login. Refused cross-site.
+	An unknown username and a wrong password are answered identically (UNAUTHENTICATED). Repeated
+	failures lock the (address, username) pair and then the username: LIMIT_REACHED, refused before
+	any hashing. FORBIDDEN when password sign-in is off or no cookie can be set.
+	"""
+	logInWithPassword(handle: String!, password: String!): Account!
+	"""
+	Changes the signed-in player's handle, display name or profile visibility.
+	"""
+	updateAccount(input: AccountInput!): Account!
+	"""
+	Changes the password of a username/password account and signs out its other browsers. There is no email, so there is no password reset.
+	"""
+	changePassword(currentPassword: String!, newPassword: String!): Boolean!
+	"""
+	Permanently deletes the account and signs out. confirmHandle must equal the current handle. Its runs stay on the boards as guest entries.
+	"""
+	deleteAccount(confirmHandle: String!): Boolean!
+	"""
+	Attaches guest sessions of this browser to the signed-in account; each needs its owner token (up to 100 per call).
+	"""
+	claimSessions(claims: [SessionClaimInput!]!): [SessionClaimResult!]!
+	"""
+	Creating a map needs a signed-in player (UNAUTHENTICATED otherwise); validateMap is open to everyone.
+	"""
+	createMap(map: MapInput!): Map!
+	validateMap(map: MapInput!): MapValidationResult!
+	"""
+	Anyone may change or remove a player-created map; shipped maps need X-Admin-Key.
+	"""
+	updateMap(map: MapInput!): Map!
+	deleteMap(id: ID!): Boolean!
 }
-
 type Subscription {
-  """
-  Emits the current snapshot immediately, then every change. Like the session query, the payload's
-  program is null unless the caller may change the program (ownerToken or the owning login).
-  """
-  sessionUpdated(sessionID: ID!, ownerToken: String): SessionUpdate!
+	"""
+	Emits the current snapshot immediately, then every change. Like the session query, the payload's
+	program is null unless the caller may change the program (ownerToken or the owning login).
+	"""
+	sessionUpdated(sessionID: ID!, ownerToken: String): SessionUpdate!
 }

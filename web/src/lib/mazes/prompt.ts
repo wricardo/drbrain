@@ -44,8 +44,8 @@ export function buildSessionPrompt(origin: string, s: PromptSession): string {
 ${TITLE} is a tower-of-mazes puzzle played in fog. You steer a miner one tile at a time (UP, RIGHT, DOWN, LEFT) from START on level 0 (the bottom) to FINISH on level ${top} (the top) of a ${m.levelCount}-level tower, using stairs to change level and portals to hop within a level. There is no program to write: you send moves, and you win the moment you step on FINISH.
 
 Session ID: ${s.id}
-GraphQL endpoint: ${origin}/mazes/graphql
-Playground: ${origin}/mazes/graphql/playground
+GraphQL endpoint: ${origin}/graphql
+Playground: ${origin}/graphql/playground
 Full rules and every field: ${origin}/mazes/llms.txt
 Spectators can watch live at: ${origin}/mazes/watch/${s.id}
 
@@ -79,11 +79,11 @@ Limits: at most ${m.maxMoves} counted moves. Par (shortest route) = ${par}.
 ## How to win
 1. Explore: move, read \`view\` after each move (or after a short bulkMove), and build a map of every level in your notes. Probing walls is free, so bump around to learn a level.
 2. Move one step at a time or in short bursts:
-mutation { move(sessionID: "${s.id}", direction: UP) { view { level rows portals { glyph a { x y } b { x y } } } state { status moves pos { level x y } } lastEvent { blocked via } } }
-mutation { bulkMove(sessionID: "${s.id}", directions: [UP, RIGHT, RIGHT]) { view { level rows } state { status moves pos { level x y } } lastEvent { blocked direction } } }
+mutation { mazes { move(sessionID: "${s.id}", direction: UP) { view { level rows portals { glyph a { x y } b { x y } } } state { status moves pos { level x y } } lastEvent { blocked via } } } }
+mutation { mazes { bulkMove(sessionID: "${s.id}", directions: [UP, RIGHT, RIGHT]) { view { level rows } state { status moves pos { level x y } } lastEvent { blocked direction } } } }
 bulkMove stops at the first blocked move (or when the game ends), so a misread tile cannot send the rest of the batch from the wrong spot: check lastEvent.blocked and state.pos, then send a corrected plan. Add stopOnBlocked: false to skip blocked moves and carry on.
 3. Read the session any time:
-query { session(id: "${s.id}") { attempts bestMoves view { level levelCount rows } state { status lossReason moves pos { level x y } } } }
+query { mazes { session(id: "${s.id}") { attempts bestMoves view { level levelCount rows } state { status lossReason moves pos { level x y } } } } }
 4. If the status is LOST (or you want a better score), call reset, replay the best route you know and shorten it. Do not stop until state.status is WON, then report the winning direction list and its move count.
 
 Other mutations: reset, renameSession, deleteSession. Do not try to guess other sessions' ids and do not delete this one.`;
@@ -98,9 +98,9 @@ export function buildGenericPrompt(origin: string): string {
 You steer a miner one tile at a time (UP, RIGHT, DOWN, LEFT) from START (level 0, the bottom) to FINISH (the top level) of a tower. You only ever see the level you stand on, so you map the tower by exploring it. Stairs lift or drop you one level, numbered portal holes teleport you to their twin, and blocked moves are free. You win when you step on FINISH, before the move limit runs out.
 
 1. Read ${origin}/mazes/llms.txt first: it has the complete rules, the coordinate convention (level 0 is the bottom, row 0 is the top, y grows downward) and working examples for every step.
-2. GraphQL endpoint: ${origin}/mazes/graphql (Playground: ${origin}/mazes/graphql/playground).
-3. List the maps: query { maps { id name difficulty levelCount preview maxMoves parMoves } } and pick one (start with an easy one). Only level 0 (\`preview\`) is public.
-4. Create your own session: mutation { createSession(mapID: "MAP_ID", displayName: "my agent") { id view { level rows portals { glyph a { x y } b { x y } } } } }
+2. GraphQL endpoint: ${origin}/graphql (Playground: ${origin}/graphql/playground).
+3. List the maps: query { mazes { maps { id name difficulty levelCount preview maxMoves parMoves } } } and pick one (start with an easy one). Only level 0 (\`preview\`) is public.
+4. Create your own session: mutation { mazes { createSession(mapID: "MAP_ID", displayName: "my agent") { id view { level rows portals { glyph a { x y } b { x y } } } } } }
 5. Explore with move / bulkMove, reading \`view\` after each move and keeping notes on every level. If the game is LOST, reset and try again with what you learned.
 6. Tell me the session id so I can watch it live at ${origin}/mazes/watch/SESSION_ID, and report the winning direction list and its move count.`;
 }

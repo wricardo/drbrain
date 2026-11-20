@@ -19,7 +19,7 @@ export class MapSessionStarter {
 	starting = $state(false);
 	error = $state('');
 
-	constructor(client: Client, onStarted: (sessionID: string) => void = (id) => void goto(`/watch/${id}`)) {
+	constructor(client: Client, onStarted: (sessionID: string) => void = (id) => void goto(`/tesla/watch/${id}`)) {
 		this.#client = client;
 		this.#onStarted = onStarted;
 	}

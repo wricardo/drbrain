@@ -64,3 +64,17 @@ type Validator interface {
 type MapGenerator interface {
 	Mapgen(ctx context.Context, args []string) error
 }
+
+// GraphQLResolver lets a game hand its existing gqlgen resolver root to the
+// platform's single GraphQL handler. The value stays opaque here so platform
+// does not import the game packages; cmd/drbrain type-asserts it when wiring
+// the unified executor.
+type GraphQLResolver interface {
+	GraphQLResolver() any
+}
+
+// GraphQLAuth is implemented by a game whose resolver needs transport-level
+// auth hooks. Motor uses it for the viewer cookie and password sign-in.
+type GraphQLAuth interface {
+	GraphQLAuth() any
+}

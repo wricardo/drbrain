@@ -63,7 +63,7 @@
 				gridPassword: settings.gridPassword,
 				moveDelayMs: settings.moveDelayMs
 			});
-			goto(`/watch/${id}`);
+			goto(`/tesla/watch/${id}`);
 		} catch (err) {
 			// Keep the modal open so the settings can be adjusted and retried.
 			createError = err instanceof Error ? err.message : 'Could not create the session';

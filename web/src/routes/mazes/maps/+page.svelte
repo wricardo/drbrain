@@ -37,7 +37,7 @@
 		busy = true;
 		error = null;
 		try {
-			await goto(`/play/${await startSession(client, map.id, savedName())}`);
+			await goto(`/mazes/play/${await startSession(client, map.id, savedName())}`);
 		} catch (e) {
 			error = describeError(e);
 		} finally {

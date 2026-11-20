@@ -25,8 +25,8 @@ func TestBasePathScopesAuthState(t *testing.T) {
 	rec := httptest.NewRecorder()
 	a.SetSession(rec, req, "token", time.Now().Add(time.Hour))
 	cookies := rec.Result().Cookies()
-	if len(cookies) != 1 || cookies[0].Name != SessionCookie || cookies[0].Path != "/motor" {
-		t.Fatalf("session cookie = %+v, want %s Path=/motor", cookies, SessionCookie)
+	if len(cookies) != 1 || cookies[0].Name != SessionCookie || cookies[0].Path != "/" {
+		t.Fatalf("session cookie = %+v, want %s Path=/", cookies, SessionCookie)
 	}
 
 	rec = httptest.NewRecorder()

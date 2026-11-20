@@ -28,17 +28,6 @@ func (r *gameMapResolver) Layout(ctx context.Context, obj *model.GameMap, passwo
 	return obj.Layout, nil
 }
 
-// Builtin is the resolver for the builtin field.
-func (r *gameMapResolver) Builtin(ctx context.Context, obj *model.GameMap) (bool, error) {
-	return obj.Builtin, nil
-}
-
-// EditKey is the resolver for the editKey field. The token is only ever set on
-// the createMap response; everywhere else it is nil.
-func (r *gameMapResolver) EditKey(ctx context.Context, obj *model.GameMap) (*string, error) {
-	return obj.EditKey, nil
-}
-
 // Grid is the resolver for the grid field.
 func (r *gameStateResolver) Grid(ctx context.Context, obj *model.GameState, password *string) ([][]*model.Cell, error) {
 	policy := obj.GridAccess()

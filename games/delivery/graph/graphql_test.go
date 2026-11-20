@@ -10,9 +10,26 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/99designs/gqlgen/graphql/handler"
+	"github.com/99designs/gqlgen/graphql/handler/extension"
+	"github.com/99designs/gqlgen/graphql/handler/transport"
 	"github.com/wricardo/drbrain/games/delivery/game/engine"
 	"github.com/wricardo/drbrain/games/delivery/game/session"
+	"github.com/wricardo/drbrain/games/delivery/graph/generated"
 )
+
+// testHandler is the per-game executor used by resolver tests. Production
+// serves the unified platform executor; this stays test-only.
+func testHandler(mgr *session.Manager) http.Handler {
+	srv := handler.New(generated.NewExecutableSchema(generated.Config{
+		Resolvers: &Resolver{Mgr: mgr},
+	}))
+	srv.AddTransport(transport.POST{})
+	srv.AddTransport(transport.GET{})
+	srv.AddTransport(transport.Options{})
+	srv.Use(extension.Introspection{})
+	return srv
+}
 
 // testRoute plans a shortest path across rendered glyph rows and returns the
 // directions to drive.
@@ -77,7 +94,7 @@ func newTestServer(t *testing.T) *httptest.Server {
 	}
 	t.Cleanup(func() { _ = mgr.Close() })
 
-	ts := httptest.NewServer(Handler(mgr))
+	ts := httptest.NewServer(testHandler(mgr))
 	t.Cleanup(ts.Close)
 	return ts
 }

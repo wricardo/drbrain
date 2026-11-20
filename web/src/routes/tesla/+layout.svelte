@@ -9,16 +9,18 @@
 	let { children } = $props();
 
 	const navItems = [
-		{ href: '/', label: 'Play' },
-		{ href: '/maps', label: 'Maps' },
-		{ href: '/lobby', label: 'Sessions' },
-		{ href: '/learn', label: 'How it works' },
-		{ href: '/multi', label: 'Watch multiple' }
+		{ href: '/tesla', label: 'Play' },
+		{ href: '/tesla/maps', label: 'Maps' },
+		{ href: '/tesla/lobby', label: 'Sessions' },
+		{ href: '/tesla/learn', label: 'How it works' },
+		{ href: '/tesla/multi', label: 'Watch multiple' }
 	];
 
-	// /watch/<id> is Tesla's play page (it has the drive controls), so it lights up Play.
+	// /tesla/watch/<id> is Tesla's play page (it has the drive controls), so it lights up Play.
 	function isActive(href: string, pathname: string): boolean {
-		return href === '/' ? pathname === '/' || pathname.startsWith('/watch/') : pathname === href || pathname.startsWith(`${href}/`);
+		return href === '/tesla'
+			? pathname === '/tesla' || pathname.startsWith('/tesla/watch/')
+			: pathname === href || pathname.startsWith(`${href}/`);
 	}
 
 	// ssr=false so this always runs in browser — safe to set client synchronously
@@ -33,7 +35,7 @@
 	<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
 </svelte:head>
 
-<div class="min-h-screen flex flex-col bg-[#f7f7f7]">
+<div class="min-h-screen flex flex-col bg-[#f7f7f7] text-[#393c41]" style="font-family: 'Inter', system-ui, sans-serif">
 	<header class="border-b border-[#e8e8e8] bg-white px-6 py-4 flex items-center justify-between">
 		<a href="/tesla" class="flex items-center gap-3 no-underline">
 			<span class="text-xl font-light tracking-widest text-[#393c41]">TESLA</span>
@@ -76,13 +78,13 @@
 				<div class="flex flex-col gap-1.5">
 					<a href="/tesla/learn" class="hover:text-gray-600 transition-colors">How it works</a>
 					<a href="/tesla/llms.txt" target="_blank" rel="noreferrer" class="hover:text-gray-600 transition-colors">/llms.txt</a>
-					<a href="/tesla/graphql" target="_blank" rel="noreferrer" class="hover:text-gray-600 transition-colors">GraphQL endpoint</a>
+					<a href="/graphql" target="_blank" rel="noreferrer" class="hover:text-gray-600 transition-colors">GraphQL endpoint</a>
 				</div>
 			</div>
 			<div>
 				<p class="font-semibold text-[#393c41] mb-2">Tools</p>
 				<div class="flex flex-col gap-1.5">
-					<a href="/tesla/graphql/playground" target="_blank" rel="noreferrer" class="hover:text-gray-600 transition-colors">GraphQL Playground</a>
+					<a href="/graphql/playground" target="_blank" rel="noreferrer" class="hover:text-gray-600 transition-colors">GraphQL Playground</a>
 					<a href="/tesla/admin" class="hover:text-gray-600 transition-colors">Admin</a>
 					<a href="https://github.com/wricardo/gqlcli#-quick-start--using-the-cli" target="_blank" rel="noreferrer" class="hover:text-gray-600 transition-colors">gqlcli — GraphQL CLI</a>
 				</div>

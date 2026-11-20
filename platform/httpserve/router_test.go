@@ -214,12 +214,6 @@ func TestRouterMountValidation(t *testing.T) {
 			mount: Mount{Game: "bad", Prefix: "/mazes", API: []string{"/"}, Handler: ok},
 			want:  "catch-all",
 		},
-		{
-			name:  "empty api",
-			setup: func(*Router) {},
-			mount: Mount{Game: "bad", Prefix: "/mazes", API: nil, Handler: ok},
-			want:  "bad",
-		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -385,5 +379,46 @@ func TestDisabledGamePrefixes404(t *testing.T) {
 	}
 	if len(health.Games) != 1 || health.Games["mazes"] != "ok" {
 		t.Fatalf("healthz games = %v, want only mazes ok", health.Games)
+	}
+}
+
+func TestMountAllowsEmptyAPI(t *testing.T) {
+	r := NewRouter(newSPA(t))
+	r.SetLogger(nil)
+	if err := r.Mount(Mount{Game: "delivery", Prefix: "/delivery", Handler: http.NewServeMux()}); err != nil {
+		t.Fatalf("Mount(empty API): %v", err)
+	}
+	rec := httptest.NewRecorder()
+	r.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/delivery/play", nil))
+	if strings.Contains(rec.Body.String(), "SPA-INDEX") == false {
+		t.Fatalf("empty-API prefix did not fall through to the SPA: %q", rec.Body.String())
+	}
+}
+
+func TestMountPlatformServesSubtree(t *testing.T) {
+	r := NewRouter(newSPA(t))
+	r.SetLogger(nil)
+	platform := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		_, _ = io.WriteString(w, "platform:"+req.URL.Path)
+	})
+	if err := r.MountPlatform("/graphql", platform); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.MountPlatform("/graphql", platform); err == nil {
+		t.Fatal("duplicate platform route accepted")
+	}
+
+	for _, path := range []string{"/graphql", "/graphql/playground"} {
+		rec := httptest.NewRecorder()
+		r.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if got, want := rec.Body.String(), "platform:"+path; got != want {
+			t.Errorf("%s body = %q, want %q", path, got, want)
+		}
+	}
+
+	rec := httptest.NewRecorder()
+	r.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/other", nil))
+	if !strings.Contains(rec.Body.String(), "SPA-INDEX") {
+		t.Errorf("non-platform path did not reach the SPA: %q", rec.Body.String())
 	}
 }

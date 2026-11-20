@@ -89,7 +89,7 @@
 				client.mutation(CREATE_SESSION_MUTATION, { mapID: map.id, displayName: newSessionName(!!$account.me) })
 			);
 			rememberSession(data.createSession.id, data.createSession.displayName, data.createSession.ownerToken);
-			await goto(`/play/${data.createSession.id}`);
+			await goto(`/motor/play/${data.createSession.id}`);
 		} catch (e) {
 			error = describeError(e);
 		} finally {
@@ -167,7 +167,7 @@
 		<div class="rounded-2xl border border-indigo-200 bg-white p-5">
 			<div class="text-2xl" aria-hidden="true">🤖</div>
 			<h2 class="mt-2 font-medium text-indigo-950">Try it with an AI</h2>
-			<p class="mt-1 text-sm leading-relaxed text-slate-600">Every session has a “Play with an AI” prompt you can paste into a chat. <a href="/learn#ai" class="underline text-indigo-700">How agents play</a></p>
+			<p class="mt-1 text-sm leading-relaxed text-slate-600">Every session has a “Play with an AI” prompt you can paste into a chat. <a href="/motor/learn#ai" class="underline text-indigo-700">How agents play</a></p>
 		</div>
 	</section>
 

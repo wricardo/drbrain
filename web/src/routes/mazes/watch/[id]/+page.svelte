@@ -68,7 +68,7 @@
 		<div role="alert" class="rounded-lg border border-rose-300 bg-rose-50 p-4 text-sm text-rose-900">
 			<strong>{$store.error?.title ?? 'Session unavailable'}.</strong>
 			{$store.error?.message}
-			<a href="/mazes/" class="ml-2 underline">Back to maps</a>
+			<a href="/mazes" class="ml-2 underline">Back to maps</a>
 		</div>
 	{:else}
 		<div class="flex flex-wrap items-center justify-between gap-2">

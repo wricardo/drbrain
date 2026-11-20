@@ -233,7 +233,7 @@
 		initializeGrid(10);
 		validationMessage = '';
 		validationType = '';
-		goto('/editor', { replaceState: true, noScroll: true });
+		goto('/tesla/editor', { replaceState: true, noScroll: true });
 	}
 
 	function mapExists(mapId: string) {
@@ -287,7 +287,7 @@
 
 		try {
 			const CREATE_MAP = gql`
-				mutation CreateMap($name: String!, $map: GameMapInput!) {
+				mutation CreateMap($name: String!, $map: Tesla_GameMapInput!) {
 					createMap(name: $name, map: $map) {
 						name
 						editKey
@@ -296,7 +296,7 @@
 			`;
 
 			const UPDATE_MAP = gql`
-				mutation UpdateMap($name: String!, $patch: GameMapPatchInput!, $editKey: String) {
+				mutation UpdateMap($name: String!, $patch: Tesla_GameMapPatchInput!, $editKey: String) {
 					updateMap(name: $name, patch: $patch, editKey: $editKey) {
 						name
 						builtin
@@ -334,7 +334,7 @@
 			hasSavedMap = true;
 			validationType = 'success';
 			validationMessage = successMessage;
-			goto(`/editor?map=${encodeURIComponent(targetMapId)}`, { replaceState: true, noScroll: true });
+			goto(`/tesla/editor?map=${encodeURIComponent(targetMapId)}`, { replaceState: true, noScroll: true });
 		} catch (error) {
 			validationType = 'error';
 			validationMessage = `❌ Error: ${mapSaveErrorMessage(error)}`;
@@ -369,7 +369,7 @@
 		isValidating = true;
 		try {
 			const VALIDATE_MAP = gql`
-				mutation ValidateMap($map: GameMapInput!) {
+				mutation ValidateMap($map: Tesla_GameMapInput!) {
 					validateMap(map: $map) {
 						valid
 						winnable
@@ -401,11 +401,13 @@
 		try {
 			const MAPS_QUERY = gql`
 				query {
-					maps {
-						mapId
-						name
-						description
-						builtin
+					tesla {
+						maps {
+							mapId
+							name
+							description
+							builtin
+						}
 					}
 				}
 			`;
@@ -475,8 +477,8 @@
 				: `Loaded ${map.name} for editing.`;
 			goto(
 				options.duplicate
-					? `/editor?map=${encodeURIComponent(selectedConfigId)}&duplicate=1`
-					: `/editor?map=${encodeURIComponent(selectedConfigId)}`,
+					? `/tesla/editor?map=${encodeURIComponent(selectedConfigId)}&duplicate=1`
+					: `/tesla/editor?map=${encodeURIComponent(selectedConfigId)}`,
 				{ replaceState: true, noScroll: true }
 			);
 		} catch (error) {

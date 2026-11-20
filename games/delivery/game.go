@@ -1,3 +1,6 @@
+//go:generate go run github.com/wricardo/drbrain/cmd/split-schema
+//go:generate go run github.com/99designs/gqlgen generate
+
 package delivery
 
 import (
@@ -33,8 +36,9 @@ func loadEnv() (Env, error) {
 // Game is DrBrain Delivery on the platform. The tick loop stays inside each
 // session; the host only owns the listener and lifecycle.
 type Game struct {
-	env Env
-	mgr *session.Manager
+	env      Env
+	mgr      *session.Manager
+	resolver *graph.Resolver
 }
 
 // New returns the game for the compiled-in registry.
@@ -42,7 +46,10 @@ func New() *Game { return &Game{} }
 
 func (g *Game) Name() string   { return "delivery" }
 func (g *Game) Prefix() string { return prefix }
-func (g *Game) API() []string  { return []string{"/graphql", "/graphql/"} }
+func (g *Game) API() []string  { return nil }
+
+// GraphQLResolver implements platform.GraphQLResolver.
+func (g *Game) GraphQLResolver() any { return g.resolver }
 
 // Mount validates the city and builds the manager before the host binds, then
 // registers only the API routes. Sessions are loaded on demand; List() already
@@ -68,13 +75,7 @@ func (g *Game) Mount(mux *http.ServeMux, deps platform.Deps) error {
 		return fmt.Errorf("session manager: %w", err)
 	}
 	g.mgr = mgr
-
-	// The platform host gzips and limits the mounted surface; the game's own
-	// Handler would compress a second time.
-	gql := graph.UncompressedHandler(mgr)
-	mux.Handle("/graphql", gql)
-	mux.Handle("/graphql/", gql)
-	mux.Handle("/graphql/playground", graph.PlaygroundAt(prefix+"/graphql"))
+	g.resolver = &graph.Resolver{Mgr: mgr}
 
 	deps.Logger.Info("delivery mounted", "city", env.City, "sessions_dir", env.SessionsDir)
 	return nil

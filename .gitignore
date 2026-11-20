@@ -2,6 +2,9 @@
 /drbrain
 /validate-bin
 
+# local just/run artifacts
+/tmp/
+
 # runtime state (never commit)
 /sessions/
 /accounts/

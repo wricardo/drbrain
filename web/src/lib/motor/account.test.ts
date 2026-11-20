@@ -65,7 +65,7 @@ describe('links', () => {
 		expect(signInHref('we ird', '/')).toBe('/motor/auth/we%20ird/login?next=%2F');
 	});
 	it('builds the profile link', () => {
-		expect(profileHref('speedy_fox')).toBe('/u/speedy_fox');
+		expect(profileHref('speedy_fox')).toBe('/motor/u/speedy_fox');
 	});
 });
 

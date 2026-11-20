@@ -1,6 +1,8 @@
 schema:
   - graph/schema.graphqls
 
+skip_mod_tidy: true
+
 exec:
   filename: graph/generated/generated.go
   package: generated

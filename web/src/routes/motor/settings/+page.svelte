@@ -137,7 +137,7 @@
 			await unwrap(client.mutation(DELETE_ACCOUNT_MUTATION, { confirmHandle: normalizeHandle(typed) }));
 			forgetAllOwnerTokens(); // the old runs must not follow a future account
 			setMe(null);
-			await goto('/');
+			await goto('/motor');
 		} catch (err) {
 			deleteProblem = describeError(err).message || 'Could not delete the account.';
 		} finally {

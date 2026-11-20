@@ -52,7 +52,7 @@ describe('buildSessionPrompt', () => {
 
 	it('carries the session id, endpoints and map facts', () => {
 		expect(p).toContain('Session ID: abc123');
-		expect(p).toContain('http://h:1/mazes/graphql');
+		expect(p).toContain('http://h:1/graphql');
 		expect(p).toContain('http://h:1/mazes/llms.txt');
 		expect(p).toContain('http://h:1/mazes/watch/abc123');
 		expect(p).toContain('at most 40 counted moves');

@@ -19,7 +19,7 @@ import (
 
 // reserved lists the path segments the app owns. Games may not mount API
 // routes there, because the router resolves them before any game.
-var reserved = []string{"/_app", "/favicon.svg", "/healthz", "/llms.txt", "/robots.txt"}
+var reserved = []string{"/_app", "/favicon.svg", "/graphql", "/healthz", "/llms.txt", "/robots.txt"}
 
 // Mount declares one game's HTTP surface.
 type Mount struct {
@@ -48,6 +48,9 @@ type Router struct {
 
 	mounts []*mount
 	routes []route
+	// platformRoutes are app-owned handlers outside the game prefixes, such as
+	// the unified /graphql surface.
+	platformRoutes []platformRoute
 	// disabled holds prefixes of compiled-in games excluded by DRBRAIN_GAMES.
 	disabled []string
 }
@@ -64,6 +67,11 @@ type route struct {
 	path  string // prefix+api, without a trailing slash
 	game  string
 	guard *mount
+}
+
+type platformRoute struct {
+	path    string
+	handler http.Handler
 }
 
 // NewRouter returns a router that falls back to spa for non-API requests.
@@ -93,7 +101,11 @@ func (r *Router) Mount(m Mount) error {
 		}
 	}
 	if len(m.API) == 0 {
-		return fmt.Errorf("httpserve: game %q: no API paths", m.Game)
+		// A game may expose no API of its own (delivery: GraphQL moved to the
+		// platform root). It still appears in health and its prefix falls
+		// through to the SPA.
+		r.mounts = append(r.mounts, &mount{Mount: m})
+		return nil
 	}
 
 	limit := r.MaxWebsocketMessageBytes
@@ -129,8 +141,49 @@ func (r *Router) Mount(m Mount) error {
 		r.routes = append(r.routes, route{path: p, game: m.Game, guard: em})
 	}
 	r.mounts = append(r.mounts, em)
-	// Longest prefix wins, which keeps "/mazes/graphql" ahead of "/mazes".
+	// Longest prefix wins, which keeps "/game/api/nested" ahead of "/game/api".
 	sort.SliceStable(r.routes, func(i, j int) bool { return len(r.routes[i].path) > len(r.routes[j].path) })
+	return nil
+}
+
+// MountPlatform registers an app-owned handler at a root path, outside every
+// game prefix. The path serves itself and everything below it. It is wrapped
+// with the same gzip, websocket-limit, panic-recovery and request logging as a
+// game mount.
+func (r *Router) MountPlatform(path string, handler http.Handler) error {
+	if handler == nil {
+		return fmt.Errorf("httpserve: platform route %q has nil handler", path)
+	}
+	if path == "" || path == "/" {
+		return fmt.Errorf("httpserve: platform route %q would shadow the app", path)
+	}
+	if !strings.HasPrefix(path, "/") || strings.ContainsAny(path, "?#") {
+		return fmt.Errorf("httpserve: platform route %q must be an absolute clean path", path)
+	}
+	if clean := cleanPath(path); clean != path {
+		return fmt.Errorf("httpserve: platform route %q is not clean (want %q)", path, clean)
+	}
+	for _, rt := range r.routes {
+		if rt.path == path || strings.HasPrefix(rt.path, path+"/") || strings.HasPrefix(path, rt.path+"/") {
+			return fmt.Errorf("httpserve: platform route %q collides with game %q route %q", path, rt.game, rt.path)
+		}
+	}
+	for _, pr := range r.platformRoutes {
+		if pr.path == path {
+			return fmt.Errorf("httpserve: platform route %q already mounted", path)
+		}
+	}
+
+	limit := r.MaxWebsocketMessageBytes
+	if limit == 0 {
+		limit = DefaultMaxWebsocketMessageBytes
+	}
+	h := r.logRequests("platform",
+		recoverPanic(r.log, "platform",
+			gzipHandler(
+				limitWebsocketMessages(limit, handler))))
+	r.platformRoutes = append(r.platformRoutes, platformRoute{path: path, handler: h})
+	sort.SliceStable(r.platformRoutes, func(i, j int) bool { return len(r.platformRoutes[i].path) > len(r.platformRoutes[j].path) })
 	return nil
 }
 
@@ -248,6 +301,10 @@ func (r *Router) Handler() http.Handler {
 			r.serveHealth(w)
 			return
 		}
+		if h := r.matchPlatform(path); h != nil {
+			h.ServeHTTP(w, req)
+			return
+		}
 		if r.disabledPath(path) {
 			http.NotFound(w, req)
 			return
@@ -266,6 +323,16 @@ func (r *Router) match(path string) *mount {
 	for _, rt := range r.routes {
 		if path == rt.path || strings.HasPrefix(path, rt.path+"/") {
 			return rt.guard
+		}
+	}
+	return nil
+}
+
+// matchPlatform returns the app-owned handler for path, if any.
+func (r *Router) matchPlatform(path string) http.Handler {
+	for _, rt := range r.platformRoutes {
+		if path == rt.path || strings.HasPrefix(path, rt.path+"/") {
+			return rt.handler
 		}
 	}
 	return nil

@@ -17,6 +17,6 @@
 				<dd><span class="font-semibold text-indigo-950">{k.name}.</span> <span class="text-slate-700">{k.text}</span></dd>
 			{/each}
 		</dl>
-		<p class="mt-2 text-xs text-slate-600">{TILE_NOTE} <a href="/learn#tiles" class="text-indigo-700 underline">All the rules</a></p>
+		<p class="mt-2 text-xs text-slate-600">{TILE_NOTE} <a href="/motor/learn#tiles" class="text-indigo-700 underline">All the rules</a></p>
 	</details>
 {/if}

@@ -40,7 +40,7 @@ export function signInHref(providerId: string, next: string): string {
 
 /** The public profile page of a handle. */
 export function profileHref(handle: string): string {
-	return `/u/${encodeURIComponent(handle)}`;
+	return `/motor/u/${encodeURIComponent(handle)}`;
 }
 
 export interface SigninNotice {

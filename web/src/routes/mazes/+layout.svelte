@@ -10,7 +10,7 @@
 	let { children } = $props();
 
 	const navItems = [
-		{ href: '/mazes/', label: 'Play' },
+		{ href: '/mazes', label: 'Play' },
 		{ href: '/mazes/maps', label: 'Maps' },
 		{ href: '/mazes/sessions', label: 'Sessions' },
 		{ href: '/mazes/learn', label: 'How it works' },
@@ -19,7 +19,7 @@
 
 	/** Home and /play/* are "Play"; watching one or many sessions belongs to "Sessions". */
 	function isActive(href: string, pathname: string): boolean {
-		if (href === '/mazes/') return pathname === '/mazes/' || pathname.startsWith('/mazes/play/');
+		if (href === '/mazes') return pathname === '/mazes' || pathname.startsWith('/mazes/play/');
 		if (href === '/mazes/sessions' && (pathname.startsWith('/mazes/watch/') || pathname === '/mazes/multi' || pathname.startsWith('/mazes/multi/'))) return true;
 		return pathname === href || pathname.startsWith(`${href}/`);
 	}
@@ -28,7 +28,7 @@
 		{
 			title: 'Play',
 			links: [
-				{ href: '/mazes/', label: 'Home' },
+				{ href: '/mazes', label: 'Home' },
 				{ href: '/mazes/maps', label: 'Maps' },
 				{ href: '/mazes/sessions', label: 'Sessions' },
 				{ href: '/mazes/editor', label: 'Editor' }
@@ -38,11 +38,11 @@
 			title: 'Docs',
 			links: [
 				{ href: '/mazes/learn', label: 'How it works' },
-				{ href: '/llms.txt', label: '/llms.txt', external: true },
-				{ href: '/mazes/graphql', label: 'GraphQL endpoint', external: true }
+				{ href: '/mazes/llms.txt', label: '/llms.txt', external: true },
+				{ href: '/graphql', label: 'GraphQL endpoint', external: true }
 			]
 		},
-		{ title: 'Tools', links: [{ href: '/playground', label: 'GraphQL Playground', external: true }] }
+		{ title: 'Tools', links: [{ href: '/graphql/playground', label: 'GraphQL Playground', external: true }] }
 	];
 
 	// ssr=false so this always runs in the browser; safe to set the client synchronously.
@@ -56,14 +56,14 @@
 	<title>{TITLE}</title>
 </svelte:head>
 
-<div class="min-h-screen flex flex-col">
+<div class="min-h-screen flex flex-col bg-[#f5f6ff] text-[#1e1b4b]">
 	<a
 		href="#main"
 		class="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:bg-white focus:px-3 focus:py-2 focus:rounded"
 		>Skip to content</a
 	>
 	<header class="border-b border-indigo-200 bg-white px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-2">
-		<a href="/mazes/" class="flex items-center gap-2 no-underline">
+		<a href="/mazes" class="flex items-center gap-2 no-underline">
 			<img src={favicon} alt="" class="h-7 w-7" />
 			<span class="text-lg font-semibold tracking-wide text-indigo-900">{SITE}</span>
 			<span class="hidden sm:inline border-l border-indigo-200 pl-2 text-sm text-indigo-600">{GAME}</span>

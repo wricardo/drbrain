@@ -8,6 +8,7 @@
 	import { GAME, SITE, TITLE } from '$lib/motor/brand';
 	import { onMount } from 'svelte';
 	import { initTheme } from '$lib/motor/stores/theme';
+	import { applyTheme } from '$lib/motor/theme';
 	import ThemeToggle from '$lib/motor/components/ThemeToggle.svelte';
 	import AccountMenu from '$lib/motor/components/AccountMenu.svelte';
 	import ClaimBanner from '$lib/motor/components/ClaimBanner.svelte';
@@ -18,26 +19,39 @@
 	let { children } = $props();
 
 	const navItems = [
-		{ href: '/', label: 'Play' },
-		{ href: '/maps', label: 'Maps' },
-		{ href: '/leaderboard', label: 'Leaderboard' },
-		{ href: '/runs', label: 'My runs' },
-		{ href: '/sessions', label: 'Sessions' },
-		{ href: '/learn', label: 'How it works' },
-		{ href: '/editor', label: 'Editor' }
+		{ href: '/motor', label: 'Play' },
+		{ href: '/motor/maps', label: 'Maps' },
+		{ href: '/motor/leaderboard', label: 'Leaderboard' },
+		{ href: '/motor/runs', label: 'My runs' },
+		{ href: '/motor/sessions', label: 'Sessions' },
+		{ href: '/motor/learn', label: 'How it works' },
+		{ href: '/motor/editor', label: 'Editor' }
 	];
 
 	function isActive(href: string, pathname: string): boolean {
-		if (href === '/') return pathname === '/' || pathname.startsWith('/play/');
-		if (href === '/sessions') return pathname.startsWith('/sessions') || pathname.startsWith('/watch/') || pathname.startsWith('/multi');
-		if (href === '/maps') return pathname === '/maps' || pathname.startsWith('/map/');
+		if (href === '/motor') return pathname === '/motor' || pathname.startsWith('/motor/play/');
+		if (href === '/motor/sessions')
+			return (
+				pathname.startsWith('/motor/sessions') ||
+				pathname.startsWith('/motor/watch/') ||
+				pathname.startsWith('/motor/multi')
+			);
+		if (href === '/motor/maps') return pathname === '/motor/maps' || pathname.startsWith('/motor/map/');
 		return pathname === href || pathname.startsWith(`${href}/`);
 	}
 
 	const footerLink = 'hover:text-indigo-900 hover:underline';
 
 	// Loads the saved theme and follows the OS setting while the choice is System.
-	onMount(initTheme);
+	// Dark mode belongs to Motor only: every other game is light, so reset the
+	// document when this layout is torn down (navigating out of /motor).
+	onMount(() => {
+		const stop = initTheme();
+		return () => {
+			stop();
+			applyTheme('light');
+		};
+	});
 
 	// ssr=false so this always runs in the browser; safe to set the client synchronously.
 	if (browser) {
@@ -137,7 +151,7 @@
 			<nav aria-label="Tools">
 				<h2 class="text-xs font-semibold uppercase tracking-widest text-indigo-900">Tools</h2>
 				<ul class="mt-2 space-y-1">
-					<li><a href="/motor/graphql/playground" target="_blank" rel="noreferrer" class={footerLink}>GraphQL Playground</a></li>
+					<li><a href="/graphql/playground" target="_blank" rel="noreferrer" class={footerLink}>GraphQL Playground</a></li>
 				</ul>
 			</nav>
 		</div>

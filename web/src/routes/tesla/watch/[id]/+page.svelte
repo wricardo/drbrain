@@ -16,27 +16,31 @@
 
 	const GAME_STATE_QUERY = `
 		query GameState($sessionID: ID!) {
-			gameState(sessionID: $sessionID) {
-				battery maxBattery score totalParks message victory gameOver totalMoves resetCount mapName
-				fogEnabled fogRadius
-				playerPos { x y }
-				nearbyGrid { type visited id allowedDirections }
-				currentMoves { fromPosition { x y } toPosition { x y } success }
+			tesla {
+				gameState(sessionID: $sessionID) {
+					battery maxBattery score totalParks message victory gameOver totalMoves resetCount mapName
+					fogEnabled fogRadius
+					playerPos { x y }
+					nearbyGrid { type visited id allowedDirections }
+					currentMoves { fromPosition { x y } toPosition { x y } success }
+				}
 			}
 		}
 	`;
 
 	const FULL_GRID_QUERY = `
 		query FullGrid($sessionID: ID!, $password: String!) {
-			gameState(sessionID: $sessionID) {
-				grid(password: $password) { type visited id allowedDirections }
+			tesla {
+				gameState(sessionID: $sessionID) {
+					grid(password: $password) { type visited id allowedDirections }
+				}
 			}
 		}
 	`;
 
 	const SESSION_SUBSCRIPTION = `
 		subscription SessionUpdated($sessionID: ID!) {
-			sessionUpdated(sessionID: $sessionID) {
+			teslaSessionUpdated(sessionID: $sessionID) {
 				battery maxBattery score totalParks message victory gameOver totalMoves resetCount mapName
 				fogEnabled fogRadius
 				playerPos { x y }
@@ -51,11 +55,13 @@
 
 	const SESSION_QUERY = `
 		query Session($id: ID!) {
-			session(id: $id) {
-				id
-				displayName
-				mapName
-				gameMap { gridSize }
+			tesla {
+				session(id: $id) {
+					id
+					displayName
+					mapName
+					gameMap { gridSize }
+				}
 			}
 		}
 	`;
@@ -179,8 +185,8 @@
 	// Direct graphql-ws subscription — bypasses urql store compatibility issues
 	$effect(() => {
 		const WS_URL = typeof window !== 'undefined'
-			? `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/tesla/graphql`
-			: (import.meta.env.DEV ? 'ws://localhost:8080/tesla/graphql' : '');
+			? `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/graphql`
+			: (import.meta.env.DEV ? 'ws://localhost:8080/graphql' : '');
 
 		const wsClient = createWsClient({
 			url: WS_URL,
@@ -194,8 +200,8 @@
 		const unsubscribe = wsClient.subscribe(
 			{ query: SESSION_SUBSCRIPTION, variables: { sessionID: sessionId } },
 			{
-				next(data: { data?: { sessionUpdated?: GameState } }) {
-					const gs = data.data?.sessionUpdated;
+				next(data: { data?: { teslaSessionUpdated?: GameState } }) {
+					const gs = data.data?.teslaSessionUpdated;
 					if (!gs) return;
 					liveState = withStableFogState(gs, liveState);
 				},
@@ -204,7 +210,10 @@
 			}
 		);
 
-		return () => unsubscribe();
+		return () => {
+			unsubscribe();
+			void wsClient.dispose();
+		};
 	});
 
 	onMount(() => {
@@ -241,8 +250,8 @@
 Goal: visit every park — query gameState.totalParks for the target count. Each successful move costs 1 battery; home (H) and superchargers (S) refill it. Moving into a building, water, or off the map ends the game immediately (the crash costs no battery). Moving the wrong way on a one-way road is simply rejected instead — no crash, no battery cost, keep driving. Do not rely on bumping into things to scout — read nearbyGrid's tile types before moving. Reaching 0 battery away from a charger also ends the game. Full rules and every field: ${typeof window !== 'undefined' ? window.location.origin : ''}/llms.txt
 
 Session ID: ${sessionId}
-GraphQL endpoint: ${typeof window !== 'undefined' ? window.location.origin : ''}/tesla/graphql
-Playground: ${typeof window !== 'undefined' ? window.location.origin : ''}/playground
+GraphQL endpoint: ${typeof window !== 'undefined' ? window.location.origin : ''}/graphql
+Playground: ${typeof window !== 'undefined' ? window.location.origin : ''}/graphql/playground
 MCP endpoint: ${typeof window !== 'undefined' ? window.location.origin : ''}/mcp (Streamable HTTP transport)
 
 To use MCP in Claude Code, run:
@@ -372,7 +381,7 @@ ${gameState?.fogEnabled
 				fogRadius: gameState?.fogRadius
 			});
 			// Full navigation: this page keeps per-session state that a same-route goto would reuse.
-			window.location.assign(`/watch/${id}`);
+			window.location.assign(`/tesla/watch/${id}`);
 		} catch (err) {
 			nextError = err instanceof Error ? err.message : 'Could not start the next map';
 			startingNext = false;

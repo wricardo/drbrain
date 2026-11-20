@@ -43,6 +43,12 @@ func TestGqlgenRegenerateIsStable(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping codegen check in -short mode")
 	}
+	// Regenerating in place would race the rest of `go test ./...`: other
+	// packages compile the delivery graph while gqlgen rewrites it. Run this
+	// check explicitly in CI with DRBRAIN_CODEGEN_CHECK=1.
+	if os.Getenv("DRBRAIN_CODEGEN_CHECK") == "" {
+		t.Skip("set DRBRAIN_CODEGEN_CHECK=1 to run the in-place regenerate check")
+	}
 	root, err := filepath.Abs("..")
 	if err != nil {
 		t.Fatal(err)

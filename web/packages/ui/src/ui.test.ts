@@ -18,8 +18,8 @@ describe('shared ui core', () => {
 		});
 	});
 
-	it('derives endpoints from the game prefix', () => {
-		expect(graphqlUrls('/motor').http).toBe('/motor/graphql');
-		expect(graphqlUrls('/motor').ws).toContain('/motor/graphql');
+	it('uses the one GraphQL endpoint for every game', () => {
+		expect(graphqlUrls('/motor').http).toBe('/graphql');
+		expect(graphqlUrls('/motor').ws).toContain('/graphql');
 	});
 });

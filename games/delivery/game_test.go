@@ -18,15 +18,9 @@ func TestGameMetadata(t *testing.T) {
 	if g.Name() != "delivery" || g.Prefix() != "/delivery" {
 		t.Errorf("name/prefix = %q/%q", g.Name(), g.Prefix())
 	}
-	want := []string{"/graphql", "/graphql/"}
-	got := g.API()
-	if len(got) != len(want) {
-		t.Fatalf("API = %v, want %v", got, want)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("API[%d] = %q, want %q", i, got[i], want[i])
-		}
+	// GraphQL moved to the platform root; delivery exposes no game-local API.
+	if got := g.API(); len(got) != 0 {
+		t.Errorf("API = %v, want none", got)
 	}
 }
 

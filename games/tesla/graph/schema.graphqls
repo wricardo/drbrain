@@ -1,263 +1,277 @@
-type Subscription {
-  sessionUpdated(sessionID: ID!): GameState!
-  lobbyUpdated: GameState!
+# Code generated from graph/schema.graphqls by cmd/split-schema. DO NOT EDIT.
+
+enum Direction {
+	UP
+	DOWN
+	LEFT
+	RIGHT
 }
-
-type Query {
-  session(id: ID!): Session!
-  sessions(sort: SessionSort = ACTION, order: SortOrder = DESC, limit: Int): SessionList!
-  unifiedSessions(mapName: String): UnifiedSessions!
-  gameState(sessionID: ID!): GameState!
-  history(sessionID: ID!, page: Int = 1, limit: Int = 50, order: SortOrder = DESC): HistoryResponse!
-  maps: [MapInfo!]!
-  map(name: String!, password: String): GameMap!
+enum SortOrder {
+	ASC
+	DESC
 }
-
-type Mutation {
-  createSession(mapID: String, mapName: String, fogEnabled: Boolean = false, fogRadius: Int = 1, gridPassword: String, moveDelayMs: Int): Session!
-  deleteSession(id: ID!): DeleteSessionResult!
-  updateSession(id: ID!, displayName: String!): Session!
-  move(sessionID: ID!, direction: Direction!, reset: Boolean = false): MoveResult!
-  bulkMove(sessionID: ID!, moves: [Direction!]!, reset: Boolean = false): BulkMoveResult!
-  reset(sessionID: ID!): GameState!
-  createMap(name: String!, map: GameMapInput!): GameMap!
-  updateMap(name: String!, patch: GameMapPatchInput!, editKey: String): GameMap!
-  deleteMap(name: String!, editKey: String): DeleteSessionResult!
-  validateMap(map: GameMapInput!): MapValidationResult!
+enum SessionSort {
+	CREATED
+	ACTION
 }
-
-enum Direction { UP DOWN LEFT RIGHT }
-enum SortOrder { ASC DESC }
-enum SessionSort { CREATED ACTION }
-
-type DeleteSessionResult { message: String! }
-
+type DeleteSessionResult {
+	message: String!
+}
 type SessionList {
-  count: Int!
-  total: Int!
-  sessions: [Session!]!
-  sort: String!
-  order: String!
+	count: Int!
+	total: Int!
+	sessions: [Session!]!
+	sort: String!
+	order: String!
 }
-
 type UnifiedSessions {
-  mapName: String!
-  count: Int!
-  sessions: [UnifiedSession!]!
+	mapName: String!
+	count: Int!
+	sessions: [UnifiedSession!]!
 }
-
 type UnifiedSession {
-  sessionId: ID!
-  createdAt: String!
-  lastActionAt: String!
-  gameState: GameState!
-  gameMap: GameMap!
+	sessionId: ID!
+	createdAt: String!
+	lastActionAt: String!
+	gameState: GameState!
+	gameMap: GameMap!
 }
-
 type Session {
-  id: ID!
-  displayName: String
-  mapName: String!
-  createdAt: String!
-  lastActionAt: String!
-  gameState: GameState!
-  gameMap: GameMap!
-  """
-  Only set in the createSession response, when fog is enabled and no gridPassword
-  was supplied: the server-generated password for grid(password: ...). It is never
-  returned again, so store it. Always null on every other query/mutation.
-  """
-  generatedGridPassword: String
+	id: ID!
+	displayName: String
+	mapName: String!
+	createdAt: String!
+	lastActionAt: String!
+	gameState: GameState!
+	gameMap: GameMap!
+	"""
+	Only set in the createSession response, when fog is enabled and no gridPassword
+	was supplied: the server-generated password for grid(password: ...). It is never
+	returned again, so store it. Always null on every other query/mutation.
+	"""
+	generatedGridPassword: String
 }
-
 type GameState {
-  grid(password: String): [[Cell!]!]!
-  playerPos: Position!
-  battery: Int!
-  maxBattery: Int!
-  score: Int!
-  totalParks: Int!
-  visitedParks: [VisitedPark!]!
-  message: String!
-  gameOver: Boolean!
-  victory: Boolean!
-  mapName: String!
-  moveHistory: [MoveHistoryEntry!]!
-  totalMoves: Int!
-  resetCount: Int!
-  nearbyGrid: [[Cell!]!]!
-  currentMoves: [MoveHistoryEntry!]!
-  currentMovesCount: Int!
-  batteryRisk: String!
-  fogEnabled: Boolean!
-  fogRadius: Int!
-  moveDelayMs: Int!
+	grid(password: String): [[Cell!]!]!
+	playerPos: Position!
+	battery: Int!
+	maxBattery: Int!
+	score: Int!
+	totalParks: Int!
+	visitedParks: [VisitedPark!]!
+	message: String!
+	gameOver: Boolean!
+	victory: Boolean!
+	mapName: String!
+	moveHistory: [MoveHistoryEntry!]!
+	totalMoves: Int!
+	resetCount: Int!
+	nearbyGrid: [[Cell!]!]!
+	currentMoves: [MoveHistoryEntry!]!
+	currentMovesCount: Int!
+	batteryRisk: String!
+	fogEnabled: Boolean!
+	fogRadius: Int!
+	moveDelayMs: Int!
 }
-
 type Cell {
-  "Column of this cell on the map (RIGHT = x+1). Negative or >= map width for off-map nearbyGrid cells."
-  x: Int!
-  "Row of this cell on the map (DOWN = y+1). Negative or >= map height for off-map nearbyGrid cells."
-  y: Int!
-  type: String!
-  visited: Boolean!
-  id: String!
-  allowedDirections: [String!]!
+	"""
+	Column of this cell on the map (RIGHT = x+1). Negative or >= map width for off-map nearbyGrid cells.
+	"""
+	x: Int!
+	"""
+	Row of this cell on the map (DOWN = y+1). Negative or >= map height for off-map nearbyGrid cells.
+	"""
+	y: Int!
+	type: String!
+	visited: Boolean!
+	id: String!
+	allowedDirections: [String!]!
 }
-
-type Position { x: Int!, y: Int! }
-
-type VisitedPark { id: String!, visited: Boolean! }
-
+type Position {
+	x: Int!
+	y: Int!
+}
+type VisitedPark {
+	id: String!
+	visited: Boolean!
+}
 type MoveHistoryEntry {
-  action: String!
-  fromPosition: Position!
-  toPosition: Position!
-  battery: Int!
-  timestamp: Int!
-  success: Boolean!
-  moveNumber: Int!
+	action: String!
+	fromPosition: Position!
+	toPosition: Position!
+	battery: Int!
+	timestamp: Int!
+	success: Boolean!
+	moveNumber: Int!
 }
-
 type MapValidationResult {
-  valid: Boolean!
-  winnable: Boolean!
-  message: String!
-  error: String
+	valid: Boolean!
+	winnable: Boolean!
+	message: String!
+	error: String
 }
-
 type GameMap {
-  name: String!
-  description: String!
-  gridSize: Int!
-  maxBattery: Int!
-  startingBattery: Int!
-  layout(password: String): [String!]!
-  legend: [LegendEntry!]!
-  cellConfigs: [CellConfigEntry!]!
-  "True for maps shipped with the server; only an admin key may change them."
-  builtin: Boolean!
-  """
-  Only set in the createMap response: the token that authorizes updateMap and
-  deleteMap for this map (send it as the editKey argument). It is never returned
-  again, so store it. Always null on every other query/mutation.
-  """
-  editKey: String
+	name: String!
+	description: String!
+	gridSize: Int!
+	maxBattery: Int!
+	startingBattery: Int!
+	layout(password: String): [String!]!
+	legend: [LegendEntry!]!
+	cellConfigs: [CellConfigEntry!]!
+	"""
+	True for maps shipped with the server; only an admin key may change them.
+	"""
+	builtin: Boolean!
+	"""
+	Only set in the createMap response: the token that authorizes updateMap and
+	deleteMap for this map (send it as the editKey argument). It is never returned
+	again, so store it. Always null on every other query/mutation.
+	"""
+	editKey: String
 }
-
-type LegendEntry { key: String!, value: String! }
-
-type CellConfigEntry { key: String!, type: String!, allowedDirections: [String!]! }
-
+type LegendEntry {
+	key: String!
+	value: String!
+}
+type CellConfigEntry {
+	key: String!
+	type: String!
+	allowedDirections: [String!]!
+}
 input GameMapInput {
-  name: String!
-  description: String!
-  gridSize: Int!
-  maxBattery: Int!
-  startingBattery: Int!
-  layout: [String!]!
-  legend: [LegendEntryInput!]!
-  cellConfigs: [CellConfigEntryInput!] = []
+	name: String!
+	description: String!
+	gridSize: Int!
+	maxBattery: Int!
+	startingBattery: Int!
+	layout: [String!]!
+	legend: [LegendEntryInput!]!
+	cellConfigs: [CellConfigEntryInput!] = []
 }
-
-input LegendEntryInput { key: String!, value: String! }
-
-input CellConfigEntryInput { key: String!, type: String!, allowedDirections: [String!]! }
-
-# Partial update input — all fields optional; omitted fields keep existing values.
+input LegendEntryInput {
+	key: String!
+	value: String!
+}
+input CellConfigEntryInput {
+	key: String!
+	type: String!
+	allowedDirections: [String!]!
+}
 input GameMapPatchInput {
-  name: String
-  description: String
-  gridSize: Int
-  maxBattery: Int
-  startingBattery: Int
-  layout: [String!]
-  legend: [LegendEntryInput!]
-  cellConfigs: [CellConfigEntryInput!]
+	name: String
+	description: String
+	gridSize: Int
+	maxBattery: Int
+	startingBattery: Int
+	layout: [String!]
+	legend: [LegendEntryInput!]
+	cellConfigs: [CellConfigEntryInput!]
 }
-
 type MapInfo {
-  filename: String!
-  mapId: String!
-  name: String!
-  description: String!
-  gridSize: Int!
-  maxBattery: Int!
-  "True for maps shipped with the server."
-  builtin: Boolean!
+	filename: String!
+	mapId: String!
+	name: String!
+	description: String!
+	gridSize: Int!
+	maxBattery: Int!
+	"""
+	True for maps shipped with the server.
+	"""
+	builtin: Boolean!
 }
-
 type MoveResult {
-  success: Boolean!
-  gameState: GameState!
-  message: String!
-  events: [GameEvent!]!
-  step: StepInfo
-  attemptedTo: AttemptInfo
+	success: Boolean!
+	gameState: GameState!
+	message: String!
+	events: [GameEvent!]!
+	step: StepInfo
+	attemptedTo: AttemptInfo
 }
-
 type BulkMoveResult {
-  movesExecuted: Int!
-  totalMoves: Int!
-  requestedMoves: Int!
-  success: Boolean!
-  gameState: GameState!
-  events: [GameEvent!]!
-  stoppedReason: String!
-  stopReasonCode: String!
-  stoppedOnMove: Int!
-  truncated: Boolean!
-  limit: Int!
-  startPos: Position!
-  endPos: Position!
-  startBattery: Int!
-  endBattery: Int!
-  scoreDelta: Int!
-  steps: [StepInfo!]!
-  attemptedTo: AttemptInfo
-  gameOver: Boolean!
-  gameOverCode: String!
-  message: String!
-  possibleMoves: [String!]!
-  batteryRisk: String!
+	movesExecuted: Int!
+	totalMoves: Int!
+	requestedMoves: Int!
+	success: Boolean!
+	gameState: GameState!
+	events: [GameEvent!]!
+	stoppedReason: String!
+	stopReasonCode: String!
+	stoppedOnMove: Int!
+	truncated: Boolean!
+	limit: Int!
+	startPos: Position!
+	endPos: Position!
+	startBattery: Int!
+	endBattery: Int!
+	scoreDelta: Int!
+	steps: [StepInfo!]!
+	attemptedTo: AttemptInfo
+	gameOver: Boolean!
+	gameOverCode: String!
+	message: String!
+	possibleMoves: [String!]!
+	batteryRisk: String!
 }
-
 type GameEvent {
-  type: String!
-  message: String!
-  timestamp: String!
-  position: Position!
+	type: String!
+	message: String!
+	timestamp: String!
+	position: Position!
 }
-
 type StepInfo {
-  idx: Int!
-  dir: String!
-  from: Position!
-  to: Position!
-  tileChar: String!
-  tileType: String!
-  batteryBefore: Int!
-  batteryAfter: Int!
-  success: Boolean!
-  charged: Boolean!
-  park: Boolean!
-  victory: Boolean!
+	idx: Int!
+	dir: String!
+	from: Position!
+	to: Position!
+	tileChar: String!
+	tileType: String!
+	batteryBefore: Int!
+	batteryAfter: Int!
+	success: Boolean!
+	charged: Boolean!
+	park: Boolean!
+	victory: Boolean!
 }
-
 type AttemptInfo {
-  x: Int!
-  y: Int!
-  tileChar: String!
-  tileType: String!
-  passable: Boolean!
+	x: Int!
+	y: Int!
+	tileChar: String!
+	tileType: String!
+	passable: Boolean!
 }
-
 type HistoryResponse {
-  moves: [MoveHistoryEntry!]!
-  totalMoves: Int!
-  page: Int!
-  pageSize: Int!
-  totalPages: Int!
-  hasNext: Boolean!
-  hasPrevious: Boolean!
+	moves: [MoveHistoryEntry!]!
+	totalMoves: Int!
+	page: Int!
+	pageSize: Int!
+	totalPages: Int!
+	hasNext: Boolean!
+	hasPrevious: Boolean!
+}
+type Query {
+	session(id: ID!): Session!
+	sessions(sort: SessionSort = ACTION, order: SortOrder = DESC, limit: Int): SessionList!
+	unifiedSessions(mapName: String): UnifiedSessions!
+	gameState(sessionID: ID!): GameState!
+	history(sessionID: ID!, page: Int = 1, limit: Int = 50, order: SortOrder = DESC): HistoryResponse!
+	maps: [MapInfo!]!
+	map(name: String!, password: String): GameMap!
+}
+type Mutation {
+	createSession(mapID: String, mapName: String, fogEnabled: Boolean = false, fogRadius: Int = 1, gridPassword: String, moveDelayMs: Int): Session!
+	deleteSession(id: ID!): DeleteSessionResult!
+	updateSession(id: ID!, displayName: String!): Session!
+	move(sessionID: ID!, direction: Direction!, reset: Boolean = false): MoveResult!
+	bulkMove(sessionID: ID!, moves: [Direction!]!, reset: Boolean = false): BulkMoveResult!
+	reset(sessionID: ID!): GameState!
+	createMap(name: String!, map: GameMapInput!): GameMap!
+	updateMap(name: String!, patch: GameMapPatchInput!, editKey: String): GameMap!
+	deleteMap(name: String!, editKey: String): DeleteSessionResult!
+	validateMap(map: GameMapInput!): MapValidationResult!
+}
+type Subscription {
+	sessionUpdated(sessionID: ID!): GameState!
+	lobbyUpdated: GameState!
 }

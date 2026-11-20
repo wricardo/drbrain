@@ -5,6 +5,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -27,6 +28,9 @@ type Config struct {
 	ShutdownTimeout time.Duration `envconfig:"DRBRAIN_SHUTDOWN_TIMEOUT" default:"10s"`
 	// Debug raises the log level.
 	Debug bool `envconfig:"DRBRAIN_DEBUG"`
+	// AllowedOrigins is the comma-separated origin allowlist for CORS and
+	// websocket upgrades. Empty or "*" allows every origin.
+	AllowedOrigins string `envconfig:"DRBRAIN_ALLOWED_ORIGINS"`
 }
 
 // Load reads Config from the environment and validates it.
@@ -34,6 +38,11 @@ func Load() (Config, error) {
 	var c Config
 	if err := envconfig.Process("", &c); err != nil {
 		return Config{}, err
+	}
+	// Older deployments set the per-game ALLOWED_ORIGINS. Keep honoring it
+	// until the cutover is complete.
+	if c.AllowedOrigins == "" {
+		c.AllowedOrigins = os.Getenv("ALLOWED_ORIGINS")
 	}
 	if err := c.Validate(); err != nil {
 		return Config{}, err

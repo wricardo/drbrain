@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -15,9 +16,15 @@ import (
 	"text/tabwriter"
 
 	"github.com/wricardo/drbrain/games/delivery"
+	deliverygraph "github.com/wricardo/drbrain/games/delivery/graph"
 	"github.com/wricardo/drbrain/games/mazes"
+	mazesgraph "github.com/wricardo/drbrain/games/mazes/graph"
 	"github.com/wricardo/drbrain/games/motor"
+	motorauth "github.com/wricardo/drbrain/games/motor/auth"
+	motorgraph "github.com/wricardo/drbrain/games/motor/graph"
 	"github.com/wricardo/drbrain/games/tesla"
+	teslagraph "github.com/wricardo/drbrain/games/tesla/graph"
+	"github.com/wricardo/drbrain/graph"
 	"github.com/wricardo/drbrain/platform"
 	"github.com/wricardo/drbrain/platform/config"
 	"github.com/wricardo/drbrain/platform/host"
@@ -35,6 +42,32 @@ func builtinGames() []platform.Game {
 		motor.New(),
 		delivery.New(),
 		tesla.New(),
+	}
+}
+
+// builtinGraphQL wires the one executor. Enabled games hand over their
+// resolver roots; a disabled game leaves its namespace nil and the adapters
+// report it as unavailable.
+func builtinGraphQL(cfg config.Config) host.GraphQLBuilder {
+	return func(b host.GraphQLBindings) (http.Handler, error) {
+		delivery, _ := b.Resolvers["delivery"].(*deliverygraph.Resolver)
+		mazes, _ := b.Resolvers["mazes"].(*mazesgraph.Resolver)
+		motor, _ := b.Resolvers["motor"].(*motorgraph.Resolver)
+		tesla, _ := b.Resolvers["tesla"].(*teslagraph.Resolver)
+		var auth *motorauth.Auth
+		if v, ok := b.Auth["motor"]; ok {
+			auth, _ = v.(*motorauth.Auth)
+		}
+		mux := http.NewServeMux()
+		mux.Handle("/graphql", graph.NewHandler(graph.Options{
+			Resolver:       graph.New(delivery, mazes, motor, tesla),
+			AllowedOrigins: cfg.AllowedOrigins,
+			Introspection:  true,
+			Playground:     true,
+			Auth:           auth,
+		}))
+		mux.Handle("/graphql/playground", graph.Playground())
+		return mux, nil
 	}
 }
 
@@ -110,7 +143,7 @@ func runServe(args []string, games []platform.Game, stdout, stderr io.Writer) in
 		return 1
 	}
 	logger := newLogger(stderr, cfg.Debug)
-	h := host.New(cfg, reg, logger)
+	h := host.New(cfg, reg, logger, host.WithGraphQL(builtinGraphQL(cfg)))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

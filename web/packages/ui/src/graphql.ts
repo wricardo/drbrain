@@ -15,20 +15,20 @@ export interface GraphQLUrls {
 }
 
 /**
- * URLs for one game. The route prefix owns the API path, so every game shares
- * the client but not its endpoint: /mazes/graphql, /motor/graphql, ...
+ * URLs for the one GraphQL endpoint. Games share the endpoint and differ only
+ * by the namespace selected in their documents.
  * PUBLIC_GRAPHQL_URL / PUBLIC_WS_URL override both for local dev.
  */
-export function graphqlUrls(prefix: string): GraphQLUrls {
-	const http = import.meta.env?.PUBLIC_GRAPHQL_URL || `${prefix}/graphql`;
+export function graphqlUrls(_prefix: string): GraphQLUrls {
+	const http = import.meta.env?.PUBLIC_GRAPHQL_URL || '/graphql';
 	if (import.meta.env?.PUBLIC_WS_URL) {
 		return { http, ws: import.meta.env.PUBLIC_WS_URL };
 	}
 	if (typeof window !== 'undefined') {
 		const scheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
-		return { http, ws: `${scheme}://${window.location.host}${prefix}/graphql` };
+		return { http, ws: `${scheme}://${window.location.host}/graphql` };
 	}
-	return { http, ws: `ws://localhost:8080${prefix}/graphql` };
+	return { http, ws: 'ws://localhost:8080/graphql' };
 }
 
 export interface GraphQLOptions {

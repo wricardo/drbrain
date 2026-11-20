@@ -1,3 +1,6 @@
+//go:generate go run github.com/wricardo/drbrain/cmd/split-schema
+//go:generate go run github.com/99designs/gqlgen generate
+
 package motor
 
 import (
@@ -16,6 +19,7 @@ import (
 	motorconfig "github.com/wricardo/drbrain/games/motor/game/config"
 	"github.com/wricardo/drbrain/games/motor/game/service"
 	"github.com/wricardo/drbrain/games/motor/game/session"
+	"github.com/wricardo/drbrain/games/motor/graph"
 	"github.com/wricardo/drbrain/games/motor/internal/appconfig"
 	"github.com/wricardo/drbrain/games/motor/internal/pgdb"
 	"github.com/wricardo/drbrain/games/motor/transport/websocket"
@@ -60,6 +64,8 @@ type Game struct {
 	publicURL string
 	svc       service.GameService
 	pool      *pgxpool.Pool
+	resolver  *graph.Resolver
+	auth      *auth.Auth
 }
 
 // New returns the game for the compiled-in registry. Work happens in Mount so
@@ -68,7 +74,13 @@ func New() *Game { return &Game{} }
 
 func (g *Game) Name() string   { return "motor" }
 func (g *Game) Prefix() string { return prefix }
-func (g *Game) API() []string  { return []string{"/graphql", "/graphql/", "/auth/"} }
+func (g *Game) API() []string  { return []string{"/auth/"} }
+
+// GraphQLResolver implements platform.GraphQLResolver.
+func (g *Game) GraphQLResolver() any { return g.resolver }
+
+// GraphQLAuth implements platform.GraphQLAuth.
+func (g *Game) GraphQLAuth() any { return g.auth }
 
 // LLMSTemplate implements platform.LLMSProvider.
 func (g *Game) LLMSTemplate() string { return llmsTemplate }
@@ -195,28 +207,20 @@ func (g *Game) Mount(mux *http.ServeMux, deps platform.Deps) error {
 		}
 	}
 
-	opts := api.Options{
-		Introspection:             cfg.GraphQLIntrospection.Bool(),
-		Playground:                cfg.GraphQLPlayground.Bool(),
-		AllowedOrigins:            cfg.AllowedOrigins,
-		PublicURL:                 g.publicURL,
-		AdminKey:                  cfg.AdminKey,
-		AllowUnauthenticatedAdmin: cfg.AllowUnauthenticatedAdmin.Bool(),
-		LLMSTemplate:              llmsTemplate,
-		Auth:                      authHandler,
+	resolver := graph.NewResolver(svc, hub)
+	resolver.Admin = graph.Admin{
+		Key:                  cfg.AdminKey,
+		AllowUnauthenticated: cfg.AllowUnauthenticatedAdmin.Bool(),
 	}
-	deps.Logger.Debug("graphql settings",
-		"introspection", opts.Introspection,
-		"playground", opts.Playground,
-		"password_sign_in", passwordSignIn,
-		"postgres", g.pool != nil,
-		"maps_dir", env.MapsDir,
-		"sessions_dir", env.SessionsDir)
+	if authHandler != nil {
+		resolver.Passwords = authHandler
+		for _, p := range authHandler.Providers() {
+			resolver.Providers = append(resolver.Providers, graph.Provider{ID: p.ID, Name: p.Name})
+		}
+	}
+	g.resolver = resolver
+	g.auth = authHandler
 
-	gql := api.NewGraphQLHandler(svc, hub, opts)
-	mux.Handle("/graphql", gql)
-	mux.Handle("/graphql/", gql)
-	mux.Handle("/graphql/playground", api.NewPlaygroundHandler(prefix+"/graphql"))
 	if authHandler != nil {
 		mux.Handle("/auth/", api.NewAuthRoutes(authHandler))
 	}

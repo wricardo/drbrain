@@ -75,81 +75,83 @@ export const SESSION_FIELDS = `
 
 export const MAPS_QUERY = `
   query Maps {
-    maps { ${MAP_FIELDS} }
+    mazes { maps { ${MAP_FIELDS} } }
   }
 `;
 
 export const MAP_QUERY = `
   query MapById($id: ID!) {
-    map(id: $id) { ${MAP_FIELDS} }
+    mazes { map(id: $id) { ${MAP_FIELDS} } }
   }
 `;
 
 export const ADMIN_MAP_QUERY = `
   query AdminMapById($id: ID!) {
-    adminMap(id: $id) { ${ADMIN_MAP_FIELDS} }
+    mazes { adminMap(id: $id) { ${ADMIN_MAP_FIELDS} } }
   }
 `;
 
 export const SESSION_QUERY = `
   query Session($id: ID!) {
-    session(id: $id) { ${SESSION_FIELDS} }
+    mazes { session(id: $id) { ${SESSION_FIELDS} } }
   }
 `;
 
 export const SESSIONS_QUERY = `
-  query Sessions($limit: Int, $sort: SessionSort, $mapId: ID) {
-    sessions(sort: $sort, limit: $limit, mapId: $mapId) {
-      id
-      displayName
-      mapId
-      createdAt
-      lastActionAt
-      map { name parMoves maxMoves }
-      state { status moves }
+  query Sessions($limit: Int, $sort: Mazes_SessionSort, $mapId: ID) {
+    mazes {
+      sessions(sort: $sort, limit: $limit, mapId: $mapId) {
+        id
+        displayName
+        mapId
+        createdAt
+        lastActionAt
+        map { name parMoves maxMoves }
+        state { status moves }
+      }
     }
   }
 `;
 
 export const CREATE_SESSION_MUTATION = `
   mutation CreateSession($mapID: ID!, $displayName: String) {
-    createSession(mapID: $mapID, displayName: $displayName) { ${SESSION_FIELDS} }
+    mazes { createSession(mapID: $mapID, displayName: $displayName) { ${SESSION_FIELDS} } }
   }
 `;
 
 export const DELETE_SESSION_MUTATION = `
   mutation DeleteSession($id: ID!) {
-    deleteSession(id: $id)
+    mazes { deleteSession(id: $id) }
   }
 `;
 
 export const RENAME_SESSION_MUTATION = `
   mutation RenameSession($id: ID!, $displayName: String!) {
-    renameSession(id: $id, displayName: $displayName) { ${SESSION_FIELDS} }
+    mazes { renameSession(id: $id, displayName: $displayName) { ${SESSION_FIELDS} } }
   }
 `;
 
 export const MOVE_MUTATION = `
-  mutation Move($sessionID: ID!, $direction: Direction!) {
-    move(sessionID: $sessionID, direction: $direction) { ${SESSION_FIELDS} }
+  mutation Move($sessionID: ID!, $direction: Mazes_Direction!) {
+    mazes { move(sessionID: $sessionID, direction: $direction) { ${SESSION_FIELDS} } }
   }
 `;
 
 export const BULK_MOVE_MUTATION = `
-  mutation BulkMove($sessionID: ID!, $directions: [Direction!]!) {
-    bulkMove(sessionID: $sessionID, directions: $directions) { ${SESSION_FIELDS} }
+  mutation BulkMove($sessionID: ID!, $directions: [Mazes_Direction!]!) {
+    mazes { bulkMove(sessionID: $sessionID, directions: $directions) { ${SESSION_FIELDS} } }
   }
 `;
 
 export const RESET_MUTATION = `
   mutation Reset($sessionID: ID!) {
-    reset(sessionID: $sessionID) { ${SESSION_FIELDS} }
+    mazes { reset(sessionID: $sessionID) { ${SESSION_FIELDS} } }
   }
 `;
 
 export const SESSION_UPDATED_SUBSCRIPTION = `
   subscription SessionUpdated($sessionID: ID!) {
-    sessionUpdated(sessionID: $sessionID) {
+    mazesSessionUpdated(sessionID: $sessionID) {
       seq
       session { ${SESSION_FIELDS} }
       event { ${MOVE_EVENT_FIELDS} }
@@ -158,32 +160,34 @@ export const SESSION_UPDATED_SUBSCRIPTION = `
 `;
 
 export const CREATE_MAP_MUTATION = `
-  mutation CreateMap($map: MapInput!) {
-    createMap(map: $map) { ${ADMIN_MAP_FIELDS} }
+  mutation CreateMap($map: Mazes_MapInput!) {
+    mazes { createMap(map: $map) { ${ADMIN_MAP_FIELDS} } }
   }
 `;
 
 export const UPDATE_MAP_MUTATION = `
-  mutation UpdateMap($map: MapInput!) {
-    updateMap(map: $map) { ${ADMIN_MAP_FIELDS} }
+  mutation UpdateMap($map: Mazes_MapInput!) {
+    mazes { updateMap(map: $map) { ${ADMIN_MAP_FIELDS} } }
   }
 `;
 
 export const DELETE_MAP_MUTATION = `
   mutation DeleteMap($id: ID!) {
-    deleteMap(id: $id)
+    mazes { deleteMap(id: $id) }
   }
 `;
 
 export const VALIDATE_MAP_MUTATION = `
-  mutation ValidateMap($map: MapInput!) {
-    validateMap(map: $map) {
-      valid
-      issues { message }
-      finishReachable
-      parMoves
-      minLevelChanges
-      forcedDescents
+  mutation ValidateMap($map: Mazes_MapInput!) {
+    mazes {
+      validateMap(map: $map) {
+        valid
+        issues { message }
+        finishReachable
+        parMoves
+        minLevelChanges
+        forcedDescents
+      }
     }
   }
 `;

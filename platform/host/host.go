@@ -23,11 +23,33 @@ import (
 // existing servers.
 const ReadHeaderTimeout = 10 * time.Second
 
+// GraphQLBindings is what enabled games hand the unified GraphQL builder. The
+// values stay opaque so platform does not import game packages.
+type GraphQLBindings struct {
+	Resolvers map[string]any
+	Auth      map[string]any
+}
+
+// GraphQLBuilder constructs the single /graphql handler from the mounted
+// games' resolver roots. cmd/drbrain supplies it because only that package may
+// import every game and the unified graph package.
+type GraphQLBuilder func(GraphQLBindings) (http.Handler, error)
+
+// Option configures a Host.
+type Option func(*Host)
+
+// WithGraphQL installs the unified GraphQL builder. Without it, the host is
+// API-only for the per-game surfaces.
+func WithGraphQL(b GraphQLBuilder) Option {
+	return func(h *Host) { h.graphQL = b }
+}
+
 // Host is one process serving the enabled games.
 type Host struct {
-	cfg    config.Config
-	reg    *Registry
-	logger *slog.Logger
+	cfg     config.Config
+	reg     *Registry
+	logger  *slog.Logger
+	graphQL GraphQLBuilder
 
 	ready chan struct{}
 	ln    net.Listener
@@ -38,11 +60,15 @@ type Host struct {
 }
 
 // New builds a host. No socket is opened until Run.
-func New(cfg config.Config, reg *Registry, logger *slog.Logger) *Host {
+func New(cfg config.Config, reg *Registry, logger *slog.Logger, opts ...Option) *Host {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Host{cfg: cfg, reg: reg, logger: logger, ready: make(chan struct{})}
+	h := &Host{cfg: cfg, reg: reg, logger: logger, ready: make(chan struct{})}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
 }
 
 // Ready is closed once the listener has bound and the games are mounted.
@@ -125,6 +151,10 @@ func (h *Host) mount(enabled []platform.Game) (http.Handler, error) {
 		h.logger.Warn("no web app; API-only", "static_dir", h.cfg.StaticDir, "err", err)
 	}
 	router := httpserve.NewRouter(httpserve.SPAHandler(h.cfg.StaticDir))
+	bindings := GraphQLBindings{
+		Resolvers: make(map[string]any, len(enabled)),
+		Auth:      make(map[string]any, 1),
+	}
 	for _, g := range enabled {
 		mux := http.NewServeMux()
 		deps := platform.Deps{
@@ -135,6 +165,16 @@ func (h *Host) mount(enabled []platform.Game) (http.Handler, error) {
 		}
 		if err := g.Mount(mux, deps); err != nil {
 			return nil, fmt.Errorf("game %s: mount: %w", g.Name(), err)
+		}
+		if gr, ok := g.(platform.GraphQLResolver); ok {
+			if resolver := gr.GraphQLResolver(); resolver != nil {
+				bindings.Resolvers[g.Name()] = resolver
+			}
+		}
+		if ga, ok := g.(platform.GraphQLAuth); ok {
+			if auth := ga.GraphQLAuth(); auth != nil {
+				bindings.Auth[g.Name()] = auth
+			}
 		}
 		api := append([]string(nil), g.API()...)
 		if lp, ok := g.(platform.LLMSProvider); ok {
@@ -167,6 +207,18 @@ func (h *Host) mount(enabled []platform.Game) (http.Handler, error) {
 			continue
 		}
 		if err := router.Disable(g.Name(), g.Prefix()); err != nil {
+			return nil, err
+		}
+	}
+	if h.graphQL != nil {
+		if len(bindings.Resolvers) == 0 {
+			return nil, errors.New("host: no game exposes a GraphQL resolver")
+		}
+		handler, err := h.graphQL(bindings)
+		if err != nil {
+			return nil, fmt.Errorf("host: unified graphql: %w", err)
+		}
+		if err := router.MountPlatform("/graphql", handler); err != nil {
 			return nil, err
 		}
 	}

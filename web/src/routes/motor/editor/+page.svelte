@@ -324,7 +324,7 @@
 		run(async () => {
 			if (!confirm(`Delete map "${id}"? Existing sessions keep their own copy.`)) return;
 			await unwrap(client.mutation(DELETE_MAP_MUTATION, { id: id.trim() }));
-			await goto('/maps');
+			await goto('/motor/maps');
 		});
 
 	// Turns the loaded built-in map into a new player map: the copy gets its own
@@ -338,7 +338,7 @@
 					map: { ...toInput(), id: copyID, name: `${name.trim()} (copy)` }
 				})
 			);
-			await goto(`/editor?map=${encodeURIComponent(data.createMap.id)}`);
+			await goto(`/motor/editor?map=${encodeURIComponent(data.createMap.id)}`);
 			load(data.createMap, false);
 			notice = `Created "${data.createMap.id}". It is your own map, so you can edit it without the admin key.`;
 		});

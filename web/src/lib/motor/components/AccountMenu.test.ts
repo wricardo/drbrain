@@ -59,7 +59,7 @@ describe('AccountMenu', () => {
 		await fireEvent.click(button);
 		expect(button).toHaveAttribute('aria-expanded', 'true');
 		const menu = screen.getByRole('menu', { name: 'Account' });
-		expect(within(menu).getByRole('menuitem', { name: 'My profile' })).toHaveAttribute('href', '/u/speedy_fox');
+		expect(within(menu).getByRole('menuitem', { name: 'My profile' })).toHaveAttribute('href', '/motor/u/speedy_fox');
 		expect(within(menu).getByRole('menuitem', { name: 'My runs' })).toHaveAttribute('href', '/motor/runs');
 		expect(within(menu).getByRole('menuitem', { name: 'Settings' })).toHaveAttribute('href', '/motor/settings');
 		await fireEvent.keyDown(window, { key: 'Escape' });

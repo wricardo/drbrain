@@ -291,3 +291,55 @@ func TestLLMSRenderedByHost(t *testing.T) {
 		t.Fatalf("run: %v", err)
 	}
 }
+
+type unifiedGame struct{ *fakeGame }
+
+func (g *unifiedGame) GraphQLResolver() any { return g.name }
+
+func TestHostMountsUnifiedGraphQLAtRoot(t *testing.T) {
+	cfg := testConfig(t)
+	game := &unifiedGame{&fakeGame{name: "alpha", prefix: "/alpha"}}
+	reg, err := host.NewRegistry(game)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := host.New(cfg, reg, nil, host.WithGraphQL(func(b host.GraphQLBindings) (http.Handler, error) {
+		if b.Resolvers["alpha"] != "alpha" {
+			t.Errorf("resolver = %v, want alpha", b.Resolvers)
+		}
+		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(w, "unified")
+		}), nil
+	}))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- h.Run(ctx) }()
+	select {
+	case <-h.Ready():
+	case err := <-done:
+		t.Fatalf("host exited before ready: %v", err)
+	}
+
+	resp, err := http.Post("http://"+h.Addr()+"/graphql", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if string(body) != "unified" {
+		t.Fatalf("/graphql body = %q, want unified", body)
+	}
+
+	resp, err = http.Post("http://"+h.Addr()+"/alpha/graphql", "application/json", strings.NewReader(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if string(body) != "alpha" {
+		t.Fatalf("/alpha/graphql body = %q, want alpha", body)
+	}
+
+	cancel()
+	<-done
+}

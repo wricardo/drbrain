@@ -10,18 +10,20 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/wricardo/drbrain/games/motor/auth"
+	motorgraph "github.com/wricardo/drbrain/games/motor/graph"
+	"github.com/wricardo/drbrain/graph"
 	"github.com/wricardo/drbrain/platform"
 	"github.com/wricardo/drbrain/platform/config"
 	"github.com/wricardo/drbrain/platform/httpserve"
 )
 
-// TestCookiesStayInMotor signs in through /motor/graphql and proves the
-// resulting cookie is scoped to /motor and never reaches /mazes.
-func TestCookiesStayInMotor(t *testing.T) {
+// TestCookiesReachUnifiedGraphQL proves the password sign-in cookie is scoped
+// to the origin and therefore reaches /graphql, where the motor namespace
+// resolves the viewer.
+func TestCookiesReachUnifiedGraphQL(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("MOTOR_MAPS_DIR", "maps")
 	t.Setenv("MOTOR_USER_MAPS_DIR", dir+"/maps-user")
@@ -32,7 +34,6 @@ func TestCookiesStayInMotor(t *testing.T) {
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("AUTH_PASSWORD", "")
 	t.Setenv("AUTH_DEV_FAKE", "false")
-	t.Setenv("GRAPHQL_INTROSPECTION", "true")
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	motorMux := http.NewServeMux()
@@ -42,17 +43,15 @@ func TestCookiesStayInMotor(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = game.Shutdown(context.Background()) })
 
-	var (
-		mu        sync.Mutex
-		mazesSeen string
-	)
-	mazesMux := http.NewServeMux()
-	mazesMux.HandleFunc("/graphql", func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		mazesSeen = r.Header.Get("Cookie")
-		mu.Unlock()
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"data":{"ok":true}}`)
+	resolver, ok := game.GraphQLResolver().(*motorgraph.Resolver)
+	if !ok {
+		t.Fatalf("GraphQLResolver = %T, want *motorgraph.Resolver", game.GraphQLResolver())
+	}
+	authn, _ := game.GraphQLAuth().(*auth.Auth)
+	unified := graph.NewHandler(graph.Options{
+		Resolver:      graph.New(nil, nil, resolver, nil),
+		Introspection: true,
+		Auth:          authn,
 	})
 
 	router := httpserve.NewRouter(httpserve.SPAHandler(t.TempDir()))
@@ -60,7 +59,7 @@ func TestCookiesStayInMotor(t *testing.T) {
 	if err := router.Mount(httpserve.Mount{Game: "motor", Prefix: "/motor", API: game.API(), Handler: motorMux}); err != nil {
 		t.Fatal(err)
 	}
-	if err := router.Mount(httpserve.Mount{Game: "mazes", Prefix: "/mazes", API: []string{"/graphql"}, Handler: mazesMux}); err != nil {
+	if err := router.MountPlatform("/graphql", unified); err != nil {
 		t.Fatal(err)
 	}
 	ts := httptest.NewServer(router.Handler())
@@ -72,8 +71,8 @@ func TestCookiesStayInMotor(t *testing.T) {
 	}
 	client := &http.Client{Jar: jar}
 
-	body := `{"query":"mutation { registerWithPassword(handle:\"cookie_pilot\", password:\"tangerine-ladder-42\") { handle } }"}`
-	resp, err := client.Post(ts.URL+"/motor/graphql", "application/json", strings.NewReader(body))
+	body := `{"query":"mutation { motorProgramming { registerWithPassword(handle:\"cookie_pilot\", password:\"tangerine-ladder-42\") { handle } } }"}`
+	resp, err := client.Post(ts.URL+"/graphql", "application/json", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,12 +91,11 @@ func TestCookiesStayInMotor(t *testing.T) {
 	if sessionCookie == nil {
 		t.Fatalf("no %s cookie in %v", auth.SessionCookie, resp.Cookies())
 	}
-	if sessionCookie.Path != "/motor" {
-		t.Errorf("%s Path = %q, want /motor", auth.SessionCookie, sessionCookie.Path)
+	if sessionCookie.Path != "/" {
+		t.Errorf("%s Path = %q, want /", auth.SessionCookie, sessionCookie.Path)
 	}
 
-	// The jar must send it back to motor.
-	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/motor/graphql", strings.NewReader(`{"query":"{ me { handle } }"}`))
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/graphql", strings.NewReader(`{"query":"{ motorProgramming { me { handle } } }"}`))
 	req.Header.Set("Content-Type", "application/json")
 	resp2, err := client.Do(req)
 	if err != nil {
@@ -106,22 +104,7 @@ func TestCookiesStayInMotor(t *testing.T) {
 	me, _ := io.ReadAll(resp2.Body)
 	resp2.Body.Close()
 	if !strings.Contains(string(me), "cookie_pilot") {
-		t.Errorf("motor did not read its own cookie: %s", me)
-	}
-
-	// ...and never to another game on the same origin.
-	req3, _ := http.NewRequest(http.MethodPost, ts.URL+"/mazes/graphql", strings.NewReader(`{"query":"{ maps { id } }"}`))
-	req3.Header.Set("Content-Type", "application/json")
-	resp3, err := client.Do(req3)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp3.Body.Close()
-	mu.Lock()
-	seen := mazesSeen
-	mu.Unlock()
-	if strings.Contains(seen, auth.SessionCookie) {
-		t.Errorf("mazes request carried motor cookie: %q", seen)
+		t.Errorf("unified handler did not read the login cookie: %s", me)
 	}
 }
 
@@ -223,7 +206,7 @@ func TestDevSignInUnderMotorPrefix(t *testing.T) {
 			session = c
 		}
 	}
-	if session == nil || session.Path != "/motor" {
-		t.Fatalf("session cookie = %+v, want %s Path=/motor", session, auth.SessionCookie)
+	if session == nil || session.Path != "/" {
+		t.Fatalf("session cookie = %+v, want %s Path=/", session, auth.SessionCookie)
 	}
 }

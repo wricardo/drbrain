@@ -47,9 +47,9 @@ describe('buildSessionPrompt', () => {
 
 	it('carries the session id, endpoints and map facts the agent needs', () => {
 		expect(p).toContain('Session ID: abc123');
-		expect(p).toContain('http://h:1/motor/graphql');
+		expect(p).toContain('http://h:1/graphql');
 		expect(p).toContain('http://h:1/motor/llms.txt');
-		expect(p).toContain('http://h:1/watch/abc123');
+		expect(p).toContain('http://h:1/motor/watch/abc123');
 		expect(p).toContain('Robot starts at (0,0) facing right (x+1)');
 		expect(p).toContain('Treats (1): (4,0)');
 		expect(p).toContain('main = 3 slots; sub1 (subs[0]) = 2 slots; sub2 (subs[1]) = 4 slots');
@@ -113,7 +113,7 @@ describe('buildGenericPrompt', () => {
 		const g = buildGenericPrompt('http://h:1');
 		expect(g).toContain('http://h:1/motor/llms.txt');
 		expect(g).toContain('createSession');
-		expect(g).toContain('http://h:1/watch/SESSION_ID');
+		expect(g).toContain('http://h:1/motor/watch/SESSION_ID');
 	});
 });
 
