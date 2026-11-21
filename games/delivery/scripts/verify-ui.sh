@@ -16,20 +16,21 @@ SPECTATOR_OUT="${SPECTATOR_OUT:-${OUT%.png}-spectator.png}"
 mkdir -p tmp
 go build -o "$BIN" ./cmd/drbrain
 
-TMP_SESSIONS="$(mktemp -d)"
+# Accounts and sessions live in PostgreSQL. Point TEST_DATABASE_URL (or
+# DRBRAIN_DATABASE_URL) at a disposable database before running.
+export DRBRAIN_DATABASE_URL="${DRBRAIN_DATABASE_URL:-${TEST_DATABASE_URL:?set TEST_DATABASE_URL or DRBRAIN_DATABASE_URL to a disposable PostgreSQL URL}}"
+
 cleanup() {
 	if [ -n "${SRV_PID:-}" ] && kill -0 "$SRV_PID" 2>/dev/null; then
 		kill -TERM "$SRV_PID" 2>/dev/null || true
 		wait "$SRV_PID" 2>/dev/null || true
 	fi
-	rm -rf "$TMP_SESSIONS"
 }
 trap cleanup EXIT
 
 DRBRAIN_ADDR="localhost:$PORT" \
 	DRBRAIN_GAMES=delivery \
 	DRBRAIN_STATIC_DIR=web/build \
-	DELIVERY_SESSIONS_DIR="$TMP_SESSIONS" \
 	DELIVERY_CITY=games/delivery/maps/city.json \
 	"$BIN" serve >/tmp/drbrain-verify.log 2>&1 &
 SRV_PID=$!

@@ -43,7 +43,7 @@ Frontend development with hot reload, against a server running on :8000:
 cd frontend && npm run dev:local     # http://localhost:5173
 ```
 
-Server flags: `-port 8000 -host 0.0.0.0 -maps-dir maps -sessions-dir sessions -solutions-dir solutions -debug -public-url <url>` (`-public-url` sets the base URL written into `/llms.txt`; defaults to the request host).
+Server flags: `-port 8000 -host 0.0.0.0 -maps-dir maps -solutions-dir solutions -debug -public-url <url>` (`-public-url` sets the base URL written into `/llms.txt`; defaults to the request host).
 
 Routes:
 
@@ -65,7 +65,7 @@ Routes:
 game/engine          pure rules, no deps/IO: MapConfig/NewMap, State.Move, Simulate, Shortest, Reachable, View
 game/service         Session type, GameService facade + impl; interfaces MapStore, SessionStore, Broadcaster; coded errors
 game/config          MapStore impl: maps/*.json, RWMutex, atomic writes
-game/session         SessionStore impl: in-memory Manager + FilePersistence (sessions/<id>.json)
+game/session         SessionStore impl: in-memory Manager + StorePersistence (PostgreSQL)
 transport/websocket  Hub: per-session fan-out, latest-wins delivery
 validate             map checks, finish reachability, reference-solution checks (+ cmd/validate CLI)
 graph                gqlgen schema, resolvers, converters (fog), subscription forwarder, admin gate
@@ -86,7 +86,7 @@ HTTP /graphql (api) → gqlgen resolver (graph) → GameService (game/service)
 
 ### Composition and dependencies
 
-- `main.go` is the composition root. It builds the map store (`game/config`), the session store and file persistence (`game/session`) and the broadcaster (`transport/websocket`), passes them to `service.New(...)`, then starts `api.NewServer`. On shutdown it stops HTTP first, then persists every session.
+- `game.go` is the composition root. It builds the map store (`game/config`), the PostgreSQL session store (`game/session`) and the broadcaster (`transport/websocket`), passes them to `service.New(...)`, then registers the routes. On shutdown it persists every session.
 - `game/service` defines the `MapStore`, `SessionStore` and `Broadcaster` interfaces it needs. Implementations import `service` and assert the interfaces at compile time; `service` never imports them. This keeps the core testable with fakes.
 - `graph/` is a thin adapter: resolvers call `GameService` and convert results in `graph/convert.go`. `graph/generated` and `graph/model` are gqlgen output (committed, never hand-edited).
 
@@ -116,8 +116,9 @@ HTTP /graphql (api) → gqlgen resolver (graph) → GameService (game/service)
 
 ### Security and hardening
 
-- Map ids match `^[a-z0-9_-]{1,64}$` because they are file names. Session ids are 16 lowercase hex characters and are validated before touching disk.
-- Admin operations (`createMap`, `updateMap`, `deleteMap`, `validateMap` and the `adminMap` query) require `X-Admin-Key` equal to `ADMIN_API_KEY`, compared through SHA-256 digests in constant time. `ALLOW_UNAUTHENTICATED_ADMIN=true` is honoured only when no key is set (local development). `adminMap` checks the key before looking the id up, so callers can't probe which maps exist.
+- Map ids match `^[a-z0-9_-]{1,64}$` because they are file names and `platform_maps` keys. Session ids are 16 lowercase hex characters and are validated before touching disk.
+- Map authoring is account-based: `createMap`/`updateMap`/`publishMap`/`deleteMap`/`validateMap` need a signed-in viewer (`UNAUTHENTICATED` otherwise). `createMap` stores a DRAFT owned by the caller; `updateMap` is owner-only and resets the map to DRAFT; `publishMap` is owner-only and requires the finish to be reachable; `deleteMap` is owner-only for the caller's own map. Edits never touch running sessions (they embed a map snapshot).
+- `X-Admin-Key` (equal to `ADMIN_API_KEY`, compared through SHA-256 digests in constant time) is required only for the `adminMap` query and for shipped/legacy-ownerless map writes. `ALLOW_UNAUTHENTICATED_ADMIN=true` is honoured only when no key is set (local development). `adminMap` checks the key before looking the id up, so callers can't probe which maps exist.
 - `max_moves ≤ 10000`. `bulkMove` accepts at most `service.MaxDirections` (20000) directions per call, because blocked moves are free and the request body cap alone would not bound the work.
 - Request body capped at 1 MiB; query complexity capped at 1000 with weighted costs (`sessions` by `limit`). `api/hardening_test.go` keeps a copy of the frontend queries to make sure they stay under the cap.
 - WebSocket: 10 s init timeout, frame-size guard (`api/wslimit.go`), origin check against `ALLOWED_ORIGINS`, which also drives CORS on `/graphql`.
@@ -300,6 +301,13 @@ A white card of stacked ledges, one per level, with **FINISH** at the top and **
 | `ALLOWED_ORIGINS` | empty (all) | Comma-separated origins for WebSocket upgrades and CORS |
 | `MAX_SESSIONS` | `1000` | Cap on live sessions |
 | `SESSION_TTL` | `168h` | Idle sessions older than this are removed on startup |
+| `MAZES_MAX_USER_MAPS` | `200` | Cap on custom maps in `platform_maps` |
+
+Builtin maps are release-managed files in `MAZES_MAPS_DIR` (default `maps/`). Custom maps are
+PostgreSQL `platform_maps` rows with an owner and DRAFT/PUBLISHED status; there is no
+`maps-user` directory and no runtime variable for one. Back up custom maps with `pg_dump`.
+Mazes had no player-map directory before the cutover, so there is no legacy import step:
+player maps start in `platform_maps`.
 
 Frontend build-time variables: `PUBLIC_GRAPHQL_URL`, `PUBLIC_WS_URL`. When unset, the UI uses the page's own host and picks `ws`/`wss` from the page protocol.
 
@@ -309,8 +317,8 @@ Frontend build-time variables: `PUBLIC_GRAPHQL_URL`, `PUBLIC_WS_URL`. When unset
 
 **One-time host setup** (not in the repo; repeat on a new host):
 
-1. Create `/opt/drbrain-mazes/` owned by `ubuntu`, with `sessions/` and a `.env` (production: playground off, a random `ADMIN_API_KEY`, `ALLOWED_ORIGINS` set to the site's http and https origins).
-2. Add a systemd unit `drbrain-mazes.service`: `WorkingDirectory=/opt/drbrain-mazes`, `ExecStart=… -host 127.0.0.1 -port 8087 -maps-dir maps -sessions-dir sessions -public-url https://<your-domain>`, `Restart=always`.
+1. Create `/opt/drbrain-mazes/` owned by `ubuntu`, with a `.env` (production: playground off, a random `ADMIN_API_KEY`, `ALLOWED_ORIGINS` set to the site's http and https origins).
+2. Add a systemd unit `drbrain-mazes.service`: `WorkingDirectory=/opt/drbrain-mazes`, `ExecStart=… -host 127.0.0.1 -port 8087 -maps-dir maps -public-url https://<your-domain>`, `Restart=always`.
 3. Add an nginx `server` block for the domain that proxies to `127.0.0.1:8087` with WebSocket upgrade headers and a long `proxy_read_timeout`.
 4. Point DNS at the host and issue a TLS certificate (certbot).
 5. Add the deploy key's public half to `~/.ssh/authorized_keys` and set the three repository secrets.

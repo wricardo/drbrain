@@ -110,63 +110,27 @@ func TestCarMayFollowIntoVacatedTile(t *testing.T) {
 	}
 }
 
-func TestDepotHoldsCapacityCars(t *testing.T) {
-	// tinyWorld's depot authors capacity 4. Parking several cars there is the
-	// whole point of the tile, so the occupancy limit must not be one.
+func TestDepotHasUnlimitedParking(t *testing.T) {
 	w := tinyWorld(t)
 	depot := w.City.Depots[0]
-
-	for range 3 {
+	if got := w.City.CarCapacity(depot.Pos); got != UnlimitedCarCapacity {
+		t.Fatalf("depot capacity = %d, want unlimited", got)
+	}
+	w.Ledger.Money = 10_000
+	for range 10 {
 		car, err := w.BuyCar("scooter", "d1")
 		if err != nil {
-			t.Fatalf("buy %d: %v", len(w.Cars), err)
+			t.Fatalf("buy: %v", err)
 		}
 		if car.Pos != depot.Pos {
 			t.Fatalf("bought car placed at %s, want the depot %s", car.Pos, depot.Pos)
 		}
 	}
-	if got := w.CarsAt(depot.Pos); got != depot.Capacity {
-		t.Fatalf("cars at depot = %d, want %d", got, depot.Capacity)
+	if got := w.CarsAt(depot.Pos); got != 11 {
+		t.Fatalf("cars at depot = %d, want 11", got)
 	}
-
-	// A car outside must be refused ENTRY, because the yard is full...
-	car := &Car{ID: "car_9", Name: "S9", ClassName: "scooter",
-		Class: w.Cars[0].Class, Pos: Position{4, 1}, Battery: 10}
-	w.Cars = append(w.Cars, car)
-	// (4,1) -> (3,1) -> (2,1) -> (1,1): the first two are plain road (the extra
-	// D glyphs in this fixture carry no depot entity, so they hold one car), and
-	// the last step enters the full yard.
-	for range 2 {
-		_ = w.QueueMove(car.ID, West)
-		w.Advance()
-	}
-	before := car.Pos
-	_ = w.QueueMove(car.ID, West)
-	w.Advance()
-	if car.Pos != before {
-		t.Fatalf("car entered a full yard: %s -> %s", before, car.Pos)
-	}
-	if car.LastReject != RejectOccupied {
-		t.Fatalf("LastReject = %q, want %q", car.LastReject, RejectOccupied)
-	}
-
-	// ... but a car INSIDE it can still drive out: the tile is full for entry
-	// only, the same rule as a street that closes under a car.
-	//
-	// The blocker has to step aside first, and that is not test noise — it is the
-	// hazard of a capacity rule on a one-exit yard. This fixture's depot at (1,1)
-	// has water on three sides, so a car standing on (2,1) seals the fleet in.
-	// Real maps have the same shape wherever a yard opens onto one street, which
-	// is why Tow ignores capacity when no depot has room (see World.Tow): it is
-	// the escape from a yard the player has blocked.
-	_ = w.QueueMove(car.ID, East) // (2,1) -> (3,1), clearing the yard mouth
-	w.Advance()
-
-	leaving := w.Cars[0]
-	_ = w.QueueMove(leaving.ID, East) // depot (1,1) -> (2,1)
-	w.Advance()
-	if leaving.Pos != (Position{2, 1}) {
-		t.Fatalf("car could not leave a full yard: at %s, reject %q", leaving.Pos, leaving.LastReject)
+	if w.tileFull(depot.Pos) {
+		t.Fatal("depot reports full despite unlimited parking")
 	}
 }
 
@@ -184,19 +148,19 @@ func TestInitialCarsCannotStartOverlapping(t *testing.T) {
 		"WRRRW",
 		"WWWWW",
 	}
-	cfg := &CityConfig{
+	cfg := completeConfig(&CityConfig{
 		Name: "overlap", GridSize: 5,
 		Layout: rows,
 		Legend: map[string]string{"W": "water", "R": "road", "D": "depot"},
 		Depots: []DepotConfig{{ID: "d1", Pos: Position{1, 1}, Capacity: 4}},
 		CarClasses: map[string]CarClassConfig{
-			"scooter": {Speed: 1, Capacity: 1, MaxBattery: 10, StepCost: 1},
+			"scooter": {Capacity: 1, MaxBattery: 10, StepCost: 1},
 		},
 		InitialCars: []InitialCarConfig{
 			{Class: "scooter", Pos: Position{2, 2}},
 			{Class: "scooter", Pos: Position{2, 2}},
 		},
-	}
+	})
 	city, err := NewCity(cfg)
 	if err != nil {
 		t.Fatalf("city: %v", err)
@@ -214,19 +178,19 @@ func TestInitialCarsMayShareADepot(t *testing.T) {
 		"WRRRW",
 		"WWWWW",
 	}
-	cfg := &CityConfig{
+	cfg := completeConfig(&CityConfig{
 		Name: "shared-depot", GridSize: 5,
 		Layout: rows,
 		Legend: map[string]string{"W": "water", "R": "road", "D": "depot"},
 		Depots: []DepotConfig{{ID: "d1", Pos: Position{1, 1}, Capacity: 4}},
 		CarClasses: map[string]CarClassConfig{
-			"scooter": {Speed: 1, Capacity: 1, MaxBattery: 10, StepCost: 1},
+			"scooter": {Capacity: 1, MaxBattery: 10, StepCost: 1},
 		},
 		InitialCars: []InitialCarConfig{
 			{Class: "scooter", Pos: Position{1, 1}},
 			{Class: "scooter", Pos: Position{1, 1}},
 		},
-	}
+	})
 	city, err := NewCity(cfg)
 	if err != nil {
 		t.Fatalf("city: %v", err)

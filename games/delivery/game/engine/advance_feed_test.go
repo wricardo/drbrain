@@ -8,7 +8,7 @@ import (
 // TestAdvanceReturnsItsOwnEventsWhenTheLogIsFull pins a silent data-loss bug.
 //
 // Advance used to return `w.Events[start:]`. Once the retained log hit
-// MaxEvents, emit trimmed from the front and the slice came back empty, so a
+// max_events, emit trimmed from the front and the slice came back empty, so a
 // caller polling Advance for "what just happened" got nothing — exactly when a
 // long-running session most needs the feed.
 func TestAdvanceReturnsItsOwnEventsWhenTheLogIsFull(t *testing.T) {
@@ -16,16 +16,16 @@ func TestAdvanceReturnsItsOwnEventsWhenTheLogIsFull(t *testing.T) {
 	car := w.Cars[0]
 
 	// Fill the retained log past its cap with real moves. A fixed iteration
-	// count is required: the log trims back to MaxEvents, so waiting for it to
+	// count is required: the log trims back to max_events, so waiting for it to
 	// exceed the cap would never finish.
 	dirs := []Direction{South, North}
-	for i := range MaxEvents + 50 {
+	for i := range w.maxEvents + 50 {
 		_ = w.QueueMove(car.ID, dirs[i%2])
 		w.Advance()
 	}
-	if len(w.Events) != MaxEvents {
+	if len(w.Events) != w.maxEvents {
 		t.Fatalf("precondition: retained log is %d events, want it pinned at the %d cap",
-			len(w.Events), MaxEvents)
+			len(w.Events), w.maxEvents)
 	}
 
 	evs := func() []Event {
@@ -40,62 +40,35 @@ func TestAdvanceReturnsItsOwnEventsWhenTheLogIsFull(t *testing.T) {
 	if !strings.Contains(evs[0].Message, want) {
 		t.Errorf("first event = %q, want the move just applied", evs[0].Message)
 	}
-	if len(w.Events) > MaxEvents {
-		t.Errorf("retained log is %d events, over the %d cap", len(w.Events), MaxEvents)
+	if len(w.Events) > w.maxEvents {
+		t.Errorf("retained log is %d events, over the %d cap", len(w.Events), w.maxEvents)
 	}
 }
 
-// TestReputationStaysClampedWhenAchievementsGrantIt: reputation is documented as
-// clamped to [0,5], and a grant is still an award. Without the clamp a single
-// generous achievement pushed it to 23, which then made every reputation-gated
-// unlock trivially satisfied.
-func TestReputationStaysClampedWhenAchievementsGrantIt(t *testing.T) {
+// TestReputationStaysClampedWhenGrowthGrantsIt: reputation is documented as
+// clamped to [0,5], and a scheduled grant is still an award. Without the clamp a
+// single generous stage pushed it to 23, which then made every reputation-gated
+// number meaningless.
+func TestReputationStaysClampedWhenGrowthGrantsIt(t *testing.T) {
 	city, cfg := shippedCity(t)
-	cfg.Achievements = []AchievementConfig{{
-		ID:    "huge",
-		Title: "Huge",
-		// No requirements: it fires on the first tick.
-		Requires:   Requirement{},
-		GrantRep:   20,
-		GrantMoney: 0,
-	}}
+	cfg.Growth = append([]GrowthConfig{{
+		ID:    "g_rep",
+		Tick:  0,
+		Title: "Reputation Boost",
+		Effects: []GrowthEffect{{
+			Type: EffectGrantRep,
+			Rep:  20,
+		}},
+	}}, cfg.Growth...)
 	w, err := NewWorldSeeded(city, cfg, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
 	w.Advance()
 
-	if w.Ledger.Reputation > MaxReputation {
-		t.Fatalf("reputation = %v after a +20 grant, want clamped to %v",
-			w.Ledger.Reputation, MaxReputation)
-	}
-}
-
-// TestReputationStaysClampedWhenBuildsGrantIt covers the other grant path.
-func TestReputationStaysClampedWhenBuildsGrantIt(t *testing.T) {
-	city, cfg := shippedCity(t)
-	cfg.Builds = append(cfg.Builds, BuildConfig{
-		ID:    "b_rep",
-		Title: "Reputation Boost",
-		Cost:  0,
-		Effects: []BuildEffect{{
-			Type: EffectGrantRep,
-			Rep:  20,
-		}},
-	})
-	w, err := NewWorldSeeded(city, cfg, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	w.built = map[string]bool{}
-	w.permitted = map[string]bool{"b_rep": true}
-
-	if _, err := w.Build("b_rep"); err != nil {
-		t.Fatalf("build: %v", err)
-	}
-	if w.Ledger.Reputation > MaxReputation {
-		t.Fatalf("reputation = %v after a +20 build grant, want clamped to %v",
-			w.Ledger.Reputation, MaxReputation)
+	if w.Ledger.Reputation > w.maxReputation {
+		t.Fatalf("reputation = %v after a +20 growth grant, want clamped to %v",
+			w.Ledger.Reputation, w.maxReputation)
 	}
 }
 

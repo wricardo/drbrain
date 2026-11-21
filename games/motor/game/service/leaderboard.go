@@ -266,8 +266,10 @@ func (svc *gameService) GetLeaderboard(q LeaderboardQuery) (*Leaderboard, error)
 	case limit > MaxLeaderboardLimit:
 		limit = MaxLeaderboardLimit
 	}
-	if _, err := svc.maps.Get(q.MapID); err != nil {
+	if e, err := svc.maps.Entry(q.MapID); err != nil {
 		return nil, err
+	} else if !e.VisibleTo(q.AccountID) {
+		return nil, Errorf(CodeNotFound, "map %q not found", q.MapID)
 	}
 
 	// The session's own account (if any), so a browser that remembers a session
@@ -313,6 +315,9 @@ const MaxRunSessionIDs = 200
 type RunsQuery struct {
 	SessionIDs []string
 	AccountID  string
+	// ViewerID is who is asking. A draft map is omitted unless this is its
+	// owner; an empty value hides every draft.
+	ViewerID string
 }
 
 // PlayerRun is a player's best result on one map: the best of their winning
@@ -346,14 +351,19 @@ func (svc *gameService) GetPlayerRuns(q RunsQuery) ([]PlayerRun, error) {
 		}
 		return ids[r.id]
 	}
-	return svc.playerRuns(mine, q.AccountID), nil
+	return svc.playerRuns(mine, q.AccountID, q.ViewerID), nil
 }
 
-// playerRuns picks, per map, the best SLOTS-board row that mine accepts.
-func (svc *gameService) playerRuns(mine func(boardRow) bool, viewer string) []PlayerRun {
+// playerRuns picks, per map, the best SLOTS-board row that mine accepts. Draft
+// maps are included only when viewer is their owner; a map deleted from the
+// store keeps its historical runs visible.
+func (svc *gameService) playerRuns(mine func(boardRow) bool, viewer, viewerID string) []PlayerRun {
 	boards := svc.rankedBoards(OrderSlots, "")
 	out := []PlayerRun{}
 	for mapID, rows := range boards {
+		if e, err := svc.maps.Entry(mapID); err == nil && !e.VisibleTo(viewerID) {
+			continue
+		}
 		for _, r := range rows { // best first
 			if mine(r) {
 				out = append(out, PlayerRun{MapID: mapID, Entry: svc.entryOf(r, viewer), Total: len(rows)})

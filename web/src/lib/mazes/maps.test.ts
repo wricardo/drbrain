@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { countByDifficulty, filterMaps, nextMap, sortMapsByDifficulty } from './maps';
+import {
+	canEditMap,
+	countByDifficulty,
+	filterMaps,
+	isDraft,
+	isPublished,
+	mapStatusLabel,
+	nextMap,
+	sortMapsByDifficulty
+} from './maps';
 
 describe('sortMapsByDifficulty', () => {
 	it('orders easy -> medium -> hard, then by name, unknown last, without mutating', () => {
@@ -14,6 +23,41 @@ describe('sortMapsByDifficulty', () => {
 		const copy = structuredClone(input);
 		expect(sortMapsByDifficulty(input).map((m) => m.name)).toEqual(['A2', 'C', 'M', 'A', 'B', 'Z']);
 		expect(input).toEqual(copy);
+	});
+
+	it('keeps the caller\u2019s drafts first, then the difficulty order', () => {
+		const input = [
+			{ name: 'B', difficulty: 'hard', status: 'PUBLISHED' as const },
+			{ name: 'Mine', difficulty: 'hard', status: 'DRAFT' as const },
+			{ name: 'C', difficulty: 'easy', status: 'PUBLISHED' as const }
+		];
+		expect(sortMapsByDifficulty(input).map((m) => m.name)).toEqual(['Mine', 'C', 'B']);
+	});
+});
+
+describe('map lifecycle helpers', () => {
+	it('treats only the explicit DRAFT status as a draft', () => {
+		expect(isDraft({ status: 'DRAFT' })).toBe(true);
+		expect(isDraft({ status: 'PUBLISHED' })).toBe(false);
+		expect(isDraft({})).toBe(false);
+	});
+
+	it('treats a missing status as published for old responses', () => {
+		expect(isPublished({ status: 'PUBLISHED' })).toBe(true);
+		expect(isPublished({})).toBe(true);
+		expect(isPublished({ status: 'DRAFT' })).toBe(false);
+	});
+
+	it('labels the state for badges', () => {
+		expect(mapStatusLabel({ status: 'DRAFT' })).toBe('Draft');
+		expect(mapStatusLabel({ status: 'PUBLISHED' })).toBe('Published');
+		expect(mapStatusLabel({})).toBe('');
+	});
+
+	it('lets the owner or an admin edit', () => {
+		expect(canEditMap({ ownedByMe: true })).toBe(true);
+		expect(canEditMap({ ownedByMe: false }, true)).toBe(true);
+		expect(canEditMap({ ownedByMe: false }, false)).toBe(false);
 	});
 });
 

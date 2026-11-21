@@ -39,26 +39,30 @@ import (
 
 // ClosureConfig is the pacing table for street works.
 //
-// The zero value means "no closures", so a map that does not want chaos does
-// not have to opt out.
+// The block is required (CityConfig.Closures is a pointer) so a map states
+// whether closures are on; set Enabled=false for a quiet map.
 type ClosureConfig struct {
 	// Enabled turns the whole system on. Every other field is ignored when it
 	// is false, so a map can keep a tuned table and switch it off.
+	// Suggested: true.
 	Enabled bool `json:"enabled"`
 
-	// FromChapter is the first chapter (builds completed) at which closures
-	// may start. The early game must stay quiet: a player with one scooter and
-	// no money has no interesting answer to a detour.
+	// FromChapter is the first chapter (growth stages applied) at which
+	// closures may start. The early game must stay quiet: a player with one
+	// scooter and no money has no interesting answer to a detour.
+	// Required: non-negative. Suggested: 1.
 	FromChapter int `json:"from_chapter"`
 
 	// EveryTicks is the base gap between closures. Each closure lasts
 	// DurationTicks, so the street works are on the road roughly
-	// Duration/Every of the time.
+	// Duration/Every of the time. Required when Enabled: positive.
+	// Suggested: 900.
 	EveryTicks int `json:"every_ticks"`
 
 	// DurationTicks is how long one closure stays in effect. The window is
 	// half-open: the street is closed on the start tick and already reopened
-	// on start+DurationTicks.
+	// on start+DurationTicks. Required when Enabled: positive.
+	// Suggested: 260.
 	DurationTicks int `json:"duration_ticks"`
 
 	// MaxConcurrent caps how many closures can be live at once. At 1 (what
@@ -79,18 +83,24 @@ type ClosureConfig struct {
 	// overlapping pair and no lost tile. Do both of the following before
 	// enabling it: validate the union rather than the candidate, and make the
 	// pacing coherent.
+	//
+	// Required when Enabled: positive. Suggested: 1.
 	MaxConcurrent int `json:"max_concurrent"`
 
 	// SegmentTiles is how many tiles a closure takes out, laid as a straight
-	// run along one street.
+	// run along one street. Required when Enabled: positive. Suggested: 3.
 	SegmentTiles int `json:"segment_tiles"`
 }
 
 // Closure is one stretch of closed street.
 type Closure struct {
+	// ID is stable for the session and appears in events; Tiles are the closed
+	// coordinates.
 	ID    string
 	Tiles []Position
 
+	// StartTick and EndTick bound the half-open active window: StartTick is
+	// closed, EndTick is already reopened (see ActiveAt).
 	StartTick int64
 	EndTick   int64
 
@@ -112,7 +122,9 @@ func (c Closure) ActiveAt(tick int64) bool {
 	return tick >= c.StartTick && tick < c.EndTick
 }
 
-// Contains reports whether a tile is inside the closure.
+// Contains reports whether p is one of the closure's tiles. It ignores the time
+// window, so pair it with ActiveAt when asking whether the street is closed
+// right now.
 func (c Closure) Contains(p Position) bool {
 	for _, t := range c.Tiles {
 		if t == p {
@@ -317,10 +329,10 @@ func (w *World) closureIsSafe(tiles []Position) bool {
 // impassable.
 //
 // Depots only, deliberately -- and this is the one place it must differ from
-// City.StrandedEntities, which seeds from depots AND chargers because a build
-// may legitimately rely on a charger. A closure may not: the fleet starts at a
-// depot and a car cannot teleport to a charger, so a charger is somewhere to
-// drive TO, never a place a severed district can be served FROM.
+// City.StrandedEntities, which seeds from depots AND chargers because a growth
+// stage may legitimately rely on a charger. A closure may not: the fleet
+// starts at a depot and a car cannot teleport to a charger, so a charger is
+// somewhere to drive TO, never a place a severed district can be served FROM.
 //
 // Seeding from chargers as well was a real defect, not a theory. Once
 // b04_harbour_gate adds ch_harbour_gate, the harbour contains its own seed, so a

@@ -29,6 +29,20 @@ type AdminMap struct {
 	ParMoves        *int       `json:"parMoves,omitempty"`
 	MinLevelChanges *int       `json:"minLevelChanges,omitempty"`
 	ForcedDescents  *int       `json:"forcedDescents,omitempty"`
+	// DRAFT maps are visible only to their owner and cannot be played or published by anyone else.
+	// Every shipped map is PUBLISHED.
+	Status MapStatus `json:"status"`
+	// True when the signed-in caller created this community map.
+	OwnedByMe bool `json:"ownedByMe"`
+}
+
+// The result of createSession. The ownerToken is returned only here and never by a query, a list or
+// a subscription: it is the credential that lets this browser change the session, while the session
+// id alone stays enough to read it.
+type CreateSessionResult struct {
+	Session *Session `json:"session"`
+	// Secret that proves you created this session; keep it private.
+	OwnerToken string `json:"ownerToken"`
 }
 
 type GameState struct {
@@ -73,6 +87,11 @@ type Map struct {
 	// Fewest down stairs any winning route takes: 0 means you can climb straight up.
 	// Null if the finish is unreachable.
 	ForcedDescents *int `json:"forcedDescents,omitempty"`
+	// DRAFT maps are visible only to their owner and cannot be played or published by anyone else.
+	// Every shipped map is PUBLISHED.
+	Status MapStatus `json:"status"`
+	// True when the signed-in caller created this community map.
+	OwnedByMe bool `json:"ownedByMe"`
 }
 
 type MapInput struct {
@@ -271,6 +290,63 @@ func (e *LossReason) UnmarshalJSON(b []byte) error {
 }
 
 func (e LossReason) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type MapStatus string
+
+const (
+	// A work in progress: only its owner can see, edit, play or publish it.
+	MapStatusDraft MapStatus = "DRAFT"
+	// Visible to everyone and playable by anyone.
+	MapStatusPublished MapStatus = "PUBLISHED"
+)
+
+var AllMapStatus = []MapStatus{
+	MapStatusDraft,
+	MapStatusPublished,
+}
+
+func (e MapStatus) IsValid() bool {
+	switch e {
+	case MapStatusDraft, MapStatusPublished:
+		return true
+	}
+	return false
+}
+
+func (e MapStatus) String() string {
+	return string(e)
+}
+
+func (e *MapStatus) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = MapStatus(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid MapStatus", str)
+	}
+	return nil
+}
+
+func (e MapStatus) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *MapStatus) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e MapStatus) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

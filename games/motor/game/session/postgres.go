@@ -65,8 +65,8 @@ func (p *PostgresPersistence) Save(s *service.Session) error {
 INSERT INTO sessions (id, map_id, map, program, vm, speed_ms, seq,
                       created_at, last_action_at, attempts, best_steps, fewest_slots, fewest_steps,
                       account_id, owner_hash)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-        (SELECT id FROM accounts WHERE id = $13), $14)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+        (SELECT id FROM accounts WHERE id = $14), $15)
 ON CONFLICT (id) DO UPDATE SET
     map_id = EXCLUDED.map_id,
     map = EXCLUDED.map, program = EXCLUDED.program, vm = EXCLUDED.vm, speed_ms = EXCLUDED.speed_ms,

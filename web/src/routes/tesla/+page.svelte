@@ -125,7 +125,7 @@
 	<div class="flex flex-wrap items-end justify-between gap-4 mb-4">
 		<div>
 			<h2 class="text-2xl font-bold tracking-tight">Pick a map</h2>
-			<p class="text-sm text-gray-500 mt-0.5">Smallest maps first. Press Play to choose fog and move-delay settings.</p>
+			<p class="text-sm text-gray-500 mt-0.5">Your drafts first, then smallest maps. Press Play to choose fog and move-delay settings.</p>
 		</div>
 		<div class="w-full sm:w-72">
 			<label for="session-name" class="block text-xs font-semibold text-[#393c41] mb-1.5">Name <span class="font-normal text-gray-400">(optional)</span></label>

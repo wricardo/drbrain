@@ -22,6 +22,7 @@ import (
 type fakeService struct {
 	service.GameService
 	maps     map[string]*engine.Map
+	meta     map[string]service.MapEntry
 	builtin  map[string]bool
 	sessions map[string]*service.Session
 	saved    []engine.MapConfig
@@ -31,6 +32,15 @@ type fakeService struct {
 	// that were let through.
 	editErr error
 	edited  []service.SessionActor
+}
+
+func (f *fakeService) metaOf(id string) service.MapEntry {
+	e := f.meta[id]
+	if e.Status == "" {
+		e.Status = engine.MapStatusPublished
+	}
+	e.Map = f.maps[id]
+	return e
 }
 
 func (f *fakeService) GetMap(id string) (*engine.Map, error) {
@@ -43,29 +53,80 @@ func (f *fakeService) GetMap(id string) (*engine.Map, error) {
 	return nil, service.Errorf(service.CodeNotFound, "map %q not found", id)
 }
 
+func (f *fakeService) GetMapFor(id, viewerID string) (*engine.Map, error) {
+	e := f.metaOf(id)
+	if e.Map == nil {
+		return nil, service.Errorf(service.CodeNotFound, "map %q not found", id)
+	}
+	if !e.VisibleTo(viewerID) {
+		return nil, service.Errorf(service.CodeNotFound, "map %q not found", id)
+	}
+	return e.Map, nil
+}
+
+func (f *fakeService) MapEntry(id string) (service.MapEntry, error) {
+	e := f.metaOf(id)
+	if e.Map == nil {
+		return service.MapEntry{}, service.Errorf(service.CodeNotFound, "map %q not found", id)
+	}
+	return e, nil
+}
+
+func (f *fakeService) ListMaps(viewerID string) []*engine.Map {
+	out := []*engine.Map{}
+	for id, m := range f.maps {
+		if f.metaOf(id).VisibleTo(viewerID) {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
 // IsBuiltinMap reports whether id is shipped; shipped maps need the admin key.
 func (f *fakeService) IsBuiltinMap(id string) bool { return f.builtin[id] }
 
-func (f *fakeService) SaveMap(cfg engine.MapConfig) (*engine.Map, error) {
+func (f *fakeService) SaveMap(cfg engine.MapConfig, actor service.MapActor) (*engine.Map, error) {
 	m, err := engine.NewMap(cfg)
 	if err != nil {
 		return nil, err
 	}
 	f.saved = append(f.saved, cfg)
+	if f.maps == nil {
+		f.maps = map[string]*engine.Map{}
+	}
+	if f.meta == nil {
+		f.meta = map[string]service.MapEntry{}
+	}
+	owner := actor.AccountID
+	if old, ok := f.meta[cfg.ID]; ok && old.OwnerID != "" {
+		owner = old.OwnerID
+	}
+	f.maps[cfg.ID] = m
+	f.meta[cfg.ID] = service.MapEntry{Map: m, OwnerID: owner, Status: engine.MapStatusDraft}
 	return m, nil
 }
 
-func (f *fakeService) CreateMap(cfg engine.MapConfig) (*engine.Map, error) {
+func (f *fakeService) CreateMap(cfg engine.MapConfig, ownerID string) (*engine.Map, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
 	if _, ok := f.maps[cfg.ID]; ok {
 		return nil, service.Errorf(service.CodeInvalidArgument, "map %q already exists", cfg.ID)
 	}
-	return f.SaveMap(cfg)
+	return f.SaveMap(cfg, service.MapActor{AccountID: ownerID})
 }
 
-func (f *fakeService) DeleteMap(id string) error {
+func (f *fakeService) PublishMap(id string, actor service.MapActor) (*engine.Map, error) {
+	e, err := f.MapEntry(id)
+	if err != nil {
+		return nil, err
+	}
+	e.Status = engine.MapStatusPublished
+	f.meta[id] = e
+	return e.Map, nil
+}
+
+func (f *fakeService) DeleteMap(id string, actor service.MapActor) error {
 	f.deleted = append(f.deleted, id)
 	return nil
 }
@@ -75,6 +136,14 @@ func (f *fakeService) GetSession(id string) (*service.Session, error) {
 		return s.Clone(), nil
 	}
 	return nil, service.Errorf(service.CodeNotFound, "session %q not found", id)
+}
+
+func (f *fakeService) SessionVisibleTo(s *service.Session, viewerID string) bool {
+	entry, err := f.MapEntry(s.MapID)
+	if err != nil {
+		return true
+	}
+	return entry.VisibleTo(viewerID)
 }
 
 func (f *fakeService) SetProgram(id string, p engine.Program) (*service.Session, error) {
@@ -154,8 +223,10 @@ func TestAdminGate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fs := &fakeService{
 				maps:    map[string]*engine.Map{"existing": mustMap(t, "existing"), "mine": mustMap(t, "mine")},
+				meta:    map[string]service.MapEntry{"mine": {OwnerID: "acct1", Status: engine.MapStatusPublished}},
 				builtin: map[string]bool{"existing": true},
 			}
+			ctx := withViewer(tc.ctx)
 			m := &mutationResolver{&Resolver{Service: fs, Admin: Admin{Key: tc.adminKey, AllowUnauthenticated: tc.allowOpen}}}
 
 			check := func(op string, err error) {
@@ -173,28 +244,28 @@ func TestAdminGate(t *testing.T) {
 					t.Fatalf("%s: code = %q, want %q", op, got, tc.wantCode)
 				}
 			}
-			// Creating needs a signed-in player but no key; validating needs neither.
-			_, err := m.CreateMap(withViewer(tc.ctx), input)
+			// Creating and validating need a signed-in player but no key.
+			_, err := m.CreateMap(ctx, input)
 			if err != nil {
 				t.Fatalf("createMap: unexpected error %v", err)
 			}
-			_, err = m.ValidateMap(tc.ctx, input)
+			_, err = m.ValidateMap(ctx, input)
 			if err != nil {
 				t.Fatalf("validateMap: unexpected error %v", err)
 			}
 			// Writes to a shipped map are gated.
 			upd := input
 			upd.ID = "existing"
-			_, err = m.UpdateMap(tc.ctx, upd)
+			_, err = m.UpdateMap(ctx, upd)
 			check("updateMap(builtin)", err)
-			_, err = m.DeleteMap(tc.ctx, "existing")
+			_, err = m.DeleteMap(ctx, "existing")
 			check("deleteMap(builtin)", err)
-			// Writes to a player-created map are open, whatever the key is.
+			// The owner may change their own map without the key.
 			upd.ID = "mine"
-			if _, err := m.UpdateMap(tc.ctx, upd); err != nil {
+			if _, err := m.UpdateMap(ctx, upd); err != nil {
 				t.Fatalf("updateMap(player map): unexpected error %v", err)
 			}
-			if _, err := m.DeleteMap(tc.ctx, "mine"); err != nil {
+			if _, err := m.DeleteMap(ctx, "mine"); err != nil {
 				t.Fatalf("deleteMap(player map): unexpected error %v", err)
 			}
 			if tc.wantCode != "" {
@@ -236,8 +307,11 @@ func TestCreateMapNeedsSignIn(t *testing.T) {
 	if err != nil || got.ID != "player_map" {
 		t.Fatalf("signed-in create = %+v, %v", got, err)
 	}
-	// Validation stores nothing and needs no account.
-	if _, err := m.ValidateMap(guest, model.MapInput{ID: "player_map", Name: "n", Layout: layout}); err != nil {
+	// Validation stores nothing, but it is still a map operation for players.
+	if _, err := m.ValidateMap(guest, model.MapInput{ID: "player_map", Name: "n", Layout: layout}); codeOf(t, err) != service.CodeUnauthenticated {
+		t.Fatalf("guest validate: err = %v", err)
+	}
+	if _, err := m.ValidateMap(signedIn, model.MapInput{ID: "player_map", Name: "n", Layout: layout}); err != nil {
 		t.Fatalf("validateMap: %v", err)
 	}
 }
@@ -324,11 +398,15 @@ func TestToGQLErrorMapping(t *testing.T) {
 }
 
 func TestSetProgramPropagatesCode(t *testing.T) {
+	m := mustMap(t, "visible")
 	fs := &fakeService{
-		err: service.Errorf(service.CodeSessionPlaying, "session is playing"),
+		err:      service.Errorf(service.CodeSessionPlaying, "session is playing"),
+		maps:     map[string]*engine.Map{"visible": m},
+		meta:     map[string]service.MapEntry{"visible": {Status: engine.MapStatusPublished}},
+		sessions: map[string]*service.Session{"s": {ID: "s", MapID: "visible", Map: m}},
 	}
-	m := &mutationResolver{&Resolver{Service: fs}}
-	_, err := m.SetProgram(context.Background(), "s", model.ProgramInput{}, nil)
+	r := &mutationResolver{&Resolver{Service: fs}}
+	_, err := r.SetProgram(context.Background(), "s", model.ProgramInput{}, nil)
 	if codeOf(t, err) != service.CodeSessionPlaying {
 		t.Fatalf("err = %v", err)
 	}

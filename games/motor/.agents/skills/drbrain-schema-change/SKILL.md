@@ -5,7 +5,7 @@ description: "Change the GraphQL schema, resolvers or mutations in drbrain-motor
 
 # Changing the GraphQL API in drbrain-motor-programming
 
-Go + gqlgen (v0.17.73) + a committed SvelteKit bundle served by the Go binary. No database: flat JSON under `sessions/`, `accounts/`, `maps-user/`.
+Go + gqlgen (v0.17.73) + a committed SvelteKit bundle served by the Go binary. One PostgreSQL database (`platform_sessions`, `accounts`, `platform_maps`) plus builtin map files; there are no `sessions/`, `accounts/` or `maps-user/` runtime directories.
 
 ## 1. Edit the SDL
 
@@ -85,4 +85,4 @@ cd frontend && npm run check && npm test
 
 - Check `git diff -U0 <file>` before "fixing" a lint error: this tree often carries unrelated uncommitted work, sometimes from a second agent.
 - Tests that call play mutations need the session's `ownerToken`; `browser.play()` in `api/accounts_test.go` already threads it.
-- Do not hand-edit `sessions/*.json` on a live server: shutdown persists in-memory state over it. `just stop`, edit, `jq`-diff the file, `just restart`.
+- Do not hand-edit `platform_sessions` rows on a live server: in-memory state is authoritative and a shutdown persists over them. Stop the service, inspect with SQL, then restart.

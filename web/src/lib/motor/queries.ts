@@ -31,6 +31,8 @@ const MAP_FIELDS = `
   description
   difficulty
   builtin
+  status
+  ownedByMe
   width
   height
   layout
@@ -179,6 +181,12 @@ export const CREATE_MAP_MUTATION = `
 export const UPDATE_MAP_MUTATION = `
   mutation UpdateMap($map: Motor_MapInput!) {
     motorProgramming { updateMap(map: $map) { ${MAP_FIELDS} } }
+  }
+`;
+
+export const PUBLISH_MAP_MUTATION = `
+  mutation PublishMap($id: ID!) {
+    motorProgramming { publishMap(id: $id) { ${MAP_FIELDS} } }
   }
 `;
 

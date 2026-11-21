@@ -33,7 +33,7 @@ cd frontend && npx vitest run src/lib/tower.test.ts   # single frontend test
 game/engine      pure rules, no deps/IO: MapConfig/NewMap, State.Move, Simulate, Shortest/Reachable, View (fog)
 game/service     Session type, GameService facade + impl; interfaces MapStore, SessionStore, Broadcaster; coded errors
 game/config      MapStore impl: maps/*.json, RWMutex, atomic writes
-game/session     SessionStore impl: in-memory Manager + FilePersistence (sessions/<id>.json)
+game/session     SessionStore impl: in-memory Manager + StorePersistence (PostgreSQL)
 transport/websocket  Hub: SubscribeSession fanout, latest-wins (no raw WS clients)
 validate         map checks, finish reachability, reference-solution check (+ cmd/validate)
 graph            gqlgen schema/resolvers, converters (fog lives here), subscription forwarder, admin gate

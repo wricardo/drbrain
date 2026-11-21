@@ -28,16 +28,12 @@ func TestRehydrateManySessionsIsCheap(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cfgMgr, err := config.NewManager(maps, "")
+	cfgMgr, err := config.NewManager(config.Options{ConfigDir: maps})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	saveDir := filepath.Join(dir, "sessions")
-	fp, err := NewFilePersistence(saveDir, cfgMgr)
-	if err != nil {
-		t.Fatal(err)
-	}
+	fp := newMemoryPersistence(t, cfgMgr)
 	mgr := NewManagerWithPersistence(fp)
 
 	names := []string{"classic", "stella_map", "sarah_map"}

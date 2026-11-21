@@ -13,13 +13,13 @@ import (
 // would block this goroutine (and the snapshots it holds) forever. Updates
 // whose seq is not newer than the last emitted one are dropped (the initial
 // snapshot may race with a hub update carrying the same state).
-func forwardSessionUpdates(ctx context.Context, initial *service.Session, updates <-chan *service.Session, buffer int) <-chan *model.SessionUpdate {
+func (r *Resolver) forwardSessionUpdates(ctx context.Context, initial *service.Session, updates <-chan *service.Session, buffer int) <-chan *model.SessionUpdate {
 	out := make(chan *model.SessionUpdate, buffer)
 	go func() {
 		defer close(out)
 		last := initial.Seq
 		select {
-		case out <- toSessionUpdate(initial):
+		case out <- r.sessionUpdateView(ctx, initial):
 		case <-ctx.Done():
 			return
 		}
@@ -36,7 +36,7 @@ func forwardSessionUpdates(ctx context.Context, initial *service.Session, update
 				}
 				last = u.Seq
 				select {
-				case out <- toSessionUpdate(u):
+				case out <- r.sessionUpdateView(ctx, u):
 				case <-ctx.Done():
 					return
 				}

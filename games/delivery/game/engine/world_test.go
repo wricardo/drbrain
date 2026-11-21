@@ -19,7 +19,7 @@ func tinyWorld(t *testing.T) *World {
 		"WRRRRRW",
 		"WWWWWWW",
 	}
-	cfg := &CityConfig{
+	cfg := completeConfig(&CityConfig{
 		Name:     "tiny",
 		GridSize: 7,
 		TickMS:   100,
@@ -31,11 +31,11 @@ func tinyWorld(t *testing.T) *World {
 		Items:  map[string]string{"pizza": "Pizza"},
 		Depots: []DepotConfig{{ID: "d1", Pos: Position{1, 1}, Capacity: 4, ChargeSlots: 4}},
 		CarClasses: map[string]CarClassConfig{
-			"scooter": {Speed: 1, Capacity: 1, MaxBattery: 10, StepCost: 1},
-			"van":     {Speed: 1, Capacity: 3, MaxBattery: 20, StepCost: 1},
+			"scooter": {Capacity: 1, MaxBattery: 10, StepCost: 1},
+			"van":     {Capacity: 3, MaxBattery: 20, StepCost: 1},
 		},
 		InitialCars: []InitialCarConfig{{Class: "scooter", Name: "S1", Pos: Position{1, 1}}},
-	}
+	})
 	city, err := NewCity(cfg)
 	if err != nil {
 		t.Fatalf("build tiny city: %v", err)
@@ -164,16 +164,16 @@ func TestGroundCostsExtraBattery(t *testing.T) {
 		"WRRRRRW",
 		"WWWWWWW",
 	}
-	cfg := &CityConfig{
+	cfg := completeConfig(&CityConfig{
 		Name: "g", GridSize: 7,
 		Layout: rows,
 		Legend: map[string]string{"W": "water", "R": "road", "D": "depot", "G": "ground"},
 		Depots: []DepotConfig{{ID: "d1", Pos: Position{1, 1}, Capacity: 1}},
 		CarClasses: map[string]CarClassConfig{
-			"scooter": {Speed: 1, Capacity: 1, MaxBattery: 10, StepCost: 1},
+			"scooter": {Capacity: 1, MaxBattery: 10, StepCost: 1},
 		},
 		InitialCars: []InitialCarConfig{{Class: "scooter", Pos: Position{3, 1}}},
-	}
+	})
 	city, err := NewCity(cfg)
 	if err != nil {
 		t.Fatalf("city: %v", err)
@@ -220,9 +220,9 @@ func TestCarChargesOnDepotAndStopsAtMax(t *testing.T) {
 
 	w.Advance()
 
-	if car.Battery != 1+DefaultDepotChargeRate {
+	if car.Battery != 1+w.City.Charging.DepotRate {
 		t.Fatalf("battery after one tick on depot = %d, want %d",
-			car.Battery, 1+DefaultDepotChargeRate)
+			car.Battery, 1+w.City.Charging.DepotRate)
 	}
 
 	// Charging must clamp at max, never exceed it.
@@ -329,16 +329,23 @@ func TestMultipleCarsAllMoveOnSameTick(t *testing.T) {
 	}
 }
 
-func TestBuyCarRespectsDepotCapacity(t *testing.T) {
+func TestBuyCarIsLimitedByMoneyNotSpace(t *testing.T) {
 	w := tinyWorld(t)
-	// Depot capacity is 4 and one car is already parked there.
-	for range 3 {
+	// Give the van a price so the second purchase exercises the money gate.
+	w.carClasses["van"] = CarClassConfig{Capacity: 3, MaxBattery: 20, StepCost: 1, Price: 100}
+	w.Ledger.Money = 10_000
+	// The depot has no fleet-size cap; buy well past its legacy capacity.
+	for i := range 12 {
 		if _, err := w.BuyCar("scooter", "d1"); err != nil {
-			t.Fatalf("buy within capacity: %v", err)
+			t.Fatalf("buy %d with money available: %v", i, err)
 		}
 	}
-	if _, err := w.BuyCar("scooter", "d1"); err == nil {
-		t.Fatal("expected depot-full error")
+	if got := w.CarsAt(w.City.Depots[0].Pos); got != 13 {
+		t.Fatalf("cars parked at depot = %d, want 13", got)
+	}
+	w.Ledger.Money = 0
+	if _, err := w.BuyCar("van", "d1"); err == nil || !strings.Contains(err.Error(), "costs") {
+		t.Fatalf("buy without money = %v, want a cost error", err)
 	}
 }
 
@@ -425,16 +432,16 @@ func TestRenderShowsCarsAsDigits(t *testing.T) {
 }
 
 func TestNewWorldRejectsCarOnImpassableTile(t *testing.T) {
-	cfg := &CityConfig{
+	cfg := completeConfig(&CityConfig{
 		Name: "bad", GridSize: 5,
 		Layout: []string{"WWWWW", "WDRRW", "WRRRW", "WRRRW", "WWWWW"},
 		Legend: map[string]string{"W": "water", "R": "road", "D": "depot"},
 		Depots: []DepotConfig{{ID: "d1", Pos: Position{1, 1}, Capacity: 1}},
 		CarClasses: map[string]CarClassConfig{
-			"scooter": {Speed: 1, Capacity: 1, MaxBattery: 5, StepCost: 1},
+			"scooter": {Capacity: 1, MaxBattery: 5, StepCost: 1},
 		},
 		InitialCars: []InitialCarConfig{{Class: "scooter", Pos: Position{0, 0}}},
-	}
+	})
 	city, err := NewCity(cfg)
 	if err != nil {
 		t.Fatalf("city: %v", err)

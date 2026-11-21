@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { GameMap } from '$lib/motor/types';
-	import { splitMapName } from '$lib/motor/maps';
+	import { canEditMap, splitMapName } from '$lib/motor/maps';
 	import { recursionChip } from '$lib/motor/recursion';
 	import MiniGrid from './MiniGrid.svelte';
 
@@ -38,6 +38,9 @@
 		{#if !map.builtin}
 			<span class="rounded-full bg-violet-100 text-violet-800 px-2 py-0.5" data-testid="player-map">player-made</span>
 		{/if}
+		{#if map.status === 'DRAFT'}
+			<span class="rounded-full bg-amber-100 text-amber-900 px-2 py-0.5" data-testid="map-draft">draft</span>
+		{/if}
 		<span class="rounded-full bg-indigo-50 text-indigo-800 px-2 py-0.5">{map.width}×{map.height}</span>
 		<span class="rounded-full bg-indigo-50 text-indigo-800 px-2 py-0.5">{map.treats.length} {map.treats.length === 1 ? 'treat' : 'treats'}</span>
 		<span class="rounded-full bg-indigo-50 text-indigo-800 px-2 py-0.5">≤ {map.maxSteps} steps</span>
@@ -57,7 +60,9 @@
 		{/if}
 		{#if editHref}
 			<div class="flex gap-2">
-				<a href={editHref} class="flex-1 rounded-lg border border-indigo-300 px-3 py-1.5 text-center text-sm text-indigo-800 hover:bg-indigo-50">Edit</a>
+				{#if canEditMap(map)}
+					<a href={editHref} class="flex-1 rounded-lg border border-indigo-300 px-3 py-1.5 text-center text-sm text-indigo-800 hover:bg-indigo-50">Edit</a>
+				{/if}
 				<a href="{editHref}&duplicate=1" class="flex-1 rounded-lg border border-indigo-300 px-3 py-1.5 text-center text-sm text-indigo-800 hover:bg-indigo-50">Duplicate</a>
 			</div>
 		{/if}

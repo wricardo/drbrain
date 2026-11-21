@@ -64,8 +64,7 @@ just tools              # goimports + golangci-lint
 |------|---------|-------------|
 | `-port` | `8000` | HTTP port |
 | `-host` | `localhost` | Bind address (use `0.0.0.0` to expose on LAN) |
-| `-config-dir` | `$CONFIG_DIR` or `maps` | Map directory (env `CONFIG_DIR`) |
-| `-sessions-dir` | `$SESSIONS_DIR` or `sessions` | Session persistence directory (env `SESSIONS_DIR`) |
+| `-config-dir` | `$TESLA_CONFIG_DIR` or `maps` | Builtin map directory (env `TESLA_CONFIG_DIR`) |
 | `-public-url` | request host | Base URL rendered in `/llms.txt` |
 | `-debug` | `false` | Debug logging |
 
@@ -81,20 +80,25 @@ cp .env.example .env
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `GRAPHQL_INTROSPECTION` | `true` | GraphQL schema introspection |
-| `GRAPHQL_PLAYGROUND` | `true` | `/playground` UI |
-| `MCP_ENABLED` | `true` | `/mcp` endpoint |
-| `ADMIN_API_KEY` | unset | Optional. `X-Admin-Key` header value that overrides map ownership (edit built-in maps) |
-| `ALLOW_UNAUTHENTICATED_ADMIN` | `false` | Local-only bypass: treat every request as admin |
-| `CUSTOM_MAPS_DIR` | `$CONFIG_DIR/custom` | Writable directory for user-created maps (and their edit tokens) |
-| `ALLOWED_ORIGINS` | all | WebSocket origin allowlist (comma-separated; `*` or empty allows all) |
+| `TESLA_GRAPHQL_INTROSPECTION` | `true` | GraphQL schema introspection |
+| `TESLA_GRAPHQL_PLAYGROUND` | `true` | `/playground` UI |
+| `TESLA_MCP_ENABLED` | `true` | `/mcp` endpoint |
+| `TESLA_ADMIN_API_KEY` | unset | `X-Admin-Key` value for shipped and legacy ownerless maps |
+| `TESLA_ALLOW_UNAUTHENTICATED_ADMIN` | `false` | Local-only bypass: treat every request as admin |
+| `TESLA_MAX_USER_MAPS` | `200` | Cap on custom maps stored in `platform_maps` |
+| `TESLA_ALLOWED_ORIGINS` | all | WebSocket origin allowlist (comma-separated; `*` or empty allows all) |
+
+`TESLA_CUSTOM_MAPS_DIR` is not a runtime setting. Existing custom maps are imported once with
+`drbrain import-maps --game=tesla --dir=<legacy dir>`; imported maps are `PUBLISHED` and
+ownerless, and an owner claims one with `claimMap` and its old edit key. `pg_dump` is the only
+backup for custom maps.
 
 Every variable is declared once in `appconfig.Config` and loaded with
 [`kelseyhightower/envconfig`](https://github.com/kelseyhightower/envconfig) —
 that package is the only place environment parsing lives. Booleans accept
 `true`, `1`, or `yes`; any other value means off; empty keeps the default.
-`ALLOW_UNAUTHENTICATED_ADMIN` is stricter: only the exact string `true` enables it.
-`-config-dir` / `-sessions-dir` flags override `CONFIG_DIR` / `SESSIONS_DIR`.
+`TESLA_ALLOW_UNAUTHENTICATED_ADMIN` is stricter: only the exact string `true` enables it.
+`-config-dir` overrides `TESLA_CONFIG_DIR`. Sessions live in PostgreSQL (`DRBRAIN_DATABASE_URL`).
 
 ### Browser UI checks
 
@@ -233,7 +237,7 @@ Notes:
 
 ## Maps
 
-Maps live in `maps/*.json` (schema: [map-schema.json](map-schema.json), docs: [docs/config-schema.md](docs/config-schema.md)). List them at runtime with the `maps` GraphQL query. Validate all maps with:
+Builtin maps live in `maps/*.json` (schema: [map-schema.json](map-schema.json), docs: [docs/config-schema.md](docs/config-schema.md)); they are release-managed files. Custom maps are PostgreSQL `platform_maps` rows (owner, DRAFT/PUBLISHED, hashed legacy edit key), capped by `TESLA_MAX_USER_MAPS`, and backed up with `pg_dump`. List them at runtime with the `maps` GraphQL query (published maps plus the caller's drafts). Validate all builtin maps with:
 
 ```bash
 just validate

@@ -38,24 +38,19 @@ trap cleanup EXIT
 
 export DRBRAIN_ADDR="127.0.0.1:$port"
 export DRBRAIN_STATIC_DIR="$tmp/static"
-export DRBRAIN_ACCOUNTS_DIR="$tmp/accounts"
+# Accounts and sessions live in PostgreSQL; point TEST_DATABASE_URL (or
+# DRBRAIN_DATABASE_URL) at a disposable database.
+export DRBRAIN_DATABASE_URL="${DRBRAIN_DATABASE_URL:-${TEST_DATABASE_URL:?set TEST_DATABASE_URL or DRBRAIN_DATABASE_URL to a disposable PostgreSQL URL}}"
 export DRBRAIN_SHUTDOWN_TIMEOUT="5s"
 export DRBRAIN_AUTH_PASSWORD="false"
 export MAZES_MAPS_DIR="$root/games/mazes/maps"
-export MAZES_SESSIONS_DIR="$tmp/mazes/sessions"
 export MAZES_SOLUTIONS_DIR="$tmp/mazes/solutions"
 export MOTOR_MAPS_DIR="$root/games/motor/maps"
-export MOTOR_USER_MAPS_DIR="$tmp/motor/maps-user"
-export MOTOR_SESSIONS_DIR="$tmp/motor/sessions"
 export MOTOR_SOLUTIONS_DIR="$tmp/motor/solutions"
 export DELIVERY_CITY="$root/games/delivery/maps/city.json"
-export DELIVERY_SESSIONS_DIR="$tmp/delivery/sessions"
 export TESLA_CONFIG_DIR="$root/games/tesla/maps"
-export TESLA_CUSTOM_MAPS_DIR="$tmp/tesla/custom"
-export TESLA_SESSIONS_DIR="$tmp/tesla/sessions"
 export MUSIC_SCORES_DIR="$root/games/music/scores"
-export MUSIC_SESSIONS_DIR="$tmp/music/sessions"
-mkdir -p "$DRBRAIN_STATIC_DIR" "$DRBRAIN_ACCOUNTS_DIR"
+mkdir -p "$DRBRAIN_STATIC_DIR" "$tmp/mazes/solutions" "$tmp/motor/solutions"
 
 start_server() {
   DRBRAIN_GAMES="$1" "$tmp/drbrain" serve >"$tmp/server.log" 2>&1 &
@@ -254,23 +249,15 @@ resolved="$(solve_session "$sid")"
 [ "$(field '.data.music.setArrangement.wins' "$resolved")" = "2" ] || fail "wins after second solve != 2"
 log "wins: 1 after first solve, still 1 after a flip, 2 after reset+solve"
 
-# ---- (3) Genius payload size and sidecar round-trip ------------------------
+# ---- (3) Genius session size -------------------------------------------------
 # Every difficulty uses the whole piece, so the longest shipped piece produces
-# the largest payload.
+# the largest arrangement.
 largest="$(field '[.data.music.excerpts[] | {id: .id, n: (.measures | length)}] | max_by(.n) | .id' "$excerpts")"
 genius="$(create_session "$largest" "GENIUS" 13)"
 gid="$(field '.data.music.createSession.id' "$genius")"
 slots="$(field '.data.music.createSession.slots | length' "$genius")"
-payload="$MUSIC_SESSIONS_DIR/$gid.json"
-meta="$MUSIC_SESSIONS_DIR/$gid.meta.json"
-[ -f "$payload" ] || fail "missing payload $payload"
-[ -f "$meta" ] || fail "missing meta sidecar $meta"
-bytes="$(wc -c <"$payload" | tr -d ' ')"
 [ "$slots" -le 6 ] || fail "genius session has $slots slots, over the 6-bar Music Region cap"
-[ "$bytes" -lt 262144 ] || fail "genius payload $bytes bytes is not well under the 1 MiB body cap"
-jq -e --arg id "$gid" '.id == $id' "$meta" >/dev/null || fail "meta sidecar does not describe $gid"
-jq -e --arg id "$gid" '.id == $id and (.slots | length) == '"$slots" "$payload" >/dev/null || fail "payload does not round-trip $gid"
-log "payload: genius session $gid on $largest = $bytes bytes (+ $(wc -c <"$meta" | tr -d ' ') byte meta), $slots slots"
+log "payload: genius session $gid on $largest, $slots slots"
 
 # ---- (e) subscription delivers one update with the mutation's seq ----------
 # Use a separate session so the solved witness for the restart check (sid,

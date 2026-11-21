@@ -5,155 +5,129 @@ import (
 	"sort"
 )
 
-// Progression: achievements fire on their own, unlocks grant permission, and
-// builds cost money and change the map.
+// City growth.
 //
-// The separation matters for the player's experience of "the map evolves":
-// an achievement is a surprise, an unlock is an offer, and a build is a
-// decision. Collapsing them into one event would turn the build into a
-// cutscene.
+// The city expands on a schedule, not through purchases: each stage names a
+// tick and a list of effects, and the world applies it the first time the clock
+// reaches that tick. A stage is atomic — districts reveal together, a bridge
+// and its charger appear together — and rows that would strand a kitchen or a
+// customer are rejected rather than partially applied.
+//
+// Chapter() is derived from how many stages have applied, so the pacing tables
+// (quantity bands, reward multipliers, deadline slack) intensify with the city
+// itself rather than with anything the player buys.
 
-// AchievementStatus is the per-achievement view the API exposes.
-type AchievementStatus struct {
+// GrowthStatus is the per-stage view the API exposes.
+type GrowthStatus struct {
 	ID          string
+	Tick        int64
 	Title       string
 	Description string
 	Done        bool
-	Progress    int // coarse progress toward the strictest requirement
-	Target      int // the target that Progress is measured against
 }
 
-// UnlockStatus is the per-unlock view the API exposes.
-type UnlockStatus struct {
-	ID          string
-	Title       string
-	Description string
-	// Requires is the gate in words, e.g. "5 deliveries". The UI shows it
-	// beside Progress/Target so a locked card says what it is waiting for
-	// instead of only that it is locked.
-	Requires string
-	Earned   bool
-	Progress int // coarse progress toward the strictest requirement
-	Target   int // the target that Progress is measured against
-	Builds   []string
+// Growth returns the schedule with its current status, in application order.
+func (w *World) Growth() []GrowthStatus {
+	out := make([]GrowthStatus, 0, len(w.growth))
+	for i, st := range w.growth {
+		out = append(out, GrowthStatus{
+			ID:          st.ID,
+			Tick:        st.Tick,
+			Title:       st.Title,
+			Description: st.Description,
+			Done:        i < w.growthApplied,
+		})
+	}
+	return out
 }
 
-// BuildStatus is the per-build view the API exposes.
-type BuildStatus struct {
-	ID          string
-	Title       string
-	Description string
-	Cost        int
-	Unlocked    bool
-	Completed   bool
-	Affordable  bool
-	Applicable  bool   // a legal placement exists right now
-	Problem     string // why it cannot be built, when it cannot
-}
-
-// evalProgression runs at the end of each tick: achievements and unlocks are
-// one-shot, so anything already earned is skipped cheaply.
-func (w *World) evalProgression() {
-	for i := range w.achievements {
-		a := &w.achievements[i]
-		if a.Done {
+// applyGrowth applies every stage whose tick has been reached, in schedule
+// order. It runs once per tick, before orders are spawned, so a stage that
+// reveals a district can produce work on the same tick the player sees it.
+//
+// A stage that fails validation at runtime (which authoring validation should
+// have caught) is skipped with an event rather than retried forever; the rest of
+// the schedule still applies.
+func (w *World) applyGrowth() {
+	for w.growthApplied < len(w.growth) {
+		st := w.growth[w.growthApplied]
+		if w.Tick < st.Tick {
+			return
+		}
+		next := w.City.Clone()
+		if err := next.applyEffects(st.Effects); err != nil {
+			w.growthApplied++
+			w.emit(EventGrowth, nil, fmt.Sprintf("%s could not be applied: %v", st.Title, err))
 			continue
 		}
-		if !w.meets(a.Requires) {
+		if stranded := next.StrandedEntities(); len(stranded) > 0 {
+			w.growthApplied++
+			w.emit(EventGrowth, nil, fmt.Sprintf("%s would strand %v", st.Title, stranded))
 			continue
 		}
-		a.Done = true
-		if a.GrantMoney != 0 {
-			w.Ledger.Money += a.GrantMoney
-			w.Ledger.MoneyEarned += a.GrantMoney
-		}
-		if a.GrantRep != 0 {
-			w.Ledger.Reputation += a.GrantRep
+
+		w.City = next
+		w.applyGrowthGrants(st)
+		w.growthApplied++
+		w.emit(EventGrowth, nil, fmt.Sprintf("%s: %s", st.Title, st.Description))
+	}
+}
+
+// applyGrowthGrants handles the non-geographic half of a stage: money and
+// reputation grants, and car classes licensed for purchase.
+func (w *World) applyGrowthGrants(st GrowthConfig) {
+	for _, e := range st.Effects {
+		switch e.Type {
+		case EffectGrantMoney:
+			w.recordCash(CashGrant, e.Amount, nil, "", st.Title+" grant")
+			w.Ledger.MoneyEarned += e.Amount
+		case EffectGrantRep:
+			w.Ledger.Reputation += e.Rep
 			w.clampReputation()
+		case EffectGrantCarClass:
+			if e.Class != "" {
+				w.buyableClasses[e.Class] = true
+			}
 		}
-		msg := "achievement: " + a.Title
-		if a.GrantMoney != 0 {
-			msg += fmt.Sprintf(" (+$%d)", a.GrantMoney)
-		}
-		w.emit(EventUnlock, nil, msg)
-	}
-
-	for i := range w.unlocks {
-		u := &w.unlocks[i]
-		if u.Earned {
-			continue
-		}
-		if !w.meets(u.Requires) {
-			continue
-		}
-		u.Earned = true
-		for _, bid := range u.GrantsBuild {
-			w.permitted[bid] = true
-		}
-		w.emit(EventUnlock, nil, "unlocked: "+u.Title)
 	}
 }
 
-// meets evaluates a requirement against the ledger and city. All populated
-// fields must hold (AND).
-func (w *World) meets(r Requirement) bool {
-	if r.Deliveries != nil && w.Ledger.Deliveries < *r.Deliveries {
-		return false
-	}
-	if r.MoneyEarned != nil && w.Ledger.MoneyEarned < *r.MoneyEarned {
-		return false
-	}
-	if r.MoneyBalance != nil && w.Ledger.Money < *r.MoneyBalance {
-		return false
-	}
-	if r.Reputation != nil && w.Ledger.Reputation < *r.Reputation {
-		return false
-	}
-	if r.Tows != nil && w.Ledger.Tows < *r.Tows {
-		return false
-	}
-	if r.ExpiredOrders != nil && w.Ledger.ExpiredOrders < *r.ExpiredOrders {
-		return false
-	}
-	if r.OnTimeStreak != nil && w.Ledger.OnTimeStreak < *r.OnTimeStreak {
-		return false
-	}
-	if r.CarsOwned != nil && len(w.Cars) < *r.CarsOwned {
-		return false
-	}
-	if r.BuildsCompleted != nil && w.Ledger.BuildsCompleted < *r.BuildsCompleted {
-		return false
-	}
-	if r.TilesExploredPct != nil {
-		total := w.City.GridSize * w.City.GridSize
-		explored := total - w.City.HiddenCount()
-		pct := 0
-		if total > 0 {
-			pct = explored * 100 / total
+// validateGrowthSchedule proves the whole schedule can run in order before a
+// session starts: ticks must be non-decreasing, ids unique, and every stage's
+// effects must apply to the city the previous stages leave behind without
+// stranding a kitchen or customer.
+//
+// This runs at load, so a bad content edit fails startup naming the stage
+// instead of silently skipping half the city's growth twenty minutes into a
+// game.
+func (w *World) validateGrowthSchedule() error {
+	seen := map[string]bool{}
+	lastTick := int64(0)
+	city := w.City.Clone()
+	for i, st := range w.growth {
+		if st.ID == "" {
+			return fmt.Errorf("growth stage %d has no id", i)
 		}
-		if pct < *r.TilesExploredPct {
-			return false
+		if seen[st.ID] {
+			return fmt.Errorf("duplicate growth stage id %q", st.ID)
 		}
+		seen[st.ID] = true
+		if i > 0 && st.Tick < lastTick {
+			return fmt.Errorf("growth stage %q is scheduled at tick %d, before the previous stage's %d",
+				st.ID, st.Tick, lastTick)
+		}
+		lastTick = st.Tick
+
+		next := city.Clone()
+		if err := next.applyEffects(st.Effects); err != nil {
+			return fmt.Errorf("growth stage %q: %w", st.ID, err)
+		}
+		if stranded := next.StrandedEntities(); len(stranded) > 0 {
+			return fmt.Errorf("growth stage %q would strand %v", st.ID, stranded)
+		}
+		city = next
 	}
-	if r.ItemDelivered != nil {
-		if r.ItemDelivered.Delivered != nil {
-			if w.Ledger.DeliveriesByItem[r.ItemDelivered.Item] < *r.ItemDelivered.Delivered {
-				return false
-			}
-		}
-	}
-	if r.DistrictsRevealed != nil {
-		revealed := 0
-		for _, d := range w.City.Districts {
-			if len(d.Rects) > 0 && !w.districtHidden(d) {
-				revealed++
-			}
-		}
-		if revealed < *r.DistrictsRevealed {
-			return false
-		}
-	}
-	return true
+	return nil
 }
 
 // districtHidden reports whether every tile of a district is still hidden.
@@ -171,248 +145,6 @@ func (w *World) districtHidden(d District) bool {
 		}
 	}
 	return true
-}
-
-// Achievements returns the achievement list with status.
-func (w *World) Achievements() []AchievementStatus {
-	out := make([]AchievementStatus, 0, len(w.achievements))
-	for _, a := range w.achievements {
-		st := AchievementStatus{
-			ID: a.ID, Title: a.Title, Description: a.Description, Done: a.Done,
-		}
-		st.Progress, st.Target = w.progressFor(a.Requires)
-		out = append(out, st)
-	}
-	return out
-}
-
-// progressFor picks the requirement furthest from satisfied and returns
-// current/target for it, so a UI can show "3/5 deliveries".
-func (w *World) progressFor(r Requirement) (progress, target int) {
-	type pair struct{ cur, want int }
-	var pairs []pair
-	add := func(cur, want int) { pairs = append(pairs, pair{cur, want}) }
-
-	if r.Deliveries != nil {
-		add(w.Ledger.Deliveries, *r.Deliveries)
-	}
-	if r.MoneyEarned != nil {
-		add(w.Ledger.MoneyEarned, *r.MoneyEarned)
-	}
-	if r.MoneyBalance != nil {
-		add(w.Ledger.Money, *r.MoneyBalance)
-	}
-	if r.Tows != nil {
-		add(w.Ledger.Tows, *r.Tows)
-	}
-	if r.ExpiredOrders != nil {
-		add(w.Ledger.ExpiredOrders, *r.ExpiredOrders)
-	}
-	if r.OnTimeStreak != nil {
-		add(w.Ledger.OnTimeStreak, *r.OnTimeStreak)
-	}
-	if r.CarsOwned != nil {
-		add(len(w.Cars), *r.CarsOwned)
-	}
-	if r.BuildsCompleted != nil {
-		add(w.Ledger.BuildsCompleted, *r.BuildsCompleted)
-	}
-	if r.ItemDelivered != nil && r.ItemDelivered.Delivered != nil {
-		add(w.Ledger.DeliveriesByItem[r.ItemDelivered.Item], *r.ItemDelivered.Delivered)
-	}
-
-	for _, p := range pairs {
-		if target == 0 || float64(p.cur)/float64(p.want) < float64(progress)/float64(target) {
-			progress, target = p.cur, p.want
-		}
-	}
-	return progress, target
-}
-
-// Unlocks returns the unlock list with status.
-func (w *World) Unlocks() []UnlockStatus {
-	out := make([]UnlockStatus, 0, len(w.unlocks))
-	for _, u := range w.unlocks {
-		st := UnlockStatus{
-			ID: u.ID, Title: u.Title, Description: u.Description,
-			Requires: w.describeRequires(u.Requires),
-			Earned:   u.Earned, Builds: u.GrantsBuild,
-		}
-		st.Progress, st.Target = w.progressFor(u.Requires)
-		out = append(out, st)
-	}
-	return out
-}
-
-// describeRequires renders a requirement in the units the player thinks in,
-// because a locked upgrade card that only says "locked" tells them nothing
-// about what to do next. Pairs are joined in declaration order and every part
-// is included: a gate of "5 deliveries AND reputation 4.0" must not hide half
-// of itself behind the strictest-progress bar.
-func (w *World) describeRequires(r Requirement) string {
-	parts := make([]string, 0, 4)
-	if r.Deliveries != nil {
-		parts = append(parts, plural(*r.Deliveries, "delivery", "deliveries"))
-	}
-	if r.MoneyEarned != nil {
-		parts = append(parts, fmt.Sprintf("earn $%d", *r.MoneyEarned))
-	}
-	if r.MoneyBalance != nil {
-		parts = append(parts, fmt.Sprintf("hold $%d", *r.MoneyBalance))
-	}
-	if r.Reputation != nil {
-		parts = append(parts, fmt.Sprintf("reputation %.1f", *r.Reputation))
-	}
-	if r.Tows != nil {
-		parts = append(parts, plural(*r.Tows, "tow", "tows"))
-	}
-	if r.ExpiredOrders != nil {
-		parts = append(parts, plural(*r.ExpiredOrders, "expired order", "expired orders"))
-	}
-	if r.OnTimeStreak != nil {
-		parts = append(parts, fmt.Sprintf("%s on time in a row", itoa(*r.OnTimeStreak)))
-	}
-	if r.ItemDelivered != nil {
-		if r.ItemDelivered.Delivered != nil {
-			parts = append(parts, fmt.Sprintf("%s %s delivered",
-				itoa(*r.ItemDelivered.Delivered), w.itemName(r.ItemDelivered.Item)))
-		}
-	}
-	if r.CarsOwned != nil {
-		parts = append(parts, plural(*r.CarsOwned, "car", "cars"))
-	}
-	if r.TilesExploredPct != nil {
-		parts = append(parts, fmt.Sprintf("%d%% of the map explored", *r.TilesExploredPct))
-	}
-	if r.DistrictsRevealed != nil {
-		parts = append(parts, plural(*r.DistrictsRevealed, "district", "districts"))
-	}
-	if r.BuildsCompleted != nil {
-		parts = append(parts, plural(*r.BuildsCompleted, "build", "builds"))
-	}
-	if len(parts) == 0 {
-		return "no requirement"
-	}
-	joined := parts[0]
-	for _, p := range parts[1:] {
-		joined += " and " + p
-	}
-	return joined
-}
-
-// itemName is the display name for an item id, falling back to the id so an
-// unknown item still reads as something rather than an empty string.
-func (w *World) itemName(id string) string {
-	if name, ok := w.City.Items[id]; ok && name != "" {
-		return name
-	}
-	return id
-}
-
-// plural renders a count with the right word form.
-func plural(n int, one, many string) string {
-	if n == 1 {
-		return itoa(n) + " " + one
-	}
-	return itoa(n) + " " + many
-}
-
-// Builds returns the build list with availability.
-func (w *World) Builds() []BuildStatus {
-	out := make([]BuildStatus, 0, len(w.builds))
-	for _, b := range w.builds {
-		st := BuildStatus{
-			ID: b.ID, Title: b.Title, Description: b.Description, Cost: b.Cost,
-			Unlocked:   w.permitted[b.ID],
-			Completed:  w.built[b.ID],
-			Affordable: w.Ledger.Money >= b.Cost,
-		}
-		if st.Unlocked && !st.Completed {
-			if err := w.City.ValidatePlacement(b); err != nil {
-				st.Problem = err.Error()
-			} else {
-				st.Applicable = true
-			}
-		}
-		out = append(out, st)
-	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	return out
-}
-
-// BuildResult describes what a successful build changed.
-type BuildResult struct {
-	BuildID   string
-	Cost      int
-	Revealed  int
-	MoneyLeft int
-}
-
-// Build purchases and applies an upgrade. It is the player-facing operation
-// behind "the map evolves": it validates permission, money, placement and
-// atomicity before touching anything.
-func (w *World) Build(buildID string) (*BuildResult, error) {
-	b, ok := w.buildByID(buildID)
-	if !ok {
-		return nil, fmt.Errorf("no build %q", buildID)
-	}
-	if w.built[buildID] {
-		return nil, fmt.Errorf("build %q is already completed", buildID)
-	}
-	if !w.permitted[buildID] {
-		return nil, fmt.Errorf("build %q is not unlocked yet", buildID)
-	}
-	if w.Ledger.Money < b.Cost {
-		return nil, fmt.Errorf("build %q costs $%d, you have $%d",
-			buildID, b.Cost, w.Ledger.Money)
-	}
-
-	revealed, err := w.City.ApplyBuild(b)
-	if err != nil {
-		return nil, err
-	}
-
-	w.Ledger.Money -= b.Cost
-	w.Ledger.BuildsCompleted++
-	w.built[buildID] = true
-	w.applyEconomicEffects(&b)
-
-	w.emit(EventBuild, nil, fmt.Sprintf("built %s (-$%d)", b.Title, b.Cost))
-	if revealed > 0 {
-		w.emit(EventBuild, nil, fmt.Sprintf("%s revealed %d tiles", b.Title, revealed))
-	}
-	return &BuildResult{
-		BuildID: b.ID, Cost: b.Cost, Revealed: revealed, MoneyLeft: w.Ledger.Money,
-	}, nil
-}
-
-// applyEconomicEffects handles the non-geographic half of a build's effects:
-// money grants, reputation, and unlocking car classes for purchase.
-func (w *World) applyEconomicEffects(b *BuildConfig) {
-	for _, e := range b.Effects {
-		switch e.Type {
-		case EffectGrantMoney:
-			w.Ledger.Money += e.Amount
-			w.Ledger.MoneyEarned += e.Amount
-		case EffectGrantRep:
-			w.Ledger.Reputation += e.Rep
-			w.clampReputation()
-		case EffectGrantCarClass:
-			if e.Class != "" {
-				w.buyableClasses[e.Class] = true
-			}
-		}
-	}
-}
-
-// buildByID looks up a build definition.
-func (w *World) buildByID(id string) (BuildConfig, bool) {
-	for _, b := range w.builds {
-		if b.ID == id {
-			return b, true
-		}
-	}
-	return BuildConfig{}, false
 }
 
 // kitchenByID and customerByID resolve entity ids, used by deadline refreshes.
@@ -462,23 +194,40 @@ func (w *World) CarClassCatalog() []CarClassInfo {
 	return out
 }
 
-// CarClassInfo is one entry of the purchasable catalogue.
+// CarClassInfo is one entry of the purchasable catalogue. Unlocked and
+// Affordable are independent answers: a locked class can still be affordable,
+// and an unlocked class can be too expensive.
 type CarClassInfo struct {
-	Class      string
-	Price      int
-	Capacity   int
+	// Class is the catalogue key that BuyCar and grant_car_class use.
+	Class string
+	// Price is the purchase price in dollars.
+	Price int
+	// Capacity is the cargo hold in boxes, not orders.
+	Capacity int
+	// MaxBattery is a full charge in battery units.
 	MaxBattery int
-	StepCost   int
-	Unlocked   bool
+	// StepCost is the battery spent entering a road tile; ground adds
+	// City.GroundExtraStepCost.
+	StepCost int
+	// Unlocked is the grant rule: true when the class declares no
+	// requires_grant lock, or a growth stage has licensed it. It says nothing
+	// about the balance.
+	Unlocked bool
+	// Affordable is Money >= Price when the catalogue was built. It ignores
+	// the grant lock, so a caller needs both flags to enable a purchase.
 	Affordable bool
 }
 
-// BuyCarClass reports whether a class may be purchased.
+// BuyCarClass checks whether class is available to buy, without spending
+// money. It returns nil when the class exists and its requires_grant lock has
+// been satisfied by a growth stage; unknown or still-locked classes return an
+// error naming them. Affordability is not checked here (see
+// CarClassInfo.Affordable); BuyCar is the call that charges the price.
 //
 // The rule is stated by the map, not inferred: a class is locked only when it
-// declares requires_grant and no build has granted it yet. Inferring the lock
-// from Price was the previous rule, and it silently produced dead content --
-// priced classes that no build could ever unlock.
+// declares requires_grant and no growth stage has licensed it yet. Inferring
+// the lock from Price was the previous rule, and it silently produced dead
+// content — priced classes that nothing could ever unlock.
 func (w *World) BuyCarClass(class string) error {
 	cc, ok := w.carClasses[class]
 	if !ok {

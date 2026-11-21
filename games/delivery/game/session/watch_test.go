@@ -12,7 +12,7 @@ import (
 func newTestSession(t *testing.T) *Session {
 	t.Helper()
 	city, cfg := testCity(t)
-	s, err := New("watchtest", city, cfg, 1, "")
+	s, err := New("watchtest", city, cfg, 1)
 	if err != nil {
 		t.Fatalf("new session: %v", err)
 	}

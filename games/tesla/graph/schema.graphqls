@@ -14,6 +14,16 @@ enum SessionSort {
 	CREATED
 	ACTION
 }
+enum MapStatus {
+	"""
+	A work in progress: only its owner can see, edit, play or publish it.
+	"""
+	DRAFT
+	"""
+	Visible to everyone and playable by anyone.
+	"""
+	PUBLISHED
+}
 type DeleteSessionResult {
 	message: String!
 }
@@ -125,9 +135,19 @@ type GameMap {
 	"""
 	builtin: Boolean!
 	"""
-	Only set in the createMap response: the token that authorizes updateMap and
-	deleteMap for this map (send it as the editKey argument). It is never returned
-	again, so store it. Always null on every other query/mutation.
+	DRAFT maps are visible only to their owner and cannot be played or published by anyone else.
+	Every shipped map is PUBLISHED.
+	"""
+	status: MapStatus!
+	"""
+	True when the signed-in caller created this community map.
+	"""
+	ownedByMe: Boolean!
+	"""
+	Only set when a legacy, unowned map is created: the token that claimMap accepts to attach it
+	to the signed-in account (until then it also authorizes updateMap and deleteMap). It is never
+	returned again, so store it. Null on every other query/mutation; new maps are owned by their
+	creator and need no token.
 	"""
 	editKey: String
 }
@@ -180,6 +200,15 @@ type MapInfo {
 	True for maps shipped with the server.
 	"""
 	builtin: Boolean!
+	"""
+	DRAFT maps are visible only to their owner and cannot be played or published by anyone else.
+	Every shipped map is PUBLISHED.
+	"""
+	status: MapStatus!
+	"""
+	True when the signed-in caller created this community map.
+	"""
+	ownedByMe: Boolean!
 }
 type MoveResult {
 	success: Boolean!
@@ -256,7 +285,13 @@ type Query {
 	unifiedSessions(mapName: String): UnifiedSessions!
 	gameState(sessionID: ID!): GameState!
 	history(sessionID: ID!, page: Int = 1, limit: Int = 50, order: SortOrder = DESC): HistoryResponse!
+	"""
+	Published maps plus the signed-in caller's own drafts. Another player's draft is never listed.
+	"""
 	maps: [MapInfo!]!
+	"""
+	One map. Another player's draft is hidden and null, exactly like an unknown name.
+	"""
 	map(name: String!, password: String): GameMap!
 }
 type Mutation {
@@ -266,8 +301,30 @@ type Mutation {
 	move(sessionID: ID!, direction: Direction!, reset: Boolean = false): MoveResult!
 	bulkMove(sessionID: ID!, moves: [Direction!]!, reset: Boolean = false): BulkMoveResult!
 	reset(sessionID: ID!): GameState!
+	"""
+	Creates a DRAFT map owned by the signed-in player (UNAUTHENTICATED otherwise). Update it
+	until it wins, then publishMap.
+	"""
 	createMap(name: String!, map: GameMapInput!): GameMap!
+	"""
+	Replaces the caller's own map and puts it back into DRAFT. Only the owner may edit a
+	community map; shipped and legacy unowned maps need X-Admin-Key. editKey is accepted only for
+	legacy unowned maps, never as a substitute for ownership.
+	"""
 	updateMap(name: String!, patch: GameMapPatchInput!, editKey: String): GameMap!
+	"""
+	Publishes a valid draft. Only its owner may do it; a map whose parks cannot all be visited is
+	refused with INVALID_ARGUMENT.
+	"""
+	publishMap(name: String!): GameMap!
+	"""
+	Attaches a legacy unowned map to the signed-in player using the editKey it was created with.
+	"""
+	claimMap(name: String!, editKey: String!): GameMap!
+	"""
+	Removes a map. The owner may delete their own community map; shipped and legacy unowned maps
+	need X-Admin-Key. editKey is accepted only for legacy unowned maps.
+	"""
 	deleteMap(name: String!, editKey: String): DeleteSessionResult!
 	validateMap(map: GameMapInput!): MapValidationResult!
 }

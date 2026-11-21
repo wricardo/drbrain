@@ -155,19 +155,31 @@ func newSessionID() (string, error) {
 
 // ---- sessions --------------------------------------------------------------
 
-// CreateSession starts a session on a private snapshot of map mapID.
-func (svc *gameService) CreateSession(mapID, displayName string) (*Session, error) {
+// CreateSession starts a session on a private snapshot of map mapID. The
+// returned owner token is the only copy of the secret: only its hash is kept.
+func (svc *gameService) CreateSession(mapID, displayName, accountID string) (*Session, string, error) {
 	name, err := svc.cleanName(displayName)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	m, err := svc.maps.Get(mapID)
 	if err != nil {
-		return nil, err
+		return nil, "", err
+	}
+	// A draft is playable only by its owner; everyone else gets the same answer
+	// as a missing map, so sessions cannot probe for others' work in progress.
+	if entry, entryErr := svc.maps.GetEntry(mapID); entryErr == nil {
+		if entry.Status == MapStatusDraft && (entry.OwnerID == "" || entry.OwnerID != accountID) {
+			return nil, "", Errorf(CodeNotFound, "map %q not found", mapID)
+		}
 	}
 	id, err := newSessionID()
 	if err != nil {
-		return nil, err
+		return nil, "", err
+	}
+	token, hash, err := NewOwnerToken()
+	if err != nil {
+		return nil, "", err
 	}
 	snapMap := m.Clone()
 	now := time.Now()
@@ -175,16 +187,17 @@ func (svc *gameService) CreateSession(mapID, displayName string) (*Session, erro
 		ID: id, DisplayName: name, MapID: snapMap.ID, Map: snapMap,
 		State: engine.NewState(snapMap),
 		Seq:   1, CreatedAt: now, LastActionAt: now,
+		OwnerAccountID: accountID, OwnerTokenHash: hash,
 	}
 	if err := svc.sessions.Put(s); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	svc.persist(s)
 	s.Lock()
 	snap := s.Clone()
 	s.Unlock()
 	svc.broadcast(snap)
-	return snap, nil
+	return snap, token, nil
 }
 
 // GetSession returns a snapshot of the session.
@@ -381,8 +394,74 @@ func (svc *gameService) Reset(id string) (*Session, error) {
 // ListMaps lists all maps.
 func (svc *gameService) ListMaps() []*engine.Map { return svc.maps.List() }
 
+// ListMapsFor lists published maps plus the viewer's own drafts.
+func (svc *gameService) ListMapsFor(viewerID string) []*engine.Map {
+	entries, err := svc.maps.ListEntries(viewerID)
+	if err != nil {
+		return nil
+	}
+	out := make([]*engine.Map, 0, len(entries))
+	for _, entry := range entries {
+		m, err := engine.NewMap(entry.Config)
+		if err != nil {
+			continue
+		}
+		out = append(out, m.Clone())
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
 // GetMap returns one map.
 func (svc *gameService) GetMap(id string) (*engine.Map, error) { return svc.maps.Get(id) }
+
+// GetMapFor returns a map only when the viewer may see it.
+func (svc *gameService) GetMapFor(id, viewerID string) (*engine.Map, error) {
+	entry, err := svc.maps.GetEntry(id)
+	if err != nil {
+		return nil, err
+	}
+	if entry.Status == MapStatusDraft && (entry.OwnerID == "" || entry.OwnerID != viewerID) {
+		return nil, Errorf(CodeNotFound, "map %q not found", id)
+	}
+	m, err := engine.NewMap(entry.Config)
+	if err != nil {
+		return nil, Errorf(CodeInvalidArgument, "invalid map: %v", err)
+	}
+	return m.Clone(), nil
+}
+
+// ListMapEntries returns the catalogue for viewerID.
+func (svc *gameService) ListMapEntries(viewerID string) ([]*MapEntry, error) {
+	return svc.maps.ListEntries(viewerID)
+}
+
+// GetMapEntry returns any catalogue entry, drafts included.
+func (svc *gameService) GetMapEntry(id string) (*MapEntry, error) { return svc.maps.GetEntry(id) }
+
+// CreateMapDraft stores a DRAFT owned by ownerID. It may be invalid until the
+// owner fixes it; publication runs the full check.
+func (svc *gameService) CreateMapDraft(cfg engine.MapConfig, ownerID string) (*MapEntry, error) {
+	if _, err := svc.maps.CreateDraft(cfg, ownerID); err != nil {
+		return nil, err
+	}
+	return svc.maps.GetEntry(cfg.ID)
+}
+
+// UpdateMapOwned overwrites the actor's map and resets it to DRAFT.
+func (svc *gameService) UpdateMapOwned(cfg engine.MapConfig, actor MapActor) (*MapEntry, error) {
+	return svc.maps.SaveOwned(cfg, actor)
+}
+
+// PublishMap promotes the actor's draft once the finish is reachable.
+func (svc *gameService) PublishMap(id string, actor MapActor) (*MapEntry, error) {
+	return svc.maps.Publish(id, actor)
+}
+
+// DeleteMapOwned removes a map on behalf of actor.
+func (svc *gameService) DeleteMapOwned(id string, actor MapActor) error {
+	return svc.maps.DeleteOwned(id, actor)
+}
 
 // SaveMap validates and stores a map. Existing sessions keep their snapshot.
 func (svc *gameService) SaveMap(cfg engine.MapConfig) (*engine.Map, error) {

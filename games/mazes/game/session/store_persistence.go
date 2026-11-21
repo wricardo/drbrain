@@ -6,15 +6,17 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/wricardo/drbrain/games/mazes/game/engine"
 	"github.com/wricardo/drbrain/games/mazes/game/service"
 	"github.com/wricardo/drbrain/platform/sessionstore"
 )
 
-// SchemaVersion is the current on-disk format version of a session file.
+// SchemaVersion is the current payload format version of a stored session.
 const SchemaVersion = 1
 
-// PersistedSession is the JSON form of a session (sessions/<id>.json).
+// PersistedSession is the JSON payload of a session.
 //
 // LastEvent is transient and deliberately not stored.
 type PersistedSession struct {
@@ -28,55 +30,34 @@ type PersistedSession struct {
 	LastActionAt  time.Time        `json:"last_action_at"`
 	Attempts      int              `json:"attempts"`
 	BestMoves     *int             `json:"best_moves"` // null until the first win
+	// Ownership. owner_token_hash is the SHA-256 of the secret owner token; the
+	// token itself is never stored or returned by a read. Both are omitted for
+	// pre-ownership files, which stay open to anyone.
+	OwnerAccountID string `json:"owner_account_id,omitempty"`
+	OwnerTokenHash string `json:"owner_token_hash,omitempty"`
 }
 
 // StorePersistence adapts platform/sessionstore to this game: the store owns
-// files, limits and listing; mazes keeps its JSON shape and validation.
+// PostgreSQL rows, limits and listing; mazes keeps its JSON shape and
+// validation.
 type StorePersistence struct {
 	store sessionstore.Store
 }
 
-// FilePersistence is the pre-monorepo name, kept so existing call sites and
-// tests keep compiling while the store does the I/O.
-type FilePersistence = StorePersistence
-
 var _ SessionPersistence = (*StorePersistence)(nil)
 
-// NewStorePersistence opens the file-backed store for dir.
-func NewStorePersistence(dir string, maxSessions int) (*StorePersistence, error) {
-	store, err := sessionstore.Open(sessionstore.Options{Dir: dir, MaxSessions: maxSessions, Summary: summarize})
+// NewPostgresPersistence opens the PostgreSQL-backed store.
+func NewPostgresPersistence(pool *pgxpool.Pool, maxSessions int) (*StorePersistence, error) {
+	store, err := sessionstore.Open(sessionstore.Options{Pool: pool, MaxSessions: maxSessions})
 	if err != nil {
 		return nil, err
 	}
 	return &StorePersistence{store: store}, nil
 }
 
-// NewFilePersistence keeps the old constructor signature; mazes has no limit
-// here (the Manager enforces MaxSessions before persisting).
-func NewFilePersistence(dir string) (*StorePersistence, error) {
-	return NewStorePersistence(dir, 0)
-}
-
-// summarize derives the platform Meta from a saved mazes payload.
-func summarize(raw []byte) (sessionstore.Meta, error) {
-	var ps PersistedSession
-	if err := json.Unmarshal(raw, &ps); err != nil {
-		return sessionstore.Meta{}, err
-	}
-	last := ps.LastActionAt
-	if last.IsZero() {
-		last = ps.CreatedAt
-	}
-	return sessionstore.Meta{
-		ID: ps.ID, DisplayName: ps.DisplayName, MapID: ps.Map.ID,
-		CreatedAt: ps.CreatedAt, LastActionAt: last, Seq: ps.Seq,
-	}, nil
-}
-
-// Save atomically writes the snapshot to <dir>/<id>.json (temp file in the
-// same directory, fsync, rename). s must not be mutated concurrently; the
-// Manager passes a private clone.
-func (fp *FilePersistence) Save(s *service.Session) (err error) {
+// Save writes the snapshot to PostgreSQL. s must not be mutated concurrently;
+// the Manager passes a private clone.
+func (sp *StorePersistence) Save(s *service.Session) (err error) {
 	if s == nil {
 		return fmt.Errorf("save session: nil session")
 	}
@@ -87,32 +68,34 @@ func (fp *FilePersistence) Save(s *service.Session) (err error) {
 		return fmt.Errorf("save session %s: missing map snapshot", s.ID)
 	}
 	data, err := json.Marshal(PersistedSession{
-		SchemaVersion: SchemaVersion,
-		ID:            s.ID,
-		DisplayName:   s.DisplayName,
-		Map:           s.Map.Config(),
-		State:         s.State,
-		Seq:           s.Seq,
-		CreatedAt:     s.CreatedAt,
-		LastActionAt:  s.LastActionAt,
-		Attempts:      s.Attempts,
-		BestMoves:     s.BestMoves,
+		SchemaVersion:  SchemaVersion,
+		ID:             s.ID,
+		DisplayName:    s.DisplayName,
+		Map:            s.Map.Config(),
+		State:          s.State,
+		Seq:            s.Seq,
+		CreatedAt:      s.CreatedAt,
+		LastActionAt:   s.LastActionAt,
+		Attempts:       s.Attempts,
+		BestMoves:      s.BestMoves,
+		OwnerAccountID: s.OwnerAccountID,
+		OwnerTokenHash: s.OwnerTokenHash,
 	})
 	if err != nil {
 		return fmt.Errorf("marshal session %s: %w", s.ID, err)
 	}
-	return fp.store.Persist(sessionstore.Meta{
+	return sp.store.Persist(sessionstore.Meta{
 		ID: s.ID, DisplayName: s.DisplayName, MapID: s.Map.ID,
 		CreatedAt: s.CreatedAt, LastActionAt: s.LastActionAt, Seq: s.Seq,
 	}, data)
 }
 
-// Load reads and fully validates <dir>/<id>.json.
-func (fp *FilePersistence) Load(id string) (*service.Session, error) {
+// Load reads and fully validates one stored session.
+func (sp *StorePersistence) Load(id string) (*service.Session, error) {
 	if !ValidID(id) {
 		return nil, ErrInvalidID
 	}
-	_, raw, err := fp.store.Load(id)
+	_, raw, err := sp.store.Load(id)
 	if err != nil {
 		if errors.Is(err, sessionstore.ErrNotFound) {
 			return nil, ErrNotFound
@@ -127,7 +110,7 @@ func (fp *FilePersistence) Load(id string) (*service.Session, error) {
 		return nil, fmt.Errorf("session %s: unsupported schema_version %d (want %d)", id, ps.SchemaVersion, SchemaVersion)
 	}
 	if ps.ID != id {
-		return nil, fmt.Errorf("session file %s contains id %q", id, ps.ID)
+		return nil, fmt.Errorf("session %s contains id %q", id, ps.ID)
 	}
 	m, err := engine.NewMap(ps.Map)
 	if err != nil {
@@ -150,15 +133,16 @@ func (fp *FilePersistence) Load(id string) (*service.Session, error) {
 		ID: ps.ID, DisplayName: ps.DisplayName, MapID: m.ID, Map: m,
 		State: ps.State, Seq: ps.Seq, CreatedAt: ps.CreatedAt, LastActionAt: last,
 		Attempts: ps.Attempts, BestMoves: ps.BestMoves,
+		OwnerAccountID: ps.OwnerAccountID, OwnerTokenHash: ps.OwnerTokenHash,
 	}, nil
 }
 
-// Delete removes <dir>/<id>.json. It returns ErrNotFound if there is none.
-func (fp *FilePersistence) Delete(id string) error {
+// Delete removes a stored session. It returns ErrNotFound if there is none.
+func (sp *StorePersistence) Delete(id string) error {
 	if !ValidID(id) {
 		return ErrInvalidID
 	}
-	if err := fp.store.Delete(id); err != nil {
+	if err := sp.store.Delete(id); err != nil {
 		if errors.Is(err, sessionstore.ErrNotFound) {
 			return ErrNotFound
 		}
@@ -167,10 +151,9 @@ func (fp *FilePersistence) Delete(id string) error {
 	return nil
 }
 
-// ListAll returns the ids of every <id>.json file with a valid id; other
-// files (temp files, strays) are ignored.
-func (fp *FilePersistence) ListAll() ([]string, error) {
-	metas, err := fp.store.List()
+// ListAll returns the ids of every stored session with a valid id.
+func (sp *StorePersistence) ListAll() ([]string, error) {
+	metas, err := sp.store.List()
 	if err != nil {
 		return nil, err
 	}
@@ -184,9 +167,9 @@ func (fp *FilePersistence) ListAll() ([]string, error) {
 }
 
 // validateState rejects states that are not reachable by playing the map, so
-// a hand-edited or corrupted file is skipped instead of breaking the engine
-// later. It replays st.Path: every step must be an adjacent walkable tile
-// followed by its stairs/portal landing, and the counters and status must
+// a hand-edited or corrupted payload is skipped instead of breaking the
+// engine later. It replays st.Path: every step must be an adjacent walkable
+// tile followed by its stairs/portal landing, and the counters and status must
 // agree with that route.
 func validateState(m *engine.Map, st *engine.State) error {
 	switch st.LossReason {

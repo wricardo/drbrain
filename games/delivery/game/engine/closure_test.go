@@ -40,7 +40,7 @@ func TestClosureNeverDisconnectsAnything(t *testing.T) {
 	// Reveal everything so the candidate pool is the whole map, which is the
 	// hardest case: more streets means more chances to cut a corner off.
 	w.City.RevealAll()
-	w.Ledger.BuildsCompleted = 99 // past every FromChapter gate
+	w.growthApplied = 99 // past every FromChapter gate
 
 	depot := w.City.Depots[0].Pos
 	before := w.City.Distances(depot)
@@ -299,15 +299,15 @@ func TestClosuresDoNotStartBeforeTheirChapter(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w.Ledger.BuildsCompleted = 0
+	w.growthApplied = 0
 	if _, ok := w.closureAt(1); ok {
 		t.Fatal("closure started at chapter 0 with FromChapter 2")
 	}
-	w.Ledger.BuildsCompleted = 1
+	w.growthApplied = 1
 	if _, ok := w.closureAt(1); ok {
 		t.Fatal("closure started at chapter 1 with FromChapter 2")
 	}
-	w.Ledger.BuildsCompleted = 2
+	w.growthApplied = 2
 	// EveryTicks is 1, so any tick past the seeded phase qualifies.
 	started := false
 	for tick := int64(0); tick < 50 && !started; tick++ {
@@ -335,7 +335,7 @@ func TestClosureRespectsConcurrencyCap(t *testing.T) {
 		t.Fatal(err)
 	}
 	w.City.RevealAll()
-	w.Ledger.BuildsCompleted = 99
+	w.growthApplied = 99
 
 	for range 400 {
 		w.AdvanceNoPause()
@@ -387,20 +387,13 @@ func TestClosedTileIsNotServable(t *testing.T) {
 // TestClosureNeverDisconnectsAnything does not catch this: it reveals the map
 // but never builds anything, so the harbour has no charger to seed from.
 func TestClosureGuardSeedsFromDepotsOnly(t *testing.T) {
-	w, _ := closureWorld(t)
-	// Build the whole ladder, so every charger the map can grant exists. This is
-	// the state a late-game player is in when most closures fire.
-	w.Ledger.Money = 1_000_000
-	for _, b := range w.Builds() {
-		w.permitted[b.ID] = true
-	}
-	for i := range w.unlocks {
-		w.unlocks[i].Earned = true
-	}
-	for _, b := range w.Builds() {
-		if _, err := w.Build(b.ID); err != nil {
-			t.Fatalf("build %s: %v", b.ID, err)
-		}
+	w, cfg := closureWorld(t)
+	// Apply the whole growth schedule, so every charger the city ever grants
+	// exists. This is the state a late-game player is in when most closures fire.
+	w.Tick = cfg.Growth[len(cfg.Growth)-1].Tick
+	w.applyGrowth()
+	if w.growthApplied != len(cfg.Growth) {
+		t.Fatalf("growth stages applied = %d, want %d", w.growthApplied, len(cfg.Growth))
 	}
 
 	// The harbour road bottleneck, exactly as the pacing table chose at tick
@@ -426,27 +419,19 @@ func TestClosureGuardSeedsFromDepotsOnly(t *testing.T) {
 	}
 }
 
-// TestClosureGuardStillAcceptsTheWholeLadder guards the other direction: a
-// tighter reachability rule must not make progression impossible. Every build
-// in the ladder has to remain legal, in order, with the depot-only rule.
-func TestClosureGuardStillAcceptsTheWholeLadder(t *testing.T) {
+// TestClosureGuardStillAcceptsTheWholeSchedule guards the other direction: a
+// tighter reachability rule must not make progression impossible. Every stage of
+// the city's growth has to remain legal, in order, with the depot-only rule.
+func TestClosureGuardStillAcceptsTheWholeSchedule(t *testing.T) {
 	w, cfg := closureWorld(t)
-	w.Ledger.Money = 1_000_000
-	for _, b := range w.Builds() {
-		w.permitted[b.ID] = true
-	}
-	for i := range w.unlocks {
-		w.unlocks[i].Earned = true
+	if len(cfg.Growth) == 0 {
+		t.Fatal("shipped city has no growth schedule")
 	}
 
-	// Each build must be buildable in the authored order.
-	for _, b := range cfg.Builds {
-		if _, err := w.Build(b.ID); err != nil {
-			t.Fatalf("build %s rejected under the depot-only guard: %v", b.ID, err)
-		}
-	}
-	if got := w.Ledger.BuildsCompleted; got != len(cfg.Builds) {
-		t.Fatalf("builds completed = %d, want %d", got, len(cfg.Builds))
+	w.Tick = cfg.Growth[len(cfg.Growth)-1].Tick
+	w.applyGrowth()
+	if got, want := w.growthApplied, len(cfg.Growth); got != want {
+		t.Fatalf("growth stages applied = %d, want %d", got, want)
 	}
 
 	// And no closure that would strand a known entity may start afterwards.
@@ -489,7 +474,10 @@ func TestClosureGuardStillAcceptsTheWholeLadder(t *testing.T) {
 // them, and the two worlds diverged on the next tick.
 func TestReloadRestoresActiveClosures(t *testing.T) {
 	w, cfg := closureWorld(t)
-	w.Ledger.BuildsCompleted = 4
+	// Apply the whole schedule before probing so the live city and the replayed
+	// one (ImportState replays growth by tick) are the same world.
+	w.Tick = cfg.Growth[len(cfg.Growth)-1].Tick
+	w.applyGrowth()
 
 	// Advance to a point where a closure is live and has been for a while, so
 	// the reconstruction has to find a start tick that is not the current one.

@@ -5,7 +5,11 @@
 	import { onMount } from 'svelte';
 	import { directionGlyph, standardDirectionalCellConfigs, directionalChars, terrainGlyph } from '$lib/tesla/directional';
 	import uiAuthConfig from '$lib/tesla/config/ui-auth.json';
-	import { getMapEditKey, setMapEditKey, mapSaveErrorMessage } from '$lib/tesla/mapEditKeys';
+	import { forgetMapEditKey, getMapEditKey, setMapEditKey, mapSaveErrorMessage } from '$lib/tesla/mapEditKeys';
+	import { CLAIM_MAP_MUTATION, MAP_QUERY, MAPS_QUERY, PUBLISH_MAP_MUTATION } from '$lib/tesla/queries';
+	import { canEdit, isDraft, mapStatusLabel, type MapStatus } from '$lib/tesla/maps';
+	import { account } from '$lib/account/stores/account';
+	import Button from '@drbrain/ui/components/Button.svelte';
 
 	type CellType = string;
 
@@ -14,6 +18,8 @@
 		name: string;
 		description: string;
 		builtin?: boolean;
+		status?: MapStatus;
+		ownedByMe?: boolean;
 	}
 
 	type LegendEntry = { key: string; value: string };
@@ -109,14 +115,34 @@
 	let isSaving = $state(false);
 	let isValidating = $state(false);
 	let isLoadingMap = $state(false);
+	let isPublishing = $state(false);
+	let isClaiming = $state(false);
 	let selectedConfigId = $state('');
 	let originalMapId = $state('');
 	let duplicateSourceId = $state('');
 	let isDuplicateMode = $state(false);
 	let lastSavedMapId = $state('');
 	let hasSavedMap = $state(false);
+	/** Lifecycle metadata for the loaded map, kept in step with the server. */
+	let loadedStatus = $state<MapStatus>('PUBLISHED');
+	let loadedOwnedByMe = $state(false);
+	let loadedBuiltin = $state(false);
 	const isEditMode = $derived(Boolean(originalMapId));
 	const builtinMapIds = $derived(new Set(configs.filter((c) => c.builtin).map((c) => c.mapId)));
+	/** Every save and claim needs a signed-in player; the server answers UNAUTHENTICATED otherwise. */
+	const signedIn = $derived($account.me !== null);
+	const signInNext = $derived($page.url.pathname + $page.url.search);
+	/** The one-time token of a legacy ownerless map, if this browser kept it. */
+	const legacyEditKey = $derived(originalMapId ? getMapEditKey(originalMapId) : null);
+	const editingBuiltin = $derived(isEditMode && (loadedBuiltin || builtinMapIds.has(originalMapId)));
+	const ownsLoadedMap = $derived(isEditMode && loadedOwnedByMe);
+	const legacyUnowned = $derived(isEditMode && !loadedBuiltin && !loadedOwnedByMe);
+	const canEditLoaded = $derived(!isEditMode || canEdit({ builtin: loadedBuiltin, ownedByMe: loadedOwnedByMe }, legacyEditKey));
+	const canSaveEdits = $derived(signedIn && canEditLoaded);
+	const canPublishMap = $derived(
+		isEditMode && !loadedBuiltin && loadedOwnedByMe && isDraft({ status: loadedStatus }) && !isDuplicateMode
+	);
+	const statusLabel = $derived(isEditMode ? mapStatusLabel({ status: loadedStatus }) : '');
 
 	onMount(async () => {
 		initializeGrid(gridSize);
@@ -224,6 +250,9 @@
 		isDuplicateMode = false;
 		lastSavedMapId = '';
 		hasSavedMap = false;
+		loadedStatus = 'PUBLISHED';
+		loadedOwnedByMe = false;
+		loadedBuiltin = false;
 		mapName = '';
 		description = '';
 		maxBattery = 20;
@@ -282,7 +311,22 @@
 		};
 	}
 
-	async function persistMap(targetMapId: string, successMessage: string, mode: 'create' | 'update') {
+	/**
+	 * Saves the form. Creating always makes a DRAFT owned by the signed-in
+	 * player; updating keeps the owner and puts the map back into DRAFT. The
+	 * legacy edit key is only sent for an ownerless map this browser created
+	 * before accounts existed.
+	 */
+	async function persistMap(
+		targetMapId: string,
+		successMessage: string,
+		mode: 'create' | 'update'
+	): Promise<boolean> {
+		if (!signedIn) {
+			validationType = 'error';
+			validationMessage = '❌ Sign in to save maps. Guest sessions can still play published maps.';
+			return false;
+		}
 		isSaving = true;
 
 		try {
@@ -291,6 +335,9 @@
 					createMap(name: $name, map: $map) {
 						name
 						editKey
+						builtin
+						status
+						ownedByMe
 					}
 				}
 			`;
@@ -300,6 +347,8 @@
 					updateMap(name: $name, patch: $patch, editKey: $editKey) {
 						name
 						builtin
+						status
+						ownedByMe
 					}
 				}
 			`;
@@ -309,21 +358,31 @@
 					.mutation(UPDATE_MAP, {
 						name: targetMapId,
 						patch: buildMapConfig(),
-						editKey: getMapEditKey(targetMapId)
+						editKey: legacyUnowned ? legacyEditKey : null
 					})
 					.toPromise();
 
 				if (result.error) throw result.error;
+				const updated = result.data?.updateMap;
+				if (updated) {
+					loadedStatus = updated.status;
+					loadedOwnedByMe = updated.ownedByMe;
+					loadedBuiltin = updated.builtin;
+				}
 			} else {
 				const result = await client
 					.mutation(CREATE_MAP, { name: targetMapId, map: buildMapConfig() })
 					.toPromise();
 
 				if (result.error) throw result.error;
+				const created = result.data?.createMap;
+				loadedStatus = created?.status ?? 'DRAFT';
+				loadedOwnedByMe = created?.ownedByMe ?? true;
+				loadedBuiltin = created?.builtin ?? false;
 
-				// The token is returned exactly once; keep it so later saves edit
-				// this map instead of being refused.
-				const editKey = result.data?.createMap?.editKey as string | undefined;
+				// The server returns a key only for the legacy transfer path. Keep it
+				// if it ever does; ownership no longer depends on it.
+				const editKey = created?.editKey as string | undefined;
 				if (editKey) setMapEditKey(targetMapId, editKey);
 			}
 
@@ -335,33 +394,112 @@
 			validationType = 'success';
 			validationMessage = successMessage;
 			goto(`/tesla/editor?map=${encodeURIComponent(targetMapId)}`, { replaceState: true, noScroll: true });
+			return true;
 		} catch (error) {
 			validationType = 'error';
 			validationMessage = `❌ Error: ${mapSaveErrorMessage(error)}`;
+			return false;
 		} finally {
 			isSaving = false;
 		}
 	}
 
-	const editingBuiltin = $derived(isEditMode && builtinMapIds.has(originalMapId));
-	// Editing an existing map requires the token this browser received when it
-	// created that map. Without it the save would be refused, so don't offer it.
-	const hasEditKey = $derived(!isEditMode || Boolean(getMapEditKey(originalMapId)));
-	const canSaveEdits = $derived(hasEditKey);
-
 	async function saveConfiguration() {
+		if (!signedIn) {
+			validationType = 'error';
+			validationMessage = '❌ Sign in to save maps.';
+			return;
+		}
 		if (!validateMap()) return;
 		const targetMapId = isEditMode ? originalMapId : mapName.trim();
 		await persistMap(
 			targetMapId,
-			isEditMode ? 'Map updated successfully.' : 'Map saved successfully.',
+			isEditMode ? 'Draft saved. Publish it when it is ready.' : 'Map created as a draft. Publish it when it is ready.',
 			isEditMode ? 'update' : 'create'
 		);
 	}
 
 	async function saveAsNew() {
+		if (!signedIn) {
+			validationType = 'error';
+			validationMessage = '❌ Sign in to save a copy of this map.';
+			return;
+		}
 		if (!validateMap({ saveAsNew: true })) return;
-		await persistMap(mapName.trim(), 'New map saved successfully.', 'create');
+		await persistMap(mapName.trim(), 'New map saved as a draft.', 'create');
+	}
+
+	/**
+	 * Saves pending edits (publishing validates the stored map, not the form)
+	 * and then moves the draft to PUBLISHED. The server refuses a map whose
+	 * parks cannot all be reached.
+	 */
+	async function publishConfiguration() {
+		if (!signedIn) {
+			validationType = 'error';
+			validationMessage = '❌ Sign in to publish maps.';
+			return;
+		}
+		if (!validateMap()) return;
+		if (isPublishing || isSaving) return;
+		isPublishing = true;
+
+		try {
+			const targetMapId = isEditMode ? originalMapId : mapName.trim();
+			const saved = await persistMap(targetMapId, 'Draft saved.', isEditMode ? 'update' : 'create');
+			if (!saved) return;
+
+			const result = await client.mutation(PUBLISH_MAP_MUTATION, { name: targetMapId }).toPromise();
+			if (result.error) throw result.error;
+
+			const published = result.data?.publishMap;
+			if (!published) throw new Error('The server did not return the published map');
+			loadedStatus = published.status;
+			loadedOwnedByMe = published.ownedByMe;
+			loadedBuiltin = published.builtin;
+			await loadAvailableConfigs();
+
+			validationType = 'success';
+			validationMessage = `✅ Published “${targetMapId}”. Everyone can play it now.`;
+		} catch (error) {
+			validationType = 'error';
+			validationMessage = `❌ Publish failed: ${mapSaveErrorMessage(error)}`;
+		} finally {
+			isPublishing = false;
+		}
+	}
+
+	/**
+	 * Attaches a legacy ownerless map to the signed-in account with the edit
+	 * key this browser kept from before accounts existed. After this the map is
+	 * owned, so the key is no longer needed and is forgotten.
+	 */
+	async function claimLegacyMap() {
+		const key = legacyEditKey;
+		const mapId = originalMapId;
+		if (!signedIn || !key || !mapId || isClaiming) return;
+		isClaiming = true;
+
+		try {
+			const result = await client.mutation(CLAIM_MAP_MUTATION, { name: mapId, editKey: key }).toPromise();
+			if (result.error) throw result.error;
+
+			const claimed = result.data?.claimMap;
+			if (!claimed) throw new Error('The server did not return the claimed map');
+			loadedStatus = claimed.status;
+			loadedOwnedByMe = claimed.ownedByMe;
+			loadedBuiltin = claimed.builtin;
+			forgetMapEditKey(mapId);
+			await loadAvailableConfigs();
+
+			validationType = 'success';
+			validationMessage = `✅ “${mapId}” is now yours. Edit and publish it whenever you like.`;
+		} catch (error) {
+			validationType = 'error';
+			validationMessage = `❌ Claim failed: ${mapSaveErrorMessage(error)}`;
+		} finally {
+			isClaiming = false;
+		}
 	}
 
 	async function validateWithSolver() {
@@ -399,19 +537,6 @@
 
 	async function loadAvailableConfigs() {
 		try {
-			const MAPS_QUERY = gql`
-				query {
-					tesla {
-						maps {
-							mapId
-							name
-							description
-							builtin
-						}
-					}
-				}
-			`;
-
 			const result = await client.query(MAPS_QUERY, {}, { requestPolicy: 'network-only' }).toPromise();
 			if (result.data?.maps) {
 				configs = result.data.maps;
@@ -430,20 +555,6 @@
 		isLoadingMap = true;
 		hasSavedMap = false;
 		try {
-			const MAP_QUERY = gql`
-				query GetMap($name: String!, $password: String) {
-					map(name: $name, password: $password) {
-						name
-						description
-						gridSize
-						maxBattery
-						startingBattery
-						layout
-						cellConfigs { key type allowedDirections }
-					}
-				}
-			`;
-
 			const result = await client.query(MAP_QUERY, { name: selectedConfigId, password: mapQueryPassword || null }, { requestPolicy: 'network-only' }).toPromise();
 			if (result.error) throw result.error;
 
@@ -454,6 +565,9 @@
 			maxBattery = map.maxBattery;
 			startingBattery = map.startingBattery;
 			gridSize = map.gridSize;
+			loadedBuiltin = Boolean(map.builtin);
+			loadedOwnedByMe = Boolean(map.ownedByMe);
+			loadedStatus = map.status ?? 'PUBLISHED';
 
 			currentCellConfigs = map.cellConfigs?.length ? map.cellConfigs : standardDirectionalCellConfigs;
 			gridData = map.layout.map((row: string) => row.split('') as CellType[]);
@@ -463,6 +577,9 @@
 				isDuplicateMode = true;
 				mapName = suggestDuplicateName(selectedConfigId);
 				lastSavedMapId = '';
+				loadedBuiltin = false;
+				loadedOwnedByMe = false;
+				loadedStatus = 'DRAFT';
 			} else {
 				originalMapId = selectedConfigId;
 				duplicateSourceId = '';
@@ -474,7 +591,9 @@
 			validationType = 'success';
 			validationMessage = options.duplicate
 				? `Loaded ${selectedConfigId} as a duplicate draft. Save to create a new map.`
-				: `Loaded ${map.name} for editing.`;
+				: loadedOwnedByMe && isDraft({ status: loadedStatus })
+					? `Loaded your draft ${map.name}. Publish it when it is ready.`
+					: `Loaded ${map.name} for editing.`;
 			goto(
 				options.duplicate
 					? `/tesla/editor?map=${encodeURIComponent(selectedConfigId)}&duplicate=1`
@@ -485,6 +604,9 @@
 			originalMapId = '';
 			duplicateSourceId = '';
 			isDuplicateMode = false;
+			loadedBuiltin = false;
+			loadedOwnedByMe = false;
+			loadedStatus = 'PUBLISHED';
 			validationType = 'error';
 			validationMessage = `Error loading map: ${error instanceof Error ? error.message : 'Unknown error'}`;
 		} finally {
@@ -501,7 +623,17 @@
 	<div class="max-w-7xl mx-auto px-6 py-4">
 		<div class="flex items-center justify-between gap-4">
 			<div>
-				<p class="text-xs font-bold uppercase tracking-widest text-red-600 mb-1">🗺️ Map editor</p>
+				<div class="flex flex-wrap items-center gap-2 mb-1">
+					<p class="text-xs font-bold uppercase tracking-widest text-red-600">🗺️ Map editor</p>
+					{#if statusLabel}
+						<span
+							class={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+								statusLabel === 'Draft' ? 'bg-amber-100 text-amber-900' : 'bg-emerald-50 text-emerald-800'
+							}`}
+							data-testid="editor-status"
+						>{statusLabel}</span>
+					{/if}
+				</div>
 				<h1 class="text-xl font-light text-[#171a20] tracking-tight">
 					{isEditMode ? `Edit ${mapName || originalMapId}` : isDuplicateMode ? `Duplicate ${duplicateSourceId}` : 'Design a road trip map'}
 				</h1>
@@ -513,6 +645,17 @@
 		</div>
 	</div>
 </div>
+
+{#if $account.loaded && !signedIn}
+	<div class="max-w-7xl mx-auto px-6 pt-6" data-testid="editor-signin-hint">
+		<div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[#e8e8e8] bg-white px-5 py-4 shadow-sm">
+			<p class="text-sm text-[#393c41]">
+				You are not signed in. Sign in to create, edit and publish maps. You can still validate a layout and play published maps.
+			</p>
+			<Button href={`/signin?next=${encodeURIComponent(signInNext)}`} variant="secondary">Sign in</Button>
+		</div>
+	</div>
+{/if}
 
 <div class="max-w-7xl mx-auto px-6 py-10">
 	<div class="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-6 items-start">
@@ -594,6 +737,7 @@
 
 			{#if validationMessage}
 				<div
+					role={validationType === 'error' ? 'alert' : 'status'}
 					class={`mt-4 px-5 py-4 rounded-2xl text-sm whitespace-pre-line ${
 						validationType === 'error'
 							? 'bg-red-50 border border-red-100 text-red-600'
@@ -605,8 +749,8 @@
 					{validationMessage}
 					{#if hasSavedMap && validationType === 'success'}
 						<div class="mt-3 flex flex-wrap gap-2 whitespace-normal">
-							<a href={`/maps`} class="border border-emerald-200 bg-white/70 text-emerald-700 text-xs px-3 py-1.5 rounded-full hover:bg-white transition-colors">View maps</a>
-							<a href={`/?map=${lastSavedMapId}`} class="border border-emerald-200 bg-white/70 text-emerald-700 text-xs px-3 py-1.5 rounded-full hover:bg-white transition-colors">Create session</a>
+							<a href={`/tesla/maps`} class="border border-emerald-200 bg-white/70 text-emerald-700 text-xs px-3 py-1.5 rounded-full hover:bg-white transition-colors">View maps</a>
+							<a href={`/tesla/maps/${encodeURIComponent(lastSavedMapId)}`} class="border border-emerald-200 bg-white/70 text-emerald-700 text-xs px-3 py-1.5 rounded-full hover:bg-white transition-colors">Open map</a>
 						</div>
 					{/if}
 				</div>
@@ -632,18 +776,52 @@
 
 			<section class="bg-white rounded-2xl border border-[#e8e8e8] shadow-sm p-6">
 				<h2 class="text-xl font-light text-[#393c41] mb-1">{isEditMode ? 'Edit configuration' : 'Configuration'}</h2>
-				<p class="text-sm text-gray-400 mb-5">{isEditMode ? `Saving changes updates ${originalMapId}. Change the name and use Save as new to duplicate.` : isDuplicateMode ? `This is a duplicate draft of ${duplicateSourceId}. Save map will create a new map.` : 'Matches the GameMap schema used by saved maps.'}</p>
-				{#if editingBuiltin}
+				<p class="text-sm text-gray-400 mb-5">
+					{#if isEditMode}
+						Saving changes keeps {originalMapId} as a draft. Change the name and use Save as new to duplicate.
+					{:else if isDuplicateMode}
+						This is a duplicate draft of {duplicateSourceId}. Save map will create a new map.
+					{:else}
+						New maps are created as your draft. You can play a draft until you publish it.
+					{/if}
+				</p>
+				{#if !signedIn}
+					<div class="mb-4 rounded-xl border border-[#e8e8e8] bg-[#f7f7f7] px-4 py-3 text-xs text-[#393c41]" data-testid="editor-save-gate">
+						<span class="font-semibold">Sign in to save.</span>
+						Map authoring belongs to an account so only you can edit and publish your maps.
+					</div>
+				{:else if editingBuiltin}
 					<div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
 						<span class="font-semibold">Built-in map.</span>
 						Built-in maps can only be changed by an administrator. Use
 						<span class="font-semibold">Save as new</span> to keep this layout as your own editable map.
 					</div>
-				{:else if isEditMode && !hasEditKey}
+				{:else if legacyUnowned && legacyEditKey}
+					<div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900" data-testid="editor-claim">
+						<span class="font-semibold">Legacy map.</span>
+						This map was created before accounts, and this browser still holds its edit key.
+						Claim it to edit and publish it under your account.
+						<Button
+							variant="secondary"
+							class="mt-2"
+							onclick={claimLegacyMap}
+							disabled={isClaiming || !signedIn}
+						>{isClaiming ? 'Claiming…' : 'Claim this map'}</Button>
+					</div>
+				{:else if legacyUnowned}
 					<div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-						<span class="font-semibold">No edit token for this map.</span>
-						Edit tokens are issued once, when a map is created, and only to the browser that created it.
-						Use <span class="font-semibold">Save as new</span> to make your own editable copy.
+						<span class="font-semibold">Not editable here.</span>
+						This map belongs to another player, or it predates accounts and this browser has no edit key for
+						it. Use <span class="font-semibold">Save as new</span> to make your own copy.
+					</div>
+				{:else if ownsLoadedMap}
+					<div class="mb-4 rounded-xl border border-[#e8e8e8] bg-[#f7f7f7] px-4 py-3 text-xs text-[#393c41]" data-testid="editor-owned">
+						<span class="font-semibold">Your map.</span>
+						{#if isDraft({ status: loadedStatus })}
+							Only you can see this draft. Publish it when the layout is ready for everyone.
+						{:else}
+							Published and playable by everyone. Saving an edit puts it back into draft until you publish again.
+						{/if}
 					</div>
 				{/if}
 				<div class="space-y-4">
@@ -670,14 +848,22 @@
 						</div>
 					</div>
 
-					<button onclick={saveConfiguration} disabled={isSaving || isLoadingMap || isValidating || !canSaveEdits} class="w-full bg-[#393c41] text-white text-sm px-4 py-3 rounded-full hover:bg-black transition-colors disabled:opacity-50 mt-2">
-						{isSaving ? 'Saving…' : isEditMode ? 'Save changes' : 'Save map'}
+					<button onclick={saveConfiguration} disabled={isSaving || isPublishing || isLoadingMap || isValidating || !canSaveEdits} class="w-full bg-[#393c41] text-white text-sm px-4 py-3 rounded-full hover:bg-black transition-colors disabled:opacity-50 mt-2" data-testid="save-map">
+						{isSaving ? 'Saving…' : isEditMode ? 'Save draft' : 'Create draft'}
 					</button>
-					<button type="button" onclick={validateWithSolver} disabled={isSaving || isLoadingMap || isValidating} class="w-full border border-gray-200 bg-white text-[#393c41] text-sm px-4 py-3 rounded-full hover:border-gray-400 transition-colors disabled:opacity-50">
+					{#if canPublishMap}
+						<Button
+							class="w-full"
+							onclick={publishConfiguration}
+							disabled={isSaving || isPublishing || isLoadingMap || isValidating}
+							data-testid="publish-map"
+						>{isPublishing ? 'Publishing…' : 'Publish'}</Button>
+					{/if}
+					<button type="button" onclick={validateWithSolver} disabled={isSaving || isPublishing || isLoadingMap || isValidating} class="w-full border border-gray-200 bg-white text-[#393c41] text-sm px-4 py-3 rounded-full hover:border-gray-400 transition-colors disabled:opacity-50">
 						{isValidating ? 'Validating…' : 'Validate solvable'}
 					</button>
 					{#if isEditMode}
-						<button type="button" onclick={saveAsNew} disabled={isSaving || isLoadingMap || isValidating} class="w-full border border-gray-200 bg-white text-[#393c41] text-sm px-4 py-3 rounded-full hover:border-gray-400 transition-colors disabled:opacity-50">
+						<button type="button" onclick={saveAsNew} disabled={isSaving || isPublishing || isLoadingMap || isValidating || !signedIn} class="w-full border border-gray-200 bg-white text-[#393c41] text-sm px-4 py-3 rounded-full hover:border-gray-400 transition-colors disabled:opacity-50">
 							Save as new
 						</button>
 					{/if}

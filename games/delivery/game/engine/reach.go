@@ -1,13 +1,12 @@
 package engine
 
 import (
-	"fmt"
 	"sort"
 )
 
 // Reachable computes the set of coordinates a car could reach from start by
 // walking, ignoring battery. Hidden and impassable tiles are excluded. This is
-// the primitive behind the "a build must not strand anything" guard.
+// the primitive behind the "a growth stage must not strand anything" guard.
 func (c *City) Reachable(start Position) map[Position]bool {
 	seen := map[Position]bool{}
 	if !c.Walkable(start) {
@@ -134,7 +133,9 @@ func (c *City) DistanceAvoiding(from, to Position, blocked func(Position) bool) 
 	return -1
 }
 
-// DistanceAvoidingSet is DistanceAvoiding with a coordinate set.
+// DistanceAvoidingSet is an unimplemented compatibility stub: it always reports
+// (0, false), whatever the inputs. Use DistanceAvoiding for one destination or
+// DistancesAvoiding for a whole grid.
 func (c *City) DistanceAvoidingSet(from Position, blocked map[Position]bool) (int, bool) {
 	return 0, false
 }
@@ -196,20 +197,21 @@ func (c *City) ReachAvoiding(start Position, blocked map[Position]bool) map[Posi
 	return seen
 }
 
-// BridgeTilesForTest returns the terrain writes of a named build in a city
-// file. It exists so tests can assert on the tiles a build actually declares
-// instead of hardcoding coordinates that move when the map is regenerated.
-func BridgeTilesForTest(cityFile, buildID string) []TileWrite {
+// BridgeTilesForTest returns the terrain writes of a named growth stage in a
+// city file. It exists so tests can assert on the tiles the schedule actually
+// declares instead of hardcoding coordinates that move when the map is
+// regenerated.
+func BridgeTilesForTest(cityFile, stageID string) []TileWrite {
 	cfg, err := LoadCityConfig(cityFile)
 	if err != nil {
 		return nil
 	}
-	for _, b := range cfg.Builds {
-		if b.ID != buildID {
+	for _, stage := range cfg.Growth {
+		if stage.ID != stageID {
 			continue
 		}
 		var out []TileWrite
-		for _, e := range b.Effects {
+		for _, e := range stage.Effects {
 			if e.Type == EffectBuildBridge || e.Type == EffectPaveRoad {
 				out = append(out, e.Tiles...)
 			}
@@ -260,8 +262,8 @@ func (c *City) NearestChargingTiles(start Position, limit int) []Position {
 // depot and charger if the city were in its current state. An empty result
 // means the map is coherent: every kitchen and customer can be served.
 //
-// This is the guard run against a candidate grid after applying a build, so a
-// bridge or a reveal can never wall a restaurant off from the fleet.
+// This is the guard run against a candidate grid after applying a growth stage,
+// so a bridge or a reveal can never wall a restaurant off from the fleet.
 func (c *City) StrandedEntities() []string {
 	// Union of everything reachable from any depot or charger, treating those
 	// tiles themselves as passable entry points.
@@ -301,16 +303,5 @@ func (c *City) StrandedEntities() []string {
 	return stranded
 }
 
-// ValidatePlacement reports why a build cannot be placed, or nil if it can.
-// It is intentionally cheap: it checks the tiles a build would write are on
-// the grid, and that the resulting city strands nothing.
-func (c *City) ValidatePlacement(b BuildConfig) error {
-	next := c.Clone()
-	if err := next.applyEffects(b.Effects); err != nil {
-		return err
-	}
-	if stranded := next.StrandedEntities(); len(stranded) > 0 {
-		return fmt.Errorf("build %q would strand %v", b.ID, stranded)
-	}
-	return nil
-}
+// StrandedEntities is used by growth validation (World.validateGrowthSchedule)
+// to reject a stage that would cut a kitchen or customer off from the fleet.

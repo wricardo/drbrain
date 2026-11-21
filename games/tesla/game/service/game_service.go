@@ -9,6 +9,9 @@ import (
 
 // CreateSessionOptions controls optional per-session behavior at creation time.
 type CreateSessionOptions struct {
+	// ViewerID is the signed-in caller's account id ("" = guest). It decides
+	// whether the caller may start a session on a draft map.
+	ViewerID     string
 	FogEnabled   bool
 	FogRadius    int
 	GridPassword string
@@ -49,6 +52,22 @@ type GameService interface {
 	// Map management
 	ListMaps(ctx context.Context) ([]*MapInfo, error)
 	LoadMap(ctx context.Context, mapName string) (*engine.GameConfig, error)
+	// ListMapEntries returns published maps plus viewerID's own drafts.
+	ListMapEntries(ctx context.Context, viewerID string) ([]*MapEntry, error)
+	// GetMapEntry returns one catalogue entry, drafts included; the caller
+	// decides visibility.
+	GetMapEntry(ctx context.Context, mapName string) (*MapEntry, error)
+	// CreateMapDraft stores a DRAFT owned by ownerID and returns its edit token.
+	CreateMapDraft(ctx context.Context, mapName string, config *engine.GameConfig, ownerID string) (*MapEntry, string, error)
+	// UpdateMapOwned overwrites a map on behalf of actor (owner or admin).
+	UpdateMapOwned(ctx context.Context, mapName string, config *engine.GameConfig, actor MapActor) (*MapEntry, error)
+	// PublishMap promotes actor's draft after the winnability proof.
+	PublishMap(ctx context.Context, mapName string, actor MapActor) (*MapEntry, error)
+	// DeleteMapOwned removes a map on behalf of actor (owner or admin).
+	DeleteMapOwned(ctx context.Context, mapName string, actor MapActor) error
+	// ClaimMap attaches a legacy unowned map to ownerID after checking editKey.
+	ClaimMap(ctx context.Context, mapName, ownerID, editKey string) (*MapEntry, error)
+
 	// CreateMap stores a brand-new map and returns its edit token. It fails with
 	// config.ErrMapExists if the name is taken; it never overwrites.
 	CreateMap(ctx context.Context, mapName string, config *engine.GameConfig) (*MapCreateResult, error)
@@ -98,16 +117,33 @@ type ConfigManager interface {
 	VerifyEditToken(name, token string) error
 }
 
+// MapLifecycle is the draft/ownership map API the manager exposes in addition
+// to ConfigManager. It is separate so the legacy ConfigManager (and its test
+// mocks) stay small; production always provides it.
+type MapLifecycle interface {
+	ListEntries(viewerID string) ([]*MapEntry, error)
+	// GetEntry returns any catalogue entry, drafts included.
+	GetEntry(name string) (*MapEntry, error)
+	CreateDraft(name string, config *engine.GameConfig, ownerID string) (string, error)
+	SaveOwned(name string, config *engine.GameConfig, actor MapActor) (*MapEntry, error)
+	Publish(name string, actor MapActor) (*MapEntry, error)
+	DeleteOwned(name string, actor MapActor) error
+	Claim(name, ownerID, token string) (*MapEntry, error)
+}
+
 // Session represents an active game session
 type Session struct {
-	ID           string
-	DisplayName  string
-	Engine       *engine.GameEngine
-	Config       *engine.GameConfig
-	CreatedAt    time.Time
-	LastActionAt time.Time
-	FogEnabled   bool
-	FogRadius    int
-	GridPassword string
-	MoveDelayMs  int
+	ID          string
+	DisplayName string
+	// OwnerAccountID is the account that created the session ("" = guest).
+	// It keeps the session private when its map is deleted.
+	OwnerAccountID string
+	Engine         *engine.GameEngine
+	Config         *engine.GameConfig
+	CreatedAt      time.Time
+	LastActionAt   time.Time
+	FogEnabled     bool
+	FogRadius      int
+	GridPassword   string
+	MoveDelayMs    int
 }

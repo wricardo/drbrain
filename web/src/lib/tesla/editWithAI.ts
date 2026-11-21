@@ -17,31 +17,43 @@ export function graphqlEndpointUrl(): string {
 
 export type EditPromptInput = {
 	map: Pick<MapSummary, 'mapId' | 'name' | 'gridSize' | 'maxBattery'>;
-	/** The one-time token issued at creation, or null if this browser lacks it. */
+	/** The one-time legacy token, or null if this browser lacks it. */
 	editKey: string | null;
+	/** True when the signed-in caller owns the map, so no edit key is involved. */
+	owned?: boolean;
 	/** Absolute GraphQL endpoint, normally from graphqlEndpointUrl(). */
 	apiUrl: string;
 };
 
 /**
  * Builds a self-contained prompt that hands an AI agent everything it needs to
- * edit one map: the endpoint, the map id, the edit token, and the exact mutation
- * shape. Kept pure so the wording and interpolation are testable.
+ * edit one map: the endpoint, the map id, the authorization argument, and the
+ * exact mutation shape. Kept pure so the wording and interpolation are
+ * testable.
  */
-export function buildEditWithAIPrompt({ map, editKey, apiUrl }: EditPromptInput): string {
+export function buildEditWithAIPrompt({ map, editKey, owned = false, apiUrl }: EditPromptInput): string {
 	const name = map.name || map.mapId;
-	// The token is a bearer secret. When it is missing we still show the prompt
-	// but make the agent stop and ask, rather than emitting a mutation that the
-	// server will reject with a confusing authorization error.
-	const authSection = editKey
-		? `The map's edit key (password) is:
+	// A legacy token is a bearer secret. An owned map has no token: the server
+	// checks the signed-in account, so the agent needs that account's bearer
+	// token, which the UI must not print into a prompt preview.
+	const authSection = owned
+		? `This map belongs to my drbrain account, so updateMap needs no edit key. It needs a request header
+    "Authorization: Bearer <my drbrain token>"; I will paste that token here when you ask.`
+		: editKey
+			? `The map's legacy edit key is:
 
     ${editKey}`
-		: `I do not have the edit key for this map, so you will need to ask me for it before you can save.`;
+			: `I do not have the legacy edit key for this map, so you will need to ask me for it before you can save.`;
 
-	const saveInstruction = editKey
-		? `Save the result with updateMap, passing the edit key above as \`editKey\`.`
-		: `Once I give you the edit key, save with updateMap passing it as \`editKey\`.`;
+	const saveInstruction = owned
+		? `Save the result with updateMap and no editKey, sending my bearer token in the Authorization header.`
+		: editKey
+			? `Save the result with updateMap, passing the legacy edit key above as \`editKey\`.`
+			: `Once I give you the edit key, save with updateMap passing it as \`editKey\`.`;
+
+	// Owned maps carry no key: the account is the authorization. Legacy maps
+	// must send the one-time key, and the agent is told to ask when it is absent.
+	const editKeyLine = owned ? '' : `      "editKey": ${editKey ? `"${editKey}"` : '"<ASK_ME>"'},\n`;
 
 	return `I want to change a map in the Tesla Road Trip game. Please help me edit it with GraphQL.
 
@@ -61,7 +73,7 @@ WHAT I WANT CHANGED
      "add two superchargers near the home tile", "make the outer walls solid">
 
 HOW TO DO IT
-1. Read the current map first (this requires no credentials):
+1. Read the current map first ${owned ? '(send my bearer token: a draft is visible only to its owner)' : '(this requires no credentials)'}:
 
     query GetMap {
       tesla {
@@ -75,7 +87,7 @@ HOW TO DO IT
     }
 
    Send it as POST ${apiUrl} with header "content-type: application/json" and a
-   body of {"query": "...", "variables": {}}.
+   body of {"query": "...", "variables": {}}${owned ? '.\n   Add my "Authorization: Bearer <token>" header: a draft is visible only to its owner.' : '.'}
 
 2. Change the layout. Rules the server enforces:
    - layout must have exactly ${map.gridSize} rows of ${map.gridSize} characters.
@@ -102,8 +114,7 @@ HOW TO DO IT
     variables:
     {
       "name": "${map.mapId}",
-      "editKey": ${editKey ? `"${editKey}"` : '"<ASK_ME>"'},
-      "patch": {
+${editKeyLine}      "patch": {
         "description": "...",
         "layout": ["...", "..."],
         "legend": [{"key":"R","value":"road"}, ...],

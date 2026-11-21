@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/99designs/gqlgen/graphql/handler"
@@ -15,18 +16,21 @@ import (
 	"github.com/wricardo/drbrain/games/tesla/game/service"
 	"github.com/wricardo/drbrain/games/tesla/game/session"
 	"github.com/wricardo/drbrain/games/tesla/graph/generated"
+	"github.com/wricardo/drbrain/platform/account"
+	"github.com/wricardo/drbrain/platform/auth"
 )
 
 type gqlResp struct {
 	Data   json.RawMessage `json:"data"`
 	Errors []struct {
-		Message string `json:"message"`
+		Message    string         `json:"message"`
+		Extensions map[string]any `json:"extensions"`
 	} `json:"errors"`
 }
 
 func newTestGraphQLServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	cfg, err := config.NewManager("../maps", "")
+	cfg, err := config.NewManager(config.Options{ConfigDir: "../maps", CustomDir: t.TempDir()})
 	if err != nil {
 		t.Fatalf("config.NewManager: %v", err)
 	}
@@ -43,7 +47,7 @@ func newTestGraphQLServer(t *testing.T) *httptest.Server {
 // use "<mapsDir>/custom".
 func newTestGraphQLServerAt(t *testing.T, mapsDir, customDir string, opts ...Option) string {
 	t.Helper()
-	cfg, err := config.NewManager(mapsDir, customDir)
+	cfg, err := config.NewManager(config.Options{ConfigDir: mapsDir, CustomDir: customDir})
 	if err != nil {
 		t.Fatalf("config.NewManager: %v", err)
 	}
@@ -57,10 +61,15 @@ func newTestGraphQLServerAt(t *testing.T, mapsDir, customDir string, opts ...Opt
 }
 
 // withRequestContext mirrors main.go: it makes the *http.Request available to
-// resolvers so header-based credentials can be read.
+// resolvers so header-based credentials can be read, and turns a test-only
+// "Authorization: Bearer <account id>" header into a signed-in viewer.
 func withRequestContext(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), HTTPRequestKey{}, r)))
+		ctx := context.WithValue(r.Context(), HTTPRequestKey{}, r)
+		if acct := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "); acct != "" && acct != r.Header.Get("Authorization") {
+			ctx = auth.WithViewer(ctx, &auth.Viewer{Account: &account.Account{ID: acct}})
+		}
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 

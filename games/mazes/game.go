@@ -6,6 +6,7 @@ package mazes
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -29,11 +30,12 @@ var llmsTemplate string
 // Env is this game's environment section: MAZES_*.
 type Env struct {
 	MapsDir      string `envconfig:"MAPS_DIR" default:"maps"`
-	SessionsDir  string `envconfig:"SESSIONS_DIR" default:"sessions"`
 	SolutionsDir string `envconfig:"SOLUTIONS_DIR" default:"solutions"`
 	PublicURL    string `envconfig:"PUBLIC_URL"`
 	Debug        bool   `envconfig:"DEBUG"`
 	MaxSessions  int    `envconfig:"MAX_SESSIONS" default:"1000"`
+	// MaxUserMaps caps player-created maps (all accounts; 0 = no cap).
+	MaxUserMaps int `envconfig:"MAX_USER_MAPS" default:"200"`
 }
 
 func loadEnv() (Env, error) {
@@ -53,6 +55,9 @@ type Game struct {
 	hub       *websocket.Hub
 	resolver  *graph.Resolver
 	publicURL string
+	// hooksRegistered guards the account-deletion hook: Mount runs once, but a
+	// second Mount must not double-register it.
+	hooksRegistered bool
 }
 
 // New returns the game for the compiled-in registry.
@@ -81,11 +86,28 @@ func (g *Game) Mount(mux *http.ServeMux, deps platform.Deps) error {
 	g.env = env
 	g.publicURL = env.PublicURL
 
-	maps, err := mazeconfig.NewManager(env.MapsDir)
+	if deps.DB == nil {
+		return fmt.Errorf("session persistence: PostgreSQL is required")
+	}
+	maps, err := mazeconfig.NewManager(mazeconfig.Options{
+		Dir:         env.MapsDir,
+		Pool:        deps.DB,
+		MaxUserMaps: env.MaxUserMaps,
+	})
 	if err != nil {
 		return fmt.Errorf("load maps: %w", err)
 	}
-	persistence, err := session.NewStorePersistence(env.SessionsDir, env.MaxSessions)
+	if deps.Accounts != nil && !g.hooksRegistered {
+		g.hooksRegistered = true
+		// Delete the account's drafts, keep its published maps playable.
+		deps.Accounts.AddOnDelete(func(accountID string) error {
+			return errors.Join(
+				maps.DeleteDraftsByOwner(accountID),
+				maps.OrphanPublishedByOwner(accountID),
+			)
+		})
+	}
+	persistence, err := session.NewPostgresPersistence(deps.DB, env.MaxSessions)
 	if err != nil {
 		return fmt.Errorf("session persistence: %w", err)
 	}

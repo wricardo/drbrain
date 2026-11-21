@@ -87,7 +87,7 @@ func TestPlayerRuns(t *testing.T) {
 	t.Run("a rules change retires the run", func(t *testing.T) {
 		cfg := wideCfg
 		cfg.MaxSteps = 20
-		if _, err := e.svc.SaveMap(cfg); err != nil {
+		if _, err := e.svc.SaveMap(cfg, service.MapActor{AccountID: "tester"}); err != nil {
 			t.Fatal(err)
 		}
 		runs := runsByMap(t, e, service.RunsQuery{SessionIDs: []string{adaWide1, adaWide2, adaCorr}})

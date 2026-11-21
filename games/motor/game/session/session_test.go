@@ -1,21 +1,17 @@
 package session
 
 import (
-	"encoding/json"
 	"errors"
 	"io"
 	"log"
-	"os"
-	"path/filepath"
 	"reflect"
-	"sort"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/wricardo/drbrain/games/motor/game/engine"
 	"github.com/wricardo/drbrain/games/motor/game/service"
+	"github.com/wricardo/drbrain/platform/pgdb/pgtest"
 )
 
 const (
@@ -30,8 +26,13 @@ var corridorCfg = engine.MapConfig{
 }
 
 func init() {
-	// Skipped/corrupt-file tests log on purpose.
+	// Corrupt-row tests log on purpose.
 	log.SetOutput(io.Discard)
+}
+
+func newPersistence(t testing.TB) *PostgresPersistence {
+	t.Helper()
+	return NewPostgresPersistence(pgtest.Pool(t))
 }
 
 func mustMap(t testing.TB, cfg engine.MapConfig) *engine.Map {
@@ -71,16 +72,6 @@ func fixture(t testing.TB, id string) *service.Session {
 	}
 }
 
-func newFile(t testing.TB) (*FilePersistence, string) {
-	t.Helper()
-	dir := filepath.Join(t.TempDir(), "sessions")
-	fp, err := NewFilePersistence(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return fp, dir
-}
-
 func TestValidID(t *testing.T) {
 	good := []string{idA, "0123456789abcdef", "ffffffffffffffff"}
 	bad := []string{
@@ -100,76 +91,7 @@ func TestValidID(t *testing.T) {
 	}
 }
 
-func TestFileRoundTrip(t *testing.T) {
-	fp, dir := newFile(t)
-	want := fixture(t, idA)
-	if err := fp.Save(want); err != nil {
-		t.Fatal(err)
-	}
-
-	raw, err := os.ReadFile(filepath.Join(dir, idA+".json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var generic map[string]any
-	if err := json.Unmarshal(raw, &generic); err != nil {
-		t.Fatal(err)
-	}
-	if generic["schema_version"] != float64(1) {
-		t.Fatalf("schema_version = %v", generic["schema_version"])
-	}
-	for _, k := range []string{"id", "map", "program", "vm", "speed_ms", "seq", "created_at", "last_action_at", "attempts", "best_steps"} {
-		if _, ok := generic[k]; !ok {
-			t.Errorf("persisted file lacks %q", k)
-		}
-	}
-	for _, k := range []string{"playing", "last_event"} {
-		if _, ok := generic[k]; ok {
-			t.Errorf("persisted file contains transient field %q", k)
-		}
-	}
-
-	got, err := fp.Load(idA)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.Playing {
-		t.Fatal("loaded session is Playing")
-	}
-	if got.LastEvent != nil {
-		t.Fatal("LastEvent is transient and must not be restored")
-	}
-	if got.ID != idA || got.MapID != "corridor" || got.SpeedMs != 120 ||
-		got.Seq != 17 || got.Attempts != 3 || got.BestSteps != 5 {
-		t.Fatalf("scalar fields differ: %+v", got)
-	}
-	if !got.CreatedAt.Equal(want.CreatedAt) || !got.LastActionAt.Equal(want.LastActionAt) {
-		t.Fatalf("timestamps differ: %v %v", got.CreatedAt, got.LastActionAt)
-	}
-	if !reflect.DeepEqual(got.Program, want.Program) {
-		t.Fatalf("program differs:\n got %+v\nwant %+v", got.Program, want.Program)
-	}
-	if !reflect.DeepEqual(got.VM, want.VM) {
-		t.Fatalf("vm differs:\n got %+v\nwant %+v", got.VM, want.VM)
-	}
-	if !reflect.DeepEqual(got.Map.Config(), want.Map.Config()) {
-		t.Fatalf("map snapshot differs: %+v", got.Map.Config())
-	}
-
-	// The restored VM must be steppable exactly like the original.
-	for !want.VM.Status.Terminal() {
-		w, werr := want.VM.Step(want.Map, &want.Program)
-		g, gerr := got.VM.Step(got.Map, &got.Program)
-		if werr != nil || gerr != nil || !reflect.DeepEqual(w, g) {
-			t.Fatalf("restored VM diverged: %+v vs %+v (%v/%v)", g, w, gerr, werr)
-		}
-	}
-	if got.VM.Status != engine.StatusWon {
-		t.Fatalf("restored run ended %s, want WON", got.VM.Status)
-	}
-}
-
-func TestFileRoundTripTileMovedRun(t *testing.T) {
+func TestPostgresRoundTripTileMovedRun(t *testing.T) {
 	// A conveyor push and a portal teleport move the robot twice in one step, so
 	// such a run has more visited positions than steps+1. It is a normal run and
 	// must survive a save/load (a restart) instead of being skipped as corrupt.
@@ -181,7 +103,7 @@ func TestFileRoundTripTileMovedRun(t *testing.T) {
 		"portal":   {layout: []string{">1..*", "....1", "#####"}, want: engine.Position{X: 4, Y: 1}},
 	} {
 		t.Run(name, func(t *testing.T) {
-			fp, _ := newFile(t)
+			fp := newPersistence(t)
 			m := mustMap(t, engine.MapConfig{
 				ID: name, Name: name, Layout: tc.layout,
 				MainTapeLength: 4, SubTapeLengths: []int{}, MaxSteps: 20,
@@ -214,8 +136,8 @@ func TestFileRoundTripTileMovedRun(t *testing.T) {
 	}
 }
 
-func TestFileRoundTripZeroSubMap(t *testing.T) {
-	fp, _ := newFile(t)
+func TestPostgresRoundTripZeroSubMap(t *testing.T) {
+	fp := newPersistence(t)
 	m := mustMap(t, engine.MapConfig{
 		ID: "nosubs", Name: "n", Layout: []string{".....", ">...*", "....."},
 		MainTapeLength: 4, SubTapeLengths: []int{}, MaxSteps: 30,
@@ -234,75 +156,10 @@ func TestFileRoundTripZeroSubMap(t *testing.T) {
 	}
 }
 
-func TestFileSaveIsAtomicAndListIgnoresStrays(t *testing.T) {
-	fp, dir := newFile(t)
-	s := fixture(t, idA)
-	for range 3 {
-		s.Seq++
-		if err := fp.Save(s); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := fp.Save(fixture(t, idB)); err != nil {
-		t.Fatal(err)
-	}
-	// Strays that must never be treated as sessions.
-	for _, name := range []string{".tmp-" + idC + "-123", "notes.json", "0123456789ABCDEF.json", "short.json", idC + ".json.bak", "readme.txt"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := os.Mkdir(filepath.Join(dir, idC+".json"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	ids, err := fp.ListAll()
-	if err != nil {
-		t.Fatal(err)
-	}
-	sort.Strings(ids)
-	if !reflect.DeepEqual(ids, []string{idA, idB}) {
-		t.Fatalf("ListAll = %v", ids)
-	}
-	// Overwrites leave no temp files behind.
-	entries, _ := os.ReadDir(dir)
-	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), ".tmp-"+idA) || strings.HasPrefix(e.Name(), ".tmp-"+idB) {
-			t.Fatalf("temp file left behind: %s", e.Name())
-		}
-	}
-	got, _ := fp.Load(idA)
-	if got.Seq != 20 {
-		t.Fatalf("latest save not visible: seq %d", got.Seq)
-	}
-}
-
-func TestFileDelete(t *testing.T) {
-	fp, dir := newFile(t)
-	if err := fp.Save(fixture(t, idA)); err != nil {
-		t.Fatal(err)
-	}
-	if err := fp.Delete(idA); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, idA+".json")); !os.IsNotExist(err) {
-		t.Fatalf("file still exists: %v", err)
-	}
-	if err := fp.Delete(idA); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("second Delete = %v, want ErrNotFound", err)
-	}
-	if _, err := fp.Load(idA); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("Load after Delete = %v, want ErrNotFound", err)
-	}
-}
-
 func TestPathTraversalRejected(t *testing.T) {
-	fp, dir := newFile(t)
-	parent := filepath.Dir(dir)
-	secret := filepath.Join(parent, "secret.json")
-	if err := os.WriteFile(secret, []byte(`{"schema_version":1}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	// No database is needed: an invalid id is rejected before any query.
+	fp := NewPostgresPersistence(nil)
+	mgr := NewManager(nil, 0)
 
 	for _, id := range []string{"../secret", "../../etc/passwd", "..", ".", "", "/abs", `..\secret`, idA + "/../" + idB} {
 		bad := fixture(t, idA)
@@ -316,7 +173,6 @@ func TestPathTraversalRejected(t *testing.T) {
 		if err := fp.Delete(id); !errors.Is(err, ErrInvalidID) {
 			t.Errorf("Delete(%q) = %v, want ErrInvalidID", id, err)
 		}
-		mgr := NewManager(fp, 10)
 		if err := mgr.Put(bad); !errors.Is(err, ErrInvalidID) {
 			t.Errorf("Put(%q) = %v, want ErrInvalidID", id, err)
 		}
@@ -324,102 +180,6 @@ func TestPathTraversalRejected(t *testing.T) {
 		if err := mgr.Delete(id); !errors.As(err, &se) || se.Code != service.CodeNotFound {
 			t.Errorf("Manager.Delete(%q) = %v, want NOT_FOUND", id, err)
 		}
-	}
-	if _, err := os.Stat(secret); err != nil {
-		t.Fatalf("file outside the sessions dir was touched: %v", err)
-	}
-	entries, _ := os.ReadDir(parent)
-	for _, e := range entries {
-		if e.Name() != "sessions" && e.Name() != "secret.json" {
-			t.Errorf("unexpected entry outside sessions dir: %s", e.Name())
-		}
-	}
-	if ids, _ := fp.ListAll(); len(ids) != 0 {
-		t.Fatalf("rejected ids produced files: %v", ids)
-	}
-}
-
-// writeFile writes a persisted session after letting mutate edit it.
-func writeFile(t *testing.T, dir, id string, mutate func(*PersistedSession)) {
-	t.Helper()
-	s := fixture(t, id)
-	ps := PersistedSession{
-		SchemaVersion: SchemaVersion, ID: id, Map: s.Map.Config(),
-		Program: s.Program, VM: s.VM, SpeedMs: s.SpeedMs, Seq: s.Seq,
-		CreatedAt: s.CreatedAt, LastActionAt: s.LastActionAt, Attempts: s.Attempts, BestSteps: s.BestSteps,
-	}
-	if mutate != nil {
-		mutate(&ps)
-	}
-	data, err := json.Marshal(ps)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, id+".json"), data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestLoadRejectsInvalidFiles(t *testing.T) {
-	cases := map[string]func(*PersistedSession){
-		"future schema":      func(p *PersistedSession) { p.SchemaVersion = 2 },
-		"missing schema":     func(p *PersistedSession) { p.SchemaVersion = 0 },
-		"id mismatch":        func(p *PersistedSession) { p.ID = idB },
-		"map without treats": func(p *PersistedSession) { p.Map.Layout = []string{".....", ">....", "....."} },
-		"program wrong size": func(p *PersistedSession) { p.Program.Main = p.Program.Main[:3] },
-		"unknown status":     func(p *PersistedSession) { p.VM.Status = "PAUSED" },
-		"bad facing":         func(p *PersistedSession) { p.VM.Facing = 9 },
-		"position off map":   func(p *PersistedSession) { p.VM.Pos = engine.Position{X: 50, Y: 1} },
-		"collected length":   func(p *PersistedSession) { p.VM.Collected = nil },
-		"treats_left lies":   func(p *PersistedSession) { p.VM.TreatsLeft = 0 },
-		"empty call stack":   func(p *PersistedSession) { p.VM.CallStack = nil },
-		"stack tape range":   func(p *PersistedSession) { p.VM.CallStack = append(p.VM.CallStack, engine.Frame{Tape: 5, PC: 0}) },
-		"main not first":     func(p *PersistedSession) { p.VM.CallStack[0].Tape = 0 },
-		"pc beyond tape":     func(p *PersistedSession) { p.VM.CallStack[0].PC = 99 },
-		"steps beyond limit": func(p *PersistedSession) { p.VM.Steps = 10_000 },
-		// One step can visit at most two cells (entry plus a conveyor push or
-		// portal teleport), so 2*steps+2 is impossible and still rejected.
-		"impossible visits": func(p *PersistedSession) {
-			p.VM.Visited = make([]engine.Position, 2*p.VM.Steps+2)
-			for i := range p.VM.Visited {
-				p.VM.Visited[i] = p.VM.Pos
-			}
-		},
-	}
-	for name, mutate := range cases {
-		t.Run(name, func(t *testing.T) {
-			fp, dir := newFile(t)
-			writeFile(t, dir, idA, mutate)
-			if _, err := fp.Load(idA); err == nil {
-				t.Fatal("invalid file loaded")
-			} else if errors.Is(err, ErrNotFound) {
-				t.Fatalf("invalid file reported as not found: %v", err)
-			}
-		})
-	}
-}
-
-func TestLoadAllSkipsCorruptFilesAndNormalizesPlaying(t *testing.T) {
-	fp, dir := newFile(t)
-	writeFile(t, dir, idA, nil)
-	writeFile(t, dir, idB, func(p *PersistedSession) { p.SchemaVersion = 99 })
-	if err := os.WriteFile(filepath.Join(dir, idC+".json"), []byte("{ not json"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "0000000000000000.json"), nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	m := NewManager(fp, 10)
-	if err := m.LoadAll(); err != nil {
-		t.Fatalf("corrupt files must not be fatal: %v", err)
-	}
-	if m.Count() != 1 {
-		t.Fatalf("loaded %d sessions, want 1", m.Count())
-	}
-	s, ok := m.Get(idA)
-	if !ok || s.Playing {
-		t.Fatalf("session A: found=%v playing=%v", ok, s != nil && s.Playing)
 	}
 }
 
@@ -491,19 +251,19 @@ func TestManagerDefaultLimit(t *testing.T) {
 }
 
 func TestManagerPersistAndDelete(t *testing.T) {
-	fp, dir := newFile(t)
+	fp := newPersistence(t)
 	m := NewManager(fp, 10)
 	s := fixture(t, idA)
 	if err := m.Put(s); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, idA+".json")); !os.IsNotExist(err) {
+	if _, err := fp.Load(idA); !errors.Is(err, ErrNotFound) {
 		t.Fatal("Put must not write; the service persists explicitly")
 	}
 	if err := m.Persist(s); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, idA+".json")); err != nil {
+	if _, err := fp.Load(idA); err != nil {
 		t.Fatalf("Persist wrote nothing: %v", err)
 	}
 	// Persist snapshots under the session lock.
@@ -513,34 +273,36 @@ func TestManagerPersistAndDelete(t *testing.T) {
 	if err := m.Persist(s); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := fp.Load(idA); got.Seq != 99 {
-		t.Fatalf("persisted seq = %d, want 99", got.Seq)
+	if got, err := fp.Load(idA); err != nil || got.Seq != 99 {
+		t.Fatalf("persisted seq = %d, err %v, want 99", got.Seq, err)
 	}
 
 	if err := m.Delete(idA); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, idA+".json")); !os.IsNotExist(err) {
-		t.Fatal("Delete left the file")
+	if _, err := fp.Load(idA); !errors.Is(err, ErrNotFound) {
+		t.Fatal("Delete left the row")
 	}
 	// A late Persist (e.g. from a runner finishing) must not resurrect it.
 	if err := m.Persist(s); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, idA+".json")); !os.IsNotExist(err) {
+	if _, err := fp.Load(idA); !errors.Is(err, ErrNotFound) {
 		t.Fatal("Persist resurrected a deleted session")
 	}
 }
 
-func TestManagerDeleteRemovesFileOfUnloadedSession(t *testing.T) {
-	fp, dir := newFile(t)
-	writeFile(t, dir, idA, nil)
-	m := NewManager(fp, 10) // LoadAll not called: only on disk
-	if err := m.Delete(idA); err != nil {
-		t.Fatalf("Delete of disk-only session: %v", err)
+func TestManagerDeleteRemovesRowOfUnloadedSession(t *testing.T) {
+	fp := newPersistence(t)
+	if err := fp.Save(fixture(t, idA)); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, idA+".json")); !os.IsNotExist(err) {
-		t.Fatal("file not removed")
+	m := NewManager(fp, 10) // LoadAll not called: only in the database
+	if err := m.Delete(idA); err != nil {
+		t.Fatalf("Delete of unloaded session: %v", err)
+	}
+	if _, err := fp.Load(idA); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("row not removed: %v", err)
 	}
 }
 
@@ -562,7 +324,7 @@ func TestManagerMemoryOnly(t *testing.T) {
 }
 
 func TestManagerLoadAllRoundTripKeepsLimitOnPut(t *testing.T) {
-	fp, _ := newFile(t)
+	fp := newPersistence(t)
 	m1 := NewManager(fp, 10)
 	for _, id := range []string{idA, idB, idC} {
 		s := fixture(t, id)
@@ -588,7 +350,7 @@ func TestManagerLoadAllRoundTripKeepsLimitOnPut(t *testing.T) {
 
 // TestManagerConcurrentPersist races mutation, Persist and Delete (run with -race).
 func TestManagerConcurrentPersist(t *testing.T) {
-	fp, _ := newFile(t)
+	fp := newPersistence(t)
 	m := NewManager(fp, 10)
 	s := fixture(t, idA)
 	if err := m.Put(s); err != nil {
@@ -620,6 +382,6 @@ func TestManagerConcurrentPersist(t *testing.T) {
 	want := s.Seq
 	s.Unlock()
 	if got.Seq != want {
-		t.Fatalf("last write wins: file has seq %d, live has %d", got.Seq, want)
+		t.Fatalf("last write wins: row has seq %d, live has %d", got.Seq, want)
 	}
 }

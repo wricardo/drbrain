@@ -10,19 +10,47 @@ import "encoding/json"
 // which is what makes two sessions on the same map independent.
 type CityConfig struct {
 	// Name is display text only; nothing keys off it.
+	// Suggested: "DrBrain City".
 	Name string `json:"name"`
 
 	// GridSize is the side length of the square grid, in tiles. Must be in
 	// [MinGridSize, MaxGridSize]; a mismatch with Layout is a load error.
+	// Suggested: 22.
 	GridSize int `json:"grid_size"`
 
 	// TickMS is the wall-clock length of one tick at 1x for live sessions.
-	// Zero or negative falls back to DefaultTickMS. The sim harness ignores it
-	// and advances a fixed count of ticks.
+	// Required: positive. Suggested: 300. The sim harness ignores it and
+	// advances a fixed count of ticks.
 	TickMS int `json:"tick_ms"`
 
+	// GroundExtraStepCost is the extra battery spent entering a ground tile,
+	// on top of the car class's step_cost. Required: non-negative.
+	// Suggested: 1. Zero makes ground cost the same as road.
+	GroundExtraStepCost int `json:"ground_extra_step_cost"`
+
+	// TicksPerMonth is the accounting month length for the monthly
+	// income/expense report. Required: positive. Suggested: 600.
+	TicksPerMonth int `json:"ticks_per_month"`
+
+	// MaxEvents bounds the retained event feed. Required: positive.
+	// Suggested: 500.
+	MaxEvents int `json:"max_events"`
+
+	// MaxReputation is the top of the reputation scale. Required: positive.
+	// Suggested: 5.0.
+	MaxReputation float64 `json:"max_reputation"`
+
+	// MaxChapter caps the chapter index used by tuning tables. Chapters count
+	// applied growth stages. Required: positive. Suggested: 5.
+	MaxChapter int `json:"max_chapter"`
+
+	// AutosaveTicks is how many world ticks may pass between background
+	// saves. Required: positive. Suggested: 60.
+	AutosaveTicks int `json:"autosave_ticks"`
+
 	// StartMoney is the opening cash balance. Money is not a score: it is
-	// spent on cars and builds, while MoneyEarned (lifetime) never decreases.
+	// spent on cars, charging, tows and upkeep, while MoneyEarned (lifetime)
+	// never decreases. Suggested: 0.
 	StartMoney int `json:"starting_money"`
 
 	// Layout is GridSize rows of GridSize legend characters.
@@ -65,7 +93,7 @@ type CityConfig struct {
 	CarClasses map[string]CarClassConfig `json:"car_classes"`
 
 	// Districts maps district id to a named region. The id is what the
-	// reveal_district build effect targets.
+	// reveal_district growth effect targets.
 	Districts map[string]DistrictConfig `json:"districts"`
 
 	// Orders is the spawn pacing and economy table.
@@ -74,25 +102,21 @@ type CityConfig struct {
 	// Charging is the per-tick refill rate of each charge source.
 	Charging ChargingConfig `json:"charging"`
 
-	// Closures is the street-works pacing table. Its zero value means no
-	// closures, so a quiet map does not need to opt out.
-	Closures ClosureConfig `json:"closures,omitempty"`
+	// Closures is the street-works pacing table. The block is required so a
+	// map states whether closures are on; set enabled=false for a quiet map.
+	Closures *ClosureConfig `json:"closures"`
 
-	// Fleet is the running-cost table for the vehicles. Its zero value means
-	// the fleet is free to keep, which is how the game behaved before upkeep
-	// existed; see FleetConfig.
-	Fleet FleetConfig `json:"fleet,omitempty"`
+	// Fleet is the running-cost table for the vehicles. The block is required
+	// so a map states its upkeep choice; set upkeep_interval_ticks=0 to
+	// disable upkeep explicitly.
+	Fleet *FleetConfig `json:"fleet"`
 
-	// Achievements are one-shot rewards that fire on their own when their
-	// requirement is met.
-	Achievements []AchievementConfig `json:"achievements"`
-
-	// Unlocks are permission only: meeting the requirement makes the listed
-	// builds purchasable. They never cost or grant money.
-	Unlocks []UnlockConfig `json:"unlocks"`
-
-	// Builds are the purchasable map mutations the unlock ladder gates.
-	Builds []BuildConfig `json:"builds"`
+	// Growth is the city's scheduled expansion. Each stage fires once, on its
+	// own tick, and applies its effects atomically: districts open, roads and
+	// bridges appear, chargers and depots are added, car classes are licensed.
+	// Nothing here is purchased; the player's economy is spent on cars and
+	// running the fleet, while the city grows on a fixed timeline.
+	Growth []GrowthConfig `json:"growth"`
 }
 
 // KitchenConfig is a restaurant: a pickup point serving a menu of items.
@@ -100,7 +124,7 @@ type KitchenConfig struct {
 	// ID is a map-unique identifier used by orders and event text.
 	ID string `json:"id"`
 
-	// Name is display text only.
+	// Name is display text only. Suggested: a readable place name.
 	Name string `json:"name"`
 
 	// Pos is the pickup tile. It must be on kitchen terrain (the legend
@@ -122,7 +146,7 @@ type CustomerConfig struct {
 	// ID is a map-unique identifier used by orders, spawning and save deltas.
 	ID string `json:"id"`
 
-	// Name is display text only.
+	// Name is display text only. Suggested: a readable place name.
 	Name string `json:"name"`
 
 	// Pos is the dropoff tile. It must be on house terrain, checked at load.
@@ -130,18 +154,18 @@ type CustomerConfig struct {
 
 	// Demands lists the item ids this customer orders. Must be non-empty,
 	// every entry must be declared in Items, and at load time some authored
-	// kitchen must already serve it: a demand added by a later build cannot
-	// satisfy that check, so the starting map must cover it.
+	// kitchen must already serve it: a demand added by a later growth stage
+	// cannot satisfy that check, so the starting map must cover it.
 	Demands []string `json:"demands"`
 
 	// OrderIntervalTicks is the cooldown, in ticks, between this customer's
 	// orders. Must be positive. This is gate 1 of spawning, evaluated per
-	// customer in id order.
+	// customer in id order. Suggested: 40.
 	OrderIntervalTicks int `json:"order_interval_ticks"`
 
 	// JitterTicks is the maximum +/- randomness applied to the cooldown so
 	// the world does not feel metronomic. The roll is derived from the
-	// session seed and tick, so it is reproducible.
+	// session seed and tick, so it is reproducible. Suggested: 10.
 	JitterTicks int `json:"jitter_ticks"`
 }
 
@@ -153,30 +177,44 @@ type DepotConfig struct {
 	// Pos is the depot tile. It must be on depot terrain, checked at load.
 	Pos Position `json:"pos"`
 
-	// Capacity is how many cars may occupy the tile at once: the yard size.
-	// It gates BuyCar (a full yard refuses the purchase) and is the tile's
-	// movement capacity. Must be positive.
+	// Capacity is legacy map data: fleet size is money-gated, so the depot
+	// accepts any number of cars. It remains decoded for old maps and the
+	// upgrade_depot effect; parking and movement use UnlimitedCarCapacity.
+	// Must still be positive for map validation. Suggested: 4.
 	Capacity int `json:"capacity"`
 
 	// ChargeSlots is how many cars may recharge on this tile per tick. When it
 	// is fewer than Capacity the cars that charge are chosen in car id order,
 	// deterministically; the others stay parked with no charge that tick.
-	// Zero or negative means no slot limit (every car on the tile charges),
-	// which is how maps authored before the field existed behave.
+	// Zero or negative means no slot limit (every car on the tile charges).
+	// Suggested: 4.
 	ChargeSlots int `json:"charge_slots"`
 }
 
 // ChargerConfig is a standalone charging point.
 type ChargerConfig struct {
-	// ID is the identifier used by builds and event text.
+	// ID is the identifier used by growth effects (add_charger), ledger memos
+	// and event text.
 	ID string `json:"id"`
 
 	// Pos is the charger tile. It must be on charger terrain, checked at load.
 	Pos Position `json:"pos"`
 
-	// Capacity is how many cars may occupy the tile at once. Zero or omitted
-	// means one car.
+	// Capacity is how many cars may occupy the tile at once. Required:
+	// positive. Suggested: 1.
 	Capacity int `json:"capacity"`
+
+	// Rate is battery restored per tick, overriding charging.charger_rate.
+	// Zero inherits the city's rate; a rate above the depot's makes this a
+	// supercharger, so pair it with a higher price. Suggested: 0 (inherit).
+	Rate int `json:"rate"`
+
+	// PricePerTick is the default price in dollars for one full charging tick
+	// at this charger, overriding charging.charger_price_per_tick. nil
+	// inherits the city default; an explicit 0 makes this charger free. The
+	// last tick of a session is prorated by the energy actually delivered, so
+	// a partial tick costs no more than a full one. Suggested: nil (inherit).
+	PricePerTick *int `json:"price_per_tick"`
 }
 
 // InitialCarConfig places a car at session start.
@@ -185,6 +223,7 @@ type InitialCarConfig struct {
 	Class string `json:"class"`
 
 	// Name is display text; omitted means "Car N".
+	// Suggested: a readable name such as "Scooter One".
 	Name string `json:"name"`
 
 	// Pos is the starting tile. It must be walkable and respect the tile's
@@ -199,36 +238,36 @@ type InitialCarConfig struct {
 // Price. Inferring was a trap: a priced class with no grant effect anywhere in
 // the city is advertised in the UI and can never be bought. With this field a
 // map author states the intent, and the content test can verify every gated
-// class actually has a build that grants it.
+// class actually has a growth stage that grants it.
 //
-//	RequiresGrant=false  buyable with money alone (the natural second car)
-//	RequiresGrant=true   locked until a build grants it
+//	RequiresGrant=false  buyable with money alone (every shipped class)
+//	RequiresGrant=true   locked until a growth stage grants it
 type CarClassConfig struct {
-	// Speed is reserved: the engine currently moves every car exactly one
-	// tile per tick regardless of class, so changing it has no effect.
-	Speed int `json:"speed"`
-
-	// Capacity is the cargo hold in boxes (not orders). It gates both how
-	// much a single order may ask for and how much a car can pick up: a car
-	// that cannot fit the whole order takes none of it.
+	// Capacity is the cargo hold in boxes (not orders). Required: positive.
+	// It gates both how much a single order may ask for and how much a car
+	// can pick up: a car that cannot fit the whole order takes none of it.
+	// Suggested: 4 (scooter), 24 (van), 40 (truck).
 	Capacity int `json:"capacity"`
 
-	// MaxBattery is the full-charge battery in battery units. A new car
-	// starts full; the battery drains by StepCost per step and refills per
-	// ChargingConfig on a depot or charger tile.
+	// MaxBattery is the full-charge battery in battery units. Required:
+	// positive. A new car starts full; the battery drains by StepCost per step
+	// and refills per ChargingConfig on a depot or charger tile.
+	// Suggested: 24 (scooter), 36 (van), 48 (truck).
 	MaxBattery int `json:"max_battery"`
 
 	// StepCost is the battery spent stepping onto a road tile. Ground costs
-	// one extra (see City.WalkCost). Zero or negative is treated as 1.
+	// GroundExtraStepCost more (see City.WalkCost). Required: positive.
+	// Suggested: 1.
 	StepCost int `json:"step_cost"`
 
-	// Price is the purchase price in dollars. Zero means the class is free,
-	// but requires_grant can still lock it behind a build.
+	// Price is the purchase price in dollars. Required: non-negative. Zero
+	// means the class is free, but requires_grant can still lock it behind a
+	// growth stage. Suggested: 0 (scooter), 1000 (van), 3500 (truck).
 	Price int `json:"price"`
 
 	// RequiresGrant, when true, means money alone cannot buy this class: a
-	// build with a grant_car_class effect must unlock it first. When false the
-	// class is buyable with money alone.
+	// growth stage with a grant_car_class effect must unlock it first. When
+	// false the class is buyable with money alone. Suggested: false.
 	RequiresGrant bool `json:"requires_grant,omitempty"`
 
 	// UpkeepPerInterval is this class's operating cost per upkeep interval,
@@ -237,11 +276,12 @@ type CarClassConfig struct {
 	// "free": there is no per-class way to declare a free class, because
 	// hand-tuned rates that disagree with capacity quietly make one class
 	// strictly worse to own. Any positive value overrides the derivation.
-	UpkeepPerInterval int `json:"upkeep_per_interval,omitempty"`
+	// Suggested: 0 (derive).
+	UpkeepPerInterval int `json:"upkeep_per_interval"`
 }
 
 // DistrictConfig marks a named region. Hidden districts render as unexplored
-// and are impassable until a build reveals them.
+// and are impassable until a growth stage reveals them.
 //
 // A district is a set of rectangles, each written [x0,y0,x1,y1] inclusive.
 // Rectangles are used rather than legend characters because terrain chars are
@@ -252,13 +292,12 @@ type DistrictConfig struct {
 	Description string `json:"description"`
 
 	// Hidden makes every tile in Rects start unexplored and impassable until
-	// a build reveals the district. The tiles still exist in Layout; hiding is
-	// applied on top of the terrain.
+	// a growth stage reveals the district. The tiles still exist in Layout;
+	// hiding is applied on top of the terrain.
 	Hidden bool `json:"hidden"`
 
 	// Rects are inclusive [x0,y0,x1,y1] rectangles. A district with no rects
-	// is never revealed by a build and does not count toward the
-	// districts_revealed requirement.
+	// has no tiles and reveals nothing.
 	Rects [][4]int `json:"rects,omitempty"`
 }
 
@@ -267,23 +306,26 @@ type DistrictConfig struct {
 // order these values feed.
 type OrdersConfig struct {
 	// MaxActiveOrders is the hard cap on live orders (pending, assigned and
-	// picked up; done and expired do not count). Zero or negative falls back
-	// to 6. It also caps the fleet-derived target below.
+	// picked up; done and expired do not count). Required: positive.
+	// Suggested: 6. It also caps the population-derived target below.
 	MaxActiveOrders int `json:"max_active_orders"`
 
-	// TargetOrdersPerCar is the queue depth the governor aims for per car on
-	// the road. It replaced a capacity-based ratio: capacity is measured in
-	// boxes, and once a truck holds forty of them a capacity-derived target
-	// scales quadratically and stops meaning anything.
+	// TargetOrdersPerCustomer is the queue depth the governor aims for per
+	// visible customer. Demand is anchored to the map's population, not to the
+	// player's fleet: buying cars must not create more work, or the queue
+	// treadmill makes fleet growth unable to catch up. Visible customers are
+	// the ones whose district is revealed; a hidden district contributes
+	// nothing until a growth stage opens it.
 	//
-	// The target is round(non-stranded cars × ratio), floored at 1 and capped
-	// by MaxActiveOrders. Zero or negative falls back to 1.0.
-	TargetOrdersPerCar float64 `json:"target_orders_per_car"`
+	// The target is round(visible customers × ratio), floored at 1 and capped
+	// by MaxActiveOrders. Required: positive. Suggested: 0.75.
+	TargetOrdersPerCustomer float64 `json:"target_orders_per_customer"`
 
 	// MinSpawnGapTicks is the anti-dead-air floor: when nothing is live and
 	// no car is carrying anything, at least this many ticks must pass since
 	// the last spawn. It is not a gap between ordinary spawns, which are
-	// governed by the customers' own cooldowns. Zero falls back to 12.
+	// governed by the customers' own cooldowns. Required: positive.
+	// Suggested: 12.
 	MinSpawnGapTicks int `json:"min_spawn_gap_ticks"`
 
 	// DeadlineSlack multiplies the estimated route length to set the deadline.
@@ -292,82 +334,124 @@ type OrdersConfig struct {
 	// deadline. It is the fallback used when DeadlineSlackByChapter is empty:
 	// a non-empty chapter table replaces this value entirely.
 	//
-	// An on-time delivery on the deadline tick still counts as on time. Zero
-	// falls back to 2.0.
+	// An on-time delivery on the deadline tick still counts as on time.
+	// Required: positive. Suggested: 2.0.
 	DeadlineSlack float64 `json:"deadline_slack"`
 
 	// DeadlineSlackByChapter is the per-chapter version of DeadlineSlack,
-	// indexed by builds completed. The last entry is reused for later
-	// chapters. When set it wins over DeadlineSlack.
+	// indexed by growth stages applied. The last entry is reused for later
+	// chapters. When set it wins over DeadlineSlack. Every entry must be
+	// positive.
 	DeadlineSlackByChapter []float64 `json:"deadline_slack_by_chapter"`
 
-	// RewardBase is the base pay per item id. A missing or non-positive entry
-	// falls back to 40. It doubles as the expiry fine basis: an expired order
-	// costs base/4 in cash, in addition to the reputation penalty.
+	// RewardBase is the base pay per item id. Every item declared in Items
+	// must have a positive entry; there is no fallback. It doubles as the
+	// expiry fine basis: an expired order costs base/ExpireFineDivisor in
+	// cash, in addition to the reputation penalty. Suggested: 40 per item.
 	RewardBase map[string]int `json:"reward_base"`
 
-	// ChapterRewardMultiplier scales pay by chapter (builds completed),
+	// RewardBulkBase and RewardBulkPerBox shape the affine quantity
+	// multiplier: pay = base × chapter × (RewardBulkBase +
+	// RewardBulkPerBox × quantity). The affine shape keeps a full truck a good
+	// job without making bulk strictly better than small runs.
+	//
+	// Both are required: positive. Suggested: 0.6 and 0.4.
+	RewardBulkBase   float64 `json:"reward_bulk_base"`
+	RewardBulkPerBox float64 `json:"reward_bulk_per_box"`
+
+	// ExpireFineDivisor divides the item's RewardBase to get the cash fine
+	// for an expired order. Required: positive. Suggested: 4.
+	ExpireFineDivisor int `json:"expire_fine_divisor"`
+
+	// MinRouteTicks and MinDeadlineTicks floor the route estimate and the
+	// resulting deadline: the route estimate is raised to MinRouteTicks before
+	// slack is applied, and the deadline is raised to MinDeadlineTicks.
+	// Required: positive. Suggested: 5 and 10.
+	MinRouteTicks    int64 `json:"min_route_ticks"`
+	MinDeadlineTicks int64 `json:"min_deadline_ticks"`
+
+	// UnreachableLegTicks is substituted for a leg with no route when
+	// estimating a deadline. Required: positive. Suggested: 20.
+	UnreachableLegTicks int64 `json:"unreachable_leg_ticks"`
+
+	// ChapterRewardMultiplier scales pay by chapter (growth stages applied),
 	// reusing the last entry for later chapters. Empty means 1.0 throughout.
+	// Every entry must be positive. Suggested: 1.0 for one chapter.
 	ChapterRewardMultiplier []float64 `json:"chapter_reward_multiplier"`
 
 	// DistanceBonusPerTile is dollars added to the reward per tile of the
 	// kitchen-to-customer route. It is flat per order, not per box, so it only
-	// dominates on long hauls.
+	// dominates on long hauls. Required: non-negative. Suggested: 3.
 	DistanceBonusPerTile int `json:"distance_bonus_per_tile"`
 
 	// ExpirePenaltyReputation is reputation lost when an order expires.
-	// Reputation is clamped to [0,5].
+	// Reputation is clamped to [0, max_reputation]. Required: non-negative.
+	// Suggested: 0.05.
 	ExpirePenaltyReputation float64 `json:"expire_penalty_reputation"`
 
 	// LatePayMultiplier is the fraction of the reward paid for a delivery that
 	// lands after the deadline but before the expiry sweep. On-time pay is the
-	// full reward. Zero falls back to 0.6.
+	// full reward. Required: > 0 and <= 1. Suggested: 0.6.
 	LatePayMultiplier float64 `json:"late_pay_multiplier"`
 
 	// ForceFirstOrderAtTick is the tick at or after which one order is raised
 	// regardless of every gate, so a player never starts in an empty world.
-	// Zero or omitted raises it on the first tick.
+	// Zero raises it on the first tick; there is no fallback. Suggested: 0.
 	ForceFirstOrderAtTick int `json:"force_first_order_at_tick"`
 
-	// ReputationPerDelivery is reputation gained per on-time delivery. Zero
-	// falls back to 0.02.
+	// ReputationPerDelivery is reputation gained per on-time delivery.
+	// Required: non-negative. Suggested: 0.02.
 	ReputationPerDelivery float64 `json:"reputation_per_delivery"`
 
-	// ReputationPerLate is reputation lost per late delivery. Zero falls back
-	// to 0.05. Expiry uses ExpirePenaltyReputation instead.
+	// ReputationPerLate is reputation lost per late delivery. Expiry uses
+	// ExpirePenaltyReputation instead. Required: non-negative.
+	// Suggested: 0.05.
 	ReputationPerLate float64 `json:"reputation_per_late"`
 
+	// RampTicks is the session tick at which demand scaling reaches 100%.
+	// Quantity bands and customer cooldowns are percentages of this ramp, not
+	// chapter steps. Required: positive. Suggested: the last growth-stage
+	// tick, or 2400 when the map has no growth.
+	RampTicks int64 `json:"ramp_ticks"`
+
+	// CustomerCooldownMinScale is the fraction of a customer's base cooldown
+	// that remains at 100% ramp. Required: > 0 and <= 1. Suggested: 0.5:
+	// orders arrive twice as often at the end of the ramp as at the start.
+	CustomerCooldownMinScale float64 `json:"customer_cooldown_min_scale"`
+
 	// Quantity bands: how many boxes a customer can ask for. Bands are
-	// filtered by chapter, clamped to the fleet's largest hold, and drawn with
-	// relative weights. With no bands, or none eligible, every order is a
-	// single box.
+	// filtered by ramp progress and drawn with relative weights. With no bands,
+	// or none eligible, every order is a single box. A band may exceed the
+	// current fleet's largest hold on purpose: the pending oversized order is
+	// the demand signal to upgrade a vehicle.
 	QuantityBands []QuantityBandConfig `json:"quantity_bands,omitempty"`
 }
 
 // QuantityBandConfig is one band of order sizes a customer may ask for.
 //
-// MinSize and MaxSize are inclusive box counts. FromChapter is the first
-// chapter (builds completed) at which the band can be rolled, and Weight is its
-// share of the draw relative to the other eligible bands. The fleet filter
-// clamps MaxSize down to the largest hold and drops bands whose MinSize does
-// not fit, so a band can never promise work the player cannot carry.
+// MinSize and MaxSize are inclusive box counts. FromProgress is the ramp
+// fraction (0..1) at which the band becomes eligible; Weight is its share of
+// the draw relative to the other eligible bands.
+//
+// Bands are NOT filtered by the player's current fleet. A map should be able
+// to offer a thirteen-box job before the player owns a van: the unassignable
+// order is the demand signal that makes upgrading a vehicle a decision rather
+// than an optional luxury. The assign check still refuses to put more boxes in
+// a car than its hold allows, so an oversized order can never corrupt the
+// cargo invariant.
 type QuantityBandConfig struct {
-	// MinSize is the smallest box count this band can roll. A band whose
-	// minimum exceeds the fleet's largest hold is dropped outright, because a
-	// clamped band below its own minimum is not that band any more.
+	// MinSize is the smallest box count this band can roll.
 	MinSize int `json:"min_size"`
 
-	// MaxSize is the largest box count, inclusive. It is clamped down to the
-	// fleet's largest hold rather than dropping the band, so a 30-40 band
-	// still raises a 24-box order once a 24-box van exists.
+	// MaxSize is the largest box count, inclusive.
 	MaxSize int `json:"max_size"`
 
-	// FromChapter is the first chapter at which this band may roll, where
-	// chapter is builds completed, capped at MaxChapter.
-	FromChapter int `json:"from_chapter"`
+	// FromProgress is the ramp fraction (0..1) at which this band becomes
+	// eligible. It is progress through RampTicks, not a chapter count.
+	FromProgress float64 `json:"from_progress,omitempty"`
 
 	// Weight is a relative share, not a percentage, so the bands need not sum
-	// to anything. Zero or negative is treated as 1.
+	// to anything. Required: positive. Suggested: 30-40 per band.
 	Weight int `json:"weight"`
 }
 
@@ -378,15 +462,21 @@ type QuantityBandConfig struct {
 // stops mattering at all. The sim harness is how the middle gets found.
 type ChargingConfig struct {
 	// DepotRate is battery restored per tick on a depot tile, up to the car's
-	// max_battery. Zero or negative falls back to 6. Must live in the config
+	// max_battery. Required: positive. Suggested: 6. Must live in the config
 	// because pacing at 1/tick makes a depot slower than a deadline.
 	DepotRate int `json:"depot_rate"`
 
 	// ChargerRate is battery restored per tick on a standalone charger tile.
-	// Zero or negative falls back to 2. It does not apply to road or kitchen
+	// Required: positive. Suggested: 2. It does not apply to road or kitchen
 	// tiles: the tick loop gates recharging on the tile being a depot or
 	// charger first.
 	ChargerRate int `json:"charger_rate"`
+
+	// ChargerPricePerTick is the default price in dollars for one full tick
+	// at a standalone charger. Required: non-negative. Zero means free;
+	// suggested: 1. A charger may override it with its own price_per_tick.
+	// Depots are always free: they are the home base, not a service station.
+	ChargerPricePerTick int `json:"charger_price_per_tick"`
 }
 
 // FleetConfig is the running cost of owning more vehicles than you drive.
@@ -397,195 +487,83 @@ type ChargingConfig struct {
 // mistake for the player, with no exit. Parking is the exit, and it needs no new
 // verb — it also gives DepotConfig.Capacity a meaning beyond gating purchases.
 //
-// The whole block is optional and its zero value DISABLES upkeep (UpkeepInterval
-// defaults to 0, and a zero interval charges nothing). A map that omits `fleet`
-// therefore behaves exactly as it did before this feature existed, which is what
-// keeps the shipped map and every existing save on the old economy until someone
-// tunes it on purpose.
+// The block is required (CityConfig.Fleet is a pointer) so a map cannot omit
+// its upkeep choice by accident. Set UpkeepIntervalTicks to 0 to disable upkeep
+// explicitly; any positive interval charges once per that many ticks.
 //
 // Rates are charged every UpkeepIntervalTicks rather than every tick on purpose.
 // Gross income on the shipped map is roughly $3.50 per car-tick, so an
 // integer-dollars-per-tick charge has no usable setting: $1/tick is ~29% of one
 // car's revenue and $0 is nothing at all. A per-interval charge recovers the
-// tuning room the integer floor throws away. There is no code default for the
-// interval: the shipped map uses 120, and zero disables upkeep.
+// tuning room the integer floor throws away. Suggested: 120.
 type FleetConfig struct {
 	// UpkeepIntervalTicks is how many ticks pass between upkeep charges.
-	// Zero means upkeep is off entirely; negative is rejected by the loader.
-	UpkeepIntervalTicks int `json:"upkeep_interval_ticks,omitempty"`
+	// Required field: 0 disables upkeep, a negative value is rejected.
+	// Suggested: 120.
+	UpkeepIntervalTicks int `json:"upkeep_interval_ticks"`
 
 	// DefaultUpkeepPerInterval is the charge only for a class that has no
 	// capacity to derive one from (Capacity <= 0) and declares no
 	// upkeep_per_interval of its own. It does not override the derivation.
-	DefaultUpkeepPerInterval int `json:"default_upkeep_per_interval,omitempty"`
+	// Required: non-negative. Suggested: 1.
+	DefaultUpkeepPerInterval int `json:"default_upkeep_per_interval"`
 
-	// UpkeepPerBoxPerInterval scales the capacity-derived rate: a class's charge
-	// is Capacity*UpkeepPerBoxPerInterval/4 in integer arithmetic, floored at
-	// 1. (The divisor is what makes "per box" mean a group of four boxes; with
-	// the shipped values a capacity-4 scooter pays 4*1/4 = $1 and a capacity-40
-	// truck pays 40*1/4 = $10 per interval.) Scaling by capacity rather than
-	// hand-tuning each class keeps the rate proportional to the revenue
-	// headroom the class actually has, so a new class cannot be added with a
-	// rate that contradicts its own hold size.
+	// UpkeepBoxDivisor is the number of cargo boxes per unit of the
+	// capacity-derived rate: a class's charge is
+	// Capacity*UpkeepPerBoxPerInterval/UpkeepBoxDivisor in integer
+	// arithmetic, floored at 1. Required: positive. Suggested: 4, which makes
+	// a capacity-4 scooter pay $1 and a capacity-40 truck pay $10 per interval
+	// with UpkeepPerBoxPerInterval=1.
+	UpkeepBoxDivisor int `json:"upkeep_box_divisor"`
+
+	// UpkeepPerBoxPerInterval scales the capacity-derived rate. Scaling by
+	// capacity rather than hand-tuning each class keeps the rate proportional
+	// to the revenue headroom the class actually has, so a new class cannot be
+	// added with a rate that contradicts its own hold size. Required:
+	// non-negative. Suggested: 1.
 	//
 	// WARNING: this knob has a measured collapse threshold, not a smooth curve.
 	// See the long comment in fleet.go before raising it.
-	UpkeepPerBoxPerInterval int `json:"upkeep_per_box_per_interval,omitempty"`
+	UpkeepPerBoxPerInterval int `json:"upkeep_per_box_per_interval"`
 
 	// TowFeePerTile is dollars per tile of route distance between the car and
-	// the depot it is towed to. Zero (with a zero minimum) makes towing free.
-	TowFeePerTile int `json:"tow_fee_per_tile,omitempty"`
+	// the depot it is towed to. Required: non-negative. Suggested: 2. Zero
+	// (with a zero minimum) makes towing free.
+	TowFeePerTile int `json:"tow_fee_per_tile"`
 
 	// TowFeeMin floors the tow fee, so a nudge from the next block is not free
 	// and the move-one-tile-per-tow exploit is never cheaper than driving.
-	TowFeeMin int `json:"tow_fee_min,omitempty"`
+	// Required: non-negative. Suggested: 25.
+	TowFeeMin int `json:"tow_fee_min"`
 }
 
-// Requirement is a single condition an achievement or unlock checks against
-// the session counters. All requirements on a definition must hold (AND).
-// The zero value matches nothing, so an unused field is inert.
-type Requirement struct {
-	// Deliveries is the least number of ON-TIME deliveries. Late deliveries
-	// increment late_deliveries, not this counter.
-	Deliveries *int `json:"deliveries,omitempty"`
-
-	// MoneyEarned is the least lifetime gross earnings. It never decreases:
-	// delivery pay, achievement grants and build grants add to it; upkeep,
-	// tow fees and expiry fines do not subtract from it. Use MoneyBalance for
-	// cash on hand.
-	MoneyEarned *int `json:"money_earned,omitempty"`
-
-	// MoneyBalance is the least current cash balance.
-	MoneyBalance *int `json:"money_balance,omitempty"`
-
-	// Reputation is the least current reputation, against a 0..5 scale.
-	Reputation *float64 `json:"reputation,omitempty"`
-
-	// Tows is the least number of tows performed.
-	Tows *int `json:"tows,omitempty"`
-
-	// ExpiredOrders is the least number of orders that expired.
-	ExpiredOrders *int `json:"expired_orders,omitempty"`
-
-	// OnTimeStreak is the least current consecutive on-time delivery streak.
-	// A late delivery or an expiry resets it to zero.
-	OnTimeStreak *int `json:"on_time_streak,omitempty"`
-
-	// ItemDelivered is a per-item delivery requirement. A nil Delivered
-	// matches vacuously true.
-	ItemDelivered *ItemReq `json:"item_delivered,omitempty"`
-
-	// CarsOwned is the least fleet size, counting stranded cars.
-	CarsOwned *int `json:"cars_owned,omitempty"`
-
-	// TilesExploredPct is the least percentage of ALL tiles revealed,
-	// including impassable water and buildings. Integer division.
-	TilesExploredPct *int `json:"tiles_explored_pct,omitempty"`
-
-	// DistrictsRevealed is the least number of authored districts that are no
-	// longer hidden. A district counts once at least one of its tiles is
-	// visible; districts with no rects never count.
-	DistrictsRevealed *int `json:"districts_revealed,omitempty"`
-
-	// BuildsCompleted is the least number of distinct builds completed. It is
-	// also the chapter index the pacing tables use, capped at MaxChapter.
-	BuildsCompleted *int `json:"builds_completed,omitempty"`
-}
-
-// ItemReq is an item-scoped counter requirement, e.g. 10 pizzas delivered.
-type ItemReq struct {
-	// Item is the item id, as declared in Items.
-	Item string `json:"item"`
-
-	// Delivered is the least number of that item delivered. Late deliveries
-	// count here, unlike the global Deliveries counter. Nil matches anything.
-	Delivered *int `json:"delivered,omitempty"`
-}
-
-// AchievementConfig fires once when its requirement is met. It grants money
-// or reputation; it never costs anything and never mutates the map.
+// GrowthConfig is one scheduled expansion of the city. Stages fire in file
+// order as the clock reaches Tick; each applies at most once per session.
 //
-// Done is runtime state: the world copies these definitions at construction
-// and flips Done as they fire, so the config file itself is never mutated.
-type AchievementConfig struct {
-	// ID is a stable identifier; progress and saves key off it.
+// Tick is absolute session time (0 is session start), so a 240-tick stage is
+// four minutes into a 1x game and one minute at 4x. The schedule is content,
+// not a rule: a map can expand fast and hard or slowly, and a replay of the
+// same seed always sees the same city at the same tick.
+type GrowthConfig struct {
+	// ID is a stable identifier used by saves, events and the API.
 	ID string `json:"id"`
 
-	// Title is display text.
+	// Tick is the session tick at or after which this stage applies.
+	Tick int64 `json:"tick"`
+
+	// Title is display text for the growth timeline.
 	Title string `json:"title"`
 
-	// Description is display text.
+	// Description is display text: what the city gains at this stage.
 	Description string `json:"description"`
 
-	// Requires is evaluated at the end of every tick until it holds. All
-	// populated fields must hold (AND).
-	Requires Requirement `json:"requires"`
-
-	// GrantMoney is paid once when the achievement fires. It adds to both the
-	// cash balance and lifetime MoneyEarned.
-	GrantMoney int `json:"grant_money,omitempty"`
-
-	// GrantRep is reputation granted once when the achievement fires, clamped
-	// to [0,5].
-	GrantRep float64 `json:"grant_reputation,omitempty"`
-
-	// Done is per-session runtime state, never read from or written to JSON.
-	Done bool `json:"-"`
+	// Effects are applied in order and atomically: if any effect fails, or
+	// would strand a kitchen or customer, none of them land.
+	Effects []GrowthEffect `json:"effects"`
 }
 
-// UnlockConfig is permission only: meeting it means the listed builds become
-// purchasable. It has no cost, because paying is a separate decision.
-//
-// Earned is runtime state, never serialised: on load it is re-derived from the
-// session's permitted-build set, so a save does not store unlock ids.
-type UnlockConfig struct {
-	// ID is a stable identifier used by the API and event text.
-	ID string `json:"id"`
-
-	// Title is display text.
-	Title string `json:"title"`
-
-	// Description is display text.
-	Description string `json:"description"`
-
-	// Requires is evaluated at the end of every tick until it holds.
-	Requires Requirement `json:"requires"`
-
-	// GrantsBuild lists the build ids (matching BuildConfig.ID) that become
-	// purchasable when this unlock is earned.
-	GrantsBuild []string `json:"grants_build"`
-
-	// Earned is per-session runtime state, never read from or written to JSON.
-	Earned bool `json:"-"`
-}
-
-// BuildConfig is a purchasable map mutation: the player spends Cost and the
-// Effects are applied to the grid. Effects are applied in order and the whole
-// set is rejected atomically if it would strand anything.
-//
-// A build is applicable at most once per session, needs its id to be granted by
-// an unlock, and must be affordable in cash at the moment it is bought.
-type BuildConfig struct {
-	// ID is a stable identifier, referenced by UnlockConfig.GrantsBuild and
-	// recorded in saves once completed.
-	ID string `json:"id"`
-
-	// Title is display text.
-	Title string `json:"title"`
-
-	// Description is display text.
-	Description string `json:"description"`
-
-	// Cost is the price in dollars, paid from the cash balance.
-	Cost int `json:"cost"`
-
-	// Effects are applied in order, and atomically with the rest of the build:
-	// if any effect fails or would strand a kitchen or customer, none land.
-	Effects []BuildEffect `json:"effects"`
-}
-
-// BuildEffect is one atomic change a build makes to the world. The Type
-// selects which fields are meaningful; see applyEffects for the vocabulary.
+// GrowthEffect is one atomic change a growth stage makes to the world. The Type
+// selects which fields are meaningful; see applyEffect for the vocabulary.
 //
 //	build_bridge, pave_road   Tiles
 //	reveal_district           District
@@ -599,10 +577,10 @@ type BuildConfig struct {
 //	grant_reputation          Rep
 //
 // The geographic effects mutate the City. The three grant effects are no-ops
-// there and are applied by World.Build after the city effects succeed.
-type BuildEffect struct {
+// there and are applied by World.applyGrowth after the city effects succeed.
+type GrowthEffect struct {
 	// Type is one of the effect names listed above. Unknown types fail the
-	// whole build.
+	// whole stage.
 	Type string `json:"type"`
 
 	// Tiles is the list of terrain writes for build_bridge / pave_road. Each
@@ -650,11 +628,11 @@ type TileWrite struct {
 
 	// Terrain is one of the eight terrain names (water, building, road,
 	// ground, depot, charger, kitchen, house). An unknown name fails the
-	// build.
+	// growth stage.
 	Terrain string `json:"terrain"`
 }
 
-// Build effect type names.
+// Growth effect type names.
 const (
 	EffectBuildBridge    = "build_bridge"
 	EffectPaveRoad       = "pave_road"

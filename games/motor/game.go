@@ -31,8 +31,6 @@ var llmsTemplate string
 // Env is this game's environment section: MOTOR_*.
 type Env struct {
 	MapsDir      string `envconfig:"MAPS_DIR" default:"maps"`
-	UserMapsDir  string `envconfig:"USER_MAPS_DIR" default:"maps-user"`
-	SessionsDir  string `envconfig:"SESSIONS_DIR" default:"sessions"`
 	SolutionsDir string `envconfig:"SOLUTIONS_DIR" default:"solutions"`
 	PublicURL    string `envconfig:"PUBLIC_URL"`
 	Debug        bool   `envconfig:"DEBUG"`
@@ -92,31 +90,21 @@ func (g *Game) Mount(mux *http.ServeMux, deps platform.Deps) error {
 		return fmt.Errorf("configuration: %w", err)
 	}
 
-	// Storage: the platform pool is shared with the global account service. It
-	// is nil when file storage is configured.
-	pool := deps.DB
-
+	// Storage: accounts, motor sessions and player maps all live in PostgreSQL;
+	// only the shipped maps are files.
+	if deps.DB == nil {
+		return fmt.Errorf("storage: PostgreSQL is required")
+	}
 	maxSessions := env.MaxSessions
 	if maxSessions <= 0 {
 		maxSessions = cfg.MaxSessions.Int()
 	}
 	mapOpts := motorconfig.Options{
 		Dir:         env.MapsDir,
-		UserDir:     env.UserMapsDir,
+		Pool:        deps.DB,
 		MaxUserMaps: cfg.MaxUserMaps.Int(),
 	}
-	var persistence session.SessionPersistence
-	if pool != nil {
-		mapOpts.UserDir = ""
-		mapOpts.UserStore = motorconfig.NewPostgresUserMaps(pool)
-		persistence = session.NewPostgresPersistence(pool)
-	} else {
-		fp, err := session.NewStorePersistence(env.SessionsDir, maxSessions)
-		if err != nil {
-			return fmt.Errorf("session persistence: %w", err)
-		}
-		persistence = fp
-	}
+	persistence := session.NewPostgresPersistence(deps.DB)
 	maps, err := motorconfig.NewManager(mapOpts)
 	if err != nil {
 		return fmt.Errorf("load maps: %w", err)
@@ -133,7 +121,10 @@ func (g *Game) Mount(mux *http.ServeMux, deps platform.Deps) error {
 		Accounts:      deps.Accounts,
 	})
 	if deps.Accounts != nil {
-		deps.Accounts.SetOnDelete(svc.DetachAccount)
+		// Motor runs after other games in builtin order: AddOnDelete keeps
+		// their map hooks (and ours) registered instead of replacing them.
+		deps.Accounts.AddOnDelete(svc.DetachAccount)
+		deps.Accounts.AddOnDelete(maps.DetachAccount)
 	}
 
 	resolver := graph.NewResolver(svc, hub)

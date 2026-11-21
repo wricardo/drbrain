@@ -12,6 +12,7 @@ func (s *Session) Snapshot() Snapshot {
 	defer s.mu.Unlock()
 	snap := BuildSnapshot(s.world)
 	snap.ID = s.ID
+	snap.City.ID = s.cityID
 	snap.CreatedAt = s.CreatedAt
 	snap.Speed = s.speed
 	snap.Paused = s.speed == SpeedPaused
@@ -37,6 +38,7 @@ func (s *Session) Summary() Summary {
 		Deliveries: s.world.Ledger.Deliveries,
 		Loaded:     true,
 		AccountID:  s.accountID,
+		CityID:     s.cityID,
 	}
 }
 
@@ -63,9 +65,10 @@ type Snapshot struct {
 	// flags, so a client can offer exactly the purchases the server would allow.
 	CarClasses []CarClassView `json:"car_classes"`
 
-	Achievements []AchievementView `json:"achievements"`
-	Unlocks      []UnlockView      `json:"unlocks"`
-	Builds       []BuildView       `json:"builds"`
+	// Growth is the city's scheduled expansion: which stages are still ahead,
+	// when they fire, and what each one opens. The client renders this as a
+	// read-only timeline.
+	Growth []GrowthView `json:"growth"`
 
 	Events []EventView `json:"events"`
 
@@ -74,8 +77,13 @@ type Snapshot struct {
 	Closures []ClosureView `json:"closures"`
 }
 
-// CityView is the terrain and the fixed entities.
+// CityView is the terrain plus the entities on it. Kitchens, depots and
+// chargers are fixed for the session; Customers is the live set of sites
+// currently waiting for a delivery (World.PresentCustomers), so it changes tick
+// to tick. Rows already render a waiting site as 'H' and an idle house as 'h'.
 type CityView struct {
+	// ID is the catalogue id when the view came from a running session.
+	ID       string   `json:"id,omitempty"`
 	Name     string   `json:"name"`
 	GridSize int      `json:"grid_size"`
 	Rows     []string `json:"rows"`
@@ -95,7 +103,10 @@ type PointView struct {
 	Y    int    `json:"y"`
 }
 
-// CarView is one car.
+// CarView is one car in a snapshot. Capacity, Load and FreeBoxes are measured in
+// boxes, not orders; BatteryPct truncates to an integer. State is the coarse
+// rule status, Queued is the direction that will be attempted on the next tick,
+// and LastReject is the last failed-move code ("" after a successful step).
 type CarView struct {
 	ID         string   `json:"id"`
 	Name       string   `json:"name"`
@@ -112,6 +123,11 @@ type CarView struct {
 	State      string   `json:"state"`
 	Queued     string   `json:"queued_move,omitempty"`
 	LastReject string   `json:"last_reject,omitempty"`
+
+	// ChargeDue is the unpaid balance of a charging session in progress. It is
+	// zero on an uncharged car and after the session settles, so a client can
+	// show the running cost without inventing a per-tick estimate.
+	ChargeDue int `json:"charge_due,omitempty"`
 }
 
 // CarClassView is one purchasable vehicle archetype. Exposing the catalogue
@@ -127,7 +143,10 @@ type CarClassView struct {
 	Affordable bool   `json:"affordable"`
 }
 
-// OrderView is one delivery job.
+// OrderView is one delivery job. TicksLeft is signed: a negative value means the
+// deadline has passed but the order has not been swept yet. Reward is the
+// on-time pay, Paid is what was actually paid (the late rate after the
+// deadline), and State is the lifecycle position.
 type OrderView struct {
 	ID           string `json:"id"`
 	Item         string `json:"item"`
@@ -174,12 +193,12 @@ type ClosureView struct {
 	MaxY      int         `json:"max_y"`
 }
 
-// LedgerView is money, reputation and the counters achievements read.
+// LedgerView is money, reputation and the counters the economy reads.
 //
 // Deliveries excludes late ones: a late dropoff increments LateDeliveries
 // instead, so a client computing "jobs failed" must not read Deliveries alone.
-// MoneyEarned is lifetime and never decreases, which is why achievements test it
-// rather than Money — spending a build's cost must not undo progress.
+// MoneyEarned is lifetime and never decreases, which is why progression and
+// reporting read it rather than Money — upkeep and tows must not undo it.
 //
 // DeliveriesByItem is keyed by item id and counts ORDERS, not boxes. It is
 // incremented once per settled delivery, so a two-box order adds 1. Verified
@@ -196,7 +215,6 @@ type LedgerView struct {
 	OrdersSpawned    int            `json:"orders_spawned"`
 	OnTimeStreak     int            `json:"on_time_streak"`
 	Tows             int            `json:"tows"`
-	BuildsCompleted  int            `json:"builds_completed"`
 	DeliveriesByItem map[string]int `json:"deliveries_by_item"`
 
 	// Running-cost feedback. UpkeepDue is what the fleet would be charged on
@@ -205,41 +223,66 @@ type LedgerView struct {
 	UpkeepPaid int `json:"upkeep_paid"`
 	TowFees    int `json:"tow_fees"`
 	UpkeepDue  int `json:"upkeep_due"`
+
+	// CashEntries is the checking-account statement, newest first. The query
+	// path carries the full history; the live stream trims it to the most
+	// recent rows (see StreamSnapshot). Non-nil so an empty statement marshals
+	// as [] rather than null.
+	CashEntries []CashEntryView `json:"cash_entries"`
+
+	// TicksPerMonth and Months are the monthly income/expense report. It is
+	// newest first, bounded to maxMonths; the engine keeps the full derived
+	// history and the view fills quiet months with zero rows so the player can
+	// see a gap rather than silently skipping a month number.
+	TicksPerMonth int         `json:"ticks_per_month"`
+	Months        []MonthView `json:"months"`
 }
 
-// AchievementView is one achievement's state.
-type AchievementView struct {
+// CashEntryView is one movement through the balance.
+//
+// Amount is signed; Balance is the running balance after the movement. CarID
+// and CarName are set when the movement belongs to one vehicle, so a statement
+// row can be attributed without the client joining the fleet list.
+type CashEntryView struct {
+	Seq      int    `json:"seq"`
+	Tick     int64  `json:"tick"`
+	Kind     string `json:"kind"`
+	Category string `json:"category"`
+	Amount   int    `json:"amount"`
+	Balance  int    `json:"balance"`
+	CarID    string `json:"car_id,omitempty"`
+	CarName  string `json:"car_name,omitempty"`
+	OrderID  string `json:"order_id,omitempty"`
+	Memo     string `json:"memo,omitempty"`
+}
+
+// MonthView is one accounting month of income and expenses. Index is 1-based;
+// StartTick and EndTick are inclusive.
+type MonthView struct {
+	Index      int                 `json:"index"`
+	StartTick  int64               `json:"start_tick"`
+	EndTick    int64               `json:"end_tick"`
+	Income     int                 `json:"income"`
+	Expenses   int                 `json:"expenses"`
+	Net        int                 `json:"net"`
+	Categories []MonthCategoryView `json:"categories"`
+}
+
+// MonthCategoryView is one category's contribution to a month. Income and
+// Expenses are positive magnitudes; a normal category has one side set.
+type MonthCategoryView struct {
+	Category string `json:"category"`
+	Income   int    `json:"income"`
+	Expenses int    `json:"expenses"`
+}
+
+// GrowthView is one stage of the city's expansion schedule.
+type GrowthView struct {
 	ID          string `json:"id"`
+	Tick        int64  `json:"tick"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	Done        bool   `json:"done"`
-	Progress    int    `json:"progress"`
-	Target      int    `json:"target"`
-}
-
-// UnlockView is one unlock's state.
-type UnlockView struct {
-	ID          string   `json:"id"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	Requires    string   `json:"requires"`
-	Earned      bool     `json:"earned"`
-	Progress    int      `json:"progress"`
-	Target      int      `json:"target"`
-	Builds      []string `json:"builds"`
-}
-
-// BuildView is one build's availability.
-type BuildView struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Cost        int    `json:"cost"`
-	Unlocked    bool   `json:"unlocked"`
-	Completed   bool   `json:"completed"`
-	Affordable  bool   `json:"affordable"`
-	Applicable  bool   `json:"applicable"`
-	Problem     string `json:"problem,omitempty"`
 }
 
 // EventView is one entry of the feed.
@@ -256,21 +299,23 @@ type EventView struct {
 // read is consistent with the tick loop.
 func BuildSnapshot(w *engine.World) Snapshot {
 	city := w.City
-	rows := city.RenderRowsWithClosures(w.RenderCars(), w.ClosedSet())
+	// Only customers with a live order are on the map: a site pops in when it
+	// raises one and leaves when it is delivered or expires (see
+	// engine.World.PresentCustomers). The house tiles stay as 'h' between visits.
+	home := w.PresentCustomers()
+	rows := city.RenderRowsAtHome(w.RenderCars(), w.ClosedSet(), home)
 
 	snap := Snapshot{
 		Tick:   w.Tick,
 		TickMS: city.TickMS,
 		// Non-nil slices: an empty game must marshal as [] not null, so client
 		// code can iterate without a nil guard on every list.
-		Cars:         []CarView{},
-		Orders:       []OrderView{},
-		CarClasses:   []CarClassView{},
-		Achievements: []AchievementView{},
-		Unlocks:      []UnlockView{},
-		Builds:       []BuildView{},
-		Events:       []EventView{},
-		Closures:     []ClosureView{},
+		Cars:       []CarView{},
+		Orders:     []OrderView{},
+		CarClasses: []CarClassView{},
+		Growth:     []GrowthView{},
+		Events:     []EventView{},
+		Closures:   []ClosureView{},
 		City: CityView{
 			Name:      city.Name,
 			GridSize:  city.GridSize,
@@ -286,7 +331,7 @@ func BuildSnapshot(w *engine.World) Snapshot {
 	for _, k := range city.Kitchens {
 		snap.City.Kitchens = append(snap.City.Kitchens, PointView{ID: k.ID, Name: k.Name, X: k.Pos.X, Y: k.Pos.Y})
 	}
-	for _, c := range city.Customers {
+	for _, c := range home {
 		snap.City.Customers = append(snap.City.Customers, PointView{ID: c.ID, Name: c.Name, X: c.Pos.X, Y: c.Pos.Y})
 	}
 	for _, d := range city.Depots {
@@ -309,6 +354,7 @@ func BuildSnapshot(w *engine.World) Snapshot {
 			State:      string(c.State(city)),
 			Queued:     string(c.QueuedMove),
 			LastReject: string(c.LastReject),
+			ChargeDue:  c.ChargeDue,
 		})
 	}
 
@@ -353,11 +399,13 @@ func BuildSnapshot(w *engine.World) Snapshot {
 		OrdersSpawned:    w.Ledger.OrdersSpawned,
 		OnTimeStreak:     w.Ledger.OnTimeStreak,
 		Tows:             w.Ledger.Tows,
-		BuildsCompleted:  w.Ledger.BuildsCompleted,
 		DeliveriesByItem: w.Ledger.DeliveriesByItem,
 		UpkeepPaid:       w.Ledger.UpkeepPaid,
 		TowFees:          w.Ledger.TowFees,
 		UpkeepDue:        w.FleetUpkeep(),
+		CashEntries:      cashEntriesView(w.Ledger.Cash, maxCashRows),
+		TicksPerMonth:    w.TicksPerMonth(),
+		Months:           monthsView(w.Ledger.Months, w.MonthForTick(w.Tick), w.TicksPerMonth(), maxMonths),
 	}
 
 	for _, cc := range w.CarClassCatalog() {
@@ -372,25 +420,10 @@ func BuildSnapshot(w *engine.World) Snapshot {
 		})
 	}
 
-	for _, a := range w.Achievements() {
-		snap.Achievements = append(snap.Achievements, AchievementView{
-			ID: a.ID, Title: a.Title, Description: a.Description,
-			Done: a.Done, Progress: a.Progress, Target: a.Target,
-		})
-	}
-	for _, u := range w.Unlocks() {
-		snap.Unlocks = append(snap.Unlocks, UnlockView{
-			ID: u.ID, Title: u.Title, Description: u.Description,
-			Requires: u.Requires, Earned: u.Earned,
-			Progress: u.Progress, Target: u.Target,
-			Builds: nonNilStrings(u.Builds),
-		})
-	}
-	for _, b := range w.Builds() {
-		snap.Builds = append(snap.Builds, BuildView{
-			ID: b.ID, Title: b.Title, Description: b.Description, Cost: b.Cost,
-			Unlocked: b.Unlocked, Completed: b.Completed,
-			Affordable: b.Affordable, Applicable: b.Applicable, Problem: b.Problem,
+	for _, g := range w.Growth() {
+		snap.Growth = append(snap.Growth, GrowthView{
+			ID: g.ID, Tick: g.Tick, Title: g.Title,
+			Description: g.Description, Done: g.Done,
 		})
 	}
 
@@ -441,4 +474,83 @@ func nonNilStrings(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// maxCashRows bounds the statement a snapshot carries. The engine keeps the
+// full ledger for the save and the statement chain; a snapshot is re-sent on
+// every mutation and every streamed tick, so carrying years of rows would make
+// each keypress pay for the whole history. 200 rows covers a long session's
+// recent account activity without dominating the frame.
+const maxCashRows = 200
+
+// cashEntriesView converts the stored statement to the client shape, newest
+// first, keeping at most limit rows. The engine keeps entries in chronological
+// order so appending is cheap and the running balance reads forward; the UI
+// renders an account statement from the latest line, so reversing here is the
+// one conversion.
+func cashEntriesView(entries []engine.CashEntry, limit int) []CashEntryView {
+	out := make([]CashEntryView, 0, min(len(entries), limit))
+	for i := len(entries) - 1; i >= 0 && len(out) < limit; i-- {
+		e := entries[i]
+		out = append(out, CashEntryView{
+			Seq:      e.Seq,
+			Tick:     e.Tick,
+			Kind:     string(e.Kind),
+			Category: string(e.Kind.Category()),
+			Amount:   e.Amount,
+			Balance:  e.Balance,
+			CarID:    e.CarID,
+			CarName:  e.CarName,
+			OrderID:  e.OrderID,
+			Memo:     e.Memo,
+		})
+	}
+	return out
+}
+
+// maxMonths bounds the monthly report a snapshot carries. A long-running save
+// can have hundreds of months; the dashboard only needs the recent ledger, and
+// the full derived history stays in the session.
+const maxMonths = 12
+
+// monthsView converts engine month summaries into the newest-first client
+// shape, zero-filling quiet months and keeping at most limit rows. A month with
+// no entries is still a row: skipping it would make month 1 followed by month 3
+// look like a data bug rather than a quiet month.
+func monthsView(summaries []engine.MonthSummary, current, ticksPerMonth, limit int) []MonthView {
+	if current < 1 {
+		current = 1
+	}
+	first := current - limit + 1
+	if first < 1 {
+		first = 1
+	}
+	byIndex := make(map[int]engine.MonthSummary, len(summaries))
+	for _, m := range summaries {
+		byIndex[m.Index] = m
+	}
+	out := make([]MonthView, 0, current-first+1)
+	for i := current; i >= first; i-- {
+		m, ok := byIndex[i]
+		if !ok {
+			start := int64(i-1) * int64(ticksPerMonth)
+			m = engine.MonthSummary{
+				Index: i, StartTick: start, EndTick: start + int64(ticksPerMonth) - 1,
+			}
+		}
+		categories := make([]MonthCategoryView, 0, len(m.Categories))
+		for _, c := range m.Categories {
+			categories = append(categories, MonthCategoryView{
+				Category: string(c.Category),
+				Income:   c.Income,
+				Expenses: c.Expenses,
+			})
+		}
+		out = append(out, MonthView{
+			Index: m.Index, StartTick: m.StartTick, EndTick: m.EndTick,
+			Income: m.Income, Expenses: m.Expenses, Net: m.Income - m.Expenses,
+			Categories: categories,
+		})
+	}
+	return out
 }

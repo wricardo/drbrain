@@ -12,7 +12,7 @@ var (
 	// ErrNotFound means no persisted session exists for the id.
 	ErrNotFound = errors.New("session not found")
 	// ErrInvalidID means the id is not a legal session id (and therefore not a
-	// safe file name).
+	// safe database key).
 	ErrInvalidID = errors.New("invalid session id")
 	// ErrExists means a live session with the same id is already registered.
 	ErrExists = errors.New("session already exists")
@@ -21,8 +21,8 @@ var (
 var idRe = regexp.MustCompile(`^[0-9a-f]{16}$`)
 
 // ValidID reports whether id is a legal session id: 16 lower-case hex digits
-// (8 random bytes). The restriction doubles as path-traversal protection for
-// file persistence.
+// (8 random bytes). The restriction doubles as traversal protection for the
+// shared store.
 func ValidID(id string) bool { return idRe.MatchString(id) }
 
 // SessionPersistence stores sessions durably. Implementations receive

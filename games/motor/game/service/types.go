@@ -91,6 +91,11 @@ type GameService interface {
 	// token is returned (only its hash is kept).
 	CreateOwnedSession(mapID, accountID string) (*Session, string, error)
 	GetSession(id string) (*Session, error)
+	// SessionVisibleTo reports whether viewerID may see a session through a
+	// session-returning API. Sessions on a DRAFT map are visible only to the
+	// map's owner; a published map's sessions stay public. When the map has
+	// been deleted, only the session's owning account may still see it.
+	SessionVisibleTo(s *Session, viewerID string) bool
 	ListSessions(f SessionFilter) ([]*Session, error)
 	DeleteSession(id string) error
 	// AuthorizeSessionChange checks that actor may delete the session:
@@ -130,30 +135,70 @@ type GameService interface {
 	// DetachAccount turns sessions owned by a deleted account into guest runs.
 	DetachAccount(accountID string) error
 
-	ListMaps() []*engine.Map
+	// ListMaps returns the maps visible to viewerID: every published map plus
+	// that player's own drafts. Shipped maps are always published.
+	ListMaps(viewerID string) []*engine.Map
+	// GetMap returns a map without visibility filtering (internal use).
 	GetMap(id string) (*engine.Map, error)
+	// GetMapFor returns a map the viewer may see. Another player's draft is
+	// NOT_FOUND, like a map that does not exist.
+	GetMapFor(id, viewerID string) (*engine.Map, error)
+	// MapEntry returns a map with its community metadata. NOT_FOUND if absent.
+	MapEntry(id string) (MapEntry, error)
 	// IsBuiltinMap reports whether id is a shipped map. Shipped maps are
 	// read-only for players; the transport gates writes on the admin key.
 	IsBuiltinMap(id string) bool
-	// SaveMap replaces a map. Gated by the transport, not the service.
-	SaveMap(cfg engine.MapConfig) (*engine.Map, error)
-	// CreateMap is SaveMap that fails atomically (INVALID_ARGUMENT) if the id exists.
-	CreateMap(cfg engine.MapConfig) (*engine.Map, error)
-	DeleteMap(id string) error
+	// SaveMap replaces an existing map. Only its owner may edit a community
+	// map; shipped and unowned legacy maps need an admin actor. An edit always
+	// puts the map back into DRAFT.
+	SaveMap(cfg engine.MapConfig, actor MapActor) (*engine.Map, error)
+	// CreateMap stores a new DRAFT map owned by ownerID; the id must be unused.
+	CreateMap(cfg engine.MapConfig, ownerID string) (*engine.Map, error)
+	// PublishMap validates a draft and makes it visible to everyone. Only the
+	// owner may publish, and an invalid map is refused.
+	PublishMap(id string, actor MapActor) (*engine.Map, error)
+	// DeleteMap removes a map. Community maps need their owner; shipped and
+	// unowned legacy maps need an admin actor.
+	DeleteMap(id string, actor MapActor) error
 
 	// Shutdown stops all runners and persists sessions.
 	Shutdown()
 }
 
+// MapActor is who is changing a map: the signed-in account and whether the
+// request carried a valid X-Admin-Key. The transport sets Admin only after it
+// has verified the key.
+type MapActor struct {
+	AccountID string
+	Admin     bool
+}
+
+// MapEntry is a map plus the community metadata that is not part of the
+// playable engine snapshot.
+type MapEntry struct {
+	Map     *engine.Map
+	OwnerID string // "" for shipped and legacy maps
+	Status  engine.MapStatus
+}
+
+// VisibleTo reports whether viewerID may see the entry: published maps are
+// public, drafts only to their owner.
+func (e MapEntry) VisibleTo(viewerID string) bool {
+	return e.Status != engine.MapStatusDraft || (e.OwnerID != "" && e.OwnerID == viewerID)
+}
+
 // MapStore provides maps (implemented by game/config.Manager).
 type MapStore interface {
 	List() []*engine.Map
+	ListEntries() []MapEntry
 	Get(id string) (*engine.Map, error) // NOT_FOUND error if absent
+	Entry(id string) (MapEntry, error)  // NOT_FOUND error if absent
 	// Builtin reports whether id is shipped (read-only for players).
 	Builtin(id string) bool
-	Save(cfg engine.MapConfig) (*engine.Map, error)
-	Create(cfg engine.MapConfig) (*engine.Map, error) // INVALID_ARGUMENT if id exists
-	Delete(id string) error
+	Save(cfg engine.MapConfig, actor MapActor) (*engine.Map, error)
+	Create(cfg engine.MapConfig, ownerID string) (*engine.Map, error) // INVALID_ARGUMENT if id exists
+	Publish(id string, actor MapActor) (*engine.Map, error)
+	Delete(id string, actor MapActor) error
 }
 
 // SessionStore holds live sessions (implemented by game/session.Manager).

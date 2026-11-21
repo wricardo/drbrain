@@ -23,7 +23,7 @@
 // Usage:
 //
 //	sessionMgr := session.NewManager()
-//	configMgr := config.NewManager("maps", "")
+//	configMgr, _ := config.NewManager(config.Options{ConfigDir: "maps"})
 //	gameService := service.NewGameService(sessionMgr, configMgr)
 //
 //	// Create a new session

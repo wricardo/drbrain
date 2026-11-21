@@ -13,6 +13,8 @@ import (
 	"github.com/wricardo/drbrain/games/mazes/game/engine"
 	"github.com/wricardo/drbrain/games/mazes/game/service"
 	"github.com/wricardo/drbrain/games/mazes/transport/websocket"
+	"github.com/wricardo/drbrain/platform/account"
+	"github.com/wricardo/drbrain/platform/auth"
 )
 
 type fakeService struct {
@@ -40,6 +42,63 @@ func (f *fakeService) CreateMap(cfg engine.MapConfig) (*engine.Map, error) {
 	return engine.NewMap(cfg)
 }
 
+func (f *fakeService) ListMapEntries(viewerID string) ([]*service.MapEntry, error) {
+	out := make([]*service.MapEntry, 0, len(f.maps))
+	for _, m := range f.maps {
+		out = append(out, &service.MapEntry{ID: m.ID, Config: m.Config(), Status: service.MapStatusPublished})
+	}
+	return out, nil
+}
+
+func (f *fakeService) GetMapEntry(id string) (*service.MapEntry, error) {
+	m, err := f.GetMap(id)
+	if err != nil {
+		return nil, err
+	}
+	return &service.MapEntry{ID: m.ID, Config: m.Config(), Status: service.MapStatusPublished}, nil
+}
+
+func (f *fakeService) CreateMapDraft(cfg engine.MapConfig, ownerID string) (*service.MapEntry, error) {
+	m, err := engine.NewMap(cfg)
+	if err != nil {
+		return nil, service.Errorf(service.CodeInvalidArgument, "invalid map: %v", err)
+	}
+	f.maps = append(f.maps, m)
+	return &service.MapEntry{ID: m.ID, Config: m.Config(), OwnerID: ownerID, Status: service.MapStatusDraft}, nil
+}
+
+func (f *fakeService) UpdateMapOwned(cfg engine.MapConfig, actor service.MapActor) (*service.MapEntry, error) {
+	m, err := engine.NewMap(cfg)
+	if err != nil {
+		return nil, service.Errorf(service.CodeInvalidArgument, "invalid map: %v", err)
+	}
+	for i, old := range f.maps {
+		if old.ID == m.ID {
+			f.maps[i] = m
+			return &service.MapEntry{ID: m.ID, Config: m.Config(), OwnerID: actor.AccountID, Status: service.MapStatusDraft}, nil
+		}
+	}
+	return nil, service.Errorf(service.CodeNotFound, "map %q not found", m.ID)
+}
+
+func (f *fakeService) PublishMap(id string, actor service.MapActor) (*service.MapEntry, error) {
+	m, err := f.GetMap(id)
+	if err != nil {
+		return nil, err
+	}
+	return &service.MapEntry{ID: m.ID, Config: m.Config(), OwnerID: actor.AccountID, Status: service.MapStatusPublished}, nil
+}
+
+func (f *fakeService) DeleteMapOwned(id string, actor service.MapActor) error {
+	for i, m := range f.maps {
+		if m.ID == id {
+			f.maps = append(f.maps[:i], f.maps[i+1:]...)
+			return nil
+		}
+	}
+	return service.Errorf(service.CodeNotFound, "map %q not found", id)
+}
+
 func newTestServer(t *testing.T, opts Options) *httptest.Server {
 	t.Helper()
 	m, err := engine.NewMap(engine.MapConfig{ID: "m1", Name: "M1", Levels: [][]string{{"...", "SoF", "..."}}})
@@ -54,7 +113,13 @@ func newTestServer(t *testing.T, opts Options) *httptest.Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts := httptest.NewServer(s)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := auth.WithRequest(r.Context(), r)
+		if acct := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "); acct != "" && acct != r.Header.Get("Authorization") {
+			ctx = auth.WithViewer(ctx, &auth.Viewer{Account: &account.Account{ID: acct}})
+		}
+		s.ServeHTTP(w, r.WithContext(ctx))
+	}))
 	t.Cleanup(ts.Close)
 	return ts
 }
@@ -106,22 +171,16 @@ func TestMapsQueryOverHTTP(t *testing.T) {
 	}
 }
 
-func TestAdminMutationOverHTTP(t *testing.T) {
-	t.Setenv("ADMIN_API_KEY", "secret")
+func TestCreateMapRequiresSignInOverHTTP(t *testing.T) {
+	t.Setenv("ADMIN_API_KEY", "")
 	t.Setenv("ALLOW_UNAUTHENTICATED_ADMIN", "")
 	ts := newTestServer(t, Options{})
 
-	_, out := gql(t, ts.URL, createMapMutation, nil)
-	if got := firstErrCode(out); got != service.CodeForbidden {
-		t.Fatalf("no key: code %q out=%v", got, out)
+	if _, out := gql(t, ts.URL, createMapMutation, nil); firstErrCode(out) != "UNAUTHENTICATED" {
+		t.Fatalf("guest createMap: %v", out)
 	}
-	_, out = gql(t, ts.URL, createMapMutation, map[string]string{"X-Admin-Key": "wrong"})
-	if got := firstErrCode(out); got != service.CodeForbidden {
-		t.Fatalf("wrong key: code %q", got)
-	}
-	_, out = gql(t, ts.URL, createMapMutation, map[string]string{"X-Admin-Key": "secret"})
-	if out["errors"] != nil {
-		t.Fatalf("right key rejected: %v", out)
+	if _, out := gql(t, ts.URL, createMapMutation, map[string]string{"Authorization": "Bearer acct-1"}); out["errors"] != nil {
+		t.Fatalf("signed-in createMap rejected: %v", out)
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"github.com/wricardo/drbrain/games/motor/game/service"
 	"github.com/wricardo/drbrain/games/motor/game/session"
 	"github.com/wricardo/drbrain/platform/account"
+	"github.com/wricardo/drbrain/platform/pgdb/pgtest"
 )
 
 // ---- maps ------------------------------------------------------------------
@@ -50,26 +51,40 @@ func mustMap(t testing.TB, cfg engine.MapConfig) *engine.Map {
 
 // fakeMaps is an in-memory MapStore built from engine.NewMap.
 type fakeMaps struct {
-	mu sync.Mutex
-	m  map[string]*engine.Map
+	mu   sync.Mutex
+	m    map[string]*engine.Map
+	meta map[string]service.MapEntry
 }
 
 func newFakeMaps(t testing.TB, cfgs ...engine.MapConfig) *fakeMaps {
-	fm := &fakeMaps{m: make(map[string]*engine.Map)}
+	fm := &fakeMaps{m: make(map[string]*engine.Map), meta: make(map[string]service.MapEntry)}
 	for _, c := range cfgs {
-		fm.m[c.ID] = mustMap(t, c)
+		mp := mustMap(t, c)
+		fm.m[c.ID] = mp
+		fm.meta[c.ID] = service.MapEntry{Map: mp, Status: engine.MapStatusPublished}
 	}
 	return fm
 }
 
 func (f *fakeMaps) List() []*engine.Map {
+	entries := f.ListEntries()
+	out := make([]*engine.Map, len(entries))
+	for i, e := range entries {
+		out[i] = e.Map
+	}
+	return out
+}
+
+func (f *fakeMaps) ListEntries() []service.MapEntry {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	out := make([]*engine.Map, 0, len(f.m))
-	for _, m := range f.m {
-		out = append(out, m)
+	out := make([]service.MapEntry, 0, len(f.m))
+	for id, m := range f.m {
+		e := f.meta[id]
+		e.Map = m
+		out = append(out, e)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	sort.Slice(out, func(i, j int) bool { return out[i].Map.ID < out[j].Map.ID })
 	return out
 }
 
@@ -83,43 +98,93 @@ func (f *fakeMaps) Get(id string) (*engine.Map, error) {
 	return m, nil
 }
 
+func (f *fakeMaps) Entry(id string) (service.MapEntry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	m, ok := f.m[id]
+	if !ok {
+		return service.MapEntry{}, service.Errorf(service.CodeNotFound, "map %q not found", id)
+	}
+	e := f.meta[id]
+	e.Map = m
+	return e, nil
+}
+
 // Builtin reports false: every fake map is player-created, so writes are open.
 func (f *fakeMaps) Builtin(string) bool { return false }
 
-func (f *fakeMaps) Save(cfg engine.MapConfig) (*engine.Map, error) {
-	m, err := engine.NewMap(cfg)
-	if err != nil {
-		return nil, service.Errorf(service.CodeInvalidArgument, "invalid map: %v", err)
-	}
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.m[m.ID] = m
-	return m, nil
+func (f *fakeMaps) Save(cfg engine.MapConfig, actor service.MapActor) (*engine.Map, error) {
+	return f.put(cfg, actor.AccountID, false)
 }
 
-func (f *fakeMaps) Create(cfg engine.MapConfig) (*engine.Map, error) {
+func (f *fakeMaps) Create(cfg engine.MapConfig, ownerID string) (*engine.Map, error) {
+	return f.put(cfg, ownerID, true)
+}
+
+func (f *fakeMaps) put(cfg engine.MapConfig, ownerID string, createOnly bool) (*engine.Map, error) {
 	m, err := engine.NewMap(cfg)
 	if err != nil {
 		return nil, service.Errorf(service.CodeInvalidArgument, "invalid map: %v", err)
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if _, ok := f.m[m.ID]; ok {
+	old, exists := f.meta[m.ID]
+	if createOnly && exists {
 		return nil, service.Errorf(service.CodeInvalidArgument, "map %q already exists", m.ID)
 	}
+	owner := ownerID
+	if !createOnly && exists && old.OwnerID != "" {
+		owner = old.OwnerID
+	}
 	f.m[m.ID] = m
+	f.meta[m.ID] = service.MapEntry{Map: m, OwnerID: owner, Status: engine.MapStatusDraft}
 	return m, nil
 }
 
-func (f *fakeMaps) Delete(id string) error {
+func (f *fakeMaps) Publish(id string, actor service.MapActor) (*engine.Map, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	m, ok := f.m[id]
+	if !ok {
+		return nil, service.Errorf(service.CodeNotFound, "map %q not found", id)
+	}
+	e := f.meta[id]
+	e.Status = engine.MapStatusPublished
+	f.meta[id] = e
+	return m, nil
+}
+
+func (f *fakeMaps) Delete(id string, actor service.MapActor) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if _, ok := f.m[id]; !ok {
 		return service.Errorf(service.CodeNotFound, "map %q not found", id)
 	}
 	delete(f.m, id)
+	delete(f.meta, id)
 	return nil
 }
+
+// memAccounts is a permissive account Repository for service tests that need
+// CreateOwnedSession without PostgreSQL: any non-empty id resolves.
+type memAccounts struct{}
+
+func (memAccounts) Create(account.Account) error { return nil }
+func (memAccounts) Get(id string) (account.Account, bool) {
+	if id == "" {
+		return account.Account{}, false
+	}
+	return account.Account{ID: id, Handle: id, DisplayName: id, ProfilePublic: true}, true
+}
+func (memAccounts) ByIdentity(string, string) (account.Account, bool) {
+	return account.Account{}, false
+}
+func (memAccounts) ByHandle(string) (account.Account, bool) { return account.Account{}, false }
+func (memAccounts) Update(string, func(*account.Account) error) (account.Account, error) {
+	return account.Account{}, nil
+}
+func (memAccounts) Delete(string) error { return nil }
+func (memAccounts) Count() int          { return 0 }
 
 // ---- persistence spy -------------------------------------------------------
 
@@ -227,19 +292,16 @@ type env struct {
 	rec  *recorder
 }
 
-// acctEnv adds a real file-backed account service to env.
+// acctEnv adds a real PostgreSQL-backed account service to env.
 type acctEnv struct {
 	*env
-	store    *account.Store
+	store    *account.PostgresStore
 	accounts *account.Service
 }
 
 func newAcctEnv(t *testing.T, opts service.Options) *acctEnv {
 	t.Helper()
-	store, err := account.Open(t.TempDir(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	store := account.NewPostgresStore(pgtest.Pool(t))
 	accounts := account.New(account.Options{Store: store})
 	opts.Accounts = accounts
 	e := newEnv(t, envOpts{svcOpts: opts}, wideCfg, corridorCfg, longCfg, spinCfg, noSubsCfg)
@@ -273,6 +335,9 @@ func newEnv(t *testing.T, o envOpts, cfgs ...engine.MapConfig) *env {
 	var bc service.Broadcaster = e.rec
 	if o.bc != nil {
 		bc = o.bc
+	}
+	if o.svcOpts.Accounts == nil {
+		o.svcOpts.Accounts = account.New(account.Options{Store: memAccounts{}})
 	}
 	e.svc = service.New(e.maps, e.mgr, bc, o.svcOpts)
 	t.Cleanup(e.svc.Shutdown)

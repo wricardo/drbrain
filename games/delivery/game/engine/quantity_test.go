@@ -17,7 +17,7 @@ func quantityWorld(t *testing.T, cap int, bands []QuantityBandConfig) *World {
 		"WWWWWWW",
 		"WWWWWWW",
 	}
-	cfg := &CityConfig{
+	cfg := completeConfig(&CityConfig{
 		Name:     "qty",
 		GridSize: 7,
 		TickMS:   100,
@@ -33,19 +33,20 @@ func quantityWorld(t *testing.T, cap int, bands []QuantityBandConfig) *World {
 			OrderIntervalTicks: 20,
 		}},
 		CarClasses: map[string]CarClassConfig{
-			"scooter": {Speed: 1, Capacity: cap, MaxBattery: 20, StepCost: 1, Price: 0},
+			"scooter": {Capacity: cap, MaxBattery: 20, StepCost: 1, Price: 0},
 		},
 		InitialCars: []InitialCarConfig{{Class: "scooter", Name: "S1", Pos: Position{1, 2}}},
 		Orders: OrdersConfig{
-			MaxActiveOrders:    4,
-			TargetOrdersPerCar: 1.0,
-			MinSpawnGapTicks:   1,
-			DeadlineSlack:      3.0,
-			RewardBase:         map[string]int{"pizza": 40},
-			QuantityBands:      bands,
+			MaxActiveOrders:         4,
+			TargetOrdersPerCustomer: 1.0,
+			RampTicks:               100,
+			MinSpawnGapTicks:        1,
+			DeadlineSlack:           3.0,
+			RewardBase:              map[string]int{"pizza": 40},
+			QuantityBands:           bands,
 		},
 		Charging: ChargingConfig{DepotRate: 5, ChargerRate: 2},
-	}
+	})
 	city, err := NewCity(cfg)
 	if err != nil {
 		t.Fatalf("city: %v", err)
@@ -58,53 +59,55 @@ func quantityWorld(t *testing.T, cap int, bands []QuantityBandConfig) *World {
 }
 
 var testBands = []QuantityBandConfig{
-	{MinSize: 1, MaxSize: 3, FromChapter: 0, Weight: 70},
-	{MinSize: 4, MaxSize: 10, FromChapter: 1, Weight: 25},
-	{MinSize: 12, MaxSize: 24, FromChapter: 2, Weight: 6},
-	{MinSize: 30, MaxSize: 40, FromChapter: 3, Weight: 8},
+	{MinSize: 1, MaxSize: 3, FromProgress: 0, Weight: 70},
+	{MinSize: 4, MaxSize: 10, FromProgress: 0.2, Weight: 25},
+	{MinSize: 12, MaxSize: 24, FromProgress: 0.4, Weight: 6},
+	{MinSize: 30, MaxSize: 40, FromProgress: 0.8, Weight: 8},
 }
 
-// TestQuantityNeverExceedsTheFleetIsTheWholePoint is the rule that keeps order
-// sizes from becoming a broken promise.
-//
-// A forty-box order offered to a four-box scooter is not difficulty, it is a
-// job the player cannot accept: the assignment check would reject it and the
-// pickup would silently refuse it. So the spawner never rolls a band whose
-// smallest size does not fit the largest hold in the fleet.
-func TestQuantityNeverExceedsTheFleet(t *testing.T) {
-	for _, cap := range []int{4, 12, 40} {
-		w := quantityWorld(t, cap, testBands)
-		var cu Customer
-		for _, c := range w.City.Customers {
-			cu = c
+// TestQuantityMayExceedTheFleet is the demand signal: a city can offer a job
+// bigger than anything in the current fleet, and the assignment path will
+// refuse it until the player upgrades. That pending order is what makes the
+// van/truck ladder a decision rather than an optional purchase.
+func TestQuantityMayExceedTheFleet(t *testing.T) {
+	w := quantityWorld(t, 4, testBands)
+	var cu Customer
+	for _, c := range w.City.Customers {
+		cu = c
+	}
+	w.Tick = 40
+
+	sawOversized := false
+	for seed := uint64(0); seed < 3000; seed++ {
+		w.Seed = seed
+		q := w.rollQuantity(cu)
+		if q < 1 {
+			t.Fatalf("rolled a non-positive quantity %d", q)
 		}
-		for tick := int64(0); tick < 2000; tick++ {
-			w.Tick = tick
-			q := w.rollQuantity(cu)
-			if q > cap {
-				t.Fatalf("capacity %d: rolled %d boxes at tick %d", cap, q, tick)
-			}
-			if q < 1 {
-				t.Fatalf("capacity %d: rolled a non-positive quantity %d", cap, q)
-			}
+		if q > 4 {
+			sawOversized = true
 		}
+	}
+	if !sawOversized {
+		t.Fatal("a 4-box fleet never saw an oversized order; demand is still fleet-gated")
 	}
 }
 
-// TestQuantityBandsAreChapterGated proves the escalation: a new player only
-// ever sees singles, and bigger orders arrive as the city grows.
-func TestQuantityBandsAreChapterGated(t *testing.T) {
+// TestQuantityBandsAreProgressGated proves the escalation: a new player only
+// sees scooter-sized work, and the larger bands open as a percentage of the
+// tick ramp rather than at chapter boundaries.
+func TestQuantityBandsAreProgressGated(t *testing.T) {
 	w := quantityWorld(t, 40, testBands)
 	var cu Customer
 	for _, c := range w.City.Customers {
 		cu = c
 	}
 
-	maxAt := func(chapter int) int {
-		w.Ledger.BuildsCompleted = chapter
+	maxAt := func(progress float64) int {
+		w.Tick = int64(progress * float64(w.ordersCfg.RampTicks))
 		biggest := 0
-		for tick := int64(0); tick < 3000; tick++ {
-			w.Tick = tick
+		for seed := uint64(0); seed < 3000; seed++ {
+			w.Seed = seed
 			if q := w.rollQuantity(cu); q > biggest {
 				biggest = q
 			}
@@ -113,43 +116,42 @@ func TestQuantityBandsAreChapterGated(t *testing.T) {
 	}
 
 	if got := maxAt(0); got > 3 {
-		t.Errorf("chapter 0 saw a %d-box order, want at most 3", got)
+		t.Errorf("0%% ramp saw a %d-box order, want at most 3", got)
 	}
-	if got := maxAt(1); got < 4 || got > 10 {
-		t.Errorf("chapter 1 largest = %d, want in 4..10", got)
+	if got := maxAt(0.2); got < 4 || got > 10 {
+		t.Errorf("20%% ramp largest = %d, want in 4..10", got)
 	}
-	if got := maxAt(2); got < 12 || got > 24 {
-		t.Errorf("chapter 2 largest = %d, want in 12..24", got)
+	if got := maxAt(0.4); got < 12 || got > 24 {
+		t.Errorf("40%% ramp largest = %d, want in 12..24", got)
 	}
-	if got := maxAt(3); got < 30 {
-		t.Errorf("chapter 3 largest = %d, want at least 30", got)
+	if got := maxAt(0.7); got > 24 {
+		t.Errorf("70%% ramp saw a %d-box truck order before the late band", got)
+	}
+	if got := maxAt(0.8); got < 30 {
+		t.Errorf("80%% ramp largest = %d, want at least 30", got)
 	}
 }
 
-// TestQuantityBandIsClampedToTheFleetNotDropped covers the middle case: a van
-// holds twelve boxes, so a 12-24 band should still produce twelve-box work
-// rather than disappearing entirely.
-func TestQuantityBandIsClampedToTheFleet(t *testing.T) {
-	w := quantityWorld(t, 12, testBands)
+// TestQuantityBandKeepsItsFullRange proves ramp eligibility does not clamp a
+// band down to the current hold: when the 12-24 band is live it can ask for 24
+// boxes even if the player has only a scooter.
+func TestQuantityBandKeepsItsFullRange(t *testing.T) {
+	w := quantityWorld(t, 4, testBands)
 	var cu Customer
 	for _, c := range w.City.Customers {
 		cu = c
 	}
-	w.Ledger.BuildsCompleted = 2
+	w.Tick = 40
 
-	sawTwelve := false
-	for tick := int64(0); tick < 4000; tick++ {
-		w.Tick = tick
-		q := w.rollQuantity(cu)
-		if q > 12 {
-			t.Fatalf("rolled %d boxes for a 12-box fleet", q)
-		}
-		if q == 12 {
-			sawTwelve = true
+	biggest := 0
+	for seed := uint64(0); seed < 4000; seed++ {
+		w.Seed = seed
+		if q := w.rollQuantity(cu); q > biggest {
+			biggest = q
 		}
 	}
-	if !sawTwelve {
-		t.Error("the 12-24 band produced nothing for a 12-box fleet; it should clamp, not vanish")
+	if biggest <= 4 || biggest > 24 {
+		t.Fatalf("largest 12-24 band roll = %d, want in 5..24", biggest)
 	}
 }
 

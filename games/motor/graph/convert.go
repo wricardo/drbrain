@@ -129,6 +129,14 @@ func toMaps(ms []*engine.Map) []*model.Map {
 	return out
 }
 
+// toMapStatus maps the stored status to the GraphQL enum.
+func toMapStatus(s engine.MapStatus) model.MapStatus {
+	if s == engine.MapStatusDraft {
+		return model.MapStatusDraft
+	}
+	return model.MapStatusPublished
+}
+
 func toProgram(p engine.Program) *model.Program {
 	subs := make([][]model.Instruction, len(p.Subs))
 	for i, s := range p.Subs {

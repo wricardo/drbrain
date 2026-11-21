@@ -29,8 +29,8 @@ func TestEveryGatedCarClassIsGrantable(t *testing.T) {
 	_, cfg := shippedCity(t)
 
 	granted := map[string]bool{}
-	for _, b := range cfg.Builds {
-		for _, e := range b.Effects {
+	for _, g := range cfg.Growth {
+		for _, e := range g.Effects {
 			if e.Type == EffectGrantCarClass && e.Class != "" {
 				granted[e.Class] = true
 			}
@@ -42,9 +42,41 @@ func TestEveryGatedCarClassIsGrantable(t *testing.T) {
 			continue
 		}
 		if !granted[class] {
-			t.Errorf("car class %q requires a grant but no build grants it: "+
+			t.Errorf("car class %q requires a grant but no growth stage grants it: "+
 				"it is advertised at $%d and can never be bought", class, cc.Price)
 		}
+	}
+}
+
+// TestShippedCarClassesAreMoneyOnly pins the current product decision: every
+// shipped vehicle, including the truck, is purchasable with money alone. The
+// grant mechanism still exists for custom maps, but no shipped class should
+// depend on it.
+func TestShippedCarClassesAreMoneyOnly(t *testing.T) {
+	_, cfg := shippedCity(t)
+	for class, cc := range cfg.CarClasses {
+		if cc.RequiresGrant {
+			t.Errorf("shipped car class %q is grant-gated; want money-only", class)
+		}
+	}
+}
+
+// TestShippedTruckIsBuyableFromTheStart pins the no-gate decision: the truck
+// costs money and depot space, not a license. It must be purchasable before any
+// growth stage has applied.
+func TestShippedTruckIsBuyableFromTheStart(t *testing.T) {
+	city, cfg := shippedCity(t)
+	w, err := NewWorldSeeded(city, cfg, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Ledger.Money = 4000
+	car, err := w.BuyCar("truck", "d_main")
+	if err != nil {
+		t.Fatalf("buy truck before any growth: %v", err)
+	}
+	if car.ClassName != "truck" || car.Class.Capacity != 40 {
+		t.Fatalf("bought %q with capacity %d, want truck/40", car.ClassName, car.Class.Capacity)
 	}
 }
 
@@ -70,14 +102,14 @@ func TestAtLeastOneCarIsBuyable(t *testing.T) {
 }
 
 // TestEveryHiddenDistrictCanBeRevealed guards the other half of the "map
-// evolves" promise. A district authored hidden with no reveal build is
+// evolves" promise. A district authored hidden with no reveal stage is
 // permanently dark: 23% of the map that no amount of play can reach.
 func TestEveryHiddenDistrictCanBeRevealed(t *testing.T) {
 	_, cfg := shippedCity(t)
 
 	revealable := map[string]bool{}
-	for _, b := range cfg.Builds {
-		for _, e := range b.Effects {
+	for _, g := range cfg.Growth {
+		for _, e := range g.Effects {
 			if e.Type == EffectRevealDistrict && e.District != "" {
 				revealable[e.District] = true
 			}
@@ -93,25 +125,49 @@ func TestEveryHiddenDistrictCanBeRevealed(t *testing.T) {
 			for _, r := range d.Rects {
 				tiles += (r[2] - r[0] + 1) * (r[3] - r[1] + 1)
 			}
-			t.Errorf("district %q is hidden (%d tiles) but no build reveals it: "+
+			t.Errorf("district %q is hidden (%d tiles) but no growth stage reveals it: "+
 				"permanently unreachable", name, tiles)
 		}
 	}
 }
 
+// TestGrowthScheduleIsOrdered keeps the timeline coherent: ids exist and are
+// unique, ticks never go backwards, and the first stage is not scheduled before
+// the game can plausibly reach it.
+func TestGrowthScheduleIsOrdered(t *testing.T) {
+	_, cfg := shippedCity(t)
+	if len(cfg.Growth) == 0 {
+		t.Fatal("shipped city has no growth schedule: nothing ever expands")
+	}
+	seen := map[string]bool{}
+	var last int64
+	for i, g := range cfg.Growth {
+		if g.ID == "" {
+			t.Errorf("growth stage %d has no id", i)
+			continue
+		}
+		if seen[g.ID] {
+			t.Errorf("duplicate growth stage id %q", g.ID)
+		}
+		seen[g.ID] = true
+		if i > 0 && g.Tick < last {
+			t.Errorf("growth stage %q at tick %d runs before the previous stage's %d", g.ID, g.Tick, last)
+		}
+		if g.Tick < 0 {
+			t.Errorf("growth stage %q has a negative tick %d", g.ID, g.Tick)
+		}
+		last = g.Tick
+	}
+}
+
 // TestRevealedDistrictBecomesReachable proves the reveal actually opens the
-// region: after the build, the tiles must be walkable and nothing stranded.
+// region: after the stage applies, the tiles must be walkable and nothing
+// stranded.
 func TestRevealedDistrictBecomesReachable(t *testing.T) {
 	city, cfg := shippedCity(t)
 	w, err := NewWorldSeeded(city, cfg, 1)
 	if err != nil {
 		t.Fatal(err)
-	}
-	w.Ledger.Money = 100000
-
-	// Grant every build so this test is about geography, not progression.
-	for _, b := range cfg.Builds {
-		w.permitted[b.ID] = true
 	}
 
 	target := Position{17, 3} // harbour charger tile
@@ -119,58 +175,17 @@ func TestRevealedDistrictBecomesReachable(t *testing.T) {
 		t.Fatal("precondition: harbour should start hidden")
 	}
 
-	for _, b := range cfg.Builds {
-		if _, err := w.Build(b.ID); err != nil {
-			t.Fatalf("build %s: %v", b.ID, err)
-		}
+	w.Tick = cfg.Growth[len(cfg.Growth)-1].Tick
+	w.applyGrowth()
+	if w.growthApplied != len(cfg.Growth) {
+		t.Fatalf("growth stages applied = %d, want %d", w.growthApplied, len(cfg.Growth))
 	}
 
 	if !w.City.Walkable(target) {
-		t.Error("harbour still unreachable after building every available upgrade")
+		t.Error("harbour still unreachable after the whole growth schedule")
 	}
 	if stranded := w.City.StrandedEntities(); len(stranded) > 0 {
-		t.Errorf("building everything stranded: %v", stranded)
-	}
-}
-
-// TestEveryBuildIsReachableBySomeUnlock ensures no build is orphaned: a build
-// that no unlock grants can never appear for the player.
-func TestEveryBuildIsReachableBySomeUnlock(t *testing.T) {
-	_, cfg := shippedCity(t)
-
-	grantedBuilds := map[string]bool{}
-	for _, u := range cfg.Unlocks {
-		for _, id := range u.GrantsBuild {
-			grantedBuilds[id] = true
-		}
-	}
-
-	for _, b := range cfg.Builds {
-		if !grantedBuilds[b.ID] {
-			t.Errorf("build %q is granted by no unlock: unreachable content", b.ID)
-		}
-	}
-}
-
-// TestEveryUnlockLeadsToABuild is the inverse: an unlock that grants nothing is
-// a dangling promise shown in the UI.
-func TestEveryUnlockLeadsToABuild(t *testing.T) {
-	_, cfg := shippedCity(t)
-
-	exists := map[string]bool{}
-	for _, b := range cfg.Builds {
-		exists[b.ID] = true
-	}
-
-	for _, u := range cfg.Unlocks {
-		if len(u.GrantsBuild) == 0 {
-			t.Errorf("unlock %q grants no builds", u.ID)
-		}
-		for _, id := range u.GrantsBuild {
-			if !exists[id] {
-				t.Errorf("unlock %q grants unknown build %q", u.ID, id)
-			}
-		}
+		t.Errorf("the growth schedule stranded: %v", stranded)
 	}
 }
 
@@ -220,13 +235,13 @@ func TestHiddenEntitiesAreNotStranded(t *testing.T) {
 		t.Fatalf("entities in hidden districts reported as stranded: %v", stranded)
 	}
 
-	bridge, ok := buildByIDFromConfig(cfg, "b02_east_bridge")
+	bridge, ok := growthByIDFromConfig(cfg, "g02_harbour_gate")
 	if !ok {
-		t.Fatal("shipped city has no East Bridge build")
+		t.Fatal("shipped city has no East Bridge growth stage")
 	}
-	gate, ok := buildByIDFromConfig(cfg, "b04_harbour_gate")
+	gate, ok := growthByIDFromConfig(cfg, "g02_harbour_gate")
 	if !ok {
-		t.Fatal("shipped city has no Harbour Gate build")
+		t.Fatal("shipped city has no Harbour Gate growth stage")
 	}
 	var district string
 	for _, e := range gate.Effects {
@@ -293,16 +308,10 @@ func TestEveryKitchenIsReachableOnAStarterCar(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Evaluate the finished city: build everything, as a progressed player has.
-	for _, b := range cfg.Builds {
-		w.permitted[b.ID] = true
-	}
-	w.Ledger.Money = 1_000_000
-	for _, b := range cfg.Builds {
-		if _, err := w.Build(b.ID); err != nil {
-			t.Fatalf("build %s: %v", b.ID, err)
-		}
-	}
+	// Evaluate the finished city: apply the whole growth schedule, as a
+	// progressed player has by the last stage.
+	w.Tick = cfg.Growth[len(cfg.Growth)-1].Tick
+	w.applyGrowth()
 
 	var starter int
 	for class, cc := range cfg.CarClasses {
@@ -346,178 +355,55 @@ func withinChargedRange(w *World, target Position, battery int) bool {
 	return false
 }
 
-// TestFullProgressionIsReachableFromTheStart is the end-to-end content guard.
-//
-// It grants nothing: it plays the shipped city forward, spending as it goes,
-// exactly as a player would, and asserts every build and unlock in the map is
-// eventually earned. This is the test that would have caught both the
-// unbuyable-van and permanently-dark-district bugs, which were invisible to
-// unit tests because every individual rule worked.
-func TestFullProgressionIsReachableFromTheStart(t *testing.T) {
+// TestGrowthScheduleCompletesInPlay is the end-to-end content guard for the
+// scheduled city. It plays the shipped map forward with the same simple driver
+// the upkeep tests use and asserts the whole timeline applies: every district
+// opens, the chapter caps, and the map is fully visible by the last stage.
+func TestGrowthScheduleCompletesInPlay(t *testing.T) {
 	city, cfg := shippedCity(t)
 	w, err := NewWorldSeeded(city, cfg, 0x5eed5eed)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	// A patient driver: drive the single car along the shortest route to each
-	// goal, and buy anything affordable. This mirrors cmd/drbrain's harness but
-	// lives here so plain `go test ./...` checks it.
-	for range 40_000 {
-		buyWhatWeCan(w)
-
-		// Tow stranded cars. This is not optional: a car on 0 battery is a
-		// permanent dead end, so a driver that never tows stops making progress
-		// forever. The first run of this test failed for exactly that reason.
-		for _, c := range w.Cars {
-			if c.State(w.City) == CarStranded {
-				_ = w.Tow(c.ID)
-			}
-		}
-
-		// Assign a pending order if a car is free.
-		for _, o := range w.OpenOrders() {
-			if o.State != OrderPending {
-				continue
-			}
-			if car := freeCarFor(w, o); car != nil {
-				_ = w.AssignOrder(o.ID, car.ID)
-			}
-		}
-
-		// Step every car toward its goal, but let a car charge up first if it
-		// is standing on a charger with a low battery. Without this a car that
-		// has just been towed drives off on the one point of charge it was
-		// given, strands again, and gets towed again on the next tick: an
-		// infinite tow loop that looks like a content failure.
-		for _, c := range w.Cars {
-			if w.City.ChargingAt(c.Pos) && c.BatteryPct() < 80 {
-				continue
-			}
-			if goal, ok := goalFor(w, c); ok {
-				if dir := firstStep(w, c.Pos, goal); dir != "" {
-					_ = w.QueueMove(c.ID, dir)
-				}
-			}
-		}
-		w.Advance()
+	if len(cfg.Growth) == 0 {
+		t.Fatal("shipped city has no growth schedule")
 	}
+	last := int(cfg.Growth[len(cfg.Growth)-1].Tick)
+	runSim(t, w, last+20)
 
-	unlocked := 0
-	for _, u := range w.Unlocks() {
-		if u.Earned {
-			unlocked++
-		}
+	if got, want := w.growthApplied, len(cfg.Growth); got != want {
+		t.Fatalf("growth stages applied = %d, want %d after %d ticks", got, want, w.Tick)
 	}
-	if unlocked != len(w.Unlocks()) {
-		var missing []string
-		for _, u := range w.Unlocks() {
-			if !u.Earned {
-				missing = append(missing, u.ID)
-			}
-		}
-		t.Errorf("only %d/%d unlocks earned after 40k ticks; missing: %v",
-			unlocked, len(w.Unlocks()), missing)
-	}
-
-	built := 0
-	for _, b := range w.Builds() {
-		if b.Completed {
-			built++
-		}
-	}
-	if built != len(w.Builds()) {
-		t.Errorf("only %d/%d builds completed after 40k ticks", built, len(w.Builds()))
-	}
-
 	if w.City.HiddenCount() != 0 {
-		t.Errorf("%d tiles remain unexplored: the map never fully opened", w.City.HiddenCount())
+		t.Errorf("%d tiles remain unexplored: the schedule never opened the whole map", w.City.HiddenCount())
 	}
-	if len(w.Cars) < 2 {
-		t.Errorf("fleet never grew past %d car(s)", len(w.Cars))
-	}
-}
-
-// buyWhatWeCan spends money the way a player would, keeping a small reserve.
-func buyWhatWeCan(w *World) {
-	for _, b := range w.Builds() {
-		if b.Unlocked && !b.Completed && b.Applicable && w.Ledger.Money >= b.Cost+50 {
-			_, _ = w.Build(b.ID)
-			return
-		}
-	}
-	if len(w.Cars) >= 8 {
-		return
-	}
-	for _, cc := range w.CarClassCatalog() {
-		if cc.Price > 0 && cc.Unlocked && w.Ledger.Money >= cc.Price+50 {
-			if _, err := w.BuyCar(cc.Class, "d_main"); err == nil {
-				return
-			}
-		}
+	if got := w.Chapter(); got != cfg.MaxChapter {
+		t.Errorf("chapter = %d, want %d once every stage has applied", got, cfg.MaxChapter)
 	}
 }
 
-// freeCarFor returns a car able to take the order, or nil.
-func freeCarFor(w *World, o *Order) *Car {
-	for _, c := range w.Cars {
-		if !c.HasSpace() || c.State(w.City) == CarStranded {
-			continue
-		}
-		busy := false
-		for _, other := range w.OpenOrders() {
-			if other.AssignedCar == c.ID {
-				busy = true
-				break
-			}
-		}
-		if !busy {
-			return c
-		}
+// TestGrowthStageFiresOnItsTick pins the timing: a stage applies at its tick,
+// not one before and not only when the next stage comes due.
+func TestGrowthStageFiresOnItsTick(t *testing.T) {
+	city, cfg := shippedCity(t)
+	w, err := NewWorldSeeded(city, cfg, 1)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return nil
-}
+	if len(cfg.Growth) == 0 {
+		t.Fatal("shipped city has no growth schedule")
+	}
+	first := cfg.Growth[0]
 
-// goalFor is the car's current objective.
-func goalFor(w *World, c *Car) (Position, bool) {
-	for _, id := range c.Cargo {
-		if o, ok := w.Order(id); ok {
-			for _, cu := range w.City.Customers {
-				if cu.ID == o.CustomerID {
-					return cu.Pos, true
-				}
-			}
-		}
+	w.Tick = first.Tick - 1
+	w.applyGrowth()
+	if w.growthApplied != 0 {
+		t.Fatalf("stage %q applied at tick %d, before its scheduled %d", first.ID, w.Tick, first.Tick)
 	}
-	for _, o := range w.OpenOrders() {
-		if o.State == OrderAssigned && o.AssignedCar == c.ID {
-			for _, k := range w.City.Kitchens {
-				if k.ID == o.KitchenID {
-					return k.Pos, true
-				}
-			}
-		}
-	}
-	if c.BatteryPct() < 60 {
-		// Skip a charger another car is standing on: it holds one car, so the
-		// route would be blocked and the goal unreachable.
-		for _, tile := range w.City.NearestChargingTiles(c.Pos, 4) {
-			if tile != c.Pos && !w.HasRoom(tile) {
-				continue
-			}
-			return tile, true
-		}
-	}
-	return Position{}, false
-}
 
-// firstStep returns the first direction on a shortest path.
-//
-// It routes around cars, not just terrain. A tile holds one car (a depot or
-// charger holds its capacity), so a path through a parked car is a path the
-// engine refuses — and re-planning it every tick is a permanent stall rather
-// than a detour. This mirrors cmd/drbrain's harness so the content guard
-// measures content rather than driver blindness.
-func firstStep(w *World, from, to Position) Direction {
-	return w.StepToward(from, to)
+	w.Tick = first.Tick
+	w.applyGrowth()
+	if w.growthApplied != 1 {
+		t.Fatalf("stage %q did not apply at its scheduled tick %d", first.ID, first.Tick)
+	}
 }

@@ -4,8 +4,11 @@ import (
 	"sort"
 	"strings"
 
+	cityconfig "github.com/wricardo/drbrain/games/delivery/game/config"
+	"github.com/wricardo/drbrain/games/delivery/game/engine"
 	"github.com/wricardo/drbrain/games/delivery/game/session"
 	"github.com/wricardo/drbrain/games/delivery/graph/model"
+	"github.com/wricardo/drbrain/platform/mapstore"
 )
 
 // Conversion between the domain view structs (game/session) and the GraphQL
@@ -26,22 +29,20 @@ import (
 // snapshotFrom converts a full session snapshot.
 func snapshotFrom(s session.Snapshot) *model.Snapshot {
 	out := &model.Snapshot{
-		ID:           s.ID,
-		CreatedAt:    s.CreatedAt,
-		Tick:         int(s.Tick),
-		Speed:        s.Speed,
-		Paused:       s.Paused,
-		TickMs:       s.TickMS,
-		City:         cityFrom(s.City),
-		Cars:         make([]*model.CarView, 0, len(s.Cars)),
-		Orders:       make([]*model.OrderView, 0, len(s.Orders)),
-		Ledger:       ledgerFrom(s.Ledger),
-		CarClasses:   make([]*model.CarClassView, 0, len(s.CarClasses)),
-		Achievements: make([]*model.AchievementView, 0, len(s.Achievements)),
-		Unlocks:      make([]*model.UnlockView, 0, len(s.Unlocks)),
-		Builds:       make([]*model.BuildView, 0, len(s.Builds)),
-		Events:       make([]*model.EventView, 0, len(s.Events)),
-		Closures:     make([]*model.ClosureView, 0, len(s.Closures)),
+		ID:         s.ID,
+		CreatedAt:  s.CreatedAt,
+		Tick:       int(s.Tick),
+		Speed:      s.Speed,
+		Paused:     s.Paused,
+		TickMs:     s.TickMS,
+		City:       cityFrom(s.City),
+		Cars:       make([]*model.CarView, 0, len(s.Cars)),
+		Orders:     make([]*model.OrderView, 0, len(s.Orders)),
+		Ledger:     ledgerFrom(s.Ledger),
+		CarClasses: make([]*model.CarClassView, 0, len(s.CarClasses)),
+		Growth:     make([]*model.GrowthView, 0, len(s.Growth)),
+		Events:     make([]*model.EventView, 0, len(s.Events)),
+		Closures:   make([]*model.ClosureView, 0, len(s.Closures)),
 	}
 	for _, c := range s.Cars {
 		out.Cars = append(out.Cars, carFrom(c))
@@ -60,26 +61,10 @@ func snapshotFrom(s session.Snapshot) *model.Snapshot {
 			Affordable: c.Affordable,
 		})
 	}
-	for _, a := range s.Achievements {
-		out.Achievements = append(out.Achievements, &model.AchievementView{
-			ID: a.ID, Title: a.Title, Description: a.Description,
-			Done: a.Done, Progress: a.Progress, Target: a.Target,
-		})
-	}
-	for _, u := range s.Unlocks {
-		out.Unlocks = append(out.Unlocks, &model.UnlockView{
-			ID: u.ID, Title: u.Title, Description: u.Description,
-			Requires: u.Requires, Earned: u.Earned,
-			Progress: u.Progress, Target: u.Target,
-			Builds: nonNil(u.Builds),
-		})
-	}
-	for _, b := range s.Builds {
-		out.Builds = append(out.Builds, &model.BuildView{
-			ID: b.ID, Title: b.Title, Description: b.Description, Cost: b.Cost,
-			Unlocked: b.Unlocked, Completed: b.Completed,
-			Affordable: b.Affordable, Applicable: b.Applicable,
-			Problem: optionalString(b.Problem),
+	for _, g := range s.Growth {
+		out.Growth = append(out.Growth, &model.GrowthView{
+			ID: g.ID, Tick: int(g.Tick), Title: g.Title,
+			Description: g.Description, Done: g.Done,
 		})
 	}
 	for _, e := range s.Events {
@@ -113,11 +98,18 @@ func closureFrom(c session.ClosureView) *model.ClosureView {
 	return out
 }
 
-// cityFrom converts terrain and entities.
+// cityFrom converts terrain and entities. The session snapshot has no city
+// ownership metadata, so its status is PUBLISHED, ownedByMe false, and both
+// builtin/ownerless false; catalogue queries overwrite those fields.
 func cityFrom(c session.CityView) *model.CityView {
 	return &model.CityView{
+		ID:          c.ID,
 		Name:        c.Name,
 		GridSize:    c.GridSize,
+		Status:      model.CityStatusPublished,
+		OwnedByMe:   false,
+		Builtin:     false,
+		Ownerless:   false,
 		Rows:        nonNil(c.Rows),
 		HiddenTiles: c.Hidden,
 		Kitchens:    pointsFrom(c.Kitchens),
@@ -125,6 +117,55 @@ func cityFrom(c session.CityView) *model.CityView {
 		Depots:      pointsFrom(c.Depots),
 		Chargers:    pointsFrom(c.Chargers),
 	}
+}
+
+// cityStatusFrom maps the catalogue lifecycle to the GraphQL enum. Unknown
+// states cannot reach here (mapstore validates them), and PUBLISHED is the
+// safe default for a builtin.
+func cityStatusFrom(s mapstore.Status) model.CityStatus {
+	if s == mapstore.StatusDraft {
+		return model.CityStatusDraft
+	}
+	return model.CityStatusPublished
+}
+
+// cityInfoFrom converts one catalogue row for the cities list.
+func cityInfoFrom(e cityconfig.Entry, viewerID string) *model.CityInfo {
+	return &model.CityInfo{
+		ID:        e.ID,
+		Name:      e.Name,
+		GridSize:  e.Config.GridSize,
+		Status:    cityStatusFrom(e.Status),
+		OwnedByMe: e.OwnerID != "" && e.OwnerID == viewerID,
+		Builtin:   e.Builtin,
+		Ownerless: !e.Builtin && e.OwnerID == "",
+	}
+}
+
+// cityModelFrom builds the full static map for one catalogue row. A DRAFT is
+// rendered through the structural builder so an unplayable work-in-progress is
+// still authorable; PUBLISHED rows keep the full startup validation.
+func cityModelFrom(e cityconfig.Entry, viewerID string) (*model.CityView, error) {
+	var (
+		city *engine.City
+		err  error
+	)
+	if e.Status == mapstore.StatusDraft {
+		city, err = engine.CityFromConfigStructural(e.Config)
+	} else {
+		city, err = engine.CityFromConfig(e.Config)
+	}
+	if err != nil {
+		return nil, err
+	}
+	out := cityFrom(session.CityOnlyView(city))
+	out.ID = e.ID
+	out.Name = e.Name
+	out.Status = cityStatusFrom(e.Status)
+	out.OwnedByMe = e.OwnerID != "" && e.OwnerID == viewerID
+	out.Builtin = e.Builtin
+	out.Ownerless = !e.Builtin && e.OwnerID == ""
+	return out, nil
 }
 
 // pointsFrom converts entity positions.
@@ -155,6 +196,7 @@ func carFrom(c session.CarView) *model.CarView {
 		FreeBoxes:  c.FreeBoxes,
 		Cargo:      nonNil(c.Cargo),
 		State:      carStateFrom(c.State),
+		ChargeDue:  c.ChargeDue,
 	}
 	if c.Queued != "" {
 		if d, ok := directionFrom(c.Queued); ok {
@@ -220,9 +262,59 @@ func ledgerFrom(l session.LedgerView) *model.LedgerView {
 		TowFees:          l.TowFees,
 		UpkeepDue:        l.UpkeepDue,
 		Tows:             l.Tows,
-		BuildsCompleted:  l.BuildsCompleted,
 		DeliveriesByItem: items,
+		CashEntries:      cashEntriesFrom(l.CashEntries),
+		TicksPerMonth:    l.TicksPerMonth,
+		Months:           monthsFrom(l.Months),
 	}
+}
+
+// cashEntriesFrom converts the statement. The engine kind is a lower-case
+// string so the domain stays free of GraphQL names; the enum values are the
+// same words upper-cased, and gqlgen's generated enum marshals them back.
+func cashEntriesFrom(entries []session.CashEntryView) []*model.CashEntryView {
+	out := make([]*model.CashEntryView, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, &model.CashEntryView{
+			Seq:      e.Seq,
+			Tick:     int(e.Tick),
+			Kind:     model.CashKind(strings.ToUpper(e.Kind)),
+			Category: model.CashCategory(strings.ToUpper(e.Category)),
+			Amount:   e.Amount,
+			Balance:  e.Balance,
+			CarID:    optionalString(e.CarID),
+			CarName:  optionalString(e.CarName),
+			OrderID:  optionalString(e.OrderID),
+			Memo:     e.Memo,
+		})
+	}
+	return out
+}
+
+// monthsFrom converts the monthly report in the same newest-first order the
+// session view uses.
+func monthsFrom(months []session.MonthView) []*model.MonthView {
+	out := make([]*model.MonthView, 0, len(months))
+	for _, m := range months {
+		categories := make([]*model.MonthCategoryView, 0, len(m.Categories))
+		for _, c := range m.Categories {
+			categories = append(categories, &model.MonthCategoryView{
+				Category: model.CashCategory(strings.ToUpper(c.Category)),
+				Income:   c.Income,
+				Expenses: c.Expenses,
+			})
+		}
+		out = append(out, &model.MonthView{
+			Index:      m.Index,
+			StartTick:  int(m.StartTick),
+			EndTick:    int(m.EndTick),
+			Income:     m.Income,
+			Expenses:   m.Expenses,
+			Net:        m.Net,
+			Categories: categories,
+		})
+	}
+	return out
 }
 
 // eventFrom converts one feed entry.

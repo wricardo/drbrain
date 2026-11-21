@@ -9,7 +9,7 @@ HTTP /graphql (api/server.go) → gqlgen resolver (graph/) → service.GameServi
    → engine (pure rules) ; Move → advance → Seq++ → Clone → unlock → Persist → Broadcast
    → websocket.Hub (8-slot per-subscriber queue, drop-oldest) → graph/subscription_forward.go → graphql-ws → frontend store
 ```
-- **Composition root**: `main.go:run` wires `config.Manager` (MapStore) + `session.Manager`/`FilePersistence` (SessionStore) + `websocket.Hub` (Broadcaster) into `service.New(...)`, then `api.NewServer`. Shutdown: stop HTTP, then persist sessions.
+- **Composition root**: `game.go:Mount` wires `config.Manager` (MapStore: builtin files + `platform_maps` custom maps) + `session.Manager`/`StorePersistence` (SessionStore, PostgreSQL) + `websocket.Hub` (Broadcaster) into `service.New(...)`. Shutdown persists every live session.
 - **DI via interfaces** defined in `game/service` (`MapStore`, `SessionStore`, `Broadcaster`); implementations assert them at compile time. `service` never imports `session`/`websocket`.
 - **Engine** (`game/engine`): no IO/deps. `NewMap`, `NewState`, `State.Move`, `Simulate`, `Map.Shortest`, `Map.Reachable`, `Map.View`. `Move` mutates in place; `Clone()` before leaving a lock.
 - **Fog**: the service stores the full map snapshot; `graph/convert.go` is the only place that shapes what clients see (`Map` = catalog + level-0 preview, `LevelView` = current level, `AdminMap` = full, admin only).
@@ -23,13 +23,13 @@ HTTP /graphql (api/server.go) → gqlgen resolver (graph/) → service.GameServi
 |---|---|
 | `game/engine` | rules, moves, BFS solver, fog view (`types.go`, `engine.go`, `view.go`) |
 | `game/service` | `Session`, `GameService` (`impl.go`), `errors.go` |
-| `game/config` | map store: `maps/*.json`, RWMutex, atomic temp+rename writes |
-| `game/session` | in-memory registry + `sessions/<id>.json` versioned persistence |
+| `game/config` | map store: builtin `maps/*.json` + custom `platform_maps` rows (owner, DRAFT/PUBLISHED) |
+| `game/session` | in-memory registry + versioned PostgreSQL persistence |
 | `transport/websocket` | `Hub` (Broadcaster impl; no raw WS clients) |
 | `graph/` | `schema.graphqls`, resolvers, `convert.go`, admin gate in `resolver.go`; `generated/`, `model/` are gqlgen output (don't hand-edit) |
 | `api/` | mux, body cap (1 MiB), complexity cap (1000), WS origin check, SPA fallback (`spaRoutes`) |
 | `validate/`, `cmd/validate` | map + finish reachability + reference-solution checks |
-| `maps/`, `solutions/`, `map-schema.json` | data; `sessions/` is runtime, gitignored |
+| `maps/`, `solutions/`, `map-schema.json` | builtin data (release-managed); sessions and custom maps are PostgreSQL |
 | `frontend/` | SvelteKit + Tailwind v4; builds into `static/` (committed) |
 
 ## Development Commands
@@ -45,12 +45,12 @@ make build-frontend                      # npm ci if needed + build:static → s
 cd frontend && npm run check && npm test && npm run build:static
 go run . -port 9191 && scripts/smoke.sh 9191   # smoke.sh starts its own temp server
 ```
-Flags: `-port 8000 -host 0.0.0.0 -maps-dir -sessions-dir -solutions-dir -debug -public-url`. Env (`.env` via godotenv): `ADMIN_API_KEY`, `ALLOW_UNAUTHENTICATED_ADMIN`, `ALLOWED_ORIGINS`, `GRAPHQL_INTROSPECTION`, `GRAPHQL_PLAYGROUND`, `MAX_SESSIONS=1000`, `SESSION_TTL=168h`. Frontend env: `PUBLIC_GRAPHQL_URL`, `PUBLIC_WS_URL`.
+Env (`.env` via godotenv): `ADMIN_API_KEY`, `ALLOW_UNAUTHENTICATED_ADMIN`, `ALLOWED_ORIGINS`, `GRAPHQL_INTROSPECTION`, `GRAPHQL_PLAYGROUND`, `MAZES_MAPS_DIR=maps`, `MAZES_MAX_SESSIONS=1000`, `MAZES_MAX_USER_MAPS=200`, `SESSION_TTL=168h`. Builtin maps are `MAZES_MAPS_DIR` files; custom maps live in PostgreSQL `platform_maps` (no `maps-user` directory, no import step from Mazes).
 
 ## Code Conventions & Common Patterns
 - Standard `gofmt`; domain-noun types (`GameService`, `MapStore`), concrete impls usually `Manager`; GraphQL camelCase, enums/codes `UPPER_SNAKE`.
 - Mutating service method pattern: lock session → mutate → `touch` (Seq++, LastActionAt) → `Clone` → unlock → persist → broadcast the clone. A blocked move bumps Seq and broadcasts but does not persist.
-- Persistence: temp file + rename (`game/session/store_persistence.go` over `platform/sessionstore`, `game/config/manager.go`); load-time validation replays the stored path against the map snapshot.
+- Persistence: sessions via `platform/sessionstore`; builtin maps are read-only files and custom maps are `platform_maps` rows (`game/config/manager.go`); load-time validation replays the stored path against the map snapshot. `pg_dump` backs up custom maps.
 - Schema change flow: edit `graph/schema.graphqls` → `make generate` → update `graph/convert.go` + resolvers → mirror by hand in `frontend/src/lib/{queries,types}.ts` → `llms.txt.tmpl`, `prompt.ts`, `api/hardening_test.go`.
 - Frontend: Svelte 5 runes only (`$state/$derived/$effect/$props`), `onclick` attributes, keyed `{#each}`; urql (network-only, POST) + lazy shared `graphql-ws`; `unwrap()` turns urql failures into exceptions. **Gotcha**: explicit `onchange/oninput` handlers run *before* `bind:value` updates — read `event.currentTarget.value`, not the bound var.
 - New top-level route → also add to `spaRoutes` in `api/server.go`.

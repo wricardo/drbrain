@@ -180,14 +180,14 @@ func TestHiddenTilesAreImpassable(t *testing.T) {
 func TestEastBridgeConnectsHarbour(t *testing.T) {
 	city, cfg := loadRepoCity(t)
 
-	// Find the bridge build and the district it opens from the config.
-	bridge, ok := buildByIDFromConfig(cfg, "b02_east_bridge")
+	// Find the bridge and gate stages from the schedule.
+	bridge, ok := growthByIDFromConfig(cfg, "g02_harbour_gate")
 	if !ok {
-		t.Fatal("shipped city has no East Bridge build")
+		t.Fatal("shipped city has no East Bridge growth stage")
 	}
-	gate, ok := buildByIDFromConfig(cfg, "b04_harbour_gate")
+	gate, ok := growthByIDFromConfig(cfg, "g02_harbour_gate")
 	if !ok {
-		t.Fatal("shipped city has no Harbour Gate build")
+		t.Fatal("shipped city has no Harbour Gate growth stage")
 	}
 
 	depot := city.Depots[0].Pos
@@ -211,7 +211,7 @@ func TestEastBridgeConnectsHarbour(t *testing.T) {
 		t.Fatalf("harbour should be unreachable before the bridge, got distance %d", d)
 	}
 
-	if _, err := city.ApplyBuild(bridge); err != nil {
+	if err := city.applyEffects(bridge.Effects); err != nil {
 		t.Fatalf("apply bridge: %v", err)
 	}
 	if d := city.Distance(depot, harbourKitchen); d < 0 {
@@ -219,44 +219,38 @@ func TestEastBridgeConnectsHarbour(t *testing.T) {
 	}
 }
 
-// buildByIDFromConfig looks a build up in the city config.
-func buildByIDFromConfig(cfg *CityConfig, id string) (BuildConfig, bool) {
-	for _, b := range cfg.Builds {
-		if b.ID == id {
-			return b, true
+// growthByIDFromConfig looks a growth stage up in the city config.
+func growthByIDFromConfig(cfg *CityConfig, id string) (GrowthConfig, bool) {
+	for _, g := range cfg.Growth {
+		if g.ID == id {
+			return g, true
 		}
 	}
-	return BuildConfig{}, false
+	return GrowthConfig{}, false
 }
 
-func TestApplyBuildIsAtomicOnFailure(t *testing.T) {
-	city, _ := loadRepoCity(t)
-	city.RevealAll()
+func TestGrowthValidationRejectsOffGridEffects(t *testing.T) {
+	city, cfg := loadRepoCity(t)
 
-	before := city.RenderASCII(nil)
-
-	// A build that writes off-grid must not partially apply.
-	bad := BuildConfig{
-		ID: "b_bad",
-		Effects: []BuildEffect{{
+	// A stage that writes off-grid must be rejected before the session starts,
+	// naming the stage rather than half-applying it twenty minutes in.
+	cfg.Growth = append(cfg.Growth, GrowthConfig{
+		ID: "g_bad", Tick: 99_999,
+		Effects: []GrowthEffect{{
 			Type: EffectBuildBridge,
 			Tiles: []TileWrite{
 				{X: 5, Y: 5, Terrain: "road"},
 				{X: 999, Y: 999, Terrain: "road"},
 			},
 		}},
-	}
-	if _, err := city.ApplyBuild(bad); err == nil {
-		t.Fatal("expected off-grid build to fail")
-	}
-	if after := city.RenderASCII(nil); after != before {
-		t.Fatal("failed build mutated the city")
+	})
+	if _, err := NewWorldSeeded(city, cfg, 1); err == nil {
+		t.Fatal("expected off-grid growth stage to fail validation")
 	}
 }
 
-func TestApplyBuildRejectsStranding(t *testing.T) {
-	city, _ := loadRepoCity(t)
-	city.RevealAll()
+func TestGrowthValidationRejectsStranding(t *testing.T) {
+	city, cfg := loadRepoCity(t)
 
 	// Wall a kitchen off completely with water: the only way in is from the
 	// four neighbours of the kitchen tile. Derived from the map so the test
@@ -268,12 +262,12 @@ func TestApplyBuildRejectsStranding(t *testing.T) {
 			walls = append(walls, TileWrite{X: n.X, Y: n.Y, Terrain: "water"})
 		}
 	}
-	_, err := city.ApplyBuild(BuildConfig{
-		ID:      "b_wall",
-		Effects: []BuildEffect{{Type: EffectBuildBridge, Tiles: walls}},
+	cfg.Growth = append(cfg.Growth, GrowthConfig{
+		ID: "g_wall", Tick: 99_999,
+		Effects: []GrowthEffect{{Type: EffectBuildBridge, Tiles: walls}},
 	})
-	if err == nil {
-		t.Fatal("expected the stranding guard to reject walling off the kitchen")
+	if _, err := NewWorldSeeded(city, cfg, 1); err == nil {
+		t.Fatal("expected the stranding guard to reject a growth stage that walls off the kitchen")
 	}
 }
 

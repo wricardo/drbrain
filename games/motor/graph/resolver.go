@@ -62,6 +62,19 @@ func viewerID(ctx context.Context) string {
 	return ""
 }
 
+// requireVisibleSession returns the session only when the viewer may see its
+// map. A session on another player's DRAFT is NOT_FOUND, before any mutation.
+func (r *Resolver) requireVisibleSession(ctx context.Context, id string) (*service.Session, error) {
+	s, err := r.Service.GetSession(id)
+	if err != nil {
+		return nil, err
+	}
+	if !r.Service.SessionVisibleTo(s, viewerID(ctx)) {
+		return nil, service.Errorf(service.CodeNotFound, "session %q not found", id)
+	}
+	return s, nil
+}
+
 // sessionActor is who is asking to change a session: the signed-in account of
 // the request (if any) and the owner token they passed (if any).
 func sessionActor(ctx context.Context, ownerToken *string) service.SessionActor {
@@ -113,13 +126,26 @@ func (r *Resolver) checkAdminKey(ctx context.Context) error {
 	return nil
 }
 
-// checkMapAdmin gates a write to an existing map: player-created maps are open
-// to everyone, shipped maps need the admin key.
-func (r *Resolver) checkMapAdmin(ctx context.Context, builtin bool) error {
-	if !builtin {
-		return nil
+// mapActorFor resolves who is changing an existing map. Every map operation
+// needs a signed-in player. A shipped map, or a legacy community map with no
+// owner, also needs the admin key; an owned community map is down to the
+// owner check the store performs.
+func (r *Resolver) mapActorFor(ctx context.Context, entry service.MapEntry) (service.MapActor, error) {
+	acct, err := requireViewer(ctx)
+	if err != nil {
+		return service.MapActor{}, err
 	}
-	return r.checkAdminKey(ctx)
+	actor := service.MapActor{AccountID: acct.ID}
+	if entry.Status == engine.MapStatusDraft && entry.OwnerID != acct.ID {
+		return actor, codedError(service.CodeNotFound, "map not found")
+	}
+	if r.Service.IsBuiltinMap(entry.Map.ID) || entry.OwnerID == "" {
+		if err := r.checkAdminKey(ctx); err != nil {
+			return actor, err
+		}
+		actor.Admin = true
+	}
+	return actor, nil
 }
 
 // codedError builds a gqlerror carrying extensions.code.

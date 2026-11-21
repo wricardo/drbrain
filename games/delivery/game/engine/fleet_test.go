@@ -11,6 +11,7 @@ func fleetWorld(t *testing.T, interval int) *World {
 	w := tinyWorldT(t)
 	w.fleet = FleetConfig{
 		UpkeepIntervalTicks:      interval,
+		UpkeepBoxDivisor:         4,
 		UpkeepPerBoxPerInterval:  4,
 		DefaultUpkeepPerInterval: 1,
 		TowFeePerTile:            2,
@@ -85,7 +86,7 @@ func TestUpkeepRateScalesWithCapacity(t *testing.T) {
 	scooter := w.Cars[0]
 	scooter.Pos = Position{4, 1} // off the depot, or both cars are free
 	van, err := NewCar("van_1", "V", "van", Position{4, 1}, map[string]CarClassConfig{
-		"van": {Speed: 1, Capacity: 3, MaxBattery: 20, StepCost: 1},
+		"van": {Capacity: 3, MaxBattery: 20, StepCost: 1},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -131,14 +132,14 @@ func TestUpkeepNeverDrivesMoneyNegative(t *testing.T) {
 }
 
 // TestUpkeepEmitsOneEventNotOnePerCar guards the event ring. The log is capped
-// at MaxEvents=500, so a broke fleet billing per car per interval would flush
+// at max_events=500, so a broke fleet billing per car per interval would flush
 // the session's whole history.
 func TestUpkeepEmitsOneEventNotOnePerCar(t *testing.T) {
 	w := fleetWorld(t, 10)
 	w.Ledger.Money = 0
 	for i := range 5 {
 		van, err := NewCar("v"+string(rune('0'+i)), "V", "van", Position{3, 3},
-			map[string]CarClassConfig{"van": {Speed: 1, Capacity: 3, MaxBattery: 20, StepCost: 1}})
+			map[string]CarClassConfig{"van": {Capacity: 3, MaxBattery: 20, StepCost: 1}})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -227,10 +228,10 @@ func TestUpkeepSurvivesSaveRoundTrip(t *testing.T) {
 // TestUpkeepIntervalRejectsNegative stops a hand-edited map from turning the
 // mechanic into a per-tick charge by accident.
 func TestUpkeepIntervalRejectsNegative(t *testing.T) {
-	cfg := &CityConfig{Name: "x", GridSize: 3, Layout: []string{"DDD", "DDD", "DDD"},
-		Legend: map[string]string{"D": "depot"}}
+	cfg := completeConfig(&CityConfig{Name: "x", GridSize: 3, Layout: []string{"DDD", "DDD", "DDD"},
+		Legend: map[string]string{"D": "depot"}})
 	cfg.Fleet.UpkeepIntervalTicks = -5
-	if err := cfg.applyDefaults(); err == nil {
+	if err := cfg.validate(); err == nil {
 		t.Fatal("negative upkeep_interval_ticks was accepted")
 	}
 }

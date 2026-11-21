@@ -3,9 +3,9 @@ export const SITE = 'Dr Brain';
 /** This game within the collection. */
 export const GAME = 'Delivery';
 /** Full product name used in titles, prompts and docs. */
-export const TITLE = `${SITE} - ${GAME}`;
+export const TITLE = `${GAME} · drbrain`;
 
-/** Document title for a page: "<page> — Dr Brain - Delivery". */
+/** Document title for a page: "Delivery · drbrain" or "<page> · Delivery · drbrain". */
 export function pageTitle(page?: string): string {
-	return page ? `${page} — ${TITLE}` : TITLE;
+	return page ? `${page} · ${TITLE}` : TITLE;
 }

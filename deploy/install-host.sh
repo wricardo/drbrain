@@ -20,15 +20,11 @@ set -eu
 : "${DELIVERY_HOST:?set DELIVERY_HOST}"
 TLS_DIR="${TLS_DIR:-/etc/letsencrypt/live}"
 
-STATE_GAMES="mazes motor tesla delivery music"
-
-id drbrain >/dev/null 2>&1 || useradd --system --home /opt/drbrain --shell /usr/sbin/nologin drbrain
+id drbrain >/dev/null 2>&1 || useradd --system --home /opt/drbrain --shell /usr/sbin/nologin
 install -d -o drbrain -g drbrain /opt/drbrain /opt/drbrain/releases
-for game in $STATE_GAMES; do
-	install -d -o drbrain -g drbrain "/var/lib/drbrain/$game"
-done
-install -d -o drbrain -g drbrain /var/lib/drbrain/motor/maps-user /var/lib/drbrain/motor/accounts
-install -d -o drbrain -g drbrain /var/lib/drbrain/tesla/maps-custom
+# Only the music score library is file-backed. Accounts, sessions and custom
+# maps/cities live in PostgreSQL, whose data directory is outside this tree.
+install -d -o drbrain -g drbrain /var/lib/drbrain
 install -d -o drbrain -g drbrain /var/lib/drbrain/music/scores-custom
 install -d -o root -g root /etc/drbrain
 

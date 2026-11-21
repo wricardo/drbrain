@@ -5,7 +5,6 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -52,18 +51,22 @@ func (r *Resolver) adminAuthorized(ctx context.Context) bool {
 	return r.Admin.Authorized(req)
 }
 
-// ErrBuiltinReadOnly is returned when a caller tries to modify a shipped map
-// without admin credentials.
-var ErrBuiltinReadOnly = errors.New("forbidden: built-in maps can only be modified with an admin key")
-
-// annotateMapOwnership fills GameMap.builtin, which is derived from where the
-// map file lives. Session payloads embed a map too, so every conversion goes
+// annotateMapOwnership fills GameMap.builtin/status/ownedByMe from the map's
+// catalogue entry. Session payloads embed a map too, so every conversion goes
 // through here. `obj` must come straight from toGameMap (never from createMap).
 func (r *Resolver) annotateMapOwnership(ctx context.Context, obj *model.GameMap, mapName string) *model.GameMap {
 	if obj == nil {
 		return nil
 	}
-	obj.Builtin = r.mapBuiltin(ctx, mapName)
+	entry, err := r.Service.GetMapEntry(ctx, mapName)
+	if err != nil {
+		// A map that vanished between load and annotation keeps the legacy
+		// builtin answer and must still emit a valid non-null enum.
+		obj.Builtin = r.mapBuiltin(ctx, mapName)
+		obj.Status = model.MapStatusPublished
+		return obj
+	}
+	fillMapMeta(obj, entry, viewerID(ctx))
 	return obj
 }
 
@@ -81,34 +84,6 @@ func (r *Resolver) annotateSessionMap(ctx context.Context, session *model.Sessio
 func (r *Resolver) mapBuiltin(ctx context.Context, name string) bool {
 	builtin, exists, err := r.Service.MapAuthorization(ctx, name)
 	return err == nil && exists && builtin
-}
-
-// authorizeMapMutation enforces the map write policy:
-//   - built-in maps: admin key required.
-//   - user-created maps: the edit token returned by createMap is required.
-//   - an admin key always overrides, so operators can repair any map.
-//
-// It returns allowBuiltin=true only when the admin override was used, which the
-// caller then passes through to the service.
-func (r *Resolver) authorizeMapMutation(ctx context.Context, name string, editKey *string) (allowBuiltin bool, err error) {
-	builtin, exists, err := r.Service.MapAuthorization(ctx, name)
-	if err != nil || !exists {
-		return false, fmt.Errorf("map %q not found", name)
-	}
-	if r.adminAuthorized(ctx) {
-		return true, nil
-	}
-	if builtin {
-		return false, ErrBuiltinReadOnly
-	}
-	key := ""
-	if editKey != nil {
-		key = strings.TrimSpace(*editKey)
-	}
-	if err := r.Service.VerifyMapEditToken(ctx, name, key); err != nil {
-		return false, err
-	}
-	return false, nil
 }
 
 type uiAuthConfig struct {

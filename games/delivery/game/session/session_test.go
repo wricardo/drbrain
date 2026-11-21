@@ -1,12 +1,15 @@
 package session
 
 import (
+	"encoding/json"
+	"errors"
 	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/wricardo/drbrain/games/delivery/game/engine"
+	"github.com/wricardo/drbrain/platform/sessionstore"
 )
 
 func testCity(t *testing.T) (*engine.City, *engine.CityConfig) {
@@ -24,7 +27,7 @@ func testCity(t *testing.T) (*engine.City, *engine.CityConfig) {
 
 func TestSessionTickerAdvancesWorld(t *testing.T) {
 	city, cfg := testCity(t)
-	s, err := New("race1", city, cfg, 1, "")
+	s, err := New("race1", city, cfg, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +53,7 @@ func TestSessionTickerAdvancesWorld(t *testing.T) {
 
 func TestPausedSessionDoesNotTick(t *testing.T) {
 	city, cfg := testCity(t)
-	s, err := New("pause1", city, cfg, 1, "")
+	s, err := New("pause1", city, cfg, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +92,7 @@ func TestPausedSessionDoesNotTick(t *testing.T) {
 // ticker goroutine against concurrent readers and writers. Run with -race.
 func TestConcurrentAccessIsRaceFree(t *testing.T) {
 	city, cfg := testCity(t)
-	s, err := New("race2", city, cfg, 42, "")
+	s, err := New("race2", city, cfg, 42)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +143,7 @@ func TestConcurrentAccessIsRaceFree(t *testing.T) {
 
 func TestSetSpeedRejectsUnknownValues(t *testing.T) {
 	city, cfg := testCity(t)
-	s, err := New("spd", city, cfg, 1, "")
+	s, err := New("spd", city, cfg, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +157,7 @@ func TestSetSpeedRejectsUnknownValues(t *testing.T) {
 func TestInvalidSessionIDRejected(t *testing.T) {
 	city, cfg := testCity(t)
 	for _, bad := range []string{"", "../x", "a/b", "x.json", "with space"} {
-		if _, err := New(bad, city, cfg, 1, ""); err == nil {
+		if _, err := New(bad, city, cfg, 1); err == nil {
 			t.Errorf("id %q was accepted", bad)
 		}
 	}
@@ -178,7 +181,7 @@ func TestNewSessionStartsPaused(t *testing.T) {
 	// screen, and every deadline would be a reaction-time test rather than a
 	// planning one.
 	city, cfg := testCity(t)
-	s, err := New("paused", city, cfg, 1, "")
+	s, err := New("paused", city, cfg, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -200,7 +203,7 @@ func TestNewSessionStartsPaused(t *testing.T) {
 
 func TestManualTickStillWorksWhenPaused(t *testing.T) {
 	city, cfg := testCity(t)
-	s, err := New("manual", city, cfg, 1, "")
+	s, err := New("manual", city, cfg, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,5 +218,70 @@ func TestManualTickStillWorksWhenPaused(t *testing.T) {
 	snap := s.Snapshot()
 	if snap.Tick != 3 {
 		t.Fatalf("manual tick produced tick %d, want 3", snap.Tick)
+	}
+}
+
+// TestSessionAutosavesWhileRunning pins the crash-safety net: a running session
+// must reach durable storage without an explicit saveSession or a shutdown.
+func TestSessionAutosavesWhileRunning(t *testing.T) {
+	city, cfg := testCity(t)
+	// Shorten the tick so 60 ticks happen well inside waitFor's budget.
+	cfg.TickMS = 10
+	city.TickMS = 10
+	store := sessionstore.NewMemory(sessionstore.Options{})
+	s, err := newWithStore("auto1", city, cfg, "city", 7, store, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.Load("auto1"); !errors.Is(err, sessionstore.ErrNotFound) {
+		t.Fatalf("new session already stored: %v", err)
+	}
+
+	s.Start()
+	defer s.Close()
+	if err := s.SetSpeed(Speed4x); err != nil {
+		t.Fatal(err)
+	}
+
+	waitFor(t, func() bool {
+		_, _, err := store.Load("auto1")
+		return err == nil
+	})
+
+	_, blob, err := store.Load("auto1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var p persisted
+	if err := json.Unmarshal(blob, &p); err != nil {
+		t.Fatalf("decode autosave: %v", err)
+	}
+	if p.World.Tick < int64(cfg.AutosaveTicks) {
+		t.Fatalf("autosaved tick = %d, want >= %d", p.World.Tick, cfg.AutosaveTicks)
+	}
+}
+
+// TestPausedSessionSavesOnPause covers the manual-driving case: the clock never
+// reaches the autosave interval, so pausing is what flushes the work.
+func TestPausedSessionSavesOnPause(t *testing.T) {
+	city, cfg := testCity(t)
+	store := sessionstore.NewMemory(sessionstore.Options{})
+	s, err := newWithStore("auto2", city, cfg, "city", 8, store, "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	s.Do(func(w *engine.World) { w.Advance() })
+	s.Do(func(w *engine.World) { w.Advance() })
+	if _, _, err := store.Load("auto2"); !errors.Is(err, sessionstore.ErrNotFound) {
+		t.Fatalf("paused session stored before a pause: %v", err)
+	}
+
+	if err := s.SetSpeed(SpeedPaused); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.Load("auto2"); err != nil {
+		t.Fatalf("pause did not persist the session: %v", err)
 	}
 }

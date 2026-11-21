@@ -19,6 +19,7 @@ import (
 	"github.com/wricardo/drbrain/games/motor/transport/websocket"
 	"github.com/wricardo/drbrain/platform/account"
 	"github.com/wricardo/drbrain/platform/auth"
+	"github.com/wricardo/drbrain/platform/pgdb/pgtest"
 )
 
 const (
@@ -199,15 +200,11 @@ func newAccountsServerOpts(t *testing.T, allowedOrigins string, opts Options) *h
 	if err := os.WriteFile(filepath.Join(mapsDir, "wide.json"), []byte(wide), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	maps, err := config.NewManager(config.Options{Dir: mapsDir, UserDir: filepath.Join(t.TempDir(), "user")})
+	maps, err := config.NewManager(config.Options{Dir: mapsDir, Pool: pgtest.Pool(t)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	store, err := account.Open(t.TempDir(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	accounts := account.New(account.Options{Store: store})
+	accounts := account.New(account.Options{Store: account.NewPostgresStore(pgtest.Pool(t))})
 
 	hub := websocket.NewHub()
 	svc := service.New(maps, session.NewManager(nil, 0), hub, service.Options{Accounts: accounts})

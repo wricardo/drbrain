@@ -15,7 +15,6 @@ import (
 	"syscall"
 	"text/tabwriter"
 
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/wricardo/drbrain/games/delivery"
 	deliverygraph "github.com/wricardo/drbrain/games/delivery/graph"
 	"github.com/wricardo/drbrain/games/mazes"
@@ -90,6 +89,8 @@ func run(args []string, games []platform.Game, stdout, stderr io.Writer) int {
 		return runGameCommand("validate", args[1:], games, stdout, stderr)
 	case "mapgen":
 		return runGameCommand("mapgen", args[1:], games, stdout, stderr)
+	case "import-maps":
+		return runImportMaps(args[1:], stdout, stderr)
 	case "stdio-mcp", "mcp-stdio", "mcp":
 		fmt.Fprintln(stderr, "drbrain: stdio MCP is disabled: the MCP transport runs over HTTP at /<game>/mcp (set TESLA_MCP_ENABLED=true)")
 		return 1
@@ -111,6 +112,9 @@ commands:
   games list            print the compiled-in game registry
   validate --game=NAME  validate a game's maps and config
   mapgen   --game=NAME  generate a map for a game
+  import-maps           import legacy Tesla maps / Delivery cities
+
+import-maps: see "drbrain import-maps -h" for flags and cutover order.
 
 serve flags:
   --games=a,b           override DRBRAIN_GAMES
@@ -147,30 +151,23 @@ func runServe(args []string, games []platform.Game, stdout, stderr io.Writer) in
 		fmt.Fprintf(stderr, "drbrain serve: %v\n", err)
 		return 1
 	}
+	// Resolve the selection now: a typo in --games or DRBRAIN_GAMES fails
+	// before we open the database or bind anything.
+	if _, err := reg.Select(cfg.EnabledGames()); err != nil {
+		fmt.Fprintf(stderr, "drbrain serve: %v\n", err)
+		return 1
+	}
 	logger := newLogger(stderr, cfg.Debug)
 
-	var pool *pgxpool.Pool
-	if strings.TrimSpace(cfg.DatabaseURL) != "" {
-		pool, err = pgdb.Open(context.Background(), cfg.DatabaseURL)
-		if err != nil {
-			fmt.Fprintf(stderr, "drbrain serve: database: %v\n", err)
-			return 1
-		}
-		defer pool.Close()
+	pool, err := pgdb.Open(context.Background(), cfg.DatabaseURL)
+	if err != nil {
+		fmt.Fprintf(stderr, "drbrain serve: database: %v\n", err)
+		return 1
 	}
+	defer pool.Close()
 
-	var accountsRepo account.Repository
-	if pool != nil {
-		accountsRepo = account.NewPostgresStore(pool)
-	} else {
-		accountsRepo, err = account.Open(cfg.AccountsDir, nil)
-		if err != nil {
-			fmt.Fprintf(stderr, "drbrain serve: accounts: %v\n", err)
-			return 1
-		}
-	}
 	accounts := account.New(account.Options{
-		Store:          accountsRepo,
+		Store:          account.NewPostgresStore(pool),
 		PasswordSignIn: cfg.AuthPassword,
 	})
 	providers, err := auth.Providers(auth.ProvidersConfig{

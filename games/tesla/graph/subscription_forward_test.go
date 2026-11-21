@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/wricardo/drbrain/games/tesla/game/engine"
+	"github.com/wricardo/drbrain/games/tesla/game/service"
 	"github.com/wricardo/drbrain/games/tesla/transport/websocket"
 )
 
@@ -29,7 +30,7 @@ func waitGoroutines(t *testing.T, want int) int {
 // must exit on ctx.Done instead of blocking on the send forever.
 func TestSubscriptionForwardersExitWhenReaderStalls(t *testing.T) {
 	hub := websocket.NewHub()
-	r := &subscriptionResolver{&Resolver{Hub: hub}}
+	r := &subscriptionResolver{&Resolver{Hub: hub, Service: subTestService{}}}
 	before := runtime.NumGoroutine()
 
 	for i := 0; i < 50; i++ {
@@ -54,7 +55,7 @@ func TestSubscriptionForwardersExitWhenReaderStalls(t *testing.T) {
 
 func TestSubscriptionUpdatesAreSharedSnapshots(t *testing.T) {
 	hub := websocket.NewHub()
-	r := &subscriptionResolver{&Resolver{Hub: hub}}
+	r := &subscriptionResolver{&Resolver{Hub: hub, Service: subTestService{}}}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -73,4 +74,16 @@ func TestSubscriptionUpdatesAreSharedSnapshots(t *testing.T) {
 	if ga.Battery != 7 || ga.MoveHistory[0].Action != "up" {
 		t.Fatalf("subscriber observed live state mutation: battery=%d action=%q", ga.Battery, ga.MoveHistory[0].Action)
 	}
+}
+
+// subTestService serves a published-map session so the subscription
+// visibility gate passes in forwarding tests.
+type subTestService struct{ service.GameService }
+
+func (subTestService) GetSession(context.Context, string) (*service.SessionInfo, error) {
+	return &service.SessionInfo{ID: "s", MapName: "published"}, nil
+}
+
+func (subTestService) GetMapEntry(context.Context, string) (*service.MapEntry, error) {
+	return &service.MapEntry{Name: "published", Status: service.MapStatusPublished}, nil
 }

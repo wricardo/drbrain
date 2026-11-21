@@ -59,7 +59,13 @@ func (e *env) winWith(t *testing.T, id string, p engine.Program) *service.Sessio
 // wonBy creates a session on mapID and wins it with p.
 func (e *env) wonBy(t *testing.T, mapID string, p engine.Program) string {
 	t.Helper()
-	s, err := e.svc.CreateSession(mapID)
+	var s *service.Session
+	var err error
+	if entry, entryErr := e.maps.Entry(mapID); entryErr == nil && entry.Status == engine.MapStatusDraft && entry.OwnerID != "" {
+		s, _, err = e.svc.CreateOwnedSession(mapID, entry.OwnerID)
+	} else {
+		s, err = e.svc.CreateSession(mapID)
+	}
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -296,10 +302,10 @@ func TestLeaderboardFollowsMapRules(t *testing.T) {
 	t.Run("a cosmetic edit keeps the board", func(t *testing.T) {
 		cfg := wideCfg
 		cfg.Name, cfg.Description = "Wide, renamed", "now with a description"
-		if _, err := e.svc.SaveMap(cfg); err != nil {
+		if _, err := e.svc.SaveMap(cfg, service.MapActor{AccountID: "tester"}); err != nil {
 			t.Fatal(err)
 		}
-		if lb := board(t, e, service.LeaderboardQuery{MapID: "wide"}); lb.Total != 1 {
+		if lb := board(t, e, service.LeaderboardQuery{MapID: "wide", AccountID: "tester"}); lb.Total != 1 {
 			t.Fatalf("Total = %d after a rename, want 1", lb.Total)
 		}
 	})
@@ -307,15 +313,15 @@ func TestLeaderboardFollowsMapRules(t *testing.T) {
 	t.Run("a rules edit retires results from the old rules", func(t *testing.T) {
 		cfg := wideCfg
 		cfg.MaxSteps = 20 // a different puzzle
-		if _, err := e.svc.SaveMap(cfg); err != nil {
+		if _, err := e.svc.SaveMap(cfg, service.MapActor{AccountID: "tester"}); err != nil {
 			t.Fatal(err)
 		}
-		if lb := board(t, e, service.LeaderboardQuery{MapID: "wide"}); lb.Total != 0 || len(lb.Entries) != 0 {
+		if lb := board(t, e, service.LeaderboardQuery{MapID: "wide", AccountID: "tester"}); lb.Total != 0 || len(lb.Entries) != 0 {
 			t.Fatalf("board = %v (total %d), want empty", rows(lb), lb.Total)
 		}
 		// A session started on the new rules ranks again.
 		e.wonBy(t, "wide", wideDirect())
-		if got := rows(board(t, e, service.LeaderboardQuery{MapID: "wide"})); !reflect.DeepEqual(got, []string{"#1 7/7"}) {
+		if got := rows(board(t, e, service.LeaderboardQuery{MapID: "wide", AccountID: "tester"})); !reflect.DeepEqual(got, []string{"#1 7/7"}) {
 			t.Fatalf("rows = %v, want only New", got)
 		}
 	})
@@ -424,5 +430,24 @@ func TestSlotsUsedAndFingerprint(t *testing.T) {
 				t.Fatalf("changing %s did not change the fingerprint", name)
 			}
 		})
+	}
+}
+
+// A draft's board is visible only to its owner; anyone else gets NOT_FOUND,
+// exactly as if the map did not exist.
+func TestDraftLeaderboardVisibility(t *testing.T) {
+	e := newEnv(t, envOpts{}, wideCfg)
+	cfg := wideCfg
+	cfg.ID = "draft_wide"
+	if _, err := e.svc.CreateMap(cfg, "alice"); err != nil {
+		t.Fatal(err)
+	}
+	e.wonBy(t, "draft_wide", wideDirect())
+	if lb := board(t, e, service.LeaderboardQuery{MapID: "draft_wide", AccountID: "alice"}); lb.Total != 1 {
+		t.Fatalf("owner board total = %d, want 1", lb.Total)
+	}
+	for _, viewer := range []string{"", "bob"} {
+		_, err := e.svc.GetLeaderboard(service.LeaderboardQuery{MapID: "draft_wide", AccountID: viewer})
+		wantCode(t, err, service.CodeNotFound)
 	}
 }

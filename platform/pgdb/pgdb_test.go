@@ -49,7 +49,7 @@ func TestMigrateIsIdempotentAndRecordsVersions(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&n); err != nil || n < 1 {
 		t.Fatalf("schema_migrations rows = %d, %v", n, err)
 	}
-	for _, table := range []string{"sessions", "accounts", "logins", "maps"} {
+	for _, table := range []string{"sessions", "accounts", "maps", "platform_sessions"} {
 		if _, err := pool.Exec(ctx, `SELECT 1 FROM `+table+` LIMIT 1`); err != nil {
 			t.Errorf("table %s missing: %v", table, err)
 		}
@@ -60,7 +60,7 @@ func TestMigrateIsIdempotentAndRecordsVersions(t *testing.T) {
 func TestMigrateConcurrentStartsApplyOnce(t *testing.T) {
 	pool := pgtest.Pool(t)
 	ctx := context.Background()
-	if _, err := pool.Exec(ctx, `DROP TABLE sessions, logins, accounts, maps, schema_migrations`); err != nil {
+	if _, err := pool.Exec(ctx, `DROP TABLE sessions, accounts, maps, schema_migrations`); err != nil {
 		t.Fatal(err)
 	}
 	var wg sync.WaitGroup

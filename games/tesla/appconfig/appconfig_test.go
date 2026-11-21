@@ -13,8 +13,14 @@ func TestLoadDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
-	if cfg.ConfigDir != "maps" || cfg.SessionsDir != "sessions" {
+	if cfg.ConfigDir != "maps" {
 		t.Errorf("unexpected directory defaults: %+v", cfg)
+	}
+	if cfg.MaxUserMaps != DefaultMaxUserMaps {
+		t.Errorf("MaxUserMaps = %d, want %d", cfg.MaxUserMaps, DefaultMaxUserMaps)
+	}
+	if cfg.CustomMapsDir != "" {
+		t.Errorf("CustomMapsDir must be empty by default: %+v", cfg)
 	}
 	if !bool(cfg.GraphQLIntrospection) || !bool(cfg.GraphQLPlayground) || !bool(cfg.MCPEnabled) {
 		t.Errorf("feature gates must default to enabled: %+v", cfg)
@@ -24,6 +30,30 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.AllowedOrigins != nil {
 		t.Errorf("origins must default to nil (allow all), got %v", cfg.AllowedOrigins)
+	}
+}
+
+func TestMaxUserMapsOverride(t *testing.T) {
+	t.Setenv("TESLA_MAX_USER_MAPS", "7")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.MaxUserMaps != 7 {
+		t.Errorf("MaxUserMaps = %d, want 7", cfg.MaxUserMaps)
+	}
+}
+
+// TESLA_CUSTOM_MAPS_DIR is deprecated: it is still parsed so existing
+// deployments do not fail, but it is not storage.
+func TestDeprecatedCustomMapsDirStillParses(t *testing.T) {
+	t.Setenv("TESLA_CUSTOM_MAPS_DIR", "/var/lib/drbrain/tesla/maps-custom")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.CustomMapsDir != "/var/lib/drbrain/tesla/maps-custom" {
+		t.Errorf("CustomMapsDir = %q", cfg.CustomMapsDir)
 	}
 }
 

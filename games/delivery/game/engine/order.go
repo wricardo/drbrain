@@ -22,7 +22,9 @@ const (
 	OrderExpired  OrderState = "expired"
 )
 
-// Terminal reports whether no further transitions are possible.
+// Terminal reports whether the order can no longer change state: DONE or
+// EXPIRED. PENDING, ASSIGNED and PICKED_UP are live; the spawn cap, OpenOrders
+// and ActiveOrderCount all use this split.
 func (s OrderState) Terminal() bool {
 	return s == OrderDone || s == OrderExpired
 }
@@ -33,28 +35,42 @@ func (s OrderState) Terminal() bool {
 // but once assigned only that car may collect it. That keeps "who is carrying
 // what" unambiguous with several cars on the road.
 type Order struct {
-	ID         string
-	Item       string
+	// ID is stable for the session and is what commands, cargo and ledger rows
+	// reference.
+	ID string
+	// Item is an item id from CityConfig.Items; the display label is separate.
+	Item string
+	// KitchenID is the authored pickup site; CustomerID is the authored
+	// dropoff site.
 	KitchenID  string
 	CustomerID string
 
 	// Quantity is how many boxes the customer asked for, and it is what makes
 	// vehicle class a routing decision rather than a cosmetic upgrade: a
-	// forty-box catering order simply does not fit in a scooter. The spawner
-	// never raises an order no car in the fleet could carry, so a quantity is
-	// always satisfiable by something.
+	// forty-box catering order simply does not fit in a scooter. Demand may
+	// exceed the current fleet on purpose; the order stays pending until a
+	// capable car exists, which is the pressure to upgrade.
 	Quantity int
 
+	// CreatedTick is when the customer raised the order. DeadlineTick is the
+	// on-time cutoff; assigning a car can extend it but never shortens it.
 	CreatedTick  int64
 	DeadlineTick int64
 
-	Reward  int // paid on time
-	Penalty int // lost if it expires
+	// Reward is the full on-time payment; a late delivery pays
+	// OrdersConfig.LatePayMultiplier of it. Penalty is the cash fine charged on
+	// expiry (recorded as CashOrderFine), not the reputation loss.
+	Reward  int
+	Penalty int
 
+	// AssignedCar is the one car allowed to collect the order ("" while
+	// pending). State is the lifecycle position.
 	AssignedCar string
 	State       OrderState
 
-	// DeliveredTick and Paid record the outcome for the ledger.
+	// DeliveredTick is when the dropoff happened; Paid is what was actually
+	// paid (late deliveries pay less than Reward). Late is set when the
+	// delivery landed after DeadlineTick.
 	DeliveredTick int64
 	Paid          int
 	Late          bool
@@ -131,7 +147,8 @@ func (w *World) OrdersList() []*Order {
 // See OpenOrders for why this is not "orders before their deadline".
 func (w *World) ActiveOrderCount() int { return len(w.OpenOrders()) }
 
-// Order returns an order by id.
+// Order returns the live order with the given id, not a copy. Mutating it
+// changes the world; on a running session, do it inside Session.Do.
 func (w *World) Order(id string) (*Order, bool) {
 	for _, o := range w.Orders {
 		if o.ID == id {
@@ -196,7 +213,10 @@ func (w *World) AssignOrder(orderID, carID string) error {
 	return nil
 }
 
-// UnassignOrder returns an assigned order to the pending queue.
+// UnassignOrder releases an ASSIGNED order back to PENDING and clears its car.
+// Only ASSIGNED is accepted: a PICKED_UP order is already in a car's hold, and
+// a pending or terminal order returns an error. The deadline and penalty are
+// not reset, so the order keeps ageing from its original clock.
 func (w *World) UnassignOrder(orderID string) error {
 	o, ok := w.Order(orderID)
 	if !ok {
@@ -268,13 +288,16 @@ func (w *World) completeOrder(car *Car, o *Order, cu Customer) {
 
 	late := o.Expired(w.Tick)
 	pay := o.Reward
+	kind := CashDelivery
 	if late {
 		pay = int(float64(o.Reward) * w.ordersCfg.LatePayMultiplier)
 		o.Late = true
+		kind = CashLateDelivery
 	}
 	o.Paid = pay
 
-	w.Ledger.Money += pay
+	w.recordCash(kind, pay, car, o.ID,
+		fmt.Sprintf("%s to %s", w.itemLabel(o.Item), cu.Name))
 	w.Ledger.MoneyEarned += pay
 	if late {
 		w.Ledger.LateDeliveries++
@@ -288,6 +311,12 @@ func (w *World) completeOrder(car *Car, o *Order, cu Customer) {
 	w.Ledger.DeliveriesByItem[o.Item]++
 	w.clampReputation()
 
+	// The cooldown starts again when the customer leaves, not only when the
+	// order was raised. A slow delivery would otherwise leave the site eligible
+	// the moment its order completes, so the same address could pop back on the
+	// very next tick; now it always rests for its interval first.
+	w.advanceCooldown(cu, o.Item)
+
 	note := ""
 	if late {
 		note = " (late)"
@@ -296,20 +325,18 @@ func (w *World) completeOrder(car *Car, o *Order, cu Customer) {
 		car.Name, w.itemLabel(o.Item), cu.Name, pay, note))
 }
 
-// clampReputation keeps reputation inside [0,5]. Without this a long winning
-// streak pushes it past the scale's top, which then makes reputation-gated
-// unlocks trivially satisfied and hides the real difficulty curve.
+// clampReputation keeps reputation inside [0, max_reputation]. Without this a
+// long winning streak pushes it past the scale's top, which then makes
+// reputation-gated unlocks trivially satisfied and hides the real difficulty
+// curve.
 func (w *World) clampReputation() {
-	if w.Ledger.Reputation > MaxReputation {
-		w.Ledger.Reputation = MaxReputation
+	if w.Ledger.Reputation > w.maxReputation {
+		w.Ledger.Reputation = w.maxReputation
 	}
 	if w.Ledger.Reputation < 0 {
 		w.Ledger.Reputation = 0
 	}
 }
-
-// MaxReputation is the top of the reputation scale.
-const MaxReputation = 5.0
 
 // expireOrders marks overdue open orders EXPIRED and applies the penalty.
 // Orders already picked up still expire: a customer does not wait forever
@@ -340,17 +367,20 @@ func (w *World) expireOrders() {
 			}
 		}
 		o.State = OrderExpired
-		w.Ledger.Money -= o.Penalty
-		if w.Ledger.Money < 0 {
-			w.Ledger.Money = 0
+		var car *Car
+		if o.AssignedCar != "" {
+			car, _ = w.Car(o.AssignedCar)
 		}
+		w.recordCash(CashOrderFine, -o.Penalty, car, o.ID,
+			fmt.Sprintf("%s expired", w.itemLabel(o.Item)))
 		w.Ledger.ExpiredOrders++
 		w.Ledger.OnTimeStreak = 0
 		w.Ledger.Reputation -= w.ordersCfg.ExpirePenaltyReputation
 		w.clampReputation()
-		var car *Car
-		if o.AssignedCar != "" {
-			car, _ = w.Car(o.AssignedCar)
+		// An expired order also makes the customer leave, so it rests for its
+		// interval before it can be seen again — the same rule as a delivery.
+		if cu, ok := w.customerByID(o.CustomerID); ok {
+			w.advanceCooldown(cu, o.Item)
 		}
 		w.emit(EventExpired, car, fmt.Sprintf("%s order expired (-$%d)", w.itemLabel(o.Item), o.Penalty))
 	}

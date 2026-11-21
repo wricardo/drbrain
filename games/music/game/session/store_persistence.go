@@ -7,13 +7,15 @@ import (
 	"log"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/wricardo/drbrain/games/music/game/engine"
 	"github.com/wricardo/drbrain/games/music/game/score"
 	"github.com/wricardo/drbrain/games/music/game/service"
 	"github.com/wricardo/drbrain/platform/sessionstore"
 )
 
-// SchemaVersion is the current on-disk format version of a session file.
+// SchemaVersion is the current payload format version of a stored session.
 const SchemaVersion = 1
 
 // PersistedSlot is one measure placement in the player's arrangement.
@@ -23,7 +25,7 @@ type PersistedSlot struct {
 	FlipV     bool   `json:"flip_v"`
 }
 
-// PersistedSession is the JSON form of a session (sessions/<id>.json).
+// PersistedSession is the JSON payload of a session.
 //
 // LastChange is transient and deliberately not stored: after a restart a
 // session's last change is unknown, not stale.
@@ -44,40 +46,31 @@ type PersistedSession struct {
 }
 
 // StorePersistence adapts platform/sessionstore to this game: the store owns
-// files, limits and listing; music keeps its JSON shape and validation.
+// PostgreSQL rows, limits and listing; music keeps its JSON shape and
+// validation.
 type StorePersistence struct {
 	store sessionstore.Store
 }
 
 var _ SessionPersistence = (*StorePersistence)(nil)
 
-// NewStorePersistence opens the file-backed store for dir.
-func NewStorePersistence(dir string, maxSessions int) (*StorePersistence, error) {
-	store, err := sessionstore.Open(sessionstore.Options{Dir: dir, MaxSessions: maxSessions, Summary: summarize})
+// NewPostgresPersistence opens the PostgreSQL-backed store.
+func NewPostgresPersistence(pool *pgxpool.Pool, maxSessions int) (*StorePersistence, error) {
+	store, err := sessionstore.Open(sessionstore.Options{Pool: pool, MaxSessions: maxSessions})
 	if err != nil {
 		return nil, err
 	}
 	return &StorePersistence{store: store}, nil
 }
 
-// summarize derives the platform Meta from a saved music payload.
-func summarize(raw []byte) (sessionstore.Meta, error) {
-	var ps PersistedSession
-	if err := json.Unmarshal(raw, &ps); err != nil {
-		return sessionstore.Meta{}, err
-	}
-	last := ps.LastActionAt
-	if last.IsZero() {
-		last = ps.CreatedAt
-	}
-	return sessionstore.Meta{
-		ID: ps.ID, DisplayName: ps.DisplayName, MapID: ps.Piece.ID,
-		CreatedAt: ps.CreatedAt, LastActionAt: last, Seq: ps.Seq,
-	}, nil
+// NewMemoryPersistence returns an in-memory store for tests that exercise the
+// manager and service without a database. The server never selects it.
+func NewMemoryPersistence(maxSessions int) *StorePersistence {
+	return &StorePersistence{store: sessionstore.NewMemory(sessionstore.Options{MaxSessions: maxSessions})}
 }
 
-// Save atomically writes the snapshot to <dir>/<id>.json. s must not be
-// mutated concurrently; the Manager passes a private clone.
+// Save writes the snapshot to the store. s must not be mutated concurrently;
+// the Manager passes a private clone.
 func (sp *StorePersistence) Save(s *service.Session) error {
 	if s == nil {
 		return fmt.Errorf("save session: nil session")
@@ -116,7 +109,7 @@ func (sp *StorePersistence) Save(s *service.Session) error {
 	}, data)
 }
 
-// Load reads and fully validates <dir>/<id>.json. The frozen piece is
+// Load reads and fully validates one stored session. The frozen piece is
 // re-canonicalised (positional measure ids, axis) and every slot must name a
 // measure that exists in it. A legacy arrangement that does not cover the whole
 // piece is repaired to the deterministic whole-piece scramble for its
@@ -140,7 +133,7 @@ func (sp *StorePersistence) Load(id string) (*service.Session, error) {
 		return nil, fmt.Errorf("session %s: unsupported version %d (want %d)", id, ps.Version, SchemaVersion)
 	}
 	if ps.ID != id {
-		return nil, fmt.Errorf("session file %s contains id %q", id, ps.ID)
+		return nil, fmt.Errorf("session %s payload contains id %q", id, ps.ID)
 	}
 	piece, err := canonicalPiece(&ps.Piece)
 	if err != nil {
@@ -191,7 +184,8 @@ func (sp *StorePersistence) Load(id string) (*service.Session, error) {
 	}, nil
 }
 
-// Delete removes <dir>/<id>.json. It returns ErrNotFound if there is none.
+// Delete removes one session from the store. It returns ErrNotFound if there
+// is none.
 func (sp *StorePersistence) Delete(id string) error {
 	if !ValidID(id) {
 		return ErrInvalidID
@@ -205,8 +199,8 @@ func (sp *StorePersistence) Delete(id string) error {
 	return nil
 }
 
-// ListAll returns the ids of every persisted session with a valid id; stray
-// files are ignored.
+// ListAll returns the ids of every persisted session with a valid id; entries
+// with an unusable id are ignored.
 func (sp *StorePersistence) ListAll() ([]string, error) {
 	metas, err := sp.store.List()
 	if err != nil {

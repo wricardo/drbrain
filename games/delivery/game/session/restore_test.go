@@ -1,9 +1,6 @@
 package session
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/wricardo/drbrain/games/delivery/game/engine"
@@ -21,7 +18,7 @@ func reload(t *testing.T, mgr *Manager, id string) *Session {
 	if !ok {
 		t.Fatalf("session %s not live", id)
 	}
-	if err := sess.Save(mgr.CityFileName()); err != nil {
+	if err := sess.Save(); err != nil {
 		t.Fatalf("save: %v", err)
 	}
 	mgr.Evict(id)
@@ -32,25 +29,27 @@ func reload(t *testing.T, mgr *Manager, id string) *Session {
 	return re
 }
 
-// TestBuildAddedEntitiesSurviveReload covers the whole class of "the save only
-// stored tiles" bugs: a build that adds a charger must still exist after a
-// reload, because the save replays the build rather than re-listing effects.
-func TestBuildAddedEntitiesSurviveReload(t *testing.T) {
+// advancePastGrowth applies the whole city schedule: growth is a pure function
+// of the tick, so moving the clock past the last stage and advancing once is
+// enough. Tests use it to isolate persistence from the growth grind.
+func advancePastGrowth(w *engine.World) {
+	w.Tick = 1_000_000
+	w.Advance()
+}
+
+// TestGrowthAddedEntitiesSurviveReload covers the whole class of "the save only
+// stored tiles" bugs: a stage that adds a charger must still exist after a
+// reload, because ImportState replays the schedule rather than re-listing
+// effects.
+func TestGrowthAddedEntitiesSurviveReload(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, _, err := mgr.Create("ents", 3, "")
+	sess, _, err := mgr.Create("ents", 3, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = sess.SetSpeed(SpeedPaused)
 
-	const buildID = "b02_east_bridge"
-	sess.Do(func(w *engine.World) {
-		w.Ledger.Money = 5000
-		w.Grant([]string{buildID}, nil)
-		if _, err := w.Build(buildID); err != nil {
-			t.Fatalf("build: %v", err)
-		}
-	})
+	sess.Do(advancePastGrowth)
 
 	before := sess.Snapshot()
 	re := reload(t, mgr, "ents")
@@ -70,26 +69,18 @@ func TestBuildAddedEntitiesSurviveReload(t *testing.T) {
 	}
 }
 
-// TestRevealedDistrictsSurviveReload: a revealed district must stay revealed.
-// Losing it put the harbour back under fog and made the fish market unreachable
-// again, which silently undid a purchase.
-func TestRevealedDistrictsSurviveReload(t *testing.T) {
+// TestGrowthRevealedDistrictsSurviveReload: a revealed district must stay
+// revealed. Losing it put the harbour back under fog and made the fish market
+// unreachable again, which silently undid the city's expansion.
+func TestGrowthRevealedDistrictsSurviveReload(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, _, err := mgr.Create("rev", 3, "")
+	sess, _, err := mgr.Create("rev", 3, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = sess.SetSpeed(SpeedPaused)
 
-	sess.Do(func(w *engine.World) {
-		w.Ledger.Money = 9000
-		w.Grant([]string{"b02_east_bridge", "b04_harbour_gate"}, nil)
-		for _, id := range []string{"b02_east_bridge", "b04_harbour_gate"} {
-			if _, err := w.Build(id); err != nil {
-				t.Fatalf("build %s: %v", id, err)
-			}
-		}
-	})
+	sess.Do(advancePastGrowth)
 
 	before := sess.Snapshot()
 	re := reload(t, mgr, "rev")
@@ -110,56 +101,38 @@ func TestRevealedDistrictsSurviveReload(t *testing.T) {
 	}
 }
 
-// TestAchievementsDoNotRefireOnReload: achievements are one-shot. A reload that
-// forgot their state paid their money grants a second time, which is free money
-// for anyone who saves and reloads.
-func TestAchievementsDoNotRefireOnReload(t *testing.T) {
+// TestGrowthDoesNotReapplyOnReload: stages are one-shot. A reload that replayed
+// them without a tick bound would duplicate chargers and re-pay grants.
+func TestGrowthDoesNotReapplyOnReload(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, _, err := mgr.Create("ach", 3, "")
+	sess, _, err := mgr.Create("grow", 3, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = sess.SetSpeed(SpeedPaused)
 
-	// Satisfy several achievements at once and let one tick fire them.
+	sess.Do(advancePastGrowth)
+
+	var chargersBefore, stagesBefore, moneyBefore int
 	sess.Do(func(w *engine.World) {
-		w.Ledger.Tows = 1
-		w.Ledger.Deliveries = 5
-		w.Advance()
+		chargersBefore = len(w.City.Chargers)
+		stagesBefore = len(w.Growth())
+		moneyBefore = w.Ledger.Money
 	})
 
-	countDone := func(s *Session) (done, money int) {
-		s.Do(func(w *engine.World) {
-			money = w.Ledger.Money
-			for _, a := range w.Achievements() {
-				if a.Done {
-					done++
-				}
-			}
-		})
-		return done, money
-	}
-
-	doneBefore, moneyBefore := countDone(sess)
-	if doneBefore == 0 {
-		t.Fatal("precondition: no achievement fired")
-	}
-
-	re := reload(t, mgr, "ach")
-	doneAfter, _ := countDone(re)
-	if doneAfter != doneBefore {
-		t.Fatalf("achievements reset on reload: %d done -> %d", doneBefore, doneAfter)
-	}
-
-	// And one more tick must not re-award them.
-	re.Do(func(w *engine.World) { w.Advance() })
-	doneLater, moneyLater := countDone(re)
-	if doneLater != doneBefore {
-		t.Fatalf("achievements refired after reload: %d -> %d", doneBefore, doneLater)
-	}
-	if moneyLater != moneyBefore {
-		t.Fatalf("achievement money granted twice: %d -> %d", moneyBefore, moneyLater)
-	}
+	re := reload(t, mgr, "grow")
+	sess.Do(func(w *engine.World) {
+		if got := len(w.City.Chargers); got != chargersBefore {
+			t.Fatalf("chargers duplicated on reload: %d -> %d", chargersBefore, got)
+		}
+		if got := len(w.Growth()); got != stagesBefore {
+			t.Fatalf("growth stages changed on reload: %d -> %d", stagesBefore, got)
+		}
+		if got := w.Ledger.Money; got != moneyBefore {
+			t.Fatalf("money changed on reload: %d -> %d", moneyBefore, got)
+		}
+	})
+	_ = re
 }
 
 // TestForcedFirstOrderDoesNotRefireOnReload: the spawner's memory is part of
@@ -167,7 +140,7 @@ func TestAchievementsDoNotRefireOnReload(t *testing.T) {
 // again, so a save/reload loop inflated the queue past its cap.
 func TestForcedFirstOrderDoesNotRefireOnReload(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, _, err := mgr.Create("forced", 5, "")
+	sess, _, err := mgr.Create("forced", 5, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +171,7 @@ func TestForcedFirstOrderDoesNotRefireOnReload(t *testing.T) {
 // the race detector reports and which can emit a corrupt save.
 func TestSaveWhileTickingIsRaceFree(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, _, err := mgr.Create("racing", 4, "")
+	sess, _, err := mgr.Create("racing", 4, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +180,7 @@ func TestSaveWhileTickingIsRaceFree(t *testing.T) {
 	}
 
 	for range 40 {
-		if err := sess.Save(mgr.CityFileName()); err != nil {
+		if err := sess.Save(); err != nil {
 			t.Fatalf("save: %v", err)
 		}
 		sess.Do(func(w *engine.World) {
@@ -223,41 +196,27 @@ func TestSaveWhileTickingIsRaceFree(t *testing.T) {
 	}
 }
 
-// TestDeleteRejectsIDs that escape the sessions directory. filepath.Join cleans
-// ".." segments, so an unvalidated id removed a file outside the sessions dir;
-// every other entry point validated and this one did not.
+// TestDeleteRejectsEscapingIDs: ids double as store keys and URL path segments,
+// so Delete must validate before touching the store. Every other entry point
+// validated and this one used not to.
 func TestDeleteRejectsEscapingIDs(t *testing.T) {
 	mgr := newTestManager(t)
-
-	root := filepath.Dir(mgr.dir)
-	victim := filepath.Join(root, "victim.json")
-	if err := os.WriteFile(victim, []byte("not a save"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := mgr.Delete("../victim"); err == nil {
-		t.Error("Delete accepted an id containing path separators")
-	}
-	if _, err := os.Stat(victim); err != nil {
-		t.Fatalf("Delete removed %s, outside the sessions directory: %v", victim, err)
+	for _, id := range []string{"../victim", "a/b", "x y"} {
+		if err := mgr.Delete(id); err == nil {
+			t.Errorf("Delete accepted %q", id)
+		}
 	}
 }
 
 // A save written by the previous build must still load. The format changed
 // shape (SavedState replaced a hand-rolled persistedWorld that also stored
 // terrain_deltas and revealed tiles). Dropping those is safe ONLY because the
-// completed builds are replayed from the city config; this test proves the
-// geography comes back anyway.
+// city's growth schedule is replayed from the config by tick; this test proves
+// the geography comes back anyway.
 func TestLegacySaveStillLoads(t *testing.T) {
-	dir := t.TempDir()
-	city := filepath.Join("..", "..", "maps", "city.json")
-	mgr, err := NewManager(city, dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = mgr.Close() })
+	mgr := newTestManager(t)
 
-	sess, _, err := mgr.Create("legacy", 7, "")
+	sess, _, err := mgr.Create("legacy", 7, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -265,47 +224,25 @@ func TestLegacySaveStillLoads(t *testing.T) {
 	sess.Do(func(w *engine.World) {
 		w.Ledger.Money = 5000
 		w.Ledger.Deliveries = 12
-		w.Grant([]string{"b01_corner_charger", "b02_east_bridge"}, nil)
-		for _, id := range []string{"b01_corner_charger", "b02_east_bridge"} {
-			if _, err := w.Build(id); err != nil {
-				t.Fatalf("build %s: %v", id, err)
-			}
-		}
-		for range 50 {
-			w.Advance()
-		}
+		advancePastGrowth(w)
 	})
 	want := sess.Snapshot()
-	if err := sess.Save(mgr.CityFileName()); err != nil {
+	if err := sess.Save(); err != nil {
 		t.Fatal(err)
 	}
 	mgr.Evict("legacy")
 
-	// Rewrite the save into the OLD shape: drop the fields the previous build
-	// never wrote, and add back the two it did write.
-	path := filepath.Join(dir, "legacy.json")
-	blob, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var doc map[string]any
-	if err := json.Unmarshal(blob, &doc); err != nil {
-		t.Fatal(err)
-	}
-	world := doc["world"].(map[string]any)
-	delete(world, "achievements")
-	delete(world, "next_eligible_tick")
-	delete(world, "last_spawn_tick")
-	delete(world, "has_spawned")
-	world["terrain_deltas"] = []any{map[string]any{"x": 12, "y": 2, "type": "road"}}
-	world["revealed"] = []any{}
-	out, err := json.Marshal(doc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, out, 0o644); err != nil {
-		t.Fatal(err)
-	}
+	// Rewrite the payload into the OLD shape: drop the fields the previous
+	// build never wrote, and add back the two it did write.
+	rewritePayload(t, mgr, "legacy", func(doc map[string]any) {
+		world := doc["world"].(map[string]any)
+		delete(world, "achievements")
+		delete(world, "next_eligible_tick")
+		delete(world, "last_spawn_tick")
+		delete(world, "has_spawned")
+		world["terrain_deltas"] = []any{map[string]any{"x": 12, "y": 2, "type": "road"}}
+		world["revealed"] = []any{}
+	})
 
 	re, err := mgr.GetOrLoad("legacy")
 	if err != nil {

@@ -17,16 +17,16 @@ var (
 )
 
 // wonVM runs the fixture program to the end: 4 forward moves, 4 slots, 4 steps.
-func wonVM(t *testing.T, ps *PersistedSession) {
+func wonVM(t *testing.T, s *service.Session) {
 	t.Helper()
-	ps.VM = engine.Run(mustMap(t, corridorCfg), ps.Program)
-	if ps.VM.Status != engine.StatusWon || ps.VM.Steps != 4 {
-		t.Fatalf("fixture run = %s in %d steps, want WON in 4", ps.VM.Status, ps.VM.Steps)
+	s.VM = engine.Run(mustMap(t, corridorCfg), s.Program)
+	if s.VM.Status != engine.StatusWon || s.VM.Steps != 4 {
+		t.Fatalf("fixture run = %s in %d steps, want WON in 4", s.VM.Status, s.VM.Steps)
 	}
 }
 
-func TestFileRoundTripKeepsLeaderboardWins(t *testing.T) {
-	fp, _ := newFile(t)
+func TestPostgresRoundTripKeepsLeaderboardWins(t *testing.T) {
+	fp := newPersistence(t)
 	s := fixture(t, idA)
 	s.FewestSlots = &service.Win{Slots: 3, Steps: 9, At: recorded.At}
 	s.FewestSteps = &service.Win{Slots: 4, Steps: 4, At: recorded.At}
@@ -42,19 +42,21 @@ func TestFileRoundTripKeepsLeaderboardWins(t *testing.T) {
 	}
 }
 
-func TestLoadRecoversWinsOfFilesWrittenBeforeLeaderboards(t *testing.T) {
+func TestLoadRecoversWinsOfRowsWrittenBeforeLeaderboards(t *testing.T) {
+	// PostgreSQL keeps microseconds; the backfilled win uses the stored time.
+	backfilledAt := winAt.Truncate(time.Microsecond)
 	tests := []struct {
 		name   string
-		mutate func(*PersistedSession)
+		mutate func(*testing.T, *service.Session)
 		slots  *service.Win // expected FewestSlots (nil = none)
 		steps  *service.Win // expected FewestSteps (nil = none)
 	}{
 		{
 			// A WON VM always belongs to the stored program, so the win is exact.
 			name:   "a won session is backfilled from its program and VM",
-			mutate: func(ps *PersistedSession) { wonVM(t, ps) },
-			slots:  &service.Win{Slots: 4, Steps: 4, At: winAt},
-			steps:  &service.Win{Slots: 4, Steps: 4, At: winAt},
+			mutate: wonVM,
+			slots:  &service.Win{Slots: 4, Steps: 4, At: backfilledAt},
+			steps:  &service.Win{Slots: 4, Steps: 4, At: backfilledAt},
 		},
 		{
 			name:   "a session that never won has no entry",
@@ -62,33 +64,39 @@ func TestLoadRecoversWinsOfFilesWrittenBeforeLeaderboards(t *testing.T) {
 		},
 		{
 			name: "recorded wins are kept as they are",
-			mutate: func(ps *PersistedSession) {
-				wonVM(t, ps)
-				ps.FewestSlots = &service.Win{Slots: 3, Steps: 9, At: recorded.At}
-				ps.FewestSteps = recorded
+			mutate: func(t *testing.T, s *service.Session) {
+				wonVM(t, s)
+				s.FewestSlots = &service.Win{Slots: 3, Steps: 9, At: recorded.At}
+				s.FewestSteps = recorded
 			},
 			slots: &service.Win{Slots: 3, Steps: 9, At: recorded.At},
 			steps: recorded,
 		},
 		{
 			name: "an impossible recorded win is dropped, not ranked",
-			mutate: func(ps *PersistedSession) {
-				ps.FewestSlots = &service.Win{Slots: 99, Steps: 4, At: recorded.At} // map has 8 slots
-				ps.FewestSteps = &service.Win{Slots: 4, Steps: 31, At: recorded.At} // limit is 30 steps
+			mutate: func(t *testing.T, s *service.Session) {
+				s.FewestSlots = &service.Win{Slots: 99, Steps: 4, At: recorded.At} // map has 8 slots
+				s.FewestSteps = &service.Win{Slots: 4, Steps: 31, At: recorded.At} // limit is 30 steps
 			},
 		},
 		{
 			name: "a zero win is dropped",
-			mutate: func(ps *PersistedSession) {
-				ps.FewestSlots = &service.Win{}
-				ps.FewestSteps = &service.Win{Slots: 0, Steps: 4}
+			mutate: func(t *testing.T, s *service.Session) {
+				s.FewestSlots = &service.Win{}
+				s.FewestSteps = &service.Win{Slots: 0, Steps: 4}
 			},
 		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			fp, dir := newFile(t)
-			writeFile(t, dir, idA, tc.mutate)
+			fp := newPersistence(t)
+			s := fixture(t, idA)
+			if tc.mutate != nil {
+				tc.mutate(t, s)
+			}
+			if err := fp.Save(s); err != nil {
+				t.Fatal(err)
+			}
 			got, err := fp.Load(idA)
 			if err != nil {
 				t.Fatal(err)

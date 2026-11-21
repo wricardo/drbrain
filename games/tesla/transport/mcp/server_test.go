@@ -2,18 +2,26 @@ package mcp
 
 import (
 	"context"
+	"net/http"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/wricardo/drbrain/games/tesla/appconfig"
 	"github.com/wricardo/drbrain/games/tesla/game/engine"
 	"github.com/wricardo/drbrain/games/tesla/game/service"
 	"github.com/wricardo/drbrain/games/tesla/transport/websocket"
 )
 
 type mockGameService struct {
+	mapEntry          *service.MapEntry
+	updatedActor      service.MapActor
+	updatedName       string
+	deletedName       string
+	deletedActor      service.MapActor
+	createMapCalls    int
 	moveFunc          func(ctx context.Context, sessionID, direction string, reset bool) (*service.MoveResult, error)
 	bulkMoveFunc      func(ctx context.Context, sessionID string, moves []string, reset bool) (*service.BulkMoveResult, error)
 	resetFunc         func(ctx context.Context, sessionID string) (*engine.GameState, error)
@@ -38,6 +46,36 @@ func (m *mockGameService) ListSessions(ctx context.Context) ([]*service.SessionI
 	return []*service.SessionInfo{}, nil
 }
 func (m *mockGameService) DeleteSession(ctx context.Context, sessionID string) error { return nil }
+
+// Map lifecycle: the MCP tests exercise sessions only, so these are inert.
+func (m *mockGameService) ListMapEntries(context.Context, string) ([]*service.MapEntry, error) {
+	return nil, nil
+}
+func (m *mockGameService) GetMapEntry(context.Context, string) (*service.MapEntry, error) {
+	if m.mapEntry != nil {
+		return m.mapEntry, nil
+	}
+	return nil, service.ErrMapNotFound
+}
+func (m *mockGameService) CreateMapDraft(context.Context, string, *engine.GameConfig, string) (*service.MapEntry, string, error) {
+	return nil, "", service.ErrMapInvalid
+}
+func (m *mockGameService) UpdateMapOwned(_ context.Context, name string, cfg *engine.GameConfig, actor service.MapActor) (*service.MapEntry, error) {
+	m.updatedName = name
+	m.updatedActor = actor
+	return &service.MapEntry{Name: name, Config: cfg, Status: service.MapStatusPublished}, nil
+}
+func (m *mockGameService) PublishMap(context.Context, string, service.MapActor) (*service.MapEntry, error) {
+	return nil, service.ErrMapNotFound
+}
+func (m *mockGameService) DeleteMapOwned(_ context.Context, name string, actor service.MapActor) error {
+	m.deletedName = name
+	m.deletedActor = actor
+	return nil
+}
+func (m *mockGameService) ClaimMap(context.Context, string, string, string) (*service.MapEntry, error) {
+	return nil, service.ErrMapNotFound
+}
 func (m *mockGameService) UpdateSessionDisplayName(ctx context.Context, sessionID, displayName string) (*service.SessionInfo, error) {
 	return &service.SessionInfo{}, nil
 }
@@ -426,5 +464,130 @@ func TestHandleListSessions_ReturnsGraphQLLikeEnvelope(t *testing.T) {
 	}
 	if !strings.Contains(text, "older") || strings.Contains(text, "newer") {
 		t.Fatalf("expected created asc sort + limit to keep only oldest session, got: %s", text)
+	}
+}
+
+// adminCtx carries an X-Admin-Key request into an MCP tool call.
+func adminCtx(key string) context.Context {
+	req, _ := http.NewRequest(http.MethodPost, "/tesla/mcp", nil)
+	if key != "" {
+		req.Header.Set("X-Admin-Key", key)
+	}
+	return context.WithValue(context.Background(), mcpHTTPRequestKey{}, req)
+}
+
+func resultText(t *testing.T, r *mcp.CallToolResult) string {
+	t.Helper()
+	if r == nil {
+		t.Fatal("nil tool result")
+	}
+	var b strings.Builder
+	for _, c := range r.Content {
+		if tc, ok := c.(mcp.TextContent); ok {
+			b.WriteString(tc.Text)
+		}
+	}
+	return b.String()
+}
+
+func TestMapMutationsRequireAdmin(t *testing.T) {
+	svc := &mockGameService{mapEntry: &service.MapEntry{Name: "mine", Config: &engine.GameConfig{Name: "mine"}}}
+	server := NewServer(svc, nil, WithAdminPolicy(appconfig.AdminPolicy{APIKey: "secret"}))
+
+	ops := []struct {
+		name string
+		call func(context.Context) (*mcp.CallToolResult, error)
+	}{
+		{"create_map", func(ctx context.Context) (*mcp.CallToolResult, error) {
+			return server.handleCreateMap(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]interface{}{"name": "new"}}})
+		}},
+		{"update_map", func(ctx context.Context) (*mcp.CallToolResult, error) {
+			return server.handleUpdateMap(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]interface{}{"name": "mine"}}})
+		}},
+		{"delete_map", func(ctx context.Context) (*mcp.CallToolResult, error) {
+			return server.handleDeleteMap(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]interface{}{"name": "mine"}}})
+		}},
+	}
+	for _, op := range ops {
+		t.Run(op.name, func(t *testing.T) {
+			for _, ctx := range []context.Context{context.Background(), adminCtx("wrong")} {
+				res, err := op.call(ctx)
+				if err != nil {
+					t.Fatalf("%s: %v", op.name, err)
+				}
+				if text := resultText(t, res); !strings.Contains(text, "forbidden") {
+					t.Fatalf("%s without a valid admin key = %q, want forbidden", op.name, text)
+				}
+			}
+		})
+	}
+}
+
+func TestAdminMapMutationsUseLifecycleActors(t *testing.T) {
+	svc := &mockGameService{mapEntry: &service.MapEntry{
+		Name: "mine", Config: &engine.GameConfig{Name: "mine"}, Status: service.MapStatusDraft,
+	}}
+	server := NewServer(svc, nil, WithAdminPolicy(appconfig.AdminPolicy{APIKey: "secret"}))
+	ctx := adminCtx("secret")
+
+	if res, err := server.handleUpdateMap(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]interface{}{
+		"name": "mine", "description": "updated",
+	}}}); err != nil || strings.Contains(resultText(t, res), "error:") {
+		t.Fatalf("admin update: %v %v", resultText(t, res), err)
+	}
+	if svc.updatedName != "mine" || !svc.updatedActor.Admin {
+		t.Fatalf("update used name=%q actor=%+v", svc.updatedName, svc.updatedActor)
+	}
+	if res, err := server.handleDeleteMap(ctx, mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]interface{}{
+		"name": "mine",
+	}}}); err != nil || strings.Contains(resultText(t, res), "error:") {
+		t.Fatalf("admin delete: %v %v", resultText(t, res), err)
+	}
+	if svc.deletedName != "mine" || !svc.deletedActor.Admin {
+		t.Fatalf("delete used name=%q actor=%+v", svc.deletedName, svc.deletedActor)
+	}
+}
+
+func TestGetMapHidesDraftsFromNonAdmins(t *testing.T) {
+	cfg := &engine.GameConfig{Name: "draft"}
+	svc := &mockGameService{mapEntry: &service.MapEntry{Name: "draft", Config: cfg, OwnerID: "acct-a", Status: service.MapStatusDraft}}
+	server := NewServer(svc, nil, WithAdminPolicy(appconfig.AdminPolicy{APIKey: "secret"}))
+	req := mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]interface{}{"name": "draft"}}}
+
+	res, err := server.handleGetMap(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := resultText(t, res); !strings.Contains(text, "not found") {
+		t.Fatalf("non-admin get_map on a draft = %q, want not found", text)
+	}
+
+	res, err = server.handleGetMap(adminCtx("secret"), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := resultText(t, res); strings.Contains(text, "not found") {
+		t.Fatalf("admin get_map on a draft = %q", text)
+	}
+
+	// Published maps stay readable without credentials.
+	svc.mapEntry.Status = service.MapStatusPublished
+	res, err = server.handleGetMap(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if text := resultText(t, res); strings.Contains(text, "not found") {
+		t.Fatalf("published get_map = %q", text)
+	}
+}
+
+func TestMapMutationsOpenWithDevBypass(t *testing.T) {
+	svc := &mockGameService{mapEntry: &service.MapEntry{Name: "mine", Config: &engine.GameConfig{Name: "mine"}}}
+	server := NewServer(svc, nil, WithAdminPolicy(appconfig.AdminPolicy{AllowUnauthenticated: true}))
+	res, err := server.handleDeleteMap(context.Background(), mcp.CallToolRequest{Params: mcp.CallToolParams{Arguments: map[string]interface{}{
+		"name": "mine",
+	}}})
+	if err != nil || strings.Contains(resultText(t, res), "error:") {
+		t.Fatalf("dev bypass delete: %v %v", resultText(t, res), err)
 	}
 }

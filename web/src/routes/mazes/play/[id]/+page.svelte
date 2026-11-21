@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Skeleton from '@drbrain/ui/components/Skeleton.svelte';
 	import { pageTitle } from '$lib/mazes/brand';
-	import { onDestroy, untrack } from 'svelte';
+	import { onDestroy, onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
 	import { getContextClient } from '@urql/svelte';
@@ -16,7 +16,8 @@
 	import StatusLine from '$lib/mazes/components/StatusLine.svelte';
 	import Tower from '$lib/mazes/components/Tower.svelte';
 	import { describeError, lossReasonText, type DescribedError } from '$lib/mazes/errors';
-	import { MAPS_QUERY, MOVE_MUTATION, RESET_MUTATION } from '$lib/mazes/queries';
+	import { MAPS_QUERY, CAN_PLAY_QUERY, MOVE_MUTATION, RESET_MUTATION } from '$lib/mazes/queries';
+	import { ownerTokenFor } from '$lib/mazes/ownerTokens';
 	import { nextMap } from '$lib/mazes/maps';
 	import { startSession } from '$lib/mazes/start';
 	import { buildSessionPrompt } from '$lib/mazes/prompt';
@@ -32,6 +33,24 @@
 	const client = getContextClient();
 	const store = createSessionStore(createSessionSource(client), sessionId);
 	onDestroy(() => store.destroy());
+
+	// This browser's secret for the session, when it created it. The server is the
+	// judge: `/mazes/play/<id>` is read-only unless canPlaySession says otherwise.
+	const ownerToken = ownerTokenFor(sessionId);
+	let mode = $state<'checking' | 'play' | 'watch'>('checking');
+	const owned = $derived(mode === 'play');
+
+	onMount(async () => {
+		try {
+			const d = await unwrap<{ canPlaySession: boolean }>(
+				client.query(CAN_PLAY_QUERY, { id: sessionId, ownerToken }, { requestPolicy: 'network-only' })
+			);
+			mode = d.canPlaySession ? 'play' : 'watch';
+		} catch {
+			// Offline or unknown id: the safe view is the read-only one.
+			mode = 'watch';
+		}
+	});
 
 	const origin = typeof window !== 'undefined' ? window.location.origin : '';
 	const live = $derived($store.session);
@@ -87,7 +106,7 @@
 	const shown = $derived(session ? shownLevel(session.view, peek, seen) : null);
 	const level = $derived(shown?.view.level ?? 0);
 	const known = $derived(session ? knownLevels(session.view, seen) : []);
-	const showModal = $derived(terminal && !!session && dismissedAttempts !== session.attempts);
+	const showModal = $derived(owned && terminal && !!session && dismissedAttempts !== session.attempts);
 	const resultText = $derived(
 		!session || !terminal
 			? ''
@@ -134,21 +153,24 @@
 	}
 
 	function move(direction: Direction) {
-		if (!live || liveTerminal) return;
+		if (!owned || !live || liveTerminal) return;
 		peek = null;
-		return act(async () => (await unwrap<{ move: Session }>(client.mutation(MOVE_MUTATION, { sessionID: sessionId, direction }))).move);
+		return act(
+			async () =>
+				(await unwrap<{ move: Session }>(client.mutation(MOVE_MUTATION, { sessionID: sessionId, direction, ownerToken }))).move
+		);
 	}
 
 	const reset = () =>
 		act(async () => {
-			const s = (await unwrap<{ reset: Session }>(client.mutation(RESET_MUTATION, { sessionID: sessionId }))).reset;
+			const s = (await unwrap<{ reset: Session }>(client.mutation(RESET_MUTATION, { sessionID: sessionId, ownerToken }))).reset;
 			dismissedAttempts = s.attempts;
 			peek = null;
 			return s;
 		});
 
 	function onKeyDown(e: KeyboardEvent) {
-		if (showModal || showHelp || e.defaultPrevented || isTypingTarget(e.target)) return;
+		if (!owned || showModal || showHelp || e.defaultPrevented || isTypingTarget(e.target)) return;
 		const action = keyToAction(e);
 		if (!action) return;
 		e.preventDefault();
@@ -180,7 +202,13 @@
 				<h1 class="text-2xl font-semibold text-indigo-950" title={session.map.description}>{session.map.name}</h1>
 				<p class="text-sm text-slate-600">
 					{session.displayName || 'Anonymous'} ·
-					<a class="underline" href="/mazes/watch/{session.id}">spectator link</a>
+					{#if mode === 'checking'}
+						checking access…
+					{:else if owned}
+						you are playing
+					{:else}
+						read-only spectator view
+					{/if}
 				</p>
 			</div>
 			<ConnectionBadge state={connection} />
@@ -216,7 +244,7 @@
 						lastEvent={session.lastEvent}
 						bumpKey={frame?.replaying ? 0 : session.seq}
 						facing={frame?.facing}
-						onmove={liveTerminal ? undefined : move}
+						onmove={!owned || liveTerminal ? undefined : move}
 					/>
 					</div>
 					<Tower levelCount={session.map.levelCount} current={playerLevel} viewing={level} {known} {onpeek} />
@@ -226,39 +254,58 @@
 			</section>
 
 			<section aria-label="Game" class="space-y-4">
-				<StatusLine {session} />
+				<StatusLine {session} spectator={!owned} />
 				<p class="sr-only" role="status" aria-live="polite" data-testid="result-live">{resultText}</p>
 				<Stats {session} />
-				<div class="rounded-xl border border-indigo-200 bg-white p-3" data-testid="controls">
-					<h2 class="text-xs font-semibold uppercase tracking-widest text-indigo-900">Controls</h2>
-					<div class="mt-2 flex flex-col items-center gap-3">
-						<Dpad onmove={move} disabled={liveTerminal} />
-						<div class="flex w-full items-center gap-3 border-t border-indigo-100 pt-3">
-							<button
-								type="button"
-								class="rounded-lg border border-indigo-300 px-4 py-2 text-sm font-semibold text-indigo-900 hover:bg-indigo-50"
-								onclick={reset}
-								data-testid="reset">Reset</button
-							>
-							<p class="text-xs text-slate-600">Back to the start; attempts and best are kept.</p>
+				{#if owned}
+					<div class="rounded-xl border border-indigo-200 bg-white p-3" data-testid="controls">
+						<h2 class="text-xs font-semibold uppercase tracking-widest text-indigo-900">Controls</h2>
+						<div class="mt-2 flex flex-col items-center gap-3">
+							<Dpad onmove={move} disabled={liveTerminal} />
+							<div class="flex w-full items-center gap-3 border-t border-indigo-100 pt-3">
+								<button
+									type="button"
+									class="rounded-lg border border-indigo-300 px-4 py-2 text-sm font-semibold text-indigo-900 hover:bg-indigo-50"
+									onclick={reset}
+									data-testid="reset">Reset</button
+								>
+								<p class="text-xs text-slate-600">Back to the start; attempts and best are kept.</p>
+							</div>
 						</div>
 					</div>
-				</div>
-				<div class="rounded-xl border border-indigo-200 bg-white p-3" data-testid="help">
-					<h2 class="text-xs font-semibold uppercase tracking-widest text-indigo-900">Help</h2>
-					<ul class="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-700">
-						<li><kbd class="rounded border border-indigo-200 bg-white px-1">← ↑ ↓ →</kbd> or <kbd class="rounded border border-indigo-200 bg-white px-1">W A S D</kbd> move one tile</li>
-						<li><kbd class="rounded border border-indigo-200 bg-white px-1">R</kbd> resets to the start</li>
-						<li>Click a tile next to the miner to step onto it; blocked moves are free</li>
-						<li>Click a visited level in the tower to look at it again</li>
-						<li>Press <kbd class="rounded border border-indigo-200 bg-white px-1">?</kbd> for shortcuts</li>
-					</ul>
-					<a href="/mazes/learn" class="mt-2 inline-block text-xs font-medium text-indigo-700 underline">All rules →</a>
-				</div>
-				<AiPromptCard
-					prompt={buildSessionPrompt(origin, session)}
-					blurb="Copy this prompt into an AI chat and it will steer the miner to the finish in this session."
-				/>
+					<div class="rounded-xl border border-indigo-200 bg-white p-3" data-testid="help">
+						<h2 class="text-xs font-semibold uppercase tracking-widest text-indigo-900">Help</h2>
+						<ul class="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-700">
+							<li><kbd class="rounded border border-indigo-200 bg-white px-1">← ↑ ↓ →</kbd> or <kbd class="rounded border border-indigo-200 bg-white px-1">W A S D</kbd> move one tile</li>
+							<li><kbd class="rounded border border-indigo-200 bg-white px-1">R</kbd> resets to the start</li>
+							<li>Click a tile next to the miner to step onto it; blocked moves are free</li>
+							<li>Click a visited level in the tower to look at it again</li>
+							<li>Press <kbd class="rounded border border-indigo-200 bg-white px-1">?</kbd> for shortcuts</li>
+						</ul>
+						<a href="/mazes/learn" class="mt-2 inline-block text-xs font-medium text-indigo-700 underline">All rules →</a>
+					</div>
+					{#if ownerToken}
+						<AiPromptCard
+							prompt={buildSessionPrompt(origin, { ...session, ownerToken })}
+							blurb="Copy this prompt into an AI chat and it will steer the miner to the finish in this session. It carries your owner token, so share it carefully."
+						/>
+					{/if}
+				{:else if mode === 'watch'}
+					<div class="rounded-xl border border-indigo-200 bg-white p-4 text-sm" data-testid="spectator">
+						<h2 class="text-xs font-semibold uppercase tracking-widest text-indigo-900">Spectating</h2>
+						<p class="mt-2 text-slate-700">
+							Only the session's creator can move the miner. This view follows the run live.
+						</p>
+						<div class="mt-3 flex flex-wrap items-center gap-3">
+							<a
+								href="/mazes/maps"
+								class="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+								data-testid="start-own">Start your own run</a
+							>
+							<a href="/mazes/sessions" class="text-sm text-indigo-700 underline">Other sessions</a>
+						</div>
+					</div>
+				{/if}
 			</section>
 		</div>
 

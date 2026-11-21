@@ -15,7 +15,7 @@ const DefaultMaxSessions = 1000
 // write-through persistence. It implements service.SessionStore.
 //
 // Lock order: ioMu -> Session lock; mu is only ever held briefly and never
-// together with a Session lock or while doing file I/O.
+// together with a Session lock or while doing storage I/O.
 type Manager struct {
 	p           SessionPersistence
 	maxSessions int
@@ -23,9 +23,9 @@ type Manager struct {
 	mu       sync.RWMutex
 	sessions map[string]*service.Session
 
-	// ioMu serialises persistence writes/deletes so file contents always follow
-	// the order in which snapshots were taken, and so a Delete can never be
-	// overtaken by a late Persist of the same session.
+	// ioMu serialises persistence writes/deletes so stored contents always
+	// follow the order in which snapshots were taken, and so a Delete can never
+	// be overtaken by a late Persist of the same session.
 	ioMu sync.Mutex
 }
 
@@ -136,7 +136,7 @@ func (m *Manager) Persist(s *service.Session) error {
 	return m.p.Save(snap)
 }
 
-// LoadAll loads every persisted session into memory at startup. Files that
+// LoadAll loads every persisted session into memory at startup. Sessions that
 // fail to load (corrupt, unknown schema, invalid map/state) are logged and
 // skipped. The maxSessions limit only gates Put; existing persisted sessions
 // are all loaded.

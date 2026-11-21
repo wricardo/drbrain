@@ -13,6 +13,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/wricardo/drbrain/games/motor/game/engine"
 	motorgraph "github.com/wricardo/drbrain/games/motor/graph"
 	"github.com/wricardo/drbrain/graph"
 	"github.com/wricardo/drbrain/platform"
@@ -21,15 +24,12 @@ import (
 	"github.com/wricardo/drbrain/platform/auth"
 	"github.com/wricardo/drbrain/platform/config"
 	"github.com/wricardo/drbrain/platform/httpserve"
+	"github.com/wricardo/drbrain/platform/pgdb/pgtest"
 )
 
-func newAccounts(t *testing.T, dir string, password bool) (*account.Service, *auth.Auth, []auth.Provider) {
+func newAccounts(t *testing.T, pool *pgxpool.Pool, password bool) (*account.Service, *auth.Auth, []auth.Provider) {
 	t.Helper()
-	store, err := account.Open(dir, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	accounts := account.New(account.Options{Store: store, PasswordSignIn: password})
+	accounts := account.New(account.Options{Store: account.NewPostgresStore(pool), PasswordSignIn: password})
 	providers, err := auth.Providers(auth.ProvidersConfig{}, "")
 	if err != nil {
 		t.Fatal(err)
@@ -44,16 +44,14 @@ func newAccounts(t *testing.T, dir string, password bool) (*account.Service, *au
 // TestCookiesReachUnifiedGraphQL proves the login cookie is scoped to the
 // origin and reaches /graphql, where the global account namespace resolves it.
 func TestCookiesReachUnifiedGraphQL(t *testing.T) {
-	dir := t.TempDir()
+	pool := pgtest.Pool(t)
 	t.Setenv("MOTOR_MAPS_DIR", "maps")
-	t.Setenv("MOTOR_USER_MAPS_DIR", dir+"/maps-user")
-	t.Setenv("MOTOR_SESSIONS_DIR", dir+"/sessions")
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	accounts, authn, _ := newAccounts(t, dir+"/accounts", true)
+	accounts, authn, _ := newAccounts(t, pool, true)
 	motorMux := http.NewServeMux()
 	game := New()
-	if err := game.Mount(motorMux, platform.Deps{Config: config.Config{}, Logger: logger, Accounts: accounts, Auth: authn}); err != nil {
+	if err := game.Mount(motorMux, platform.Deps{Config: config.Config{}, Logger: logger, DB: pool, Accounts: accounts, Auth: authn}); err != nil {
 		t.Fatalf("mount motor: %v", err)
 	}
 	t.Cleanup(func() { _ = game.Shutdown(context.Background()) })
@@ -134,7 +132,7 @@ func TestCookiesReachUnifiedGraphQL(t *testing.T) {
 // TestDevSignInAtRoot follows the OAuth-shaped redirect flow at /auth: login ->
 // provider authorize -> callback, and checks the cookie paths.
 func TestDevSignInAtRoot(t *testing.T) {
-	dir := t.TempDir()
+	pool := pgtest.Pool(t)
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -142,14 +140,8 @@ func TestDevSignInAtRoot(t *testing.T) {
 	base := "http://" + ln.Addr().String()
 
 	t.Setenv("MOTOR_MAPS_DIR", "maps")
-	t.Setenv("MOTOR_USER_MAPS_DIR", dir+"/maps-user")
-	t.Setenv("MOTOR_SESSIONS_DIR", dir+"/sessions")
 
-	store, err := account.Open(dir+"/accounts", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	accounts := account.New(account.Options{Store: store})
+	accounts := account.New(account.Options{Store: account.NewPostgresStore(pool)})
 	providers, err := auth.Providers(auth.ProvidersConfig{DevFake: true}, base)
 	if err != nil {
 		t.Fatal(err)
@@ -162,7 +154,7 @@ func TestDevSignInAtRoot(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	mux := http.NewServeMux()
 	game := New()
-	if err := game.Mount(mux, platform.Deps{Config: config.Config{PublicURL: base}, Logger: logger, Accounts: accounts, Auth: authn}); err != nil {
+	if err := game.Mount(mux, platform.Deps{Config: config.Config{PublicURL: base}, Logger: logger, DB: pool, Accounts: accounts, Auth: authn}); err != nil {
 		t.Fatalf("mount motor: %v", err)
 	}
 	t.Cleanup(func() { _ = game.Shutdown(context.Background()) })
@@ -253,5 +245,53 @@ func TestDevSignInAtRoot(t *testing.T) {
 	_ = json.NewDecoder(tokResp.Body).Decode(&got)
 	if got.Token == "" {
 		t.Fatal("token exchange returned no token")
+	}
+}
+
+// Motor Mount must add its account-deletion hooks, not replace the ones earlier
+// games registered: a hook present before Mount still runs, and Motor's own map
+// hook removes the account's drafts.
+func TestAccountDeletionRunsMotorMapHooksWithoutReplacingOthers(t *testing.T) {
+	pool := pgtest.Pool(t)
+	t.Setenv("MOTOR_MAPS_DIR", "maps")
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	accounts, authn, _ := newAccounts(t, pool, true)
+	earlier := 0
+	accounts.AddOnDelete(func(string) error {
+		earlier++
+		return nil
+	})
+
+	game := New()
+	if err := game.Mount(http.NewServeMux(), platform.Deps{
+		Config: config.Config{}, Logger: logger, DB: pool, Accounts: accounts, Auth: authn,
+	}); err != nil {
+		t.Fatalf("mount motor: %v", err)
+	}
+	t.Cleanup(func() { _ = game.Shutdown(context.Background()) })
+
+	acct, _, err := accounts.SignIn("google", "hook-user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mapCfg := engine.MapConfig{
+		ID: "hook_map", Name: "Hook",
+		Layout: []string{"....", ".>.*", "...."}, MainTapeLength: 4, SubTapeLengths: []int{2},
+	}
+	if _, err := game.svc.CreateMap(mapCfg, acct.ID); err != nil {
+		t.Fatalf("create draft: %v", err)
+	}
+	if err := accounts.DeleteAccount(acct.ID); err != nil {
+		t.Fatalf("delete account: %v", err)
+	}
+	if earlier != 1 {
+		t.Fatalf("hook registered before Mount ran %d times, want 1 (Mount replaced it)", earlier)
+	}
+	if _, err := game.svc.MapEntry("hook_map"); err == nil {
+		t.Fatal("Motor's map hook did not delete the account's draft")
+	}
+	if _, ok := accounts.Lookup(acct.ID); ok {
+		t.Fatal("account row survived deletion")
 	}
 }

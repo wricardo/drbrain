@@ -6,6 +6,8 @@
 	interface Props {
 		orders: OrderView[];
 		selectedCarId: string | null;
+		/** Hold size of the selected car, used to explain an unassignable order. */
+		selectedCarCapacity?: number | null;
 		selectedOrderId?: string | null;
 		onAssign?: (orderId: string) => void;
 		onUnassign?: (orderId: string) => void;
@@ -15,6 +17,7 @@
 	let {
 		orders,
 		selectedCarId,
+		selectedCarCapacity = null,
 		selectedOrderId = null,
 		onAssign,
 		onUnassign,
@@ -39,6 +42,7 @@
 	title="Orders"
 	summary="{open.length} open"
 	bodyClass="max-h-72 overflow-y-auto"
+	bodyLabel="Orders"
 >
 	{#if open.length === 0}
 		<p class="p-3 text-xs text-faint">
@@ -48,9 +52,10 @@
 
 		<ul class="divide-y divide-edge">
 			{#each open as o (o.id)}
+				{@const tooBigOrder = selectedCarCapacity !== null && o.quantity > selectedCarCapacity}
 				<li
 					class="border-l-2 transition-colors {o.id === selectedOrderId
-						? 'border-[var(--color-charger)] bg-surface-muted'
+						? 'border-[var(--db-accent)] bg-surface-muted'
 						: 'border-transparent hover:bg-surface-muted'}"
 				>
 					<button
@@ -94,17 +99,33 @@
 							{#if o.state === 'PENDING' && onAssign}
 								<button
 									type="button"
-									class="w-full rounded bg-[var(--color-charger)] px-2 py-1.5 text-xs font-semibold text-white transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:bg-track disabled:text-faint"
-									disabled={!selectedCarId}
-									onclick={() => onAssign(o.id)}
-									title={selectedCarId ? 'Assign to the selected car' : 'Select a car first'}
+									class="min-h-11 w-full rounded bg-[var(--db-accent)] px-2 py-1.5 text-xs font-semibold text-white transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:bg-track disabled:text-faint"
+									disabled={!selectedCarId || tooBigOrder}
+									onclick={() => {
+										if (!tooBigOrder) onAssign(o.id);
+									}}
+									title={!selectedCarId
+										? 'Select a car first'
+										: tooBigOrder
+											? `This order needs ${o.quantity} boxes; the selected car holds ${selectedCarCapacity}`
+											: 'Assign to the selected car'}
 								>
-									{selectedCarId ? 'Assign' : 'Pick a car first'}
+									{!selectedCarId
+										? 'Pick a car first'
+										: tooBigOrder
+											? `Needs a ${o.quantity}-box vehicle`
+											: 'Assign'}
 								</button>
+								{#if tooBigOrder}
+									<p class="mt-1 text-[11px] text-faint">
+										The selected car holds {selectedCarCapacity} boxes. Buy a van or truck, or select a
+										larger vehicle.
+									</p>
+								{/if}
 							{:else if o.state === 'ASSIGNED' && onUnassign}
 								<button
 									type="button"
-									class="w-full rounded border border-edge-strong px-2 py-1.5 text-xs text-muted hover:text-body"
+									class="min-h-11 w-full rounded border border-edge-strong px-2 py-1.5 text-xs text-muted hover:text-body"
 									onclick={() => onUnassign(o.id)}
 								>
 									Unassign
@@ -118,7 +139,7 @@
 
 		{#if finished.length > 0}
 			<details class="border-t border-edge">
-				<summary class="cursor-pointer px-3 py-2 text-xs text-faint hover:text-body">
+				<summary class="min-h-11 cursor-pointer px-3 py-2 text-xs text-faint hover:text-body">
 					{finished.length} completed
 				</summary>
 				<ul class="divide-y divide-edge">

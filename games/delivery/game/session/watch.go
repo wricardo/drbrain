@@ -156,12 +156,27 @@ func (s *Session) StreamSnapshot() Snapshot {
 	snap.Speed = s.speed
 	snap.Paused = s.speed == SpeedPaused
 	snap.Orders = trimOrders(snap.Orders, streamHistory)
+	snap.Ledger.CashEntries = trimCashEntries(snap.Ledger.CashEntries, streamCashRows)
 	return snap
 }
 
-// streamHistory is how many finished orders a live stream keeps. Enough for the
-// "completed" list a player scrolls through, small enough to stay cheap.
+// streamHistory is how many finished orders a live stream keeps. Enough for
+// the "completed" list a player scrolls through, small enough to stay cheap.
 const streamHistory = 20
+
+// streamCashRows is how many cash statement rows a live stream keeps. The
+// statement grows with every delivery and every upkeep interval, and the live
+// frame is re-sent on every tick; the latest rows are what the panel shows, and
+// the full history stays available through the session query.
+const streamCashRows = 40
+
+// trimCashEntries keeps the newest rows of a newest-first statement.
+func trimCashEntries(entries []CashEntryView, keep int) []CashEntryView {
+	if len(entries) <= keep {
+		return entries
+	}
+	return entries[:keep]
+}
 
 // trimOrders keeps every unfinished order plus the newest finished ones.
 //

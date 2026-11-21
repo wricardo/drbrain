@@ -8,8 +8,9 @@ import (
 	"testing"
 )
 
-// newTestManager splits a temp dir into built-in and custom maps so the
-// ownership rules can be exercised in isolation.
+// newTestManager creates a file-mode manager: the shipped map lives in the
+// builtin directory and player maps land in its "custom" sibling, so the
+// ownership rules can be exercised with the legacy store.
 func newTestManager(t *testing.T) (*Manager, string) {
 	t.Helper()
 	root := createTestConfigDir(t)
@@ -21,8 +22,7 @@ func newTestManager(t *testing.T) (*Manager, string) {
 	}
 	writeConfigFile(t, builtinDir, "classic", createValidConfig())
 
-	customDir := filepath.Join(root, "custom")
-	m, err := NewManager(builtinDir, customDir)
+	m, err := NewManager(Options{ConfigDir: builtinDir})
 	if err != nil {
 		t.Fatalf("NewManager: %v", err)
 	}

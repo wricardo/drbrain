@@ -52,6 +52,7 @@ func TestServeUnknownGameFailsBeforeBinding(t *testing.T) {
 	addr := freePort(t)
 	t.Setenv("DRBRAIN_ADDR", addr)
 	t.Setenv("DRBRAIN_GAMES", "")
+	t.Setenv("DRBRAIN_DATABASE_URL", "postgres://drbrain@127.0.0.1:1/drbrain")
 	var out, errOut bytes.Buffer
 	code := run([]string{"serve", "--games=unknown"}, nil, &out, &errOut)
 	if code == 0 {

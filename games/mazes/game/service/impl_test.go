@@ -18,7 +18,7 @@ import (
 func TestCreateSession(t *testing.T) {
 	e := newEnv(t, envOpts{})
 
-	s, err := e.svc.CreateSession("corridor", "  Ada  ")
+	s, token, err := e.svc.CreateSession("corridor", "  Ada  ", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,29 +40,52 @@ func TestCreateSession(t *testing.T) {
 	if e.pers.saveCount(s.ID) != 1 {
 		t.Fatalf("saves = %d, want 1 on create", e.pers.saveCount(s.ID))
 	}
+	if token == "" || s.OwnerTokenHash == "" || s.OwnerTokenHash == token {
+		t.Fatalf("owner token/hash = %q/%q, want a secret and its distinct hash", token, s.OwnerTokenHash)
+	}
+	if s.OwnerAccountID != "" {
+		t.Fatalf("guest session owner account = %q, want empty", s.OwnerAccountID)
+	}
+	if !s.CanPlay(service.Actor{OwnerToken: token}) {
+		t.Fatal("the creator's token must play the session")
+	}
+	if s.CanPlay(service.Actor{OwnerToken: "wrong"}) || s.CanPlay(service.Actor{}) {
+		t.Fatal("anyone else must not play the session")
+	}
+	// A signed-in creator's account is joined to the token as an owner.
+	acctSession, _, err := e.svc.CreateSession("corridor", "Bob", "acct-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acctSession.OwnerAccountID != "acct-1" || !acctSession.CanPlay(service.Actor{AccountID: "acct-1"}) {
+		t.Fatalf("account owner = %q", acctSession.OwnerAccountID)
+	}
+	if acctSession.CanPlay(service.Actor{AccountID: "acct-2"}) {
+		t.Fatal("another account must not play the session")
+	}
 
 	// A second session gets a different id.
 	if s2 := e.create(t, "corridor"); s2.ID == s.ID {
 		t.Fatal("duplicate session id")
 	}
 
-	_, err = e.svc.CreateSession("nope", "")
+	_, _, err = e.svc.CreateSession("nope", "", "")
 	wantCode(t, err, service.CodeNotFound)
-	_, err = e.svc.CreateSession("corridor", strings.Repeat("x", 41))
+	_, _, err = e.svc.CreateSession("corridor", strings.Repeat("x", 41), "")
 	wantCode(t, err, service.CodeInvalidArgument)
-	if _, err = e.svc.CreateSession("corridor", strings.Repeat("é", 40)); err != nil {
+	if _, _, err = e.svc.CreateSession("corridor", strings.Repeat("é", 40), ""); err != nil {
 		t.Fatalf("40 multibyte characters must fit: %v", err)
 	}
 }
 
 func TestCustomDisplayNameLimit(t *testing.T) {
 	e := newEnv(t, envOpts{svcOpts: service.Options{MaxDisplayName: 5}})
-	if _, err := e.svc.CreateSession("corridor", "abcdef"); err == nil {
+	if _, _, err := e.svc.CreateSession("corridor", "abcdef", ""); err == nil {
 		t.Fatal("6 characters accepted with limit 5")
 	} else {
 		wantCode(t, err, service.CodeInvalidArgument)
 	}
-	if _, err := e.svc.CreateSession("corridor", " abcde "); err != nil {
+	if _, _, err := e.svc.CreateSession("corridor", " abcde ", ""); err != nil {
 		t.Fatalf("name is limited after trimming: %v", err)
 	}
 }
@@ -141,7 +164,7 @@ func TestMapSnapshotIsolation(t *testing.T) {
 	if done.State.Status != engine.StatusWon || done.State.Moves != 4 {
 		t.Fatalf("after map edit/delete: %s in %d moves, want WON in 4", done.State.Status, done.State.Moves)
 	}
-	_, err := e.svc.CreateSession("corridor", "")
+	_, _, err := e.svc.CreateSession("corridor", "", "")
 	wantCode(t, err, service.CodeNotFound)
 }
 
@@ -606,7 +629,7 @@ func TestMaxSessions(t *testing.T) {
 	e := newEnv(t, envOpts{maxSessions: 2})
 	a := e.create(t, "corridor")
 	e.create(t, "corridor")
-	_, err := e.svc.CreateSession("corridor", "")
+	_, _, err := e.svc.CreateSession("corridor", "", "")
 	wantCode(t, err, service.CodeLimit)
 	if err := e.svc.DeleteSession(a.ID); err != nil {
 		t.Fatal(err)

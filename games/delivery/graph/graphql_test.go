@@ -13,16 +13,20 @@ import (
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/handler/extension"
 	"github.com/99designs/gqlgen/graphql/handler/transport"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	cityconfig "github.com/wricardo/drbrain/games/delivery/game/config"
 	"github.com/wricardo/drbrain/games/delivery/game/engine"
 	"github.com/wricardo/drbrain/games/delivery/game/session"
 	"github.com/wricardo/drbrain/games/delivery/graph/generated"
+	"github.com/wricardo/drbrain/platform/pgdb/pgtest"
 )
 
 // testHandler is the per-game executor used by resolver tests. Production
 // serves the unified platform executor; this stays test-only.
-func testHandler(mgr *session.Manager) http.Handler {
+func testHandler(mgr *session.Manager, catalog *cityconfig.Manager) http.Handler {
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{
-		Resolvers: &Resolver{Mgr: mgr},
+		Resolvers: &Resolver{Mgr: mgr, Catalog: catalog},
 	}))
 	srv.AddTransport(transport.POST{})
 	srv.AddTransport(transport.GET{})
@@ -47,7 +51,7 @@ func testRoute(rows []string, from, to engine.Position) []engine.Direction {
 			return false
 		}
 		switch rows[p.Y][p.X] {
-		case '.', ',', 'D', 'C', 'K', 'H', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+		case '.', ',', 'D', 'C', 'K', 'H', 'h', '1', '2', '3', '4', '5', '6', '7', '8', '9':
 			return true
 		}
 		return false
@@ -77,7 +81,7 @@ func testRoute(rows []string, from, to engine.Position) []engine.Direction {
 	return nil
 }
 
-// newTestServer wires the real GraphQL handler over a temp save dir.
+// newTestServer wires the real GraphQL handler over a fresh test schema.
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
 
@@ -88,22 +92,40 @@ func newTestServer(t *testing.T) *httptest.Server {
 	if _, err := os.Stat(city); err != nil {
 		t.Fatalf("city file: %v", err)
 	}
-	mgr, err := session.NewManager(city, t.TempDir())
+	pool := pgtest.Pool(t)
+	cat := newCityCatalog(t, pool)
+	mgr, err := session.NewManager(cat, pool)
 	if err != nil {
 		t.Fatalf("manager: %v", err)
 	}
 	t.Cleanup(func() { _ = mgr.Close() })
 
-	ts := httptest.NewServer(testHandler(mgr))
+	ts := httptest.NewServer(testHandler(mgr, cat))
 	t.Cleanup(ts.Close)
 	return ts
+}
+
+// newCityCatalog serves the repo's shipped city as builtin id "city" and, when
+// pool is non-nil, the delivery PostgreSQL partition for community cities.
+func newCityCatalog(t *testing.T, pool *pgxpool.Pool) *cityconfig.Manager {
+	t.Helper()
+	cat, err := cityconfig.Open(cityconfig.Options{
+		BuiltinDir:    filepath.Dir(deliveryCityPath(t)),
+		DefaultCityID: "city",
+		Pool:          pool,
+	})
+	if err != nil {
+		t.Fatalf("catalog: %v", err)
+	}
+	return cat
 }
 
 // gqlResponse is the GraphQL envelope.
 type gqlResponse struct {
 	Data   json.RawMessage `json:"data"`
 	Errors []struct {
-		Message string `json:"message"`
+		Message    string         `json:"message"`
+		Extensions map[string]any `json:"extensions"`
 	} `json:"errors"`
 }
 
@@ -409,23 +431,36 @@ func TestFullDeliveryThroughGraphQL(t *testing.T) {
 				State string
 				Paid  *int
 			}
+			Cars []struct {
+				ID string
+			}
 			Ledger struct {
-				Deliveries int
-				Money      int
+				Deliveries  int
+				Money       int
+				CashEntries []struct {
+					Kind    string
+					Amount  int
+					Balance int
+					CarID   *string
+					OrderID *string
+				}
 			}
 		}
 	}
 	mustQuery(t, ts, `query { session(id: "d1") {
 		orders { id state paid }
-		ledger { deliveries money }
+		cars { id }
+		ledger { deliveries money cashEntries { kind amount balance carId orderId } }
 	} }`, nil, &done)
 
 	// The order list is newest-first, so index 0 may be a later order. Find the
 	// one this test actually drove.
 	var state string
+	var paid *int
 	for _, x := range done.Session.Orders {
 		if x.ID == o.ID {
 			state = x.State
+			paid = x.Paid
 		}
 	}
 	if state != "DONE" {
@@ -436,6 +471,30 @@ func TestFullDeliveryThroughGraphQL(t *testing.T) {
 	}
 	if done.Session.Ledger.Money <= 0 {
 		t.Errorf("money = %d, want > 0", done.Session.Ledger.Money)
+	}
+
+	// The statement is the API half of the feature: one delivery row, tagged
+	// with the delivering car and the order, and its running balance must
+	// agree with the ledger's money.
+	entries := done.Session.Ledger.CashEntries
+	if len(entries) != 1 {
+		t.Fatalf("cash entries = %d, want the delivery only: %+v", len(entries), entries)
+	}
+	e := entries[0]
+	if e.Kind != "DELIVERY" {
+		t.Errorf("cash kind = %q, want DELIVERY", e.Kind)
+	}
+	if paid == nil || e.Amount != *paid {
+		t.Errorf("cash amount = %d, want the order payment %v", e.Amount, paid)
+	}
+	if e.Balance != done.Session.Ledger.Money {
+		t.Errorf("cash balance = %d, want money %d", e.Balance, done.Session.Ledger.Money)
+	}
+	if e.CarID == nil || *e.CarID != done.Session.Cars[0].ID {
+		t.Errorf("cash car = %v, want %q", e.CarID, done.Session.Cars[0].ID)
+	}
+	if e.OrderID == nil || *e.OrderID != o.ID {
+		t.Errorf("cash order = %v, want %q", e.OrderID, o.ID)
 	}
 }
 
@@ -705,6 +764,84 @@ func TestCarViewRejectsNegativeRadius(t *testing.T) {
 	res := query(t, ts, `query { carView(id: "neg", carId: "car_1", radius: -1) { rowSpan } }`, nil)
 	if len(res.Errors) == 0 {
 		t.Fatal("expected a negative radius to be rejected")
+	}
+}
+
+// TestCashEntriesConvertEveryKind guards the engine-to-enum boundary. A kind
+// with no schema member would marshal as an invalid enum and fail the whole
+// snapshot subscription, not just one row, so every engine kind is checked.
+func TestCashEntriesConvertEveryKind(t *testing.T) {
+	kinds := []engine.CashEntryKind{
+		engine.CashOpening,
+		engine.CashDelivery,
+		engine.CashLateDelivery,
+		engine.CashOrderFine,
+		engine.CashUpkeep,
+		engine.CashCharging,
+		engine.CashTow,
+		engine.CashCarPurchase,
+		engine.CashBuild,
+		engine.CashGrant,
+	}
+	views := make([]session.CashEntryView, 0, len(kinds))
+	for i, k := range kinds {
+		views = append(views, session.CashEntryView{
+			Seq: i + 1, Tick: int64(i), Kind: string(k),
+			Category: string(k.Category()),
+			Amount:   -i - 1, Balance: 100 - i, Memo: "memo",
+		})
+	}
+	out := cashEntriesFrom(views)
+	if len(out) != len(views) {
+		t.Fatalf("converted %d entries, want %d", len(out), len(views))
+	}
+	for i, e := range out {
+		if !e.Kind.IsValid() {
+			t.Errorf("kind %q (%s) is not a schema enum member", e.Kind, kinds[i])
+		}
+		if !e.Category.IsValid() {
+			t.Errorf("category %q (%s) is not a schema enum member", e.Category, kinds[i])
+		}
+		if e.Seq != views[i].Seq || e.Amount != views[i].Amount || e.Balance != views[i].Balance {
+			t.Errorf("entry %d lost fields: %+v", i, e)
+		}
+	}
+}
+
+// TestMonthsConvertEveryCategory guards the monthly report at the same enum
+// boundary: a category the schema does not know would fail the whole snapshot.
+func TestMonthsConvertEveryCategory(t *testing.T) {
+	categories := []engine.CashCategory{
+		engine.CashCategoryOpening,
+		engine.CashCategoryDeliveryIncome,
+		engine.CashCategoryRewards,
+		engine.CashCategoryOrderFines,
+		engine.CashCategoryUpkeep,
+		engine.CashCategoryCharging,
+		engine.CashCategoryTows,
+		engine.CashCategoryCarPurchases,
+		engine.CashCategoryBuilds,
+		engine.CashCategoryOther,
+	}
+	month := session.MonthView{
+		Index: 3, StartTick: 1200, EndTick: 1799, Income: 100, Expenses: 40, Net: 60,
+	}
+	for _, c := range categories {
+		month.Categories = append(month.Categories, session.MonthCategoryView{
+			Category: string(c), Income: 10, Expenses: 4,
+		})
+	}
+	out := monthsFrom([]session.MonthView{month})
+	if len(out) != 1 {
+		t.Fatalf("months = %d, want 1", len(out))
+	}
+	if out[0].Index != 3 || out[0].Net != 60 || len(out[0].Categories) != len(categories) {
+		t.Fatalf("month lost fields: %+v", out[0])
+	}
+	for i, c := range out[0].Categories {
+		if !c.Category.IsValid() {
+			t.Errorf("category %q (%s) is not a schema enum member", c.Category, categories[i])
+		}
 	}
 }
 

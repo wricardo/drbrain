@@ -62,18 +62,40 @@ const (
 // is what makes multi-car play with a tick clock unambiguous — each car has
 // its own input slot instead of competing for a shared turn.
 type Car struct {
-	ID   string
+	// ID is the stable identifier used by commands, saves and events
+	// ("car_1", "car_2", …).
+	ID string
+	// Name is display text for the fleet list and event feed. Authored cars
+	// default to "Car N"; the name never keys a rule.
 	Name string
 
 	// ClassName is the catalogue key this car was built from ("scooter",
 	// "van", …). It is stored explicitly rather than inferred from stats: two
 	// classes may share the same capacity, and a UI must show the real name.
 	ClassName string
-	Class     CarClassConfig
+	// Class is the copied catalogue entry (capacity, battery, step cost,
+	// price) so a car keeps the stats it was built with.
+	Class CarClassConfig
 
-	Pos     Position
+	// Pos is the car's current tile. Movement is one grid step per tick.
+	Pos Position
+	// Battery is current charge in battery units. It drains by the tile's walk
+	// cost and is capped at Class.MaxBattery; at or below zero the car cannot
+	// move (RejectNoBattery) and must charge or be towed.
 	Battery int
-	Cargo   []string // order ids currently held
+	// Cargo holds one order id per order on board, not one per box. Order sizes
+	// live on the orders; cargoBoxes is their summed size.
+	Cargo []string
+
+	// ChargeDue and ChargeUnits are the open paid charging session: what the
+	// car has run up at a standalone charger, and how much battery it bought.
+	// They are persisted so a save taken mid-charge resumes with the same bill,
+	// and settled (written to the cash ledger) when the car fills or leaves.
+	// ChargeSource is the charger id (or "charger" when unnamed) used for the
+	// ledger memo; moving to another paid source settles the old bill first.
+	ChargeDue    int
+	ChargeUnits  int
+	ChargeSource string
 
 	// cargoBoxes is how many boxes Cargo amounts to. It is derived from Cargo
 	// plus the order sizes and is rebuilt after load, so it can never drift
@@ -115,7 +137,10 @@ func (c *Car) State(city *City) CarState {
 	return CarIdle
 }
 
-// Full reports whether the battery is at capacity.
+// Full reports whether the battery has reached Class.MaxBattery. It is
+// battery-only: a full car may still have free hold space, and a full hold does
+// not stop charging. Full cars skip a charging tick and do not occupy a charge
+// slot.
 func (c *Car) Full() bool { return c.Battery >= c.Class.MaxBattery }
 
 // Load is how many boxes the car is carrying right now.
@@ -127,7 +152,9 @@ func (c *Car) Full() bool { return c.Battery >= c.Class.MaxBattery }
 // survives a save without being a second source of truth.
 func (c *Car) Load() int { return c.cargoBoxes }
 
-// FreeBoxes is the remaining hold space.
+// FreeBoxes is how many more boxes the hold can take: Capacity minus the boxes
+// already carried, floored at 0. Capacity is in boxes, not order slots, and
+// pickup admits an order only when SpaceFor(quantity).
 func (c *Car) FreeBoxes() int {
 	free := c.Class.Capacity - c.cargoBoxes
 	if free < 0 {
@@ -180,7 +207,8 @@ func (c *Car) removeCargo(orderID string, boxes int) {
 	}
 }
 
-// BatteryPct returns charge as a 0-100 percentage.
+// BatteryPct is charge as an integer 0-100 percentage of Class.MaxBattery. The
+// division truncates, and a non-positive MaxBattery reports 0.
 func (c *Car) BatteryPct() int {
 	if c.Class.MaxBattery <= 0 {
 		return 0
@@ -194,7 +222,9 @@ func (c *Car) String() string {
 		c.ID, c.Name, c.Pos, c.Battery, c.Class.MaxBattery, c.cargoBoxes, c.Class.Capacity)
 }
 
-// NewCar builds a car of the named class at pos with a full battery.
+// NewCar builds a car of the named class at pos with a full battery. It rejects
+// an unknown class and a class with non-positive max_battery or capacity, so a
+// constructed car always has a usable hold and a finite charge.
 func NewCar(id, name, class string, pos Position, classes map[string]CarClassConfig) (*Car, error) {
 	cc, ok := classes[class]
 	if !ok {
@@ -219,8 +249,8 @@ func NewCar(id, name, class string, pos Position, classes map[string]CarClassCon
 	}, nil
 }
 
-// Clone returns a deep copy so a snapshot handed to a spectator cannot be
-// mutated by the next tick.
+// Clone returns a deep copy so a save or a snapshot cannot be mutated by the
+// next tick. Cargo is copied; Class is a value and comes along with the struct.
 func (c *Car) Clone() *Car {
 	out := *c
 	out.Cargo = append([]string(nil), c.Cargo...)

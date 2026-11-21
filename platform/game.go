@@ -47,7 +47,8 @@ type Deps struct {
 	PublicURL string
 	// Logger is scoped to this game.
 	Logger *slog.Logger
-	// DB is the shared PostgreSQL pool, nil when DRBRAIN_DATABASE_URL is unset.
+	// DB is the shared PostgreSQL pool. PostgreSQL is required, so it is
+	// always non-nil; a game that needs storage fails Mount when it is nil.
 	DB *pgxpool.Pool
 	// Accounts is the global account service shared by every game.
 	Accounts *account.Service

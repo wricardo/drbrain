@@ -17,14 +17,13 @@ import "fmt"
 //   - CarState idles for reasons the player does not control: an empty board, a
 //     full battery, a screen the player is still reading. Billing those is
 //     billing the player for the game's pacing.
-//   - It would fight targetActive, which counts every non-stranded car and
-//     therefore already REWARDS owning a car you never drive. Parking against a
-//     depot is the honest mirror of that subsidy.
+//   - An idle car is often waiting for work the player cannot control, such as
+//     a customer cooldown or a queue the spawner has not filled yet. Billing
+//     that tick would be billing the player for the game's pacing, not for a
+//     decision. Parking against a depot is the honest exit.
 //
-// Depots are the natural home for this because DepotConfig.Capacity otherwise
-// only gates purchases. On the shipped map the depot holds 4 and grows to 8 with
-// b06_depot_yard, so a fleet larger than the yard cannot all be mothballed. That
-// constraint is what makes the choice real.
+// Depots are the natural home for this because parking there is always free;
+// fleet size itself is money-gated, so the depot is not a separate limit.
 //
 // THE RATE IS A MEASURED CLIFF, NOT A FREE KNOB. Upkeep is a fixed cost per car
 // against variable income, and this game has no credit, loan or sell action to
@@ -57,9 +56,8 @@ const EventUpkeep = "fleet_upkeep"
 
 // upkeepEnabled reports whether this world charges for its fleet at all.
 //
-// The zero value of the config block disables the feature, so a map that omits
-// `fleet` keeps the pre-upkeep economy and an existing save is not silently
-// repriced the moment this code ships.
+// The map must state its fleet choice; an interval of 0 disables the feature
+// explicitly, so a quiet map keeps the pre-upkeep economy.
 func (w *World) upkeepEnabled() bool { return w.fleet.UpkeepIntervalTicks > 0 }
 
 // Parked reports whether a car is standing on a depot tile and therefore costs
@@ -91,7 +89,7 @@ func (w *World) UpkeepCost(car *Car) int {
 	if car.Class.Capacity <= 0 {
 		return w.fleet.DefaultUpkeepPerInterval
 	}
-	rate := car.Class.Capacity * w.fleet.UpkeepPerBoxPerInterval / 4
+	rate := car.Class.Capacity * w.fleet.UpkeepPerBoxPerInterval / w.fleet.UpkeepBoxDivisor
 	if rate < 1 {
 		rate = 1
 	}
@@ -139,15 +137,20 @@ func (w *World) chargeUpkeep() {
 		return
 	}
 
-	paid := due
-	if w.Ledger.Money < due {
-		paid = w.Ledger.Money
+	// Bill each car separately so the statement can tag the cost to the vehicle
+	// that incurred it. The totals and the clamp are unchanged: the balance is
+	// consumed in car order, and a shortfall still emits one event rather than
+	// one per car.
+	paid := 0
+	for _, car := range w.Cars {
+		cost := w.UpkeepCost(car)
+		if cost <= 0 {
+			continue
+		}
+		applied := w.recordCash(CashUpkeep, -cost, car, "", "fleet upkeep")
+		paid += -applied
 	}
-	w.Ledger.Money -= paid
 	w.Ledger.UpkeepPaid += paid
-	if w.Ledger.Money < 0 {
-		w.Ledger.Money = 0
-	}
 	if paid < due {
 		w.emit(EventUpkeep, nil,
 			fmt.Sprintf("fleet upkeep $%d exceeded balance (paid $%d of $%d); park cars at a depot to stop the bleed", due, paid, due))

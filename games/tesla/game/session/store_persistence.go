@@ -5,55 +5,38 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/wricardo/drbrain/games/tesla/game/engine"
 	"github.com/wricardo/drbrain/games/tesla/game/service"
 	"github.com/wricardo/drbrain/platform/sessionstore"
 )
 
 // StorePersistence adapts platform/sessionstore to this game. The store owns
-// files, limits and listing; tesla keeps its JSON shape and map rehydration.
+// durability, limits and listing; tesla keeps its JSON shape and map rehydration.
 type StorePersistence struct {
 	store         sessionstore.Store
 	configManager service.ConfigManager
 }
 
-// FilePersistence is the pre-monorepo name, kept so existing call sites and
-// tests keep compiling.
-type FilePersistence = StorePersistence
-
-// NewStorePersistence opens the file-backed store and keeps configManager for
-// rehydrating the engine on Load.
-func NewStorePersistence(sessionsDir string, configManager service.ConfigManager, maxSessions int) (*StorePersistence, error) {
-	store, err := sessionstore.Open(sessionstore.Options{Dir: sessionsDir, MaxSessions: maxSessions, Summary: summarize})
+// NewPostgresPersistence opens the PostgreSQL-backed store and keeps
+// configManager for rehydrating the engine on Load.
+func NewPostgresPersistence(pool *pgxpool.Pool, configManager service.ConfigManager, maxSessions int) (*StorePersistence, error) {
+	store, err := sessionstore.Open(sessionstore.Options{Pool: pool, MaxSessions: maxSessions})
 	if err != nil {
 		return nil, err
 	}
-	return &StorePersistence{store: store, configManager: configManager}, nil
+	return newStorePersistence(store, configManager), nil
 }
 
-// NewFilePersistence keeps the old constructor signature.
-func NewFilePersistence(sessionsDir string, configManager service.ConfigManager) (*StorePersistence, error) {
-	return NewStorePersistence(sessionsDir, configManager, 0)
+// newStorePersistence wraps an already-open store. Production uses
+// NewPostgresPersistence; tests can pass sessionstore.NewMemory.
+func newStorePersistence(store sessionstore.Store, configManager service.ConfigManager) *StorePersistence {
+	return &StorePersistence{store: store, configManager: configManager}
 }
 
-// summarize derives the platform Meta from a saved tesla payload.
-func summarize(raw []byte) (sessionstore.Meta, error) {
-	var data PersistedSessionData
-	if err := json.Unmarshal(raw, &data); err != nil {
-		return sessionstore.Meta{}, err
-	}
-	last := data.LastActionAt
-	if last.IsZero() {
-		last = data.CreatedAt
-	}
-	return sessionstore.Meta{
-		ID: data.ID, DisplayName: data.DisplayName, MapID: data.MapName,
-		CreatedAt: data.CreatedAt, LastActionAt: last,
-	}, nil
-}
-
-// Save persists a session to a JSON file
-func (fp *FilePersistence) Save(session *service.Session) error {
+// Save persists a session to PostgreSQL.
+func (fp *StorePersistence) Save(session *service.Session) error {
 	if session == nil {
 		return fmt.Errorf("session cannot be nil")
 	}
@@ -68,16 +51,17 @@ func (fp *FilePersistence) Save(session *service.Session) error {
 	}
 
 	data := PersistedSessionData{
-		ID:           session.ID,
-		DisplayName:  session.DisplayName,
-		MapName:      configID,
-		CreatedAt:    session.CreatedAt,
-		LastActionAt: session.LastActionAt,
-		FogEnabled:   session.FogEnabled,
-		FogRadius:    session.FogRadius,
-		GridPassword: session.GridPassword,
-		MoveDelayMs:  intPtr(session.MoveDelayMs),
-		GameState:    session.Engine.GetState(),
+		ID:             session.ID,
+		DisplayName:    session.DisplayName,
+		MapName:        configID,
+		CreatedAt:      session.CreatedAt,
+		LastActionAt:   session.LastActionAt,
+		OwnerAccountID: session.OwnerAccountID,
+		FogEnabled:     session.FogEnabled,
+		FogRadius:      session.FogRadius,
+		GridPassword:   session.GridPassword,
+		MoveDelayMs:    intPtr(session.MoveDelayMs),
+		GameState:      session.Engine.GetState(),
 	}
 
 	// Marshal to JSON with indentation for readability
@@ -92,8 +76,8 @@ func (fp *FilePersistence) Save(session *service.Session) error {
 	}, jsonData)
 }
 
-// Load retrieves a session from a JSON file
-func (fp *FilePersistence) Load(id string) (*service.Session, error) {
+// Load retrieves a session from PostgreSQL.
+func (fp *StorePersistence) Load(id string) (*service.Session, error) {
 	if err := validateSessionID(id); err != nil {
 		return nil, err
 	}
@@ -102,7 +86,7 @@ func (fp *FilePersistence) Load(id string) (*service.Session, error) {
 		if errors.Is(err, sessionstore.ErrNotFound) {
 			return nil, ErrSessionNotFound
 		}
-		return nil, fmt.Errorf("failed to read session file: %w", err)
+		return nil, fmt.Errorf("failed to read session: %w", err)
 	}
 
 	// Unmarshal JSON
@@ -154,23 +138,24 @@ func (fp *FilePersistence) Load(id string) (*service.Session, error) {
 	}
 
 	session := &service.Session{
-		ID:           data.ID,
-		DisplayName:  data.DisplayName,
-		Engine:       gameEngine,
-		Config:       gameConfig,
-		CreatedAt:    data.CreatedAt,
-		LastActionAt: lastActionAt,
-		FogEnabled:   data.FogEnabled,
-		FogRadius:    fogRadius,
-		GridPassword: data.GridPassword,
-		MoveDelayMs:  loadMoveDelay(data.MoveDelayMs, data.BulkMoveDelayMs),
+		ID:             data.ID,
+		DisplayName:    data.DisplayName,
+		Engine:         gameEngine,
+		Config:         gameConfig,
+		CreatedAt:      data.CreatedAt,
+		LastActionAt:   lastActionAt,
+		OwnerAccountID: data.OwnerAccountID,
+		FogEnabled:     data.FogEnabled,
+		FogRadius:      fogRadius,
+		GridPassword:   data.GridPassword,
+		MoveDelayMs:    loadMoveDelay(data.MoveDelayMs, data.BulkMoveDelayMs),
 	}
 
 	return session, nil
 }
 
-// Delete removes a session file
-func (fp *FilePersistence) Delete(id string) error {
+// Delete removes a stored session.
+func (fp *StorePersistence) Delete(id string) error {
 	if err := validateSessionID(id); err != nil {
 		return err
 	}
@@ -178,16 +163,16 @@ func (fp *FilePersistence) Delete(id string) error {
 		if errors.Is(err, sessionstore.ErrNotFound) {
 			return ErrSessionNotFound
 		}
-		return fmt.Errorf("failed to remove session file: %w", err)
+		return fmt.Errorf("failed to remove session: %w", err)
 	}
 	return nil
 }
 
-// ListAll returns all persisted session IDs
-func (fp *FilePersistence) ListAll() ([]string, error) {
+// ListAll returns all persisted session IDs.
+func (fp *StorePersistence) ListAll() ([]string, error) {
 	metas, err := fp.store.List()
 	if err != nil {
-		return nil, fmt.Errorf("failed to read sessions directory: %w", err)
+		return nil, fmt.Errorf("failed to list sessions: %w", err)
 	}
 	var sessionIDs []string
 	for _, m := range metas {
@@ -198,8 +183,8 @@ func (fp *FilePersistence) ListAll() ([]string, error) {
 	return sessionIDs, nil
 }
 
-// Exists checks if a session file exists
-func (fp *FilePersistence) Exists(id string) bool {
+// Exists checks if a session is stored.
+func (fp *StorePersistence) Exists(id string) bool {
 	if err := validateSessionID(id); err != nil {
 		return false
 	}
@@ -216,7 +201,7 @@ func (fp *FilePersistence) Exists(id string) bool {
 }
 
 // getConfigIDFromName returns the map ID (filename without extension) from display name
-func (fp *FilePersistence) getConfigIDFromName(displayName string) (string, error) {
+func (fp *StorePersistence) getConfigIDFromName(displayName string) (string, error) {
 	maps, err := fp.configManager.ListConfigs()
 	if err != nil {
 		return "", fmt.Errorf("failed to list maps: %w", err)

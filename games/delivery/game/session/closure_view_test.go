@@ -14,7 +14,7 @@ import (
 // feed all agree.
 func TestSnapshotCarriesClosures(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, _, err := mgr.Create("closures", 1, "")
+	sess, _, err := mgr.Create("closures", 1, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +25,7 @@ func TestSnapshotCarriesClosures(t *testing.T) {
 	// forces the world into the state rather than playing 900 ticks by hand.
 	sess.Do(func(w *engine.World) {
 		w.City.RevealAll()
-		w.Ledger.BuildsCompleted = 4
+		advancePastGrowth(w)
 	})
 
 	var found bool
@@ -93,7 +93,7 @@ func TestSnapshotCarriesClosures(t *testing.T) {
 // lying about how full the van is.
 func TestSnapshotCarriesBoxLoads(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, _, err := mgr.Create("boxes", 2, "")
+	sess, _, err := mgr.Create("boxes", 2, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +175,7 @@ func TestSnapshotCarriesBoxLoads(t *testing.T) {
 // missing refill would reach the player as "the street quietly reopened".
 func TestSaveReloadKeepsActiveClosure(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, _, err := mgr.Create("closure-reload", 1, "")
+	sess, _, err := mgr.Create("closure-reload", 1, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestSaveReloadKeepsActiveClosure(t *testing.T) {
 	var closedBefore, closuresBefore int
 	sess.Do(func(w *engine.World) {
 		w.City.RevealAll()
-		w.Ledger.BuildsCompleted = 4
+		advancePastGrowth(w)
 		for i := 0; i < 4000; i++ {
 			w.Advance()
 			// Wait until a closure has been running for more than one tick, so
@@ -206,7 +206,7 @@ func TestSaveReloadKeepsActiveClosure(t *testing.T) {
 		t.Skip("no closure became live long enough to test with")
 	}
 
-	if err := sess.Save(mgr.CityFileName()); err != nil {
+	if err := sess.Save(); err != nil {
 		t.Fatal(err)
 	}
 	mgr.Evict("closure-reload")

@@ -15,7 +15,10 @@ import (
 type gameServiceImpl struct {
 	sessions SessionManager
 	configs  ConfigManager
-	mu       sync.RWMutex
+	// lifecycle is the same manager seen through the draft/ownership API.
+	// Test mocks that only implement ConfigManager leave it nil.
+	lifecycle MapLifecycle
+	mu        sync.RWMutex
 }
 
 // getMapID returns the map_id for a given map name, used for consistent API responses
@@ -52,10 +55,12 @@ func (s *gameServiceImpl) mapIDForDisplayName(name string) string {
 
 // NewGameService creates a new game service instance
 func NewGameService(sessions SessionManager, configs ConfigManager) GameService {
-	return &gameServiceImpl{
+	svc := &gameServiceImpl{
 		sessions: sessions,
 		configs:  configs,
 	}
+	svc.lifecycle, _ = configs.(MapLifecycle)
+	return svc
 }
 
 // CreateSession creates a new game session
@@ -98,6 +103,15 @@ func (s *gameServiceImpl) CreateSession(ctx context.Context, mapName string, opt
 	if len(opts) > 0 {
 		createOpts = opts[0]
 	}
+	// A draft is playable only by its owner. A guest or another player gets the
+	// same answer as a missing map, so a session cannot be used to probe for
+	// other players' work in progress.
+	if mapName != "" && s.lifecycle != nil {
+		entry, entryErr := s.lifecycle.GetEntry(mapName)
+		if entryErr == nil && !entry.Builtin && entry.Status == MapStatusDraft && (entry.OwnerID == "" || entry.OwnerID != createOpts.ViewerID) {
+			return nil, fmt.Errorf("%w: %q", ErrMapNotFound, mapName)
+		}
+	}
 	if err := validateCreateSessionOptions(createOpts); err != nil {
 		return nil, err
 	}
@@ -121,7 +135,8 @@ func (s *gameServiceImpl) CreateSession(ctx context.Context, mapName string, opt
 	if err != nil {
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
-	// Attach fog settings to session metadata.
+	// Attach fog settings and ownership to session metadata.
+	session.OwnerAccountID = createOpts.ViewerID
 	session.FogEnabled = createOpts.FogEnabled
 	session.FogRadius = createOpts.FogRadius
 	session.GridPassword = createOpts.GridPassword
@@ -148,6 +163,7 @@ func (s *gameServiceImpl) CreateSession(ctx context.Context, mapName string, opt
 		CreatedAt:             session.CreatedAt,
 		LastActionAt:          session.LastActionAt,
 		FogEnabled:            session.FogEnabled,
+		OwnerAccountID:        session.OwnerAccountID,
 		GameState:             sessionSnapshot(session),
 		GameMap:               session.Config,
 		GeneratedGridPassword: generatedPassword,
@@ -226,14 +242,15 @@ func (s *gameServiceImpl) GetSession(ctx context.Context, sessionID string) (*Se
 	state := sessionSnapshot(session)
 
 	return &SessionInfo{
-		ID:           session.ID,
-		DisplayName:  session.DisplayName,
-		MapName:      s.getMapID(session.Config.Name),
-		CreatedAt:    session.CreatedAt,
-		LastActionAt: session.LastActionAt,
-		FogEnabled:   session.FogEnabled,
-		GameState:    state,
-		GameMap:      session.Config,
+		ID:             session.ID,
+		DisplayName:    session.DisplayName,
+		MapName:        s.getMapID(session.Config.Name),
+		CreatedAt:      session.CreatedAt,
+		LastActionAt:   session.LastActionAt,
+		FogEnabled:     session.FogEnabled,
+		OwnerAccountID: session.OwnerAccountID,
+		GameState:      state,
+		GameMap:        session.Config,
 	}, nil
 }
 
@@ -248,14 +265,15 @@ func (s *gameServiceImpl) ListSessions(ctx context.Context) ([]*SessionInfo, err
 	for _, sess := range sessions {
 		state := sessionSnapshot(sess)
 		result = append(result, &SessionInfo{
-			ID:           sess.ID,
-			DisplayName:  sess.DisplayName,
-			MapName:      s.getMapID(sess.Config.Name),
-			CreatedAt:    sess.CreatedAt,
-			LastActionAt: sess.LastActionAt,
-			FogEnabled:   sess.FogEnabled,
-			GameState:    state,
-			GameMap:      sess.Config,
+			ID:             sess.ID,
+			DisplayName:    sess.DisplayName,
+			MapName:        s.getMapID(sess.Config.Name),
+			CreatedAt:      sess.CreatedAt,
+			LastActionAt:   sess.LastActionAt,
+			FogEnabled:     sess.FogEnabled,
+			OwnerAccountID: sess.OwnerAccountID,
+			GameState:      state,
+			GameMap:        sess.Config,
 		})
 	}
 
@@ -286,14 +304,15 @@ func (s *gameServiceImpl) UpdateSessionDisplayName(ctx context.Context, sessionI
 	state := sessionSnapshot(session)
 
 	return &SessionInfo{
-		ID:           session.ID,
-		DisplayName:  session.DisplayName,
-		MapName:      s.getMapID(session.Config.Name),
-		CreatedAt:    session.CreatedAt,
-		LastActionAt: session.LastActionAt,
-		FogEnabled:   session.FogEnabled,
-		GameState:    state,
-		GameMap:      session.Config,
+		ID:             session.ID,
+		DisplayName:    session.DisplayName,
+		MapName:        s.getMapID(session.Config.Name),
+		CreatedAt:      session.CreatedAt,
+		LastActionAt:   session.LastActionAt,
+		FogEnabled:     session.FogEnabled,
+		OwnerAccountID: session.OwnerAccountID,
+		GameState:      state,
+		GameMap:        session.Config,
 	}, nil
 }
 
@@ -684,6 +703,98 @@ func (s *gameServiceImpl) ListMaps(ctx context.Context) ([]*MapInfo, error) {
 // LoadMap loads a specific game map configuration
 func (s *gameServiceImpl) LoadMap(ctx context.Context, mapName string) (*engine.GameConfig, error) {
 	return s.configs.LoadConfig(mapName)
+}
+
+// lifecycle returns the draft/ownership API or a clear internal error for
+// legacy test mocks that do not provide it.
+func (s *gameServiceImpl) mapLifecycle() (MapLifecycle, error) {
+	if s.lifecycle == nil {
+		return nil, fmt.Errorf("map lifecycle is unavailable")
+	}
+	return s.lifecycle, nil
+}
+
+// ListMapEntries returns published maps plus the viewer's own drafts.
+func (s *gameServiceImpl) ListMapEntries(ctx context.Context, viewerID string) ([]*MapEntry, error) {
+	lifecycle, err := s.mapLifecycle()
+	if err != nil {
+		return nil, err
+	}
+	return lifecycle.ListEntries(viewerID)
+}
+
+// GetMapEntry returns any catalogue entry, drafts included.
+func (s *gameServiceImpl) GetMapEntry(ctx context.Context, mapName string) (*MapEntry, error) {
+	lifecycle, err := s.mapLifecycle()
+	if err != nil {
+		return nil, err
+	}
+	return lifecycle.GetEntry(mapName)
+}
+
+// CreateMapDraft stores a DRAFT owned by ownerID and returns it with the
+// one-time legacy edit token.
+func (s *gameServiceImpl) CreateMapDraft(ctx context.Context, mapName string, config *engine.GameConfig, ownerID string) (*MapEntry, string, error) {
+	lifecycle, err := s.mapLifecycle()
+	if err != nil {
+		return nil, "", err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	token, err := lifecycle.CreateDraft(mapName, config, ownerID)
+	if err != nil {
+		return nil, "", err
+	}
+	entry, err := lifecycle.GetEntry(mapName)
+	if err != nil {
+		return nil, "", err
+	}
+	return entry, token, nil
+}
+
+// UpdateMapOwned overwrites a map on behalf of actor; an owner's save returns
+// the map to DRAFT.
+func (s *gameServiceImpl) UpdateMapOwned(ctx context.Context, mapName string, config *engine.GameConfig, actor MapActor) (*MapEntry, error) {
+	lifecycle, err := s.mapLifecycle()
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return lifecycle.SaveOwned(mapName, config, actor)
+}
+
+// PublishMap promotes actor's draft after the winnability proof.
+func (s *gameServiceImpl) PublishMap(ctx context.Context, mapName string, actor MapActor) (*MapEntry, error) {
+	lifecycle, err := s.mapLifecycle()
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return lifecycle.Publish(mapName, actor)
+}
+
+// DeleteMapOwned removes a map on behalf of actor.
+func (s *gameServiceImpl) DeleteMapOwned(ctx context.Context, mapName string, actor MapActor) error {
+	lifecycle, err := s.mapLifecycle()
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return lifecycle.DeleteOwned(mapName, actor)
+}
+
+// ClaimMap attaches a legacy unowned map to ownerID after checking editKey.
+func (s *gameServiceImpl) ClaimMap(ctx context.Context, mapName, ownerID, editKey string) (*MapEntry, error) {
+	lifecycle, err := s.mapLifecycle()
+	if err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return lifecycle.Claim(mapName, ownerID, editKey)
 }
 
 // CreateMap stores a new user map and returns its one-time edit token.

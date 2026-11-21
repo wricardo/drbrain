@@ -37,8 +37,8 @@ curl -s http://localhost:8000/graphql \
 | `unifiedSessions(mapName: String): UnifiedSessions!` | List sessions with each session's state and map bundled together. Optional `mapName` filters results. |
 | `gameState(sessionID: ID!): GameState!` | Get the current state for a session. |
 | `history(sessionID: ID!, page: Int = 1, limit: Int = 50, order: SortOrder = DESC): HistoryResponse!` | Page through move history. |
-| `maps: [MapInfo!]!` | List available maps. |
-| `map(name: String!, password: String): GameMap!` | Load a full map definition by name/id. `layout(password:)` needs the map's grid password when one is set. |
+| `maps: [MapInfo!]!` | Published maps plus the signed-in caller's own drafts. Another player's draft is never listed. Each row carries `status` (`DRAFT`/`PUBLISHED`), `ownedByMe` and `builtin`. |
+| `map(name: String!, password: String): GameMap!` | Load a full map definition by name/id. Another player's draft is hidden exactly like an unknown name. `layout(password:)` needs the map's grid password when one is set. |
 
 ## Mutations
 
@@ -50,9 +50,11 @@ curl -s http://localhost:8000/graphql \
 | `move(sessionID: ID!, direction: Direction!, reset: Boolean = false): MoveResult!` | Execute one move. Optional `reset: true` resets the session before moving. Broadcasts a session update. |
 | `bulkMove(sessionID: ID!, moves: [Direction!]!, reset: Boolean = false): BulkMoveResult!` | Execute a sequence of moves. Stops early on game-ending or invalid conditions reported in `stoppedReason` / `stopReasonCode`. Broadcasts a session update. |
 | `reset(sessionID: ID!): GameState!` | Reset a session to the map's starting state. Broadcasts a session update. |
-| `createMap(name: String!, map: GameMapInput!): GameMap!` | Create a new map. Needs no credentials and never overwrites: the name must be unused (built-in names are taken). The response carries a one-time `editKey` that `updateMap`/`deleteMap` require. If `map.name` is empty internally, the resolver uses the `name` argument. |
-| `updateMap(name: String!, patch: GameMapPatchInput!, editKey: String): GameMap!` | Partially update a map you created, passing the `editKey` from `createMap`; omitted fields keep existing values. Built-in maps reject edit keys — they need `X-Admin-Key`. |
-| `deleteMap(name: String!, editKey: String): DeleteSessionResult!` | Delete a map you created. Built-in maps need `X-Admin-Key`. |
+| `createMap(name: String!, map: GameMapInput!): GameMap!` | Creates a DRAFT owned by the signed-in player (UNAUTHENTICATED otherwise). It never overwrites a shipped map. Update it until every park is reachable, then publish. |
+| `updateMap(name: String!, patch: GameMapPatchInput!, editKey: String): GameMap!` | Owner-only; an edit puts the map back into DRAFT. `editKey` is accepted only for legacy ownerless maps, never as a substitute for ownership. |
+| `publishMap(name: String!): GameMap!` | Owner-only; runs the full winnability gate and moves the draft to PUBLISHED. An unreachable park is INVALID_ARGUMENT. |
+| `claimMap(name: String!, editKey: String!): GameMap!` | One-time claim of a legacy ownerless map with the edit key it was created with. |
+| `deleteMap(name: String!, editKey: String): DeleteSessionResult!` | Owner-only for the caller's own map. Shipped and legacy ownerless maps need X-Admin-Key; `editKey` is accepted only for legacy ownerless maps. |
 | `validateMap(map: GameMapInput!): MapValidationResult!` | Check a map definition for validity and winnability without saving it. |
 
 ## Subscriptions
@@ -308,20 +310,34 @@ mutation CreateMap($name: String!, $map: GameMapInput!) {
 }
 ```
 
-A `GameMapInput` requires `name`, `description`, `gridSize`, `maxBattery`, `startingBattery`, `layout`, and `legend`; `cellConfigs` is optional (defaults to `[]`) and sets per-cell `allowedDirections` for one-way roads. Use `validateMap` first to check winnability.
+A `GameMapInput` requires `name`, `description`, `gridSize`, `maxBattery`, `startingBattery`, `layout`, and `legend`; `cellConfigs` is optional (defaults to `[]`) and sets per-cell `allowedDirections` for one-way roads.
 
-`createMap` needs no credentials. It returns `editKey` exactly once — store it, because
-`updateMap` and `deleteMap` need it. The map is owned by whoever holds that key:
+`createMap` needs a signed-in player (UNAUTHENTICATED otherwise). It stores a `DRAFT`
+owned by the caller and never overwrites a shipped map; the response reports
+`status: DRAFT`, `ownedByMe: true`, `builtin: false`. Save an incomplete map while you
+iterate, then publish it:
 
 ```graphql
-mutation UpdateMap($name: String!, $patch: GameMapPatchInput!, $editKey: String) {
-  updateMap(name: $name, patch: $patch, editKey: $editKey) { name description builtin }
+mutation PublishMap($name: String!) {
+  publishMap(name: $name) { name builtin status ownedByMe }
 }
 ```
 
-Maps shipped with the server have `builtin: true` (see `maps { builtin }`) and cannot be
-changed with an edit key. Copy them with `createMap` under a new name instead. An operator
-who sets `ADMIN_API_KEY` can override ownership by sending the `X-Admin-Key` header.
+`publishMap` is owner-only and runs the full winnability gate (every park reachable);
+an unreachable map is refused with `INVALID_ARGUMENT`. `updateMap` is owner-only and puts
+the map back into `DRAFT`; `deleteMap` removes the caller's own map. `maps` lists published
+maps plus the caller's drafts, and another player's draft is hidden exactly like an unknown
+id. Shipped maps (`builtin: true`) are PUBLISHED and ownerless: changing or deleting one
+needs `X-Admin-Key` equal to `TESLA_ADMIN_API_KEY`.
+
+`claimMap(name, editKey)` is the legacy transition: a pre-cutover map imported by
+`drbrain import-maps --game=tesla` is PUBLISHED and ownerless, and its old edit key attaches
+it to the signed-in account.
+
+Custom maps live in PostgreSQL (`platform_maps`), capped by `TESLA_MAX_USER_MAPS`
+(default 200). `TESLA_CUSTOM_MAPS_DIR` is not a runtime setting; imported legacy maps are
+PUBLISHED and ownerless, and after the claim above the account owns them. `pg_dump` is the
+only backup for custom maps; builtin `maps/*.json` files remain release-managed.
 
 ## Type reference
 
@@ -481,6 +497,8 @@ type MapInfo {
   gridSize: Int!
   maxBattery: Int!
   builtin: Boolean!
+  status: MapStatus!
+  ownedByMe: Boolean!
 }
 
 type GameMap {
@@ -493,7 +511,9 @@ type GameMap {
   legend: [LegendEntry!]!
   cellConfigs: [CellConfigEntry!]!
   builtin: Boolean!
-  editKey: String
+  status: MapStatus!
+  ownedByMe: Boolean!
+  editKey: String   # only for a legacy unowned map created before the cutover
 }
 
 type LegendEntry { key: String!, value: String! }

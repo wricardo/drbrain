@@ -154,7 +154,7 @@
 		<p class="mt-3 text-sm leading-relaxed text-slate-800">
 			Everything an agent needs is in one page: <a href="/mazes/llms.txt" target="_blank" rel="noreferrer" class="font-medium underline">llms.txt</a>
 			(rules, connection details, and working GraphQL examples). To hand a <em>specific</em> session to an AI, open it and use the
-			<strong>“Play with an AI”</strong> card — the copied prompt includes the session id, the level the miner is on (the only one it may see), the fog rules and the exact calls to make.
+			<strong>“Play with an AI”</strong> card — the copied prompt includes the session id, the level the miner is on (the only one it may see), the fog rules and the exact calls to make, plus the owner token that lets the agent move the miner.
 			To let an agent pick a map and create its own session, copy this prompt:
 		</p>
 		<div class="mt-3">

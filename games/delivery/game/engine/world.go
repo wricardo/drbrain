@@ -25,7 +25,13 @@ import (
 // to it: two worlds with different revealed areas can derive different closures
 // at the same tick, which matters when comparing a probe's results.
 type World struct {
+	// City is the session's terrain and static entities. Scheduled growth
+	// mutates it (revealing districts, rewriting tiles); the source CityConfig
+	// is never changed.
 	City *City
+	// Cars is the fleet in creation order. Commands address cars by ID, and
+	// order-sensitive tick phases sort by ID, so append order never changes a
+	// rule.
 	Cars []*Car
 
 	// carClasses is the catalogue this world was built from, so buying a car
@@ -75,23 +81,37 @@ type World struct {
 	// authoritative game state.
 	closures []Closure
 
-	// charging is the battery-refill rate table.
-	charging ChargingConfig
-
-	// fleet is the vehicle running-cost table. Its zero value disables upkeep;
-	// see FleetConfig.
+	// fleet is the vehicle running-cost table, copied from the config.
 	fleet FleetConfig
 
-	// Progression tables, copied from the config at construction so a running
-	// world never reads back from the CityConfig.
-	achievements []AchievementConfig
-	unlocks      []UnlockConfig
-	builds       []BuildConfig
+	// ticksPerMonth is the accounting month length for the monthly report.
+	ticksPerMonth int64
 
-	// achievements/unlocks mutate as they fire, so they keep their own status.
-	built          map[string]bool
-	permitted      map[string]bool // build id -> unlocked
-	buyableClasses map[string]bool // car class -> purchase allowed
+	// maxEvents bounds the retained event feed.
+	maxEvents int
+
+	// maxReputation is the top of the reputation scale.
+	maxReputation float64
+
+	// maxChapter caps the chapter index used by tuning tables.
+	maxChapter int
+
+	// autosaveTicks is how many ticks may pass between background saves.
+	autosaveTicks int64
+
+	// growth is the city's expansion schedule, copied from the config at
+	// construction so a running world never reads back from the CityConfig.
+	growth []GrowthConfig
+
+	// growthApplied is how many stages at the head of growth have applied. It is
+	// derived, not saved: ImportState replays every stage whose tick has been
+	// reached, so a reload lands on the same city without a second source of
+	// truth in the save file.
+	growthApplied int
+
+	// buyableClasses is the car classes licensed by growth stages so far. Also
+	// derived from the replayed schedule; it gates requires_grant classes only.
+	buyableClasses map[string]bool
 
 	// Events accumulates what happened, newest last, for the player's feed.
 	Events []Event
@@ -103,22 +123,17 @@ type World struct {
 	currentTickEvents []Event
 }
 
-// buildOfUnlock reports the first build an unlock grants, or "" when it grants
-// none.
-func buildOfUnlock(u *UnlockConfig) string {
-	if len(u.GrantsBuild) == 0 {
-		return ""
-	}
-	return u.GrantsBuild[0]
-}
-
 // Event is one thing that happened in the world, for the client feed.
 type Event struct {
-	Tick    int64
-	Type    string
+	// Tick is the world tick that produced the event.
+	Tick int64
+	// Type is one of the Event* constants; clients key filters and icons off it.
+	Type string
+	// Message is display text for the feed.
 	Message string
-	CarID   string
-	Pos     Position
+	// CarID and Pos name the subject when the event has one.
+	CarID string
+	Pos   Position
 }
 
 // Event type names.
@@ -132,14 +147,15 @@ const (
 	EventDelivered  = "order_delivered"
 	EventExpired    = "order_expired"
 	EventSpawned    = "order_spawned"
-	EventBuild      = "build_completed"
-	EventUnlock     = "unlock_earned"
+	EventGrowth     = "city_growth"
 	EventClosure    = "closure_started"
 	EventClosureEnd = "closure_ended"
 )
 
-// NewWorld builds a world from a city and the config that produced it,
-// placing the initial cars at their authored positions.
+// NewWorld builds a world with the fixed default seed, for tests and tooling
+// where runs must be comparable. It validates the config and installs the
+// InitialCars exactly as NewWorldSeeded does; real sessions use NewWorldSeeded
+// with RandomSeed instead.
 func NewWorld(city *City, cfg *CityConfig) (*World, error) {
 	return NewWorldSeeded(city, cfg, defaultSeed)
 }
@@ -149,12 +165,19 @@ func NewWorld(city *City, cfg *CityConfig) (*World, error) {
 // stable so runs are comparable.
 const defaultSeed uint64 = 0x5eed5eed
 
-// NewWorldSeeded builds a world with an explicit RNG seed.
+// NewWorldSeeded builds a world with an explicit seed. Order spawning, jitter,
+// rewards and closures all derive from (seed, tick, label), so the same seed and
+// commands replay exactly. It validates cfg even when it was built in code,
+// places InitialCars in authored order, and returns an error for an unwalkable
+// or over-capacity start tile.
 func NewWorldSeeded(city *City, cfg *CityConfig, seed uint64) (*World, error) {
-	// Apply pacing defaults here as well as in the loader, so a config built in
-	// code (tests, the harness, an API caller) behaves the same as one read
-	// from disk instead of silently running with zeroed multipliers.
-	if err := cfg.applyDefaults(); err != nil {
+	// Validate here as well as in the loader, so a config built in code
+	// (tests, the harness, an API caller) fails loudly on a missing knob
+	// instead of silently running with a zeroed multiplier.
+	if err := cfg.validate(); err != nil {
+		return nil, err
+	}
+	if err := cfg.validateRewardCoverage(); err != nil {
 		return nil, err
 	}
 	w := &World{
@@ -164,14 +187,14 @@ func NewWorldSeeded(city *City, cfg *CityConfig, seed uint64) (*World, error) {
 		Ledger:         NewLedger(cfg.StartMoney),
 		Seed:           seed,
 		ordersCfg:      cfg.Orders,
-		closuresCfg:    cfg.Closures,
-		charging:       cfg.Charging,
-		fleet:          cfg.Fleet,
-		achievements:   append([]AchievementConfig(nil), cfg.Achievements...),
-		unlocks:        append([]UnlockConfig(nil), cfg.Unlocks...),
-		builds:         append([]BuildConfig(nil), cfg.Builds...),
-		built:          map[string]bool{},
-		permitted:      map[string]bool{},
+		closuresCfg:    *cfg.Closures,
+		fleet:          *cfg.Fleet,
+		ticksPerMonth:  int64(cfg.TicksPerMonth),
+		maxEvents:      cfg.MaxEvents,
+		maxReputation:  cfg.MaxReputation,
+		maxChapter:     cfg.MaxChapter,
+		autosaveTicks:  int64(cfg.AutosaveTicks),
+		growth:         append([]GrowthConfig(nil), cfg.Growth...),
 		buyableClasses: map[string]bool{},
 	}
 	w.spawn.NextEligibleTick = map[string]int64{}
@@ -201,10 +224,29 @@ func NewWorldSeeded(city *City, cfg *CityConfig, seed uint64) (*World, error) {
 		w.Cars = append(w.Cars, car)
 	}
 	w.NextCarSeq = len(cfg.InitialCars) + 1
+	if err := w.validateGrowthSchedule(); err != nil {
+		return nil, err
+	}
 	return w, nil
 }
 
-// Car returns the car with the given id.
+// TicksPerMonth returns the accounting month length from the map config.
+func (w *World) TicksPerMonth() int { return int(w.ticksPerMonth) }
+
+// AutosaveTicks returns how many world ticks may pass between background saves.
+func (w *World) AutosaveTicks() int64 { return w.autosaveTicks }
+
+// MonthForTick returns the 1-based accounting month containing tick using this
+// world's configured month length. Month 1 is ticks 0..TicksPerMonth()-1;
+// negative ticks report month 1. There is no wall calendar: months exist only
+// to bucket the cash statement.
+func (w *World) MonthForTick(tick int64) int {
+	return monthForTick(tick, w.ticksPerMonth)
+}
+
+// Car returns the live car with the given id, not a copy. Mutating it changes
+// the world; on a running session, do it inside Session.Do so the ticker sees a
+// consistent state.
 func (w *World) Car(id string) (*Car, bool) {
 	for _, c := range w.Cars {
 		if c.ID == id {
@@ -234,30 +276,28 @@ func (w *World) QueueMove(carID string, dir Direction) error {
 	return nil
 }
 
-// Advance runs exactly one tick and returns the events it produced.
+// Advance runs exactly one tick and returns the events it produced. A paused
+// world does nothing and returns nil.
 //
 // The order is fixed so a replay of (seed, commands) reproduces the world:
-//  1. resolve each car's queued move, in car id order
-//  2. resolve pickups/dropoffs for cars that landed on a kitchen or customer
-//  3. charge cars standing on a charging tile
-//  4. spawn due orders
-//  5. expire overdue orders
-//  6. retire and start street works
-//  7. bill fleet upkeep
-//  8. evaluate achievements and unlocks, then stamp the tick counter
-//
-// Steps 6 and 7 run after movement on purpose. A closure announced on this tick
-// must never retroactively refuse a move the player already committed to, and a
-// car that parks during the tick must not be charged upkeep for it — the
-// player's action lands first and the bill follows. Step 8 runs on the settled
-// world so a delivery that completes a requirement is visible on the same tick
-// rather than one behind.
+//  1. plan every car's queued move, then resolve the fleet together in car id
+//     order (a follower may enter a vacated tile; a swap is refused)
+//  2. run pickups/dropoffs for cars that actually moved
+//  3. charge cars on charging tiles, assigning depot charge slots in car id order
+//  4. apply city growth due this tick, before spawning, so a district revealed
+//     now can raise work on the same tick
+//  5. spawn due orders
+//  6. expire overdue orders
+//  7. retire and start street works, after movement, so a closure announced
+//     now cannot retroactively refuse a move already committed
+//  8. bill fleet upkeep, after movement and charging, so a car that parks this
+//     tick is free for it, then increment Tick
 func (w *World) Advance() []Event {
 	if w.Paused {
 		return nil
 	}
 	// Events are captured as they are emitted rather than sliced off the log at
-	// the end: the log is trimmed to MaxEvents, and a slice of the trimmed log
+	// the end: the log is trimmed to max_events, and a slice of the trimmed log
 	// silently returned nothing once the trim point passed the tick's first
 	// event.
 	w.currentTickEvents = w.currentTickEvents[:0]
@@ -300,6 +340,10 @@ func (w *World) Advance() []Event {
 		w.chargeCar(car, charged)
 	}
 
+	// 3b. City growth: stages due at or before this tick apply before orders are
+	// spawned, so a district revealed now can raise work on the same tick.
+	w.applyGrowth()
+
 	// 4-5. Order lifecycle.
 	w.spawnOrders()
 	w.expireOrders()
@@ -313,11 +357,6 @@ func (w *World) Advance() []Event {
 	// that parks during this tick is free for it: the player's action lands
 	// first and the bill follows.
 	w.chargeUpkeep()
-
-	// 8. Progression: achievements and unlocks are evaluated once per tick on
-	// the settled world, so a delivery that completes a requirement is
-	// reflected on the same tick.
-	w.evalProgression()
 
 	w.Tick++
 	return append([]Event(nil), w.currentTickEvents...)
@@ -540,7 +579,11 @@ func (w *World) CarsAt(p Position) int {
 // carsAt is the internal spelling used by the mover.
 func (w *World) carsAt(p Position) int { return w.CarsAt(p) }
 
-// HasRoom reports whether one more car would fit on p right now.
+// HasRoom reports whether p holds one more car right now: it compares the live
+// car count with City.CarCapacity. Depots are unlimited, a standalone charger
+// holds its authored capacity (default 1), every other on-grid tile holds one,
+// and off-grid holds none. This checks occupancy only, not whether a car could
+// drive there.
 func (w *World) HasRoom(p Position) bool {
 	return w.carsAt(p) < w.City.CarCapacity(p)
 }
@@ -580,6 +623,11 @@ func (w *World) blockReason(p Position, t CellType) string {
 // chargeCar tops a car up by the tile's charge rate when it sits on a charging
 // tile, subject to the tile's simultaneous-charging limit.
 //
+// Depot charging is free; a standalone charger accrues a bill on the car and
+// writes it to the checking account once, when the car fills or leaves the
+// bay. A ledger row per tick would bury deliveries under a dozen identical
+// lines for one top-up.
+//
 // charged counts, per position, how many cars have already taken a charge this
 // tick. The caller iterates cars in id order, which is what makes the answer
 // deterministic when a depot has more cars than slots. A car that is already
@@ -587,55 +635,128 @@ func (w *World) blockReason(p Position, t CellType) string {
 // consume a bay.
 func (w *World) chargeCar(car *Car, charged map[Position]int) {
 	if !w.City.ChargingAt(car.Pos) || car.Full() {
+		w.settleCharging(car)
 		return
+	}
+	rate := w.chargeRate(car.Pos)
+	price := w.chargePrice(car.Pos)
+	source := w.chargeSource(car.Pos)
+	// Moving from one paid charger to another (or onto a free source) ends the
+	// previous session before a new one starts, so the memo names the right
+	// charger and two sessions cannot merge into one line.
+	if car.ChargeDue > 0 && (price <= 0 || car.ChargeSource != source) {
+		w.settleCharging(car)
 	}
 	if slots := w.City.ChargeSlotsAt(car.Pos); slots > 0 && charged[car.Pos] >= slots {
 		return
 	}
 	before := car.Battery
-	car.Battery = min(car.Battery+w.chargeRate(car.Pos), car.Class.MaxBattery)
-	if car.Battery != before {
-		charged[car.Pos]++
-		w.emit(EventCharged, car,
-			fmt.Sprintf("%s charging %d/%d", car.Name, car.Battery, car.Class.MaxBattery))
+	car.Battery = min(car.Battery+rate, car.Class.MaxBattery)
+	gained := car.Battery - before
+	if gained <= 0 {
+		return
+	}
+	charged[car.Pos]++
+	cost := 0
+	if price > 0 {
+		cost = chargeCost(price, rate, gained)
+		car.ChargeDue += cost
+		car.ChargeUnits += gained
+		car.ChargeSource = source
+	}
+	msg := fmt.Sprintf("%s charging %d/%d", car.Name, car.Battery, car.Class.MaxBattery)
+	if cost > 0 {
+		msg += fmt.Sprintf(" (-$%d)", cost)
+	}
+	w.emit(EventCharged, car, msg)
+	if car.Full() {
+		w.settleCharging(car)
 	}
 }
 
-// chargeRate is how much battery a tile restores per tick. A depot is a fast
-// charger; a standalone charger is slower. Rates come from the city config so
-// pacing can be tuned without a code change.
-//
-// WARNING: this answers "what rate applies here", NOT "does this tile charge".
-// It returns the charger rate for any non-depot coordinate, including plain road
-// and kitchen tiles — measured on the shipped map: depot 6, charger 2, and both
-// a road tile and a kitchen tile also report 2, despite ChargingAt being false for
-// them. The only caller, chargeCar, gates on City.ChargingAt first, which is what
-// keeps cars from refilling in the street. Any new caller must do the same; using
-// this alone would make the whole city a charging pad.
+// chargeCost prices one tick of charging from the energy it actually
+// delivered. PricePerTick is the price of a full tick at rate units, so a
+// partial tick costs proportionally less; rounding up keeps a one-unit top-up
+// from being free. With price $1 and rate 2, one unit costs $1 and a full tick
+// also costs $1; with price $4 and rate 6, one unit costs $1 and a full tick
+// costs $4. This is the fair-by-energy model without fractional dollars.
+func chargeCost(price, rate, gained int) int {
+	if price <= 0 || rate <= 0 || gained <= 0 {
+		return 0
+	}
+	cost := (price*gained + rate - 1) / rate
+	if cost < 1 {
+		cost = 1
+	}
+	return cost
+}
+
+// settleCharging writes the car's open charging session to the cash ledger and
+// clears it. It is a no-op when the car owes nothing, so callers can call it on
+// every tile change.
+func (w *World) settleCharging(car *Car) {
+	due := car.ChargeDue
+	units := car.ChargeUnits
+	source := car.ChargeSource
+	car.ChargeDue = 0
+	car.ChargeUnits = 0
+	car.ChargeSource = ""
+	if due <= 0 {
+		return
+	}
+	if source == "" {
+		source = "charger"
+	}
+	unitWord := "units"
+	if units == 1 {
+		unitWord = "unit"
+	}
+	w.recordCash(CashCharging, -due, car, "", fmt.Sprintf("%d %s at %s", units, unitWord, source))
+}
+
+// chargeRate is how much battery a tile restores per tick. Depots use the
+// city's depot rate; a standalone charger uses its own rate, which the city
+// normalises to charging.charger_rate at load. Any other tile returns zero:
+// unlike the old implementation, this no longer reports a charger rate for
+// plain road.
 func (w *World) chargeRate(p Position) int {
 	t, ok := w.City.At(p)
 	if !ok {
 		return 0
 	}
-	if t == DepotTile {
-		if w.charging.DepotRate > 0 {
-			return w.charging.DepotRate
+	switch t {
+	case DepotTile:
+		return w.City.Charging.DepotRate
+	case ChargerTile:
+		if ch, ok := w.City.ChargerAt(p); ok {
+			return ch.Rate
 		}
-		return DefaultDepotChargeRate
+		return w.City.Charging.ChargerRate
 	}
-	if w.charging.ChargerRate > 0 {
-		return w.charging.ChargerRate
-	}
-	return DefaultChargerChargeRate
+	return 0
 }
 
-// Charge-rate fallbacks, used when a city file omits the charging block. They
-// match maps/city.json, so an in-code config and the shipped map behave
-// identically — the loader and NewWorld both apply these.
-const (
-	DefaultDepotChargeRate   = 6
-	DefaultChargerChargeRate = 2
-)
+// chargePrice is the dollars charged for one full tick on p. Depots and
+// non-charging tiles are free; a standalone charger uses its own price or the
+// city default.
+func (w *World) chargePrice(p Position) int {
+	t, ok := w.City.At(p)
+	if !ok || t != ChargerTile {
+		return 0
+	}
+	if ch, ok := w.City.ChargerAt(p); ok {
+		return ch.PricePerTick
+	}
+	return w.City.Charging.ChargerPricePerTick
+}
+
+// chargeSource names the paid charger in the ledger memo.
+func (w *World) chargeSource(p Position) string {
+	if ch, ok := w.City.ChargerAt(p); ok && ch.ID != "" {
+		return ch.ID
+	}
+	return "charger"
+}
 
 // BuyCar purchases a car of the named class at the named depot, spending its
 // price. Multi-car is gated by money alone: the engine has always supported N
@@ -652,10 +773,6 @@ func (w *World) BuyCar(class, depotID string) (*Car, error) {
 	if !ok {
 		return nil, fmt.Errorf("no depot %q", depotID)
 	}
-	parked := w.carsAt(depot.Pos)
-	if parked >= depot.Capacity {
-		return nil, fmt.Errorf("depot %q is full (%d/%d)", depotID, parked, depot.Capacity)
-	}
 	if w.Ledger.Money < cc.Price {
 		return nil, fmt.Errorf("%s costs $%d, you have $%d", class, cc.Price, w.Ledger.Money)
 	}
@@ -666,7 +783,7 @@ func (w *World) BuyCar(class, depotID string) (*Car, error) {
 	if err != nil {
 		return nil, err
 	}
-	w.Ledger.Money -= cc.Price
+	w.recordCash(CashCarPurchase, -cc.Price, car, "", "bought "+car.Name)
 	w.Cars = append(w.Cars, car)
 	w.NextCarSeq++
 	w.emit(EventBoughtCar, car, fmt.Sprintf("bought %s at %s for $%d", car.Name, depotID, cc.Price))
@@ -705,14 +822,8 @@ func (w *World) Tow(carID string) error {
 		return fmt.Errorf("no depot to tow to")
 	}
 	// Nearest depot by walking distance, falling back to the first depot if
-	// the car cannot reach any (which is exactly the stranded case).
-	//
-	// A depot with room in the yard wins over a nearer one that is full: since
-	// tiles have a car capacity, towing into a full yard would stack the car on
-	// top of cars the player parked there. If NO depot has room the nearest is
-	// still used, because a tow that refuses is a car the player can never
-	// recover — and a yard is an entry limit, not a hard seal: the parked cars
-	// can still drive out.
+	// the car cannot reach any (which is exactly the stranded case). Depots
+	// have unlimited parking, so there is no yard-capacity choice any more.
 	dest := w.City.Depots[0]
 	best := -1
 	fallback := w.City.Depots[0]
@@ -735,14 +846,13 @@ func (w *World) Tow(carID string) error {
 		dest = fallback
 	}
 
+	// A car towed off a paid charger still owes for the energy it already
+	// received; settle that session before the tow fee so the statement shows
+	// both movements in the order they happened.
+	w.settleCharging(car)
+
 	fee := w.TowFee(car, dest.Pos)
-	if fee > w.Ledger.Money {
-		fee = w.Ledger.Money
-	}
-	if fee < 0 {
-		fee = 0
-	}
-	w.Ledger.Money -= fee
+	fee = -w.recordCash(CashTow, -fee, car, "", "tow to "+dest.ID)
 	w.Ledger.TowFees += fee
 
 	car.Pos = dest.Pos
@@ -761,7 +871,7 @@ func (w *World) Tow(carID string) error {
 // emit appends an event at the current tick.
 //
 // Events are kept for client feeds, but a session can run for hundreds of
-// thousands of ticks, so the log is trimmed to the most recent MaxEvents. Only
+// thousands of ticks, so the log is trimmed to the most recent max_events. Only
 // the tail is ever useful: an agent polls for what changed since its last read.
 func (w *World) emit(kind string, car *Car, msg string) {
 	ev := Event{Tick: w.Tick, Type: kind, Message: msg}
@@ -771,17 +881,14 @@ func (w *World) emit(kind string, car *Car, msg string) {
 	}
 	w.Events = append(w.Events, ev)
 	w.currentTickEvents = append(w.currentTickEvents, ev)
-	if len(w.Events) > MaxEvents {
+	if len(w.Events) > w.maxEvents {
 		// Copy down rather than reslice, so the backing array does not grow
 		// without bound across a long session.
-		keep := len(w.Events) - MaxEvents
+		keep := len(w.Events) - w.maxEvents
 		copy(w.Events, w.Events[keep:])
-		w.Events = w.Events[:MaxEvents]
+		w.Events = w.Events[:w.maxEvents]
 	}
 }
-
-// MaxEvents bounds the retained event log.
-const MaxEvents = 500
 
 // RenderCars adapts the fleet for the ASCII renderer.
 func (w *World) RenderCars() []RenderCar {

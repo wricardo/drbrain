@@ -10,32 +10,6 @@ import (
 	"time"
 )
 
-type AchievementView struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Done        bool   `json:"done"`
-	// Progress toward target, in that requirement's own units.
-	Progress int `json:"progress"`
-	Target   int `json:"target"`
-}
-
-type BuildView struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Cost        int    `json:"cost"`
-	// The right to build has been earned.
-	Unlocked  bool `json:"unlocked"`
-	Completed bool `json:"completed"`
-	// Money covers the cost right now.
-	Affordable bool `json:"affordable"`
-	// A legal placement exists right now.
-	Applicable bool `json:"applicable"`
-	// Why the build cannot be placed, when it cannot.
-	Problem *string `json:"problem,omitempty"`
-}
-
 type CarClassView struct {
 	ClassName string `json:"className"`
 	Price     int    `json:"price"`
@@ -69,6 +43,9 @@ type CarView struct {
 	QueuedMove *Direction `json:"queuedMove,omitempty"`
 	// Why the most recent move was rejected, if it was.
 	LastReject *RejectReason `json:"lastReject,omitempty"`
+	// Unpaid balance of a charging session in progress, in dollars. Zero when the
+	// car is not charging or the session has already been billed.
+	ChargeDue int `json:"chargeDue"`
 }
 
 // A window of the city around one car, for cheap polling.
@@ -85,17 +62,81 @@ type CarWindow struct {
 	NearbyOrders []*OrderView `json:"nearbyOrders"`
 }
 
-type CityView struct {
+// One movement through the player's checking account.
+type CashEntryView struct {
+	// Stable, monotonic id within the session. Use it as the list key.
+	Seq  int      `json:"seq"`
+	Tick int      `json:"tick"`
+	Kind CashKind `json:"kind"`
+	// Economic bucket used by the monthly report.
+	Category CashCategory `json:"category"`
+	// Signed dollars: positive for money in, negative for money out. This is what
+	// was actually charged, so a fee clamped by an empty balance shows the
+	// clamped amount rather than the nominal bill.
+	Amount int `json:"amount"`
+	// Running balance after this movement.
+	Balance int `json:"balance"`
+	// The car this movement belongs to, when it belongs to one.
+	CarID   *string `json:"carId,omitempty"`
+	CarName *string `json:"carName,omitempty"`
+	OrderID *string `json:"orderId,omitempty"`
+	// Short human-readable detail, e.g. "pizza to Rosa's" or "fleet upkeep".
+	Memo string `json:"memo"`
+}
+
+// One entry in the city catalogue: a published city or the caller's own draft.
+type CityInfo struct {
+	ID       string `json:"id"`
 	Name     string `json:"name"`
 	GridSize int    `json:"gridSize"`
-	// Full map as glyph rows. Unexplored tiles render '?'.
+	// DRAFT cities are visible only to their owner. The owner may play and publish a draft;
+	// another player can neither see nor select it.
+	Status CityStatus `json:"status"`
+	// True when the signed-in caller created this city.
+	OwnedByMe bool `json:"ownedByMe"`
+	// True for a shipped city file. Builtins are published and admin-managed.
+	Builtin bool `json:"builtin"`
+	// True for a community row with no owner (imported or legacy). Ownerless cities are
+	// published and admin-managed.
+	Ownerless bool `json:"ownerless"`
+}
+
+// The outcome of validateCity: valid means the JSON parses into a city; publishable means the
+// full publication gate (the same validation the server runs at startup) accepts it.
+type CityValidationResult struct {
+	Valid       bool     `json:"valid"`
+	Publishable bool     `json:"publishable"`
+	Issues      []string `json:"issues"`
+}
+
+type CityView struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	GridSize int    `json:"gridSize"`
+	// DRAFT cities are visible only to their owner. The owner may play a draft; another
+	// player can neither see nor select it.
+	Status CityStatus `json:"status"`
+	// True when the signed-in caller created this city; false for shipped cities.
+	OwnedByMe bool `json:"ownedByMe"`
+	// True for a shipped city file. Builtins are published and admin-managed.
+	Builtin bool `json:"builtin"`
+	// True for a community row with no owner (imported or legacy). Ownerless cities are
+	// published and admin-managed.
+	Ownerless bool `json:"ownerless"`
+	// Full map as glyph rows. Unexplored tiles render '?'. A house renders 'h'
+	// when nobody is waiting there and 'H' while a customer is waiting for a
+	// delivery.
 	Rows []string `json:"rows"`
 	// Tiles still unexplored. Always 0 on the static city query, which reveals all.
 	HiddenTiles int          `json:"hiddenTiles"`
 	Kitchens    []*PointView `json:"kitchens"`
-	Customers   []*PointView `json:"customers"`
-	Depots      []*PointView `json:"depots"`
-	Chargers    []*PointView `json:"chargers"`
+	// Customers currently waiting for a delivery. A customer appears when it
+	// raises an order and leaves once that order is delivered or expires; a house
+	// with nobody waiting is not listed. Empty on the static city query, which
+	// shows authored houses as 'h' and carries no session state.
+	Customers []*PointView `json:"customers"`
+	Depots    []*PointView `json:"depots"`
+	Chargers  []*PointView `json:"chargers"`
 }
 
 // A stretch of street closed for works.
@@ -127,7 +168,7 @@ type CreateSessionResult struct {
 
 type EventView struct {
 	Tick int `json:"tick"`
-	// One of the car_* / order_* / build_* / unlock_* / closure_* names the engine emits.
+	// One of the car_* / order_* / city_growth / closure_* names the engine emits.
 	Type    string `json:"type"`
 	Message string `json:"message"`
 	// Null for world events (spawns, builds, closures); set for anything a car caused.
@@ -135,6 +176,14 @@ type EventView struct {
 	// Position of the event, or 0,0 when it has none — non-null, so 0,0 is ambiguous.
 	X int `json:"x"`
 	Y int `json:"y"`
+}
+
+type GrowthView struct {
+	ID          string `json:"id"`
+	Tick        int    `json:"tick"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Done        bool   `json:"done"`
 }
 
 type Health struct {
@@ -162,13 +211,11 @@ type LedgerView struct {
 	// Consecutive on-time deliveries. Both a late delivery and an expiry reset it to 0.
 	OnTimeStreak int `json:"onTimeStreak"`
 	Tows         int `json:"tows"`
-	// Completed builds. Chapter() derives from this, capped at 4.
-	BuildsCompleted int `json:"buildsCompleted"`
 	// Delivered ORDERS per item, not boxes: a two-box delivery adds 1.
 	DeliveriesByItem []*ItemCount `json:"deliveriesByItem"`
 	// Lifetime fleet running cost paid, cumulative. Zero when the map disables
 	// upkeep. Not subtracted from moneyEarned: upkeep is a cost, not negative
-	// income, and achievements read moneyEarned.
+	// income, and progression is measured by the city's own growth schedule.
 	UpkeepPaid int `json:"upkeepPaid"`
 	// Lifetime spend on tows, cumulative. A tow costs towFeePerTile x route distance, floored at towFeeMin, and is clamped to the balance.
 	TowFees int `json:"towFees"`
@@ -176,6 +223,39 @@ type LedgerView struct {
 	// cars are standing right now. A car on a depot tile contributes zero. Lets a
 	// client show the drain before it lands rather than only after.
 	UpkeepDue int `json:"upkeepDue"`
+	// Checking-account statement, newest first: every movement of money with the
+	// car it belongs to when the movement is car-specific. Snapshots carry the
+	// most recent rows; the engine retains the full statement with the save. The
+	// live subscription carries fewer rows than a query.
+	CashEntries []*CashEntryView `json:"cashEntries"`
+	// Length of one accounting month in simulation ticks.
+	TicksPerMonth int `json:"ticksPerMonth"`
+	// Monthly income/expense report, newest first. Snapshots carry at most 12
+	// months; quiet months are included as zero rows so month numbers do not skip.
+	Months []*MonthView `json:"months"`
+}
+
+type MonthCategoryView struct {
+	Category CashCategory `json:"category"`
+	// Positive magnitude in this category, or zero.
+	Income int `json:"income"`
+	// Positive magnitude out in this category, or zero.
+	Expenses int `json:"expenses"`
+}
+
+// One accounting month of income and expenses.
+type MonthView struct {
+	// One-based month number. Month 1 covers ticks 0 through ticksPerMonth-1.
+	Index     int `json:"index"`
+	StartTick int `json:"startTick"`
+	EndTick   int `json:"endTick"`
+	// Positive magnitude of money in.
+	Income int `json:"income"`
+	// Positive magnitude of money out.
+	Expenses int `json:"expenses"`
+	// income minus expenses.
+	Net        int                  `json:"net"`
+	Categories []*MonthCategoryView `json:"categories"`
 }
 
 type Mutation struct {
@@ -260,31 +340,17 @@ type Snapshot struct {
 	Orders []*OrderView `json:"orders"`
 	Ledger *LedgerView  `json:"ledger"`
 	// The purchasable catalogue with per-session unlock and affordability flags, cheapest first.
-	CarClasses   []*CarClassView    `json:"carClasses"`
-	Achievements []*AchievementView `json:"achievements"`
-	Unlocks      []*UnlockView      `json:"unlocks"`
-	Builds       []*BuildView       `json:"builds"`
-	Events       []*EventView       `json:"events"`
+	CarClasses []*CarClassView `json:"carClasses"`
+	// The city's scheduled expansion: stages in tick order, each with its fire
+	// tick and whether it has already applied. Read-only — the city grows on its
+	// own timeline, not through purchases.
+	Growth []*GrowthView `json:"growth"`
+	Events []*EventView  `json:"events"`
 	// Street works currently closing part of the map.
 	Closures []*ClosureView `json:"closures"`
 }
 
 type Subscription struct {
-}
-
-type UnlockView struct {
-	ID          string `json:"id"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	// The gate in words, e.g. "5 deliveries" or "earn $2000".
-	Requires string `json:"requires"`
-	Earned   bool   `json:"earned"`
-	// Progress toward the strictest requirement, in that requirement's own units.
-	Progress int `json:"progress"`
-	// The target that progress is measured against.
-	Target int `json:"target"`
-	// The build ids this unlock makes purchasable.
-	Builds []string `json:"builds"`
 }
 
 type CarState string
@@ -341,6 +407,205 @@ func (e *CarState) UnmarshalJSON(b []byte) error {
 }
 
 func (e CarState) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type CashCategory string
+
+const (
+	CashCategoryOpening        CashCategory = "OPENING"
+	CashCategoryDeliveryIncome CashCategory = "DELIVERY_INCOME"
+	CashCategoryRewards        CashCategory = "REWARDS"
+	CashCategoryOrderFines     CashCategory = "ORDER_FINES"
+	CashCategoryUpkeep         CashCategory = "UPKEEP"
+	CashCategoryCharging       CashCategory = "CHARGING"
+	CashCategoryTows           CashCategory = "TOWS"
+	CashCategoryCarPurchases   CashCategory = "CAR_PURCHASES"
+	CashCategoryBuilds         CashCategory = "BUILDS"
+	CashCategoryOther          CashCategory = "OTHER"
+)
+
+var AllCashCategory = []CashCategory{
+	CashCategoryOpening,
+	CashCategoryDeliveryIncome,
+	CashCategoryRewards,
+	CashCategoryOrderFines,
+	CashCategoryUpkeep,
+	CashCategoryCharging,
+	CashCategoryTows,
+	CashCategoryCarPurchases,
+	CashCategoryBuilds,
+	CashCategoryOther,
+}
+
+func (e CashCategory) IsValid() bool {
+	switch e {
+	case CashCategoryOpening, CashCategoryDeliveryIncome, CashCategoryRewards, CashCategoryOrderFines, CashCategoryUpkeep, CashCategoryCharging, CashCategoryTows, CashCategoryCarPurchases, CashCategoryBuilds, CashCategoryOther:
+		return true
+	}
+	return false
+}
+
+func (e CashCategory) String() string {
+	return string(e)
+}
+
+func (e *CashCategory) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = CashCategory(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid CashCategory", str)
+	}
+	return nil
+}
+
+func (e CashCategory) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *CashCategory) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e CashCategory) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type CashKind string
+
+const (
+	CashKindOpening      CashKind = "OPENING"
+	CashKindDelivery     CashKind = "DELIVERY"
+	CashKindLateDelivery CashKind = "LATE_DELIVERY"
+	CashKindOrderFine    CashKind = "ORDER_FINE"
+	CashKindUpkeep       CashKind = "UPKEEP"
+	CashKindCharging     CashKind = "CHARGING"
+	CashKindTow          CashKind = "TOW"
+	CashKindCarPurchase  CashKind = "CAR_PURCHASE"
+	CashKindBuild        CashKind = "BUILD"
+	CashKindGrant        CashKind = "GRANT"
+)
+
+var AllCashKind = []CashKind{
+	CashKindOpening,
+	CashKindDelivery,
+	CashKindLateDelivery,
+	CashKindOrderFine,
+	CashKindUpkeep,
+	CashKindCharging,
+	CashKindTow,
+	CashKindCarPurchase,
+	CashKindBuild,
+	CashKindGrant,
+}
+
+func (e CashKind) IsValid() bool {
+	switch e {
+	case CashKindOpening, CashKindDelivery, CashKindLateDelivery, CashKindOrderFine, CashKindUpkeep, CashKindCharging, CashKindTow, CashKindCarPurchase, CashKindBuild, CashKindGrant:
+		return true
+	}
+	return false
+}
+
+func (e CashKind) String() string {
+	return string(e)
+}
+
+func (e *CashKind) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = CashKind(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid CashKind", str)
+	}
+	return nil
+}
+
+func (e CashKind) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *CashKind) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e CashKind) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type CityStatus string
+
+const (
+	// A work in progress: only its owner can see, edit, play or publish it.
+	CityStatusDraft CityStatus = "DRAFT"
+	// Visible to everyone and selectable for a session.
+	CityStatusPublished CityStatus = "PUBLISHED"
+)
+
+var AllCityStatus = []CityStatus{
+	CityStatusDraft,
+	CityStatusPublished,
+}
+
+func (e CityStatus) IsValid() bool {
+	switch e {
+	case CityStatusDraft, CityStatusPublished:
+		return true
+	}
+	return false
+}
+
+func (e CityStatus) String() string {
+	return string(e)
+}
+
+func (e *CityStatus) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = CityStatus(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid CityStatus", str)
+	}
+	return nil
+}
+
+func (e CityStatus) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *CityStatus) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e CityStatus) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

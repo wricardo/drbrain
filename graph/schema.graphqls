@@ -207,9 +207,12 @@ type Delivery_Snapshot {
 	The purchasable catalogue with per-session unlock and affordability flags, cheapest first.
 	"""
 	carClasses: [Delivery_CarClassView!]!
-	achievements: [Delivery_AchievementView!]!
-	unlocks: [Delivery_UnlockView!]!
-	builds: [Delivery_BuildView!]!
+	"""
+	The city's scheduled expansion: stages in tick order, each with its fire
+	tick and whether it has already applied. Read-only — the city grows on its
+	own timeline, not through purchases.
+	"""
+	growth: [Delivery_GrowthView!]!
 	events: [Delivery_EventView!]!
 	"""
 	Street works currently closing part of the map.
@@ -235,11 +238,68 @@ type Delivery_CarWindow {
 	visibleCars: [Delivery_CarView!]!
 	nearbyOrders: [Delivery_OrderView!]!
 }
-type Delivery_CityView {
+enum Delivery_CityStatus {
+	"""
+	A work in progress: only its owner can see, edit, play or publish it.
+	"""
+	DRAFT
+	"""
+	Visible to everyone and selectable for a session.
+	"""
+	PUBLISHED
+}
+"""
+One entry in the city catalogue: a published city or the caller's own draft.
+"""
+type Delivery_CityInfo {
+	id: ID!
 	name: String!
 	gridSize: Int!
 	"""
-	Full map as glyph rows. Unexplored tiles render '?'.
+	DRAFT cities are visible only to their owner. The owner may play and publish a draft;
+	another player can neither see nor select it.
+	"""
+	status: Delivery_CityStatus!
+	"""
+	True when the signed-in caller created this city.
+	"""
+	ownedByMe: Boolean!
+	"""
+	True for a shipped city file. Builtins are published and admin-managed.
+	"""
+	builtin: Boolean!
+	"""
+	True for a community row with no owner (imported or legacy). Ownerless cities are
+	published and admin-managed.
+	"""
+	ownerless: Boolean!
+}
+type Delivery_CityView {
+	id: ID!
+	name: String!
+	gridSize: Int!
+	"""
+	DRAFT cities are visible only to their owner. The owner may play a draft; another
+	player can neither see nor select it.
+	"""
+	status: Delivery_CityStatus!
+	"""
+	True when the signed-in caller created this city; false for shipped cities.
+	"""
+	ownedByMe: Boolean!
+	"""
+	True for a shipped city file. Builtins are published and admin-managed.
+	"""
+	builtin: Boolean!
+	"""
+	True for a community row with no owner (imported or legacy). Ownerless cities are
+	published and admin-managed.
+	"""
+	ownerless: Boolean!
+	"""
+	Full map as glyph rows. Unexplored tiles render '?'. A house renders 'h'
+	when nobody is waiting there and 'H' while a customer is waiting for a
+	delivery.
 	"""
 	rows: [String!]!
 	"""
@@ -247,9 +307,24 @@ type Delivery_CityView {
 	"""
 	hiddenTiles: Int!
 	kitchens: [Delivery_PointView!]!
+	"""
+	Customers currently waiting for a delivery. A customer appears when it
+	raises an order and leaves once that order is delivered or expires; a house
+	with nobody waiting is not listed. Empty on the static city query, which
+	shows authored houses as 'h' and carries no session state.
+	"""
 	customers: [Delivery_PointView!]!
 	depots: [Delivery_PointView!]!
 	chargers: [Delivery_PointView!]!
+}
+"""
+The outcome of validateCity: valid means the JSON parses into a city; publishable means the
+full publication gate (the same validation the server runs at startup) accepts it.
+"""
+type Delivery_CityValidationResult {
+	valid: Boolean!
+	publishable: Boolean!
+	issues: [String!]!
 }
 type Delivery_PointView {
 	id: ID!
@@ -288,6 +363,11 @@ type Delivery_CarView {
 	Why the most recent move was rejected, if it was.
 	"""
 	lastReject: Delivery_RejectReason
+	"""
+	Unpaid balance of a charging session in progress, in dollars. Zero when the
+	car is not charging or the session has already been billed.
+	"""
+	chargeDue: Int!
 }
 enum Delivery_CarState {
 	IDLE
@@ -396,17 +476,13 @@ type Delivery_LedgerView {
 	onTimeStreak: Int!
 	tows: Int!
 	"""
-	Completed builds. Chapter() derives from this, capped at 4.
-	"""
-	buildsCompleted: Int!
-	"""
 	Delivered ORDERS per item, not boxes: a two-box delivery adds 1.
 	"""
 	deliveriesByItem: [Delivery_ItemCount!]!
 	"""
 	Lifetime fleet running cost paid, cumulative. Zero when the map disables
 	upkeep. Not subtracted from moneyEarned: upkeep is a cost, not negative
-	income, and achievements read moneyEarned.
+	income, and progression is measured by the city's own growth schedule.
 	"""
 	upkeepPaid: Int!
 	"""
@@ -419,71 +495,132 @@ type Delivery_LedgerView {
 	client show the drain before it lands rather than only after.
 	"""
 	upkeepDue: Int!
+	"""
+	Checking-account statement, newest first: every movement of money with the
+	car it belongs to when the movement is car-specific. Snapshots carry the
+	most recent rows; the engine retains the full statement with the save. The
+	live subscription carries fewer rows than a query.
+	"""
+	cashEntries: [Delivery_CashEntryView!]!
+	"""
+	Length of one accounting month in simulation ticks.
+	"""
+	ticksPerMonth: Int!
+	"""
+	Monthly income/expense report, newest first. Snapshots carry at most 12
+	months; quiet months are included as zero rows so month numbers do not skip.
+	"""
+	months: [Delivery_MonthView!]!
+}
+"""
+One movement through the player's checking account.
+"""
+type Delivery_CashEntryView {
+	"""
+	Stable, monotonic id within the session. Use it as the list key.
+	"""
+	seq: Int!
+	tick: Int!
+	kind: Delivery_CashKind!
+	"""
+	Economic bucket used by the monthly report.
+	"""
+	category: Delivery_CashCategory!
+	"""
+	Signed dollars: positive for money in, negative for money out. This is what
+	was actually charged, so a fee clamped by an empty balance shows the
+	clamped amount rather than the nominal bill.
+	"""
+	amount: Int!
+	"""
+	Running balance after this movement.
+	"""
+	balance: Int!
+	"""
+	The car this movement belongs to, when it belongs to one.
+	"""
+	carId: ID
+	carName: String
+	orderId: ID
+	"""
+	Short human-readable detail, e.g. "pizza to Rosa's" or "fleet upkeep".
+	"""
+	memo: String!
+}
+enum Delivery_CashKind {
+	OPENING
+	DELIVERY
+	LATE_DELIVERY
+	ORDER_FINE
+	UPKEEP
+	CHARGING
+	TOW
+	CAR_PURCHASE
+	BUILD
+	GRANT
+}
+enum Delivery_CashCategory {
+	OPENING
+	DELIVERY_INCOME
+	REWARDS
+	ORDER_FINES
+	UPKEEP
+	CHARGING
+	TOWS
+	CAR_PURCHASES
+	BUILDS
+	OTHER
+}
+"""
+One accounting month of income and expenses.
+"""
+type Delivery_MonthView {
+	"""
+	One-based month number. Month 1 covers ticks 0 through ticksPerMonth-1.
+	"""
+	index: Int!
+	startTick: Int!
+	endTick: Int!
+	"""
+	Positive magnitude of money in.
+	"""
+	income: Int!
+	"""
+	Positive magnitude of money out.
+	"""
+	expenses: Int!
+	"""
+	income minus expenses.
+	"""
+	net: Int!
+	categories: [Delivery_MonthCategoryView!]!
+}
+type Delivery_MonthCategoryView {
+	category: Delivery_CashCategory!
+	"""
+	Positive magnitude in this category, or zero.
+	"""
+	income: Int!
+	"""
+	Positive magnitude out in this category, or zero.
+	"""
+	expenses: Int!
 }
 type Delivery_ItemCount {
 	item: String!
 	count: Int!
 }
-type Delivery_AchievementView {
+type Delivery_GrowthView {
 	id: ID!
+	tick: Int!
 	title: String!
 	description: String!
 	done: Boolean!
-	"""
-	Progress toward target, in that requirement's own units.
-	"""
-	progress: Int!
-	target: Int!
-}
-type Delivery_UnlockView {
-	id: ID!
-	title: String!
-	description: String!
-	"""
-	The gate in words, e.g. "5 deliveries" or "earn $2000".
-	"""
-	requires: String!
-	earned: Boolean!
-	"""
-	Progress toward the strictest requirement, in that requirement's own units.
-	"""
-	progress: Int!
-	"""
-	The target that progress is measured against.
-	"""
-	target: Int!
-	"""
-	The build ids this unlock makes purchasable.
-	"""
-	builds: [ID!]!
-}
-type Delivery_BuildView {
-	id: ID!
-	title: String!
-	description: String!
-	cost: Int!
-	"""
-	The right to build has been earned.
-	"""
-	unlocked: Boolean!
-	completed: Boolean!
-	"""
-	Money covers the cost right now.
-	"""
-	affordable: Boolean!
-	"""
-	A legal placement exists right now.
-	"""
-	applicable: Boolean!
-	"""
-	Why the build cannot be placed, when it cannot.
-	"""
-	problem: String
 }
 type Delivery_EventView {
 	tick: Int!
 	"""
-	One of the car_* / order_* / build_* / unlock_* / closure_* names the engine emits.
+	One of the car_* / order_* / city_growth / closure_* names the engine emits.
 	"""
 	type: String!
 	message: String!
@@ -527,9 +664,21 @@ type Delivery_Query {
 	"""
 	health: Delivery_Health!
 	"""
-	The static city with every district revealed.
+	Published cities plus the signed-in caller's own drafts. Another player's draft is never listed.
 	"""
-	city: Delivery_CityView!
+	cities: [Delivery_CityInfo!]!
+	"""
+	The static city with every district revealed. An omitted id selects the default city; a
+	published city or the caller's own draft is visible, another player's draft is null.
+	"""
+	city(id: ID): Delivery_CityView
+	"""
+	The exact city JSON document for a published city or the caller's own draft.
+	Another player's draft and a missing city return null. Built-in cities are readable
+	by everyone. This is the authoring document: it carries the decoded, defaulted config
+	with the same key names players write.
+	"""
+	cityConfig(id: ID!): String
 	"""
 	Every save on disk, newest first.
 	"""
@@ -556,12 +705,13 @@ type Delivery_Query {
 }
 type Delivery_Mutation {
 	"""
-	Start a new city. Both fields optional; a seed makes it reproducible, and an
-	omitted id is generated. A signed-in creator's session belongs to their
-	account. The response carries the secret ownerToken, needed to change the
-	session later, so keep it.
+	Start a new city. Both fields optional; a seed makes it reproducible, and an omitted id is
+	generated. cityId selects the city config to snapshot (omitted = the default city); the
+	session keeps that snapshot, so later city edits never change a running game. A signed-in
+	creator's session belongs to their account. The response carries the secret ownerToken,
+	needed to change the session later, so keep it.
 	"""
-	createSession(id: ID, seed: Int): Delivery_CreateSessionResult!
+	createSession(id: ID, seed: Int, cityId: ID): Delivery_CreateSessionResult!
 	"""
 	Queue one step for one car. Does NOT advance the clock. Only the session's
 	creator may change it: pass the ownerToken from createSession, or be signed in
@@ -592,10 +742,6 @@ type Delivery_Mutation {
 	"""
 	towCar(id: ID!, carId: ID!, ownerToken: String): Delivery_Snapshot!
 	"""
-	Purchase an unlocked build; mutates the map atomically. Creator-only, as moveCar.
-	"""
-	build(id: ID!, buildId: ID!, ownerToken: String): Delivery_Snapshot!
-	"""
 	Write the save to disk. Creator-only, as moveCar.
 	"""
 	saveSession(id: ID!, ownerToken: String): Delivery_Snapshot!
@@ -614,6 +760,33 @@ type Delivery_Mutation {
 	its owner token (up to 100 per call). UNAUTHENTICATED when not signed in.
 	"""
 	claimSessions(claims: [Delivery_SessionClaimInput!]!): [Delivery_SessionClaimResult!]!
+	"""
+	Saves a new DRAFT city owned by the signed-in player (UNAUTHENTICATED otherwise). config is
+	the raw city JSON; it is stored as written, so validateCity and publishCity can report every
+	problem.
+	"""
+	createCity(id: ID!, config: String!): Delivery_CityView!
+	"""
+	Replaces the caller's own city and puts it back into DRAFT. Only the owner may edit a
+	community city; shipped and legacy unowned cities need X-Admin-Key.
+	"""
+	updateCity(id: ID!, config: String!): Delivery_CityView!
+	"""
+	Publishes a draft after the full startup validation (grid, districts, orders and
+	reachability). Only the owner may do it, and an invalid city is refused with
+	INVALID_ARGUMENT.
+	"""
+	publishCity(id: ID!): Delivery_CityView!
+	"""
+	Removes a city. Community cities need their owner; shipped and legacy unowned cities need
+	X-Admin-Key. Sessions already started keep their snapshot.
+	"""
+	deleteCity(id: ID!): Boolean!
+	"""
+	Checks raw city JSON and stores nothing. Signed-in players only. valid means it parses into a
+	city; publishable means publishCity would accept it.
+	"""
+	validateCity(config: String!): Delivery_CityValidationResult!
 }
 enum Mazes_Direction {
 	UP
@@ -646,6 +819,16 @@ enum Mazes_Via {
 enum Mazes_SessionSort {
 	RECENT
 	CREATED
+}
+enum Mazes_MapStatus {
+	"""
+	A work in progress: only its owner can see, edit, play or publish it.
+	"""
+	DRAFT
+	"""
+	Visible to everyone and playable by anyone.
+	"""
+	PUBLISHED
 }
 """
 A tile coordinate in the tower. level 0 is the bottom; x = column, y = row (row 0 on top).
@@ -696,6 +879,15 @@ type Mazes_Map {
 	Null if the finish is unreachable.
 	"""
 	forcedDescents: Int
+	"""
+	DRAFT maps are visible only to their owner and cannot be played or published by anyone else.
+	Every shipped map is PUBLISHED.
+	"""
+	status: Mazes_MapStatus!
+	"""
+	True when the signed-in caller created this community map.
+	"""
+	ownedByMe: Boolean!
 }
 """
 Full map for the editor (admin only).
@@ -720,6 +912,15 @@ type Mazes_AdminMap {
 	parMoves: Int
 	minLevelChanges: Int
 	forcedDescents: Int
+	"""
+	DRAFT maps are visible only to their owner and cannot be played or published by anyone else.
+	Every shipped map is PUBLISHED.
+	"""
+	status: Mazes_MapStatus!
+	"""
+	True when the signed-in caller created this community map.
+	"""
+	ownedByMe: Boolean!
 }
 """
 What a player can see: one level only. Rows use the layout glyphs
@@ -824,44 +1025,100 @@ input Mazes_MapInput {
 	levels: [[String!]!]!
 	maxMoves: Int
 }
+"""
+The result of createSession. The ownerToken is returned only here and never by a query, a list or
+a subscription: it is the credential that lets this browser change the session, while the session
+id alone stays enough to read it.
+"""
+type Mazes_CreateSessionResult {
+	session: Mazes_Session!
+	"""
+	Secret that proves you created this session; keep it private.
+	"""
+	ownerToken: String!
+}
 type Mazes_Query {
 	"""
-	Public catalog. Never exposes layouts beyond the start level (see Map.preview).
+	Public catalog: published maps plus the signed-in caller's own drafts. Another player's draft
+	is never listed. Never exposes layouts beyond the start level (see Map.preview).
 	"""
 	maps: [Mazes_Map!]!
+	"""
+	One map. Another player's draft is hidden and null, exactly like an unknown id.
+	"""
 	map(id: ID!): Mazes_Map
 	"""
-	Admin (X-Admin-Key): the full layout of every level, for the map editor.
+	Full layout of every level, for the map editor. The signed-in owner may load
+	their own community map, draft or published; a shipped map still needs
+	X-Admin-Key. Another player's map is hidden and null.
 	"""
 	adminMap(id: ID!): Mazes_AdminMap
+	"""
+	Public read: anyone with the id may watch a session.
+	"""
 	session(id: ID!): Mazes_Session
 	sessions(sort: Mazes_SessionSort = RECENT, limit: Int = 50, mapId: ID): [Mazes_Session!]!
+	"""
+	Whether this caller may change the session (and so is its player rather than a spectator):
+	its creator by owner token or owning account, or anyone for a session created before owner
+	tokens. Reads stay public, so this decides between playing and spectating. Never errors: an
+	unknown id is simply false.
+	"""
+	canPlaySession(id: ID!, ownerToken: String): Boolean!
 }
 type Mazes_Mutation {
-	createSession(mapID: ID!, displayName: String): Mazes_Session!
-	deleteSession(id: ID!): Boolean!
-	renameSession(id: ID!, displayName: String!): Mazes_Session!
 	"""
-	One move. A blocked attempt succeeds but changes nothing (lastEvent.blocked).
+	Start a new game on a map. A signed-in creator's session belongs to their account; the
+	response also carries the secret ownerToken needed to change it later, so keep it.
 	"""
-	move(sessionID: ID!, direction: Mazes_Direction!): Mazes_Session!
+	createSession(mapID: ID!, displayName: String): Mazes_CreateSessionResult!
+	"""
+	Delete a session. Creator-only: pass the ownerToken from createSession or be signed in to the
+	owning account (FORBIDDEN otherwise). Sessions created before owner tokens stay open.
+	"""
+	deleteSession(id: ID!, ownerToken: String): Boolean!
+	renameSession(id: ID!, displayName: String!, ownerToken: String): Mazes_Session!
+	"""
+	One move. A blocked attempt succeeds but changes nothing (lastEvent.blocked). Creator-only, as
+	deleteSession.
+	"""
+	move(sessionID: ID!, direction: Mazes_Direction!, ownerToken: String): Mazes_Session!
 	"""
 	Several moves in order; stops early once the game is WON or LOST. With stopOnBlocked (the
 	default) it also stops at the first blocked attempt, so a wrong plan cannot keep running
 	from the wrong tile: check lastEvent.blocked and state.pos, then send a corrected plan.
-	Pass stopOnBlocked: false to skip blocked moves and carry on.
+	Pass stopOnBlocked: false to skip blocked moves and carry on. Creator-only, as deleteSession.
 	"""
-	bulkMove(sessionID: ID!, directions: [Mazes_Direction!]!, stopOnBlocked: Boolean = true): Mazes_Session!
+	bulkMove(sessionID: ID!, directions: [Mazes_Direction!]!, stopOnBlocked: Boolean = true, ownerToken: String): Mazes_Session!
 	"""
-	Back to the start of the same map; keeps attempts and bestMoves.
+	Back to the start of the same map; keeps attempts and bestMoves. Creator-only, as
+	deleteSession.
 	"""
-	reset(sessionID: ID!): Mazes_Session!
+	reset(sessionID: ID!, ownerToken: String): Mazes_Session!
 	"""
-	Admin (X-Admin-Key) mutations.
+	Creates a DRAFT map owned by the signed-in player (UNAUTHENTICATED otherwise). A draft may be
+	saved while invalid; publishMap requires the finish to be reachable.
 	"""
 	createMap(map: Mazes_MapInput!): Mazes_AdminMap!
+	"""
+	Replaces the caller's community map and puts it back into DRAFT. Only the owner may edit a
+	community map; shipped and legacy unowned maps need X-Admin-Key.
+	"""
 	updateMap(map: Mazes_MapInput!): Mazes_AdminMap!
+	"""
+	Publishes a draft. Only its owner may do it, and a map whose finish is unreachable is refused
+	with INVALID_ARGUMENT.
+	"""
+	publishMap(id: ID!): Mazes_AdminMap!
+	"""
+	Removes a map. Community maps need their owner; shipped and legacy unowned maps need
+	X-Admin-Key.
+	"""
 	deleteMap(id: ID!): Boolean!
+	"""
+	Checks a map and stores nothing. Signed-in players only. finishReachable is the publication
+	gate: a map is publishable when it is structurally valid and the finish can be reached.
+	"""
 	validateMap(map: Mazes_MapInput!): Mazes_MapValidationResult!
 }
 enum Motor_Instruction {
@@ -959,6 +1216,15 @@ type Motor_Map {
 	True for a map shipped with the game: only an admin may change or delete it.
 	"""
 	builtin: Boolean!
+	"""
+	DRAFT maps are visible only to their owner and cannot be played or published
+	by anyone else. Every shipped map is PUBLISHED.
+	"""
+	status: Motor_MapStatus!
+	"""
+	True when the signed-in caller created this community map.
+	"""
+	ownedByMe: Boolean!
 	width: Int!
 	height: Int!
 	layout: [String!]!
@@ -1107,6 +1373,16 @@ type Motor_MapValidationResult {
 	"""
 	unreachableTreats: [Motor_Position!]!
 }
+enum Motor_MapStatus {
+	"""
+	A work in progress: only its owner can see, edit, play or publish it.
+	"""
+	DRAFT
+	"""
+	Visible to everyone and playable by anyone.
+	"""
+	PUBLISHED
+}
 input Motor_MapInput {
 	id: ID!
 	name: String!
@@ -1223,7 +1499,13 @@ type Motor_SessionClaimResult {
 	status: Motor_ClaimStatus!
 }
 type Motor_Query {
+	"""
+	Published maps plus the signed-in caller's own drafts. Another player's draft is never listed.
+	"""
 	maps: [Motor_Map!]!
+	"""
+	One map. Another player's draft is null, exactly like an unknown id.
+	"""
 	map(id: ID!): Motor_Map
 	"""
 	One session. The program is included only for a caller who may change it; pass the ownerToken
@@ -1295,14 +1577,27 @@ type Motor_Mutation {
 	"""
 	claimSessions(claims: [Motor_SessionClaimInput!]!): [Motor_SessionClaimResult!]!
 	"""
-	Creating a map needs a signed-in player (UNAUTHENTICATED otherwise); validateMap is open to everyone.
+	Creates a DRAFT map owned by the signed-in player (UNAUTHENTICATED otherwise). The map is
+	saved even when it is not valid yet; publishMap checks it. Use validateMap to preview problems.
 	"""
 	createMap(map: Motor_MapInput!): Motor_Map!
+	"""
+	Checks a map definition and stores nothing. Signed-in players only.
+	"""
 	validateMap(map: Motor_MapInput!): Motor_MapValidationResult!
 	"""
-	Anyone may change or remove a player-created map; shipped maps need X-Admin-Key.
+	Replaces the caller's community map and puts it back into DRAFT. Only the owner may edit a
+	community map; shipped and legacy unowned maps need X-Admin-Key.
 	"""
 	updateMap(map: Motor_MapInput!): Motor_Map!
+	"""
+	Publishes a valid draft. Only its owner may do it, and an invalid map (unreachable treats,
+	bad layout) is refused with INVALID_ARGUMENT.
+	"""
+	publishMap(id: ID!): Motor_Map!
+	"""
+	Removes a map. Community maps need their owner; shipped and legacy unowned maps need X-Admin-Key.
+	"""
 	deleteMap(id: ID!): Boolean!
 }
 enum Tesla_Direction {
@@ -1318,6 +1613,16 @@ enum Tesla_SortOrder {
 enum Tesla_SessionSort {
 	CREATED
 	ACTION
+}
+enum Tesla_MapStatus {
+	"""
+	A work in progress: only its owner can see, edit, play or publish it.
+	"""
+	DRAFT
+	"""
+	Visible to everyone and playable by anyone.
+	"""
+	PUBLISHED
 }
 type Tesla_DeleteSessionResult {
 	message: String!
@@ -1430,9 +1735,19 @@ type Tesla_GameMap {
 	"""
 	builtin: Boolean!
 	"""
-	Only set in the createMap response: the token that authorizes updateMap and
-	deleteMap for this map (send it as the editKey argument). It is never returned
-	again, so store it. Always null on every other query/mutation.
+	DRAFT maps are visible only to their owner and cannot be played or published by anyone else.
+	Every shipped map is PUBLISHED.
+	"""
+	status: Tesla_MapStatus!
+	"""
+	True when the signed-in caller created this community map.
+	"""
+	ownedByMe: Boolean!
+	"""
+	Only set when a legacy, unowned map is created: the token that claimMap accepts to attach it
+	to the signed-in account (until then it also authorizes updateMap and deleteMap). It is never
+	returned again, so store it. Null on every other query/mutation; new maps are owned by their
+	creator and need no token.
 	"""
 	editKey: String
 }
@@ -1485,6 +1800,15 @@ type Tesla_MapInfo {
 	True for maps shipped with the server.
 	"""
 	builtin: Boolean!
+	"""
+	DRAFT maps are visible only to their owner and cannot be played or published by anyone else.
+	Every shipped map is PUBLISHED.
+	"""
+	status: Tesla_MapStatus!
+	"""
+	True when the signed-in caller created this community map.
+	"""
+	ownedByMe: Boolean!
 }
 type Tesla_MoveResult {
 	success: Boolean!
@@ -1561,7 +1885,13 @@ type Tesla_Query {
 	unifiedSessions(mapName: String): Tesla_UnifiedSessions!
 	gameState(sessionID: ID!): Tesla_GameState!
 	history(sessionID: ID!, page: Int = 1, limit: Int = 50, order: Tesla_SortOrder = DESC): Tesla_HistoryResponse!
+	"""
+	Published maps plus the signed-in caller's own drafts. Another player's draft is never listed.
+	"""
 	maps: [Tesla_MapInfo!]!
+	"""
+	One map. Another player's draft is hidden and null, exactly like an unknown name.
+	"""
 	map(name: String!, password: String): Tesla_GameMap!
 }
 type Tesla_Mutation {
@@ -1571,8 +1901,30 @@ type Tesla_Mutation {
 	move(sessionID: ID!, direction: Tesla_Direction!, reset: Boolean = false): Tesla_MoveResult!
 	bulkMove(sessionID: ID!, moves: [Tesla_Direction!]!, reset: Boolean = false): Tesla_BulkMoveResult!
 	reset(sessionID: ID!): Tesla_GameState!
+	"""
+	Creates a DRAFT map owned by the signed-in player (UNAUTHENTICATED otherwise). Update it
+	until it wins, then publishMap.
+	"""
 	createMap(name: String!, map: Tesla_GameMapInput!): Tesla_GameMap!
+	"""
+	Replaces the caller's own map and puts it back into DRAFT. Only the owner may edit a
+	community map; shipped and legacy unowned maps need X-Admin-Key. editKey is accepted only for
+	legacy unowned maps, never as a substitute for ownership.
+	"""
 	updateMap(name: String!, patch: Tesla_GameMapPatchInput!, editKey: String): Tesla_GameMap!
+	"""
+	Publishes a valid draft. Only its owner may do it; a map whose parks cannot all be visited is
+	refused with INVALID_ARGUMENT.
+	"""
+	publishMap(name: String!): Tesla_GameMap!
+	"""
+	Attaches a legacy unowned map to the signed-in player using the editKey it was created with.
+	"""
+	claimMap(name: String!, editKey: String!): Tesla_GameMap!
+	"""
+	Removes a map. The owner may delete their own community map; shipped and legacy unowned maps
+	need X-Admin-Key. editKey is accepted only for legacy unowned maps.
+	"""
 	deleteMap(name: String!, editKey: String): Tesla_DeleteSessionResult!
 	validateMap(map: Tesla_GameMapInput!): Tesla_MapValidationResult!
 }

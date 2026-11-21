@@ -32,6 +32,16 @@ enum SessionSort {
 	RECENT
 	CREATED
 }
+enum MapStatus {
+	"""
+	A work in progress: only its owner can see, edit, play or publish it.
+	"""
+	DRAFT
+	"""
+	Visible to everyone and playable by anyone.
+	"""
+	PUBLISHED
+}
 """
 A tile coordinate in the tower. level 0 is the bottom; x = column, y = row (row 0 on top).
 """
@@ -81,6 +91,15 @@ type Map {
 	Null if the finish is unreachable.
 	"""
 	forcedDescents: Int
+	"""
+	DRAFT maps are visible only to their owner and cannot be played or published by anyone else.
+	Every shipped map is PUBLISHED.
+	"""
+	status: MapStatus!
+	"""
+	True when the signed-in caller created this community map.
+	"""
+	ownedByMe: Boolean!
 }
 """
 Full map for the editor (admin only).
@@ -105,6 +124,15 @@ type AdminMap {
 	parMoves: Int
 	minLevelChanges: Int
 	forcedDescents: Int
+	"""
+	DRAFT maps are visible only to their owner and cannot be played or published by anyone else.
+	Every shipped map is PUBLISHED.
+	"""
+	status: MapStatus!
+	"""
+	True when the signed-in caller created this community map.
+	"""
+	ownedByMe: Boolean!
 }
 """
 What a player can see: one level only. Rows use the layout glyphs
@@ -209,45 +237,101 @@ input MapInput {
 	levels: [[String!]!]!
 	maxMoves: Int
 }
+"""
+The result of createSession. The ownerToken is returned only here and never by a query, a list or
+a subscription: it is the credential that lets this browser change the session, while the session
+id alone stays enough to read it.
+"""
+type CreateSessionResult {
+	session: Session!
+	"""
+	Secret that proves you created this session; keep it private.
+	"""
+	ownerToken: String!
+}
 scalar Time
 type Query {
 	"""
-	Public catalog. Never exposes layouts beyond the start level (see Map.preview).
+	Public catalog: published maps plus the signed-in caller's own drafts. Another player's draft
+	is never listed. Never exposes layouts beyond the start level (see Map.preview).
 	"""
 	maps: [Map!]!
+	"""
+	One map. Another player's draft is hidden and null, exactly like an unknown id.
+	"""
 	map(id: ID!): Map
 	"""
-	Admin (X-Admin-Key): the full layout of every level, for the map editor.
+	Full layout of every level, for the map editor. The signed-in owner may load
+	their own community map, draft or published; a shipped map still needs
+	X-Admin-Key. Another player's map is hidden and null.
 	"""
 	adminMap(id: ID!): AdminMap
+	"""
+	Public read: anyone with the id may watch a session.
+	"""
 	session(id: ID!): Session
 	sessions(sort: SessionSort = RECENT, limit: Int = 50, mapId: ID): [Session!]!
+	"""
+	Whether this caller may change the session (and so is its player rather than a spectator):
+	its creator by owner token or owning account, or anyone for a session created before owner
+	tokens. Reads stay public, so this decides between playing and spectating. Never errors: an
+	unknown id is simply false.
+	"""
+	canPlaySession(id: ID!, ownerToken: String): Boolean!
 }
 type Mutation {
-	createSession(mapID: ID!, displayName: String): Session!
-	deleteSession(id: ID!): Boolean!
-	renameSession(id: ID!, displayName: String!): Session!
 	"""
-	One move. A blocked attempt succeeds but changes nothing (lastEvent.blocked).
+	Start a new game on a map. A signed-in creator's session belongs to their account; the
+	response also carries the secret ownerToken needed to change it later, so keep it.
 	"""
-	move(sessionID: ID!, direction: Direction!): Session!
+	createSession(mapID: ID!, displayName: String): CreateSessionResult!
+	"""
+	Delete a session. Creator-only: pass the ownerToken from createSession or be signed in to the
+	owning account (FORBIDDEN otherwise). Sessions created before owner tokens stay open.
+	"""
+	deleteSession(id: ID!, ownerToken: String): Boolean!
+	renameSession(id: ID!, displayName: String!, ownerToken: String): Session!
+	"""
+	One move. A blocked attempt succeeds but changes nothing (lastEvent.blocked). Creator-only, as
+	deleteSession.
+	"""
+	move(sessionID: ID!, direction: Direction!, ownerToken: String): Session!
 	"""
 	Several moves in order; stops early once the game is WON or LOST. With stopOnBlocked (the
 	default) it also stops at the first blocked attempt, so a wrong plan cannot keep running
 	from the wrong tile: check lastEvent.blocked and state.pos, then send a corrected plan.
-	Pass stopOnBlocked: false to skip blocked moves and carry on.
+	Pass stopOnBlocked: false to skip blocked moves and carry on. Creator-only, as deleteSession.
 	"""
-	bulkMove(sessionID: ID!, directions: [Direction!]!, stopOnBlocked: Boolean = true): Session!
+	bulkMove(sessionID: ID!, directions: [Direction!]!, stopOnBlocked: Boolean = true, ownerToken: String): Session!
 	"""
-	Back to the start of the same map; keeps attempts and bestMoves.
+	Back to the start of the same map; keeps attempts and bestMoves. Creator-only, as
+	deleteSession.
 	"""
-	reset(sessionID: ID!): Session!
+	reset(sessionID: ID!, ownerToken: String): Session!
 	"""
-	Admin (X-Admin-Key) mutations.
+	Creates a DRAFT map owned by the signed-in player (UNAUTHENTICATED otherwise). A draft may be
+	saved while invalid; publishMap requires the finish to be reachable.
 	"""
 	createMap(map: MapInput!): AdminMap!
+	"""
+	Replaces the caller's community map and puts it back into DRAFT. Only the owner may edit a
+	community map; shipped and legacy unowned maps need X-Admin-Key.
+	"""
 	updateMap(map: MapInput!): AdminMap!
+	"""
+	Publishes a draft. Only its owner may do it, and a map whose finish is unreachable is refused
+	with INVALID_ARGUMENT.
+	"""
+	publishMap(id: ID!): AdminMap!
+	"""
+	Removes a map. Community maps need their owner; shipped and legacy unowned maps need
+	X-Admin-Key.
+	"""
 	deleteMap(id: ID!): Boolean!
+	"""
+	Checks a map and stores nothing. Signed-in players only. finishReachable is the publication
+	gate: a map is publishable when it is structurally valid and the finish can be reached.
+	"""
 	validateMap(map: MapInput!): MapValidationResult!
 }
 type Subscription {

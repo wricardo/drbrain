@@ -128,6 +128,11 @@ type MapInfo struct {
 	MaxBattery  int    `json:"maxBattery"`
 	// True for maps shipped with the server.
 	Builtin bool `json:"builtin"`
+	// DRAFT maps are visible only to their owner and cannot be played or published by anyone else.
+	// Every shipped map is PUBLISHED.
+	Status MapStatus `json:"status"`
+	// True when the signed-in caller created this community map.
+	OwnedByMe bool `json:"ownedByMe"`
 }
 
 type MapValidationResult struct {
@@ -280,6 +285,63 @@ func (e *Direction) UnmarshalJSON(b []byte) error {
 }
 
 func (e Direction) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type MapStatus string
+
+const (
+	// A work in progress: only its owner can see, edit, play or publish it.
+	MapStatusDraft MapStatus = "DRAFT"
+	// Visible to everyone and playable by anyone.
+	MapStatusPublished MapStatus = "PUBLISHED"
+)
+
+var AllMapStatus = []MapStatus{
+	MapStatusDraft,
+	MapStatusPublished,
+}
+
+func (e MapStatus) IsValid() bool {
+	switch e {
+	case MapStatusDraft, MapStatusPublished:
+		return true
+	}
+	return false
+}
+
+func (e MapStatus) String() string {
+	return string(e)
+}
+
+func (e *MapStatus) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = MapStatus(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid MapStatus", str)
+	}
+	return nil
+}
+
+func (e MapStatus) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *MapStatus) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e MapStatus) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

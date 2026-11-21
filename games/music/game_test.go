@@ -13,6 +13,7 @@ import (
 
 	musicgraph "github.com/wricardo/drbrain/games/music/graph"
 	"github.com/wricardo/drbrain/platform"
+	"github.com/wricardo/drbrain/platform/pgdb/pgtest"
 )
 
 func TestGameMetadata(t *testing.T) {
@@ -49,14 +50,14 @@ func clearEnv(t *testing.T, keys ...string) {
 }
 
 func TestLoadEnvDefaults(t *testing.T) {
-	clearEnv(t, "MUSIC_SCORES_DIR", "MUSIC_CUSTOM_SCORES_DIR", "MUSIC_SESSIONS_DIR",
+	clearEnv(t, "MUSIC_SCORES_DIR", "MUSIC_CUSTOM_SCORES_DIR",
 		"MUSIC_MAX_SESSIONS", "MUSIC_SESSION_TTL", "MUSIC_PUBLIC_URL", "MUSIC_DEBUG")
 	e, err := loadEnv()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if e.ScoresDir != "scores" || e.SessionsDir != "sessions" || e.CustomScoresDir != "" {
-		t.Errorf("dirs = %q/%q/%q", e.ScoresDir, e.SessionsDir, e.CustomScoresDir)
+	if e.ScoresDir != "scores" || e.CustomScoresDir != "" {
+		t.Errorf("dirs = %q/%q", e.ScoresDir, e.CustomScoresDir)
 	}
 	if e.MaxSessions != 1000 {
 		t.Errorf("MaxSessions = %d, want 1000", e.MaxSessions)
@@ -72,7 +73,6 @@ func TestLoadEnvDefaults(t *testing.T) {
 func TestLoadEnvPrefixed(t *testing.T) {
 	t.Setenv("MUSIC_SCORES_DIR", "custom-scores")
 	t.Setenv("MUSIC_CUSTOM_SCORES_DIR", "mine")
-	t.Setenv("MUSIC_SESSIONS_DIR", "custom-sessions")
 	t.Setenv("MUSIC_MAX_SESSIONS", "7")
 	t.Setenv("MUSIC_SESSION_TTL", "90m")
 	t.Setenv("MUSIC_PUBLIC_URL", "https://example.test/music")
@@ -81,7 +81,7 @@ func TestLoadEnvPrefixed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if e.ScoresDir != "custom-scores" || e.CustomScoresDir != "mine" || e.SessionsDir != "custom-sessions" {
+	if e.ScoresDir != "custom-scores" || e.CustomScoresDir != "mine" {
 		t.Errorf("dirs = %+v", e)
 	}
 	if e.MaxSessions != 7 || e.SessionTTL != 90*time.Minute || e.PublicURL != "https://example.test/music" || !e.Debug {
@@ -93,14 +93,13 @@ func TestMount_WiresResolverAndShutdownIsIdempotent(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("MUSIC_SCORES_DIR", filepath.Join(root, "scores"))
 	t.Setenv("MUSIC_CUSTOM_SCORES_DIR", filepath.Join(root, "custom-scores"))
-	t.Setenv("MUSIC_SESSIONS_DIR", filepath.Join(root, "sessions"))
 	t.Setenv("MUSIC_MAX_SESSIONS", "10")
 	t.Setenv("MUSIC_SESSION_TTL", "1h")
 	t.Setenv("MUSIC_PUBLIC_URL", "https://example.test/music")
 
 	g := New()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	if err := g.Mount(http.NewServeMux(), platform.Deps{Logger: logger}); err != nil {
+	if err := g.Mount(http.NewServeMux(), platform.Deps{Logger: logger, DB: pgtest.Pool(t)}); err != nil {
 		t.Fatalf("Mount: %v", err)
 	}
 	if g.LLMSPublicURL() != "https://example.test/music" {
@@ -122,15 +121,27 @@ func TestMount_MissingScoreDirsAreCreated(t *testing.T) {
 	root := t.TempDir()
 	scoresDir := filepath.Join(root, "scores")
 	t.Setenv("MUSIC_SCORES_DIR", scoresDir)
-	t.Setenv("MUSIC_SESSIONS_DIR", filepath.Join(root, "sessions"))
 	t.Setenv("MUSIC_MAX_SESSIONS", "10")
 
 	g := New()
-	if err := g.Mount(http.NewServeMux(), platform.Deps{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}); err != nil {
+	deps := platform.Deps{Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), DB: pgtest.Pool(t)}
+	if err := g.Mount(http.NewServeMux(), deps); err != nil {
 		t.Fatalf("Mount: %v", err)
 	}
 	defer g.Shutdown(context.Background())
 	if info, err := os.Stat(scoresDir); err != nil || !info.IsDir() {
 		t.Fatalf("scores dir was not created: %v", err)
+	}
+}
+
+func TestMount_RequiresDatabasePool(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("MUSIC_SCORES_DIR", filepath.Join(root, "scores"))
+	t.Setenv("MUSIC_MAX_SESSIONS", "10")
+
+	g := New()
+	err := g.Mount(http.NewServeMux(), platform.Deps{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if err == nil || !strings.Contains(err.Error(), "PostgreSQL is required") {
+		t.Fatalf("Mount = %v, want a PostgreSQL requirement error", err)
 	}
 }

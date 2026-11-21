@@ -196,9 +196,9 @@ and `deleteSession` on a session belonging to a signed-in human needs their logi
 
 ## Creating maps
 
-`validateMap` is open to everyone — check a draft first. `createMap` needs a signed-in player: call
-`registerWithPassword` or `logInWithPassword` once, keep the returned `token` and send it as
-`Authorization: Bearer <token>` on the mutation (or use `/editor` in a signed-in browser):
+Map operations need a signed-in player. Call `registerWithPassword` or `logInWithPassword` once,
+keep the returned `token` and send it as `Authorization: Bearer <token>` on every map mutation
+(or use `/editor` in a signed-in browser). `validateMap` stores nothing and works before you save:
 
 ```graphql
 mutation {
@@ -223,9 +223,15 @@ mutation {
   letter, and each portal digit must appear exactly twice, or the map is rejected.
 - Defaults: main tape 10, subs `[10]`, max steps 200, max call depth 16, recursion off.
   `subTapeLengths: []` means no subs (different from omitting it).
-- `updateMap` and `deleteMap` work on the map you created. Maps with `builtin: true` ship with
-  the game and need an `X-Admin-Key` header to change; see provenance with `maps { id builtin }`.
-- Play your map like any other: `createSession(mapID: "my_map")`.
+- `createMap` stores a **DRAFT** owned by you; it does not have to validate yet. Use
+  `publishMap(id: "my_map")` to make it public, which runs the full validation (structure plus
+  every treat reachable) and fails with `INVALID_ARGUMENT` while problems remain.
+- `updateMap` works only for the map's owner and puts it back into `DRAFT`; publish again after
+  changes. `deleteMap` also requires the owner. `validateMap` requires a signed-in player too.
+- `maps` returns published maps plus your own drafts; `map(id)` returns another player's draft as
+  `null`. A draft can be played by its owner (`createSession`) and is hidden from everyone else.
+- Maps with `builtin: true` ship with the game and need an `X-Admin-Key` header to change. See
+  `status` (DRAFT/PUBLISHED) and `ownedByMe` on `maps { id builtin status ownedByMe }`.
 
 ---
 

@@ -32,10 +32,6 @@ models:
     model: github.com/99designs/gqlgen/graphql.Boolean
   Time:
     model: github.com/99designs/gqlgen/graphql.Time
-  Delivery_AchievementView:
-    model: github.com/wricardo/drbrain/games/delivery/graph/model.AchievementView
-  Delivery_BuildView:
-    model: github.com/wricardo/drbrain/games/delivery/graph/model.BuildView
   Delivery_CarClassView:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.CarClassView
   Delivery_CarState:
@@ -44,6 +40,18 @@ models:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.CarView
   Delivery_CarWindow:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.CarWindow
+  Delivery_CashCategory:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.CashCategory
+  Delivery_CashEntryView:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.CashEntryView
+  Delivery_CashKind:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.CashKind
+  Delivery_CityInfo:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.CityInfo
+  Delivery_CityStatus:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.CityStatus
+  Delivery_CityValidationResult:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.CityValidationResult
   Delivery_CityView:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.CityView
   Delivery_ClaimStatus:
@@ -56,12 +64,18 @@ models:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.Direction
   Delivery_EventView:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.EventView
+  Delivery_GrowthView:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.GrowthView
   Delivery_Health:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.Health
   Delivery_ItemCount:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.ItemCount
   Delivery_LedgerView:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.LedgerView
+  Delivery_MonthCategoryView:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.MonthCategoryView
+  Delivery_MonthView:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.MonthView
   Delivery_Mutation:
     model: github.com/wricardo/drbrain/games/delivery/graph.Resolver
     fields:
@@ -81,8 +95,6 @@ models:
         resolver: true
       towCar:
         resolver: true
-      build:
-        resolver: true
       saveSession:
         resolver: true
       evictSession:
@@ -90,6 +102,16 @@ models:
       deleteSession:
         resolver: true
       claimSessions:
+        resolver: true
+      createCity:
+        resolver: true
+      updateCity:
+        resolver: true
+      publishCity:
+        resolver: true
+      deleteCity:
+        resolver: true
+      validateCity:
         resolver: true
   Delivery_OrderState:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.OrderState
@@ -102,7 +124,11 @@ models:
     fields:
       health:
         resolver: true
+      cities:
+        resolver: true
       city:
+        resolver: true
+      cityConfig:
         resolver: true
       sessions:
         resolver: true
@@ -124,8 +150,6 @@ models:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.SessionSummary
   Delivery_Snapshot:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.Snapshot
-  Delivery_UnlockView:
-    model: github.com/wricardo/drbrain/games/delivery/graph/model.UnlockView
   Global_AccountInput:
     model: github.com/wricardo/drbrain/platform/account/graph/model.AccountInput
   Global_AuthProvider:
@@ -162,6 +186,8 @@ models:
     model: github.com/wricardo/drbrain/platform/account/graph/model.User
   Mazes_AdminMap:
     model: github.com/wricardo/drbrain/games/mazes/graph/model.AdminMap
+  Mazes_CreateSessionResult:
+    model: github.com/wricardo/drbrain/games/mazes/graph/model.CreateSessionResult
   Mazes_Direction:
     model: github.com/wricardo/drbrain/games/mazes/graph/model.Direction
   Mazes_GameState:
@@ -174,6 +200,8 @@ models:
     model: github.com/wricardo/drbrain/games/mazes/graph/model.Map
   Mazes_MapInput:
     model: github.com/wricardo/drbrain/games/mazes/graph/model.MapInput
+  Mazes_MapStatus:
+    model: github.com/wricardo/drbrain/games/mazes/graph/model.MapStatus
   Mazes_MapValidationIssue:
     model: github.com/wricardo/drbrain/games/mazes/graph/model.MapValidationIssue
   Mazes_MapValidationResult:
@@ -199,6 +227,8 @@ models:
         resolver: true
       updateMap:
         resolver: true
+      publishMap:
+        resolver: true
       deleteMap:
         resolver: true
       validateMap:
@@ -219,6 +249,8 @@ models:
       session:
         resolver: true
       sessions:
+        resolver: true
+      canPlaySession:
         resolver: true
   Mazes_Session:
     model: github.com/wricardo/drbrain/games/mazes/graph/model.Session
@@ -257,8 +289,14 @@ models:
     fields:
       builtin:
         resolver: true
+      status:
+        resolver: true
+      ownedByMe:
+        resolver: true
   Motor_MapInput:
     model: github.com/wricardo/drbrain/games/motor/graph/model.MapInput
+  Motor_MapStatus:
+    model: github.com/wricardo/drbrain/games/motor/graph/model.MapStatus
   Motor_MapValidationIssue:
     model: github.com/wricardo/drbrain/games/motor/graph/model.MapValidationIssue
   Motor_MapValidationResult:
@@ -289,6 +327,8 @@ models:
       validateMap:
         resolver: true
       updateMap:
+        resolver: true
+      publishMap:
         resolver: true
       deleteMap:
         resolver: true
@@ -421,6 +461,8 @@ models:
     model: github.com/wricardo/drbrain/games/tesla/graph/model.LegendEntryInput
   Tesla_MapInfo:
     model: github.com/wricardo/drbrain/games/tesla/graph/model.MapInfo
+  Tesla_MapStatus:
+    model: github.com/wricardo/drbrain/games/tesla/graph/model.MapStatus
   Tesla_MapValidationResult:
     model: github.com/wricardo/drbrain/games/tesla/graph/model.MapValidationResult
   Tesla_MoveHistoryEntry:
@@ -445,6 +487,10 @@ models:
       createMap:
         resolver: true
       updateMap:
+        resolver: true
+      publishMap:
+        resolver: true
+      claimMap:
         resolver: true
       deleteMap:
         resolver: true

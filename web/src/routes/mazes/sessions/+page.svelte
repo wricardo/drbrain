@@ -107,7 +107,7 @@
 	<header class="flex flex-wrap items-start justify-between gap-3">
 		<div>
 			<h1 class="text-2xl font-semibold text-indigo-950">Sessions</h1>
-			<p class="mt-1 text-sm text-slate-700">Every run on this server. Anyone can watch any session; unfinished ones can be played.</p>
+			<p class="mt-1 text-sm text-slate-700">Every run on this server. Anyone can watch any session; only its creator can move the miner.</p>
 		</div>
 		<div class="flex flex-wrap items-center gap-2">
 			<span class="basis-full text-xs text-slate-600 sm:basis-auto" data-testid="auto-refresh">{refreshing ? 'Refreshing…' : 'Auto-refreshes every 10 s'}</span>
@@ -267,11 +267,9 @@
 							<td class="hidden px-4 py-2 tabular-nums text-slate-700 sm:table-cell">{s.state.moves} / {s.map.maxMoves} moves{s.map.parMoves !== null ? ` · par ${s.map.parMoves}` : ''}</td>
 							<td class="hidden px-4 py-2 text-slate-700 sm:table-cell"><span title={absoluteTime(at)}>{relativeTime(at, now)}</span></td>
 							<td class="px-2 py-2 text-right sm:whitespace-nowrap sm:px-4">
-								{#if !isFinished(s)}
-									<a class="font-semibold text-indigo-700 underline" href="/mazes/play/{s.id}">Play</a>
-									<span aria-hidden="true" class="hidden text-slate-400 sm:inline"> · </span>
-								{/if}
-								<a class="block text-indigo-700 underline sm:inline" href="/mazes/watch/{s.id}">Watch</a>
+								<a class="font-semibold text-indigo-700 underline" href="/mazes/play/{s.id}"
+									>{isFinished(s) ? 'View' : 'Open'}</a
+								>
 							</td>
 						</tr>
 					{/each}

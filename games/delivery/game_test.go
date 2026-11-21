@@ -33,7 +33,6 @@ func TestMalformedCityFailsBeforeBind(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("DELIVERY_CITY", bad)
-	t.Setenv("DELIVERY_SESSIONS_DIR", filepath.Join(dir, "sessions"))
 
 	addr := freeAddr(t)
 	cfg := config.Config{Addr: addr, StaticDir: t.TempDir(), ShutdownTimeout: time.Second}

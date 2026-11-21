@@ -5,13 +5,23 @@
 	import { getContextClient } from '@urql/svelte';
 	import { unwrap } from '@drbrain/ui/graphql';
 	import MapCard from '$lib/mazes/components/MapCard.svelte';
+	import { getAdminKey } from '$lib/mazes/admin';
 	import { describeError, type DescribedError } from '$lib/mazes/errors';
-	import { DIFFICULTY_FILTERS, countByDifficulty, filterMaps, sortMapsByDifficulty, type DifficultyFilter } from '$lib/mazes/maps';
+	import {
+		DIFFICULTY_FILTERS,
+		canEditMap,
+		countByDifficulty,
+		filterMaps,
+		isDraft,
+		sortMapsByDifficulty,
+		type DifficultyFilter
+	} from '$lib/mazes/maps';
 	import { MAPS_QUERY } from '$lib/mazes/queries';
 	import { savedName, startSession } from '$lib/mazes/start';
 	import type { GameMap } from '$lib/mazes/types';
 
 	const client = getContextClient();
+	const hasAdminKey = getAdminKey().length > 0;
 	let maps = $state<GameMap[]>([]);
 	let loading = $state(true);
 	let busy = $state(false);
@@ -20,6 +30,7 @@
 	let difficulty = $state<DifficultyFilter>('all');
 
 	const counts = $derived(countByDifficulty(maps));
+	const draftCount = $derived(maps.filter((m) => isDraft(m)).length);
 	const shown = $derived(filterMaps(maps, { difficulty, text }));
 	const chipLabel: Record<DifficultyFilter, string> = { all: 'All', easy: 'Easy', medium: 'Medium', hard: 'Hard' };
 
@@ -52,7 +63,12 @@
 	<div class="flex items-center justify-between gap-3">
 		<div>
 			<h1 class="text-2xl font-semibold text-indigo-950">Maps</h1>
-			<p class="mt-1 text-sm text-slate-700">Ordered from easy to hard. Play starts a new session on the map.</p>
+			<p class="mt-1 text-sm text-slate-700">
+				Your drafts first, then easy to hard. Play starts a new session on the map.
+				{#if draftCount > 0}
+					Only you can see your {draftCount === 1 ? 'draft' : 'drafts'}.
+				{/if}
+			</p>
 		</div>
 		<a href="/mazes/editor" class="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700">New map</a>
 	</div>
@@ -108,7 +124,14 @@
 	{:else}
 		<div class="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 			{#each shown as map (map.id)}
-				<MapCard {map} {busy} onplay={play} editHref="/mazes/editor?map={encodeURIComponent(map.id)}" />
+				<MapCard
+					{map}
+					{busy}
+					onplay={play}
+					editHref="/mazes/editor?map={encodeURIComponent(map.id)}"
+					canEdit={canEditMap(map, hasAdminKey)}
+					canDuplicate={canEditMap(map, hasAdminKey)}
+				/>
 			{/each}
 		</div>
 	{/if}

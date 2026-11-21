@@ -1,7 +1,6 @@
 package session
 
 import (
-	"os"
 	"testing"
 	"time"
 
@@ -9,24 +8,15 @@ import (
 )
 
 func TestManagerWithPersistence(t *testing.T) {
-	// Create temporary directory for test sessions
-	tempDir, err := os.MkdirTemp("", "manager_persistence_test_*")
-	if err != nil {
-		t.Fatalf("Failed to create temp directory: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
-
 	// Create config manager
-	configManager, err := config.NewManager("../../maps", t.TempDir())
+	configManager, err := config.NewManager(config.Options{ConfigDir: "../../maps", CustomDir: t.TempDir()})
 	if err != nil {
 		t.Fatalf("Failed to create config manager: %v", err)
 	}
 
-	// Create persistence layer
-	persistence, err := NewFilePersistence(tempDir, configManager)
-	if err != nil {
-		t.Fatalf("Failed to create file persistence: %v", err)
-	}
+	// The manager reloads from whatever store holds the payload; an in-memory
+	// store is enough for this logic and keeps the test DB-free.
+	persistence := newMemoryPersistence(t, configManager)
 
 	// Create manager with persistence
 	manager := NewManagerWithPersistence(persistence)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countByDifficulty, filterMaps, groupMaps, isOfficial, nextMap, sortMaps, splitMapName } from './maps';
+import { canEditMap, countByDifficulty, filterMaps, groupMaps, isDraft, isOfficial, nextMap, sortMaps, splitMapName } from './maps';
 
 describe('sortMaps', () => {
 	it('orders easy -> medium -> hard, then by name, unknown last, without mutating', () => {
@@ -56,6 +56,27 @@ describe('official vs community maps', () => {
 		expect(groupMaps(mixed.filter(isOfficial)).map((g) => g.id)).toEqual(['official']);
 		expect(groupMaps(mixed.filter((m) => !isOfficial(m))).map((g) => g.id)).toEqual(['community']);
 		expect(groupMaps([])).toEqual([]);
+	});
+
+	it('separates the viewer\'s drafts from published maps and never crosses groups in nextMap', () => {
+		const draft = { id: 'd1', name: 'My Draft', difficulty: 'easy', builtin: false, status: 'DRAFT', ownedByMe: true };
+		const published = { ...community('pub', 'Published One', 'easy'), status: 'PUBLISHED', ownedByMe: false };
+		const withDraft = [...mixed, draft, published];
+		expect(isDraft(draft)).toBe(true);
+		expect(isDraft(published)).toBe(false);
+		expect(groupMaps(withDraft).map((g) => [g.id, g.maps.map((m) => m.id)])).toEqual([
+			['drafts', ['d1']],
+			['official', ['l1', 'l5', 'p1']],
+			['community', ['zig', 'pub', 'c2']]
+		]);
+		expect(nextMap(withDraft, 'd1')).toBeNull();
+		expect(nextMap(withDraft, 'p1')).toBeNull();
+	});
+
+	it('only the owner or an official map may be edited', () => {
+		expect(canEditMap({ builtin: true })).toBe(true);
+		expect(canEditMap({ builtin: false, ownedByMe: true })).toBe(true);
+		expect(canEditMap({ builtin: false, ownedByMe: false })).toBe(false);
 	});
 
 	it('nextMap never leaves the group: the last official level has no next, a community map goes to the next community map', () => {

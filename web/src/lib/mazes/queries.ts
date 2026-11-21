@@ -30,6 +30,8 @@ const MAP_FIELDS = `
   parMoves
   minLevelChanges
   forcedDescents
+  status
+  ownedByMe
 `;
 
 /** Full layout, admin only (editor). */
@@ -49,6 +51,8 @@ const ADMIN_MAP_FIELDS = `
   parMoves
   minLevelChanges
   forcedDescents
+  status
+  ownedByMe
 `;
 
 /** Full session snapshot: everything the board, tower and counters need. */
@@ -115,37 +119,43 @@ export const SESSIONS_QUERY = `
 
 export const CREATE_SESSION_MUTATION = `
   mutation CreateSession($mapID: ID!, $displayName: String) {
-    mazes { createSession(mapID: $mapID, displayName: $displayName) { ${SESSION_FIELDS} } }
+    mazes { createSession(mapID: $mapID, displayName: $displayName) { session { ${SESSION_FIELDS} } ownerToken } }
+  }
+`;
+
+export const CAN_PLAY_QUERY = `
+  query CanPlaySession($id: ID!, $ownerToken: String) {
+    mazes { canPlaySession(id: $id, ownerToken: $ownerToken) }
   }
 `;
 
 export const DELETE_SESSION_MUTATION = `
-  mutation DeleteSession($id: ID!) {
-    mazes { deleteSession(id: $id) }
+  mutation DeleteSession($id: ID!, $ownerToken: String) {
+    mazes { deleteSession(id: $id, ownerToken: $ownerToken) }
   }
 `;
 
 export const RENAME_SESSION_MUTATION = `
-  mutation RenameSession($id: ID!, $displayName: String!) {
-    mazes { renameSession(id: $id, displayName: $displayName) { ${SESSION_FIELDS} } }
+  mutation RenameSession($id: ID!, $displayName: String!, $ownerToken: String) {
+    mazes { renameSession(id: $id, displayName: $displayName, ownerToken: $ownerToken) { ${SESSION_FIELDS} } }
   }
 `;
 
 export const MOVE_MUTATION = `
-  mutation Move($sessionID: ID!, $direction: Mazes_Direction!) {
-    mazes { move(sessionID: $sessionID, direction: $direction) { ${SESSION_FIELDS} } }
+  mutation Move($sessionID: ID!, $direction: Mazes_Direction!, $ownerToken: String) {
+    mazes { move(sessionID: $sessionID, direction: $direction, ownerToken: $ownerToken) { ${SESSION_FIELDS} } }
   }
 `;
 
 export const BULK_MOVE_MUTATION = `
-  mutation BulkMove($sessionID: ID!, $directions: [Mazes_Direction!]!) {
-    mazes { bulkMove(sessionID: $sessionID, directions: $directions) { ${SESSION_FIELDS} } }
+  mutation BulkMove($sessionID: ID!, $directions: [Mazes_Direction!]!, $ownerToken: String) {
+    mazes { bulkMove(sessionID: $sessionID, directions: $directions, ownerToken: $ownerToken) { ${SESSION_FIELDS} } }
   }
 `;
 
 export const RESET_MUTATION = `
-  mutation Reset($sessionID: ID!) {
-    mazes { reset(sessionID: $sessionID) { ${SESSION_FIELDS} } }
+  mutation Reset($sessionID: ID!, $ownerToken: String) {
+    mazes { reset(sessionID: $sessionID, ownerToken: $ownerToken) { ${SESSION_FIELDS} } }
   }
 `;
 
@@ -168,6 +178,12 @@ export const CREATE_MAP_MUTATION = `
 export const UPDATE_MAP_MUTATION = `
   mutation UpdateMap($map: Mazes_MapInput!) {
     mazes { updateMap(map: $map) { ${ADMIN_MAP_FIELDS} } }
+  }
+`;
+
+export const PUBLISH_MAP_MUTATION = `
+  mutation PublishMap($id: ID!) {
+    mazes { publishMap(id: $id) { ${ADMIN_MAP_FIELDS} } }
   }
 `;
 

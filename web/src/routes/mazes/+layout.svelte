@@ -18,10 +18,10 @@
 		{ href: '/mazes/editor', label: 'Editor' }
 	];
 
-	/** Home and /play/* are "Play"; watching one or many sessions belongs to "Sessions". */
+	/** Home and /play/* are "Play"; the multi-watch grid belongs to "Sessions". */
 	function isActive(href: string, pathname: string): boolean {
 		if (href === '/mazes') return pathname === '/mazes' || pathname.startsWith('/mazes/play/');
-		if (href === '/mazes/sessions' && (pathname.startsWith('/mazes/watch/') || pathname === '/mazes/multi' || pathname.startsWith('/mazes/multi/'))) return true;
+		if (href === '/mazes/sessions' && (pathname === '/mazes/multi' || pathname.startsWith('/mazes/multi/'))) return true;
 		return pathname === href || pathname.startsWith(`${href}/`);
 	}
 

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"time"
 
 	"github.com/wricardo/drbrain/games/tesla/game/engine"
@@ -8,14 +9,16 @@ import (
 
 // SessionInfo provides information about a game session
 type SessionInfo struct {
-	ID           string             `json:"id"`
-	DisplayName  string             `json:"display_name,omitempty"`
-	MapName      string             `json:"map_name"`
-	CreatedAt    time.Time          `json:"created_at"`
-	LastActionAt time.Time          `json:"last_action_at"`
-	FogEnabled   bool               `json:"fog_enabled,omitempty"` // lets transports redact GameMap.Layout even when GameState is omitted
-	GameState    *engine.GameState  `json:"game_state,omitempty"`  // Omitted by default (use ResponseOptions.IncludeGameState)
-	GameMap      *engine.GameConfig `json:"game_map,omitempty"`    // Included by default on get_session, omitted on list_sessions
+	ID           string    `json:"id"`
+	DisplayName  string    `json:"display_name,omitempty"`
+	MapName      string    `json:"map_name"`
+	CreatedAt    time.Time `json:"created_at"`
+	LastActionAt time.Time `json:"last_action_at"`
+	FogEnabled   bool      `json:"fog_enabled,omitempty"` // lets transports redact GameMap.Layout even when GameState is omitted
+	// OwnerAccountID is the account that created the session ("" = guest).
+	OwnerAccountID string             `json:"owner_account_id,omitempty"`
+	GameState      *engine.GameState  `json:"game_state,omitempty"` // Omitted by default (use ResponseOptions.IncludeGameState)
+	GameMap        *engine.GameConfig `json:"game_map,omitempty"`   // Included by default on get_session, omitted on list_sessions
 	// GeneratedGridPassword is set only on the CreateSession result, when fog is enabled and
 	// the caller supplied no password. It is not returned by GetSession/ListSessions, so
 	// callers must keep it.
@@ -154,3 +157,57 @@ type MapCreateResult struct {
 	Map     *engine.GameConfig
 	EditKey string
 }
+
+// MapStatus is a catalogue entry's lifecycle state.
+type MapStatus string
+
+const (
+	// MapStatusDraft is visible only to its owner.
+	MapStatusDraft MapStatus = "DRAFT"
+	// MapStatusPublished is visible to everyone.
+	MapStatusPublished MapStatus = "PUBLISHED"
+)
+
+// MapEntry is one catalogue entry: a shipped map, a published player map or
+// (for its owner) a draft. The transport never sees storage types.
+type MapEntry struct {
+	Name    string
+	Config  *engine.GameConfig
+	Builtin bool
+	// OwnerID is the account that created a player map; empty for shipped maps
+	// and legacy unowned rows.
+	OwnerID string
+	Status  MapStatus
+}
+
+// MapActor is who asks to change a map.
+type MapActor struct {
+	AccountID string
+	Admin     bool
+}
+
+// ErrMapNotFound marks a map that does not exist or is not visible to the
+// caller. A draft owned by someone else is indistinguishable from a missing
+// map.
+var ErrMapNotFound = errors.New("map not found")
+
+// ErrMapForbidden means the actor may not change the map.
+var ErrMapForbidden = errors.New("map change forbidden")
+
+// ErrMapExists means the name is already taken by a shipped or custom map.
+var ErrMapExists = errors.New("map already exists")
+
+// ErrMapInvalid means the map failed validation.
+var ErrMapInvalid = errors.New("invalid map")
+
+// ErrMapLimit means the player-map quota is exhausted.
+var ErrMapLimit = errors.New("map limit reached")
+
+// ErrMapReadOnly means a shipped map was changed without admin credentials.
+var ErrMapReadOnly = errors.New("map is read-only")
+
+// ErrEditTokenRequired means the caller must supply the legacy edit token.
+var ErrEditTokenRequired = errors.New("edit token required")
+
+// ErrInvalidEditToken means the supplied legacy edit token is wrong.
+var ErrInvalidEditToken = errors.New("invalid edit token")

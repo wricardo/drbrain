@@ -81,6 +81,9 @@ export const MAPS_QUERY = `
         description
         gridSize
         maxBattery
+        builtin
+        status
+        ownedByMe
       }
     }
   }
@@ -95,9 +98,46 @@ export const MAP_QUERY = `
         gridSize
         maxBattery
         startingBattery
+        builtin
+        status
+        ownedByMe
         layout
         legend { key value }
         cellConfigs { key type allowedDirections }
+      }
+    }
+  }
+`;
+
+export const PUBLISH_MAP_MUTATION = `
+  mutation PublishMap($name: String!) {
+    tesla {
+      publishMap(name: $name) {
+        name
+        description
+        gridSize
+        maxBattery
+        startingBattery
+        builtin
+        status
+        ownedByMe
+      }
+    }
+  }
+`;
+
+export const CLAIM_MAP_MUTATION = `
+  mutation ClaimMap($name: String!, $editKey: String!) {
+    tesla {
+      claimMap(name: $name, editKey: $editKey) {
+        name
+        description
+        gridSize
+        maxBattery
+        startingBattery
+        builtin
+        status
+        ownedByMe
       }
     }
   }

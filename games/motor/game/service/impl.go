@@ -209,10 +209,16 @@ func (svc *gameService) CreateSession(mapID string) (*Session, error) {
 
 // createSession builds and registers a session; accountID and ownerHash may be empty.
 func (svc *gameService) createSession(mapID, accountID, ownerHash string) (*Session, error) {
-	m, err := svc.maps.Get(mapID)
+	entry, err := svc.maps.Entry(mapID)
 	if err != nil {
 		return nil, err
 	}
+	// A draft cannot be played by a guest or another player. Guest sessions
+	// therefore only ever start on published maps.
+	if !entry.VisibleTo(accountID) {
+		return nil, Errorf(CodeNotFound, "map %q not found", mapID)
+	}
+	m := entry.Map
 	id, err := newSessionID()
 	if err != nil {
 		return nil, err
@@ -246,6 +252,23 @@ func (svc *gameService) GetSession(id string) (*Session, error) {
 	s.Lock()
 	defer s.Unlock()
 	return s.Clone(), nil
+}
+
+// SessionVisibleTo reports whether viewerID may see a session through a
+// session-returning API. The session's map decides:
+//   - published or builtin map: public;
+//   - DRAFT map: only the map's owner (ownerless drafts are visible to nobody);
+//   - deleted map: only the session's owning account (guest sessions on a
+//     deleted map are hidden).
+func (svc *gameService) SessionVisibleTo(s *Session, viewerID string) bool {
+	if s == nil {
+		return false
+	}
+	entry, err := svc.maps.Entry(s.MapID)
+	if err != nil {
+		return s.AccountID != "" && s.AccountID == viewerID
+	}
+	return entry.VisibleTo(viewerID)
 }
 
 // ListSessions returns snapshots of the sessions matching f.
@@ -468,27 +491,60 @@ func (svc *gameService) Reset(id string) (*Session, error) {
 
 // ---- maps ------------------------------------------------------------------
 
-// ListMaps lists all maps.
-func (svc *gameService) ListMaps() []*engine.Map { return svc.maps.List() }
+// ListMaps lists the maps visible to viewerID: published maps plus the
+// viewer's own drafts.
+func (svc *gameService) ListMaps(viewerID string) []*engine.Map {
+	entries := svc.maps.ListEntries()
+	out := make([]*engine.Map, 0, len(entries))
+	for _, e := range entries {
+		if e.VisibleTo(viewerID) {
+			out = append(out, e.Map)
+		}
+	}
+	return out
+}
 
-// GetMap returns one map.
+// GetMap returns one map without visibility filtering (internal use).
 func (svc *gameService) GetMap(id string) (*engine.Map, error) { return svc.maps.Get(id) }
+
+// GetMapFor returns one map the viewer may see; another player's draft is
+// NOT_FOUND.
+func (svc *gameService) GetMapFor(id, viewerID string) (*engine.Map, error) {
+	e, err := svc.maps.Entry(id)
+	if err != nil {
+		return nil, err
+	}
+	if !e.VisibleTo(viewerID) {
+		return nil, Errorf(CodeNotFound, "map %q not found", id)
+	}
+	return e.Map, nil
+}
+
+// MapEntry returns a map with its community metadata.
+func (svc *gameService) MapEntry(id string) (MapEntry, error) { return svc.maps.Entry(id) }
 
 // IsBuiltinMap reports whether id is a shipped (read-only) map.
 func (svc *gameService) IsBuiltinMap(id string) bool { return svc.maps.Builtin(id) }
 
 // SaveMap validates and stores a map. Existing sessions keep their snapshot.
-func (svc *gameService) SaveMap(cfg engine.MapConfig) (*engine.Map, error) {
-	return svc.maps.Save(cfg)
+func (svc *gameService) SaveMap(cfg engine.MapConfig, actor MapActor) (*engine.Map, error) {
+	return svc.maps.Save(cfg, actor)
 }
 
-// CreateMap validates and stores a new map; it fails if the id already exists.
-func (svc *gameService) CreateMap(cfg engine.MapConfig) (*engine.Map, error) {
-	return svc.maps.Create(cfg)
+// CreateMap validates and stores a new draft; it fails if the id already exists.
+func (svc *gameService) CreateMap(cfg engine.MapConfig, ownerID string) (*engine.Map, error) {
+	return svc.maps.Create(cfg, ownerID)
+}
+
+// PublishMap validates a draft and publishes it.
+func (svc *gameService) PublishMap(id string, actor MapActor) (*engine.Map, error) {
+	return svc.maps.Publish(id, actor)
 }
 
 // DeleteMap removes a map. Existing sessions keep their snapshot.
-func (svc *gameService) DeleteMap(id string) error { return svc.maps.Delete(id) }
+func (svc *gameService) DeleteMap(id string, actor MapActor) error {
+	return svc.maps.Delete(id, actor)
+}
 
 // ---- shutdown --------------------------------------------------------------
 

@@ -25,9 +25,11 @@ web/**/build/
 web/**/.svelte-kit/
 /static/
 
-# coverage / OS
+# coverage / OS / Python
 *.out
 .DS_Store
+__pycache__/
+*.pyc
 
 # Beads / Dolt files (added by bd init)
 .dolt/

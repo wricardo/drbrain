@@ -35,3 +35,7 @@ models:
       # occurrence of a Map (including a session snapshot) resolves it live.
       builtin:
         resolver: true
+      status:
+        resolver: true
+      ownedByMe:
+        resolver: true

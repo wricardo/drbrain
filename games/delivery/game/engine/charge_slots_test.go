@@ -11,7 +11,7 @@ import (
 func chargeTestWorld(t *testing.T, capacity, slots int) *World {
 	t.Helper()
 
-	cfg := &CityConfig{
+	cfg := completeConfig(&CityConfig{
 		Name:     "charging",
 		GridSize: 5,
 		TickMS:   100,
@@ -28,14 +28,14 @@ func chargeTestWorld(t *testing.T, capacity, slots int) *World {
 			ID: "d1", Pos: Position{1, 1}, Capacity: capacity, ChargeSlots: slots,
 		}},
 		CarClasses: map[string]CarClassConfig{
-			"scooter": {Speed: 1, Capacity: 4, MaxBattery: 10, StepCost: 1},
+			"scooter": {Capacity: 4, MaxBattery: 10, StepCost: 1},
 		},
 		InitialCars: []InitialCarConfig{
 			{Class: "scooter", Name: "S1", Pos: Position{1, 1}},
 			{Class: "scooter", Name: "S2", Pos: Position{1, 1}},
 		},
 		Charging: ChargingConfig{DepotRate: 5, ChargerRate: 2},
-	}
+	})
 	city, err := NewCity(cfg)
 	if err != nil {
 		t.Fatalf("city: %v", err)

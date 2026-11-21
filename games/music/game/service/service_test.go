@@ -8,11 +8,14 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/wricardo/drbrain/games/music/game/engine"
 	"github.com/wricardo/drbrain/games/music/game/score"
 	"github.com/wricardo/drbrain/games/music/game/service"
 	"github.com/wricardo/drbrain/games/music/game/session"
 	"github.com/wricardo/drbrain/platform/mapstore"
+	"github.com/wricardo/drbrain/platform/pgdb/pgtest"
 )
 
 type fakePieces struct {
@@ -76,16 +79,12 @@ func (r *recorder) last() *service.Session {
 	return r.snaps[len(r.snaps)-1]
 }
 
-func newServiceAt(t *testing.T, dir string) (service.GameService, *fakePieces, *recorder) {
+func newServiceWithPersistence(t *testing.T, persistence session.SessionPersistence) (service.GameService, *fakePieces, *recorder) {
 	t.Helper()
 	pieces := &fakePieces{pieces: map[string]*score.Piece{
 		"scale": testPiece(score.MaxMeasures),
 		"tiny":  testPiece(1),
 	}}
-	persistence, err := session.NewStorePersistence(dir, 100)
-	if err != nil {
-		t.Fatalf("NewStorePersistence: %v", err)
-	}
 	manager := session.NewManager(persistence, 100)
 	if err := manager.LoadAll(); err != nil {
 		t.Fatalf("LoadAll: %v", err)
@@ -94,9 +93,21 @@ func newServiceAt(t *testing.T, dir string) (service.GameService, *fakePieces, *
 	return service.New(pieces, manager, rec, service.Options{}), pieces, rec
 }
 
+// newServiceAt returns a service backed by the PostgreSQL store in pool.
+func newServiceAt(t *testing.T, pool *pgxpool.Pool) (service.GameService, *fakePieces, *recorder) {
+	t.Helper()
+	persistence, err := session.NewPostgresPersistence(pool, 100)
+	if err != nil {
+		t.Fatalf("NewPostgresPersistence: %v", err)
+	}
+	return newServiceWithPersistence(t, persistence)
+}
+
+// newService returns a service backed by an in-memory store; it covers logic
+// that does not need durability.
 func newService(t *testing.T) (service.GameService, *fakePieces, *recorder) {
 	t.Helper()
-	return newServiceAt(t, t.TempDir())
+	return newServiceWithPersistence(t, session.NewMemoryPersistence(100))
 }
 
 func mustCreate(t *testing.T, svc service.GameService, piece string, d engine.Difficulty, seed int64) *service.Session {
@@ -417,8 +428,8 @@ func TestMutations_ConcurrentSeqMonotonic(t *testing.T) {
 }
 
 func TestPersistence_RoundTrip(t *testing.T) {
-	dir := t.TempDir()
-	svc, _, _ := newServiceAt(t, dir)
+	pool := pgtest.Pool(t)
+	svc, _, _ := newServiceAt(t, pool)
 	s := mustCreate(t, svc, "scale", engine.Expert, 21)
 	if _, err := svc.SwitchMeasures(s.ID, 0, 2); err != nil {
 		t.Fatalf("SwitchMeasures: %v", err)
@@ -431,7 +442,7 @@ func TestPersistence_RoundTrip(t *testing.T) {
 		t.Fatalf("GetSession: %v", err)
 	}
 
-	reloaded, _, _ := newServiceAt(t, dir)
+	reloaded, _, _ := newServiceAt(t, pool)
 	after, err := reloaded.GetSession(s.ID)
 	if err != nil {
 		t.Fatalf("GetSession after reload: %v", err)
@@ -451,14 +462,14 @@ func TestPersistence_RoundTrip(t *testing.T) {
 }
 
 func TestShutdown_IsIdempotentAndPersists(t *testing.T) {
-	dir := t.TempDir()
-	svc, _, _ := newServiceAt(t, dir)
+	pool := pgtest.Pool(t)
+	svc, _, _ := newServiceAt(t, pool)
 	s := mustCreate(t, svc, "scale", engine.Novice, 23)
 
 	svc.Shutdown()
 	svc.Shutdown()
 
-	reloaded, _, _ := newServiceAt(t, dir)
+	reloaded, _, _ := newServiceAt(t, pool)
 	got, err := reloaded.GetSession(s.ID)
 	if err != nil {
 		t.Fatalf("GetSession after shutdown: %v", err)
@@ -468,9 +479,9 @@ func TestShutdown_IsIdempotentAndPersists(t *testing.T) {
 	}
 }
 
-func TestDeleteSession_RemovesFromDisk(t *testing.T) {
-	dir := t.TempDir()
-	svc, _, _ := newServiceAt(t, dir)
+func TestDeleteSession_RemovesFromStore(t *testing.T) {
+	pool := pgtest.Pool(t)
+	svc, _, _ := newServiceAt(t, pool)
 	s := mustCreate(t, svc, "scale", engine.Novice, 29)
 
 	if err := svc.DeleteSession(s.ID); err != nil {
@@ -479,9 +490,9 @@ func TestDeleteSession_RemovesFromDisk(t *testing.T) {
 	_, err := svc.GetSession(s.ID)
 	wantCode(t, err, service.CodeNotFound)
 
-	reloaded, _, _ := newServiceAt(t, dir)
+	reloaded, _, _ := newServiceAt(t, pool)
 	if _, err := reloaded.GetSession(s.ID); err == nil {
-		t.Fatal("deleted session was reloaded from disk")
+		t.Fatal("deleted session was reloaded from the store")
 	}
 }
 

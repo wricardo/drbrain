@@ -2,8 +2,6 @@ package session
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -12,6 +10,7 @@ import (
 	"github.com/wricardo/drbrain/games/music/game/engine"
 	"github.com/wricardo/drbrain/games/music/game/score"
 	"github.com/wricardo/drbrain/games/music/game/service"
+	"github.com/wricardo/drbrain/platform/pgdb/pgtest"
 )
 
 func testPiece() *score.Piece {
@@ -48,9 +47,9 @@ func testSession() *service.Session {
 }
 
 func TestStorePersistence_RoundTrip(t *testing.T) {
-	sp, err := NewStorePersistence(t.TempDir(), 0)
+	sp, err := NewPostgresPersistence(pgtest.Pool(t), 0)
 	if err != nil {
-		t.Fatalf("NewStorePersistence: %v", err)
+		t.Fatalf("NewPostgresPersistence: %v", err)
 	}
 	saved := testSession()
 	if err := sp.Save(saved); err != nil {
@@ -81,59 +80,28 @@ func TestStorePersistence_RoundTrip(t *testing.T) {
 }
 
 func TestLoad_RejectsSlotWithMissingMeasure(t *testing.T) {
-	sp, err := NewStorePersistence(t.TempDir(), 0)
-	if err != nil {
-		t.Fatalf("NewStorePersistence: %v", err)
-	}
+	sp := NewMemoryPersistence(0)
 	s := testSession()
 	s.Slots[2].MeasureID = "nope"
 	if err := sp.Save(s); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	_, err = sp.Load(s.ID)
+	_, err := sp.Load(s.ID)
 	if err == nil || !strings.Contains(err.Error(), "not in the piece") {
 		t.Fatalf("Load = %v, want a missing-measure error", err)
 	}
 }
 
 func TestLoad_RejectsSolvedFlagMismatch(t *testing.T) {
-	sp, err := NewStorePersistence(t.TempDir(), 0)
-	if err != nil {
-		t.Fatalf("NewStorePersistence: %v", err)
-	}
+	sp := NewMemoryPersistence(0)
 	s := testSession()
 	s.Solved = true // the flipped arrangement is not solved
 	if err := sp.Save(s); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
-	_, err = sp.Load(s.ID)
+	_, err := sp.Load(s.ID)
 	if err == nil || !strings.Contains(err.Error(), "disagrees") {
 		t.Fatalf("Load = %v, want a solved flag mismatch", err)
-	}
-}
-
-func TestManager_LoadAllSkipsCorruptFile(t *testing.T) {
-	dir := t.TempDir()
-	sp, err := NewStorePersistence(dir, 0)
-	if err != nil {
-		t.Fatalf("NewStorePersistence: %v", err)
-	}
-	if err := sp.Save(testSession()); err != nil {
-		t.Fatalf("Save: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "fedcba9876543210.json"), []byte("{"), 0o644); err != nil {
-		t.Fatalf("write corrupt file: %v", err)
-	}
-
-	m := NewManager(sp, 10)
-	if err := m.LoadAll(); err != nil {
-		t.Fatalf("LoadAll: %v", err)
-	}
-	if m.Count() != 1 {
-		t.Fatalf("Count = %d, want 1", m.Count())
-	}
-	if _, ok := m.Get("0123456789abcdef"); !ok {
-		t.Fatal("valid session was not loaded")
 	}
 }
 
@@ -152,17 +120,14 @@ func longPiece(n int) *score.Piece {
 	return p
 }
 
-// TestLoad_RepairsLegacyWindowArrangement covers a session file written under
+// TestLoad_RepairsLegacyWindowArrangement covers a session payload written under
 // the old per-difficulty window rule: 8 slots for a piece whose snapshot has 18
 // bars. Load must not trust or keep that short arrangement; it rebuilds the
 // deterministic whole-piece scramble and preserves identity and counters. The
 // 18-bar snapshot also predates the 6-bar content cap, and must still load: the
 // cap gates new content, not a player's frozen session.
 func TestLoad_RepairsLegacyWindowArrangement(t *testing.T) {
-	sp, err := NewStorePersistence(t.TempDir(), 0)
-	if err != nil {
-		t.Fatalf("NewStorePersistence: %v", err)
-	}
+	sp := NewMemoryPersistence(0)
 	piece := longPiece(18)
 	legacy := make([]engine.Placement, 8)
 	for i := range legacy {

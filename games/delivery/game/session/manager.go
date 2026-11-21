@@ -4,12 +4,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	cityconfig "github.com/wricardo/drbrain/games/delivery/game/config"
 	"github.com/wricardo/drbrain/games/delivery/game/engine"
 	"github.com/wricardo/drbrain/platform/sessionstore"
 )
@@ -19,46 +22,60 @@ import (
 // matching on error text.
 var ErrNotFound = errors.New("session not found")
 
-// Manager owns the live sessions and their persistence directory.
+// ErrCityNotFound is returned when a save names a city that no longer exists,
+// or one the save's owner may no longer see. The save itself may still exist;
+// it simply cannot be simulated without its city.
+var ErrCityNotFound = errors.New("city not found")
+
+// CityCatalog is the city source a manager reads. At product time it is the
+// delivery config.Manager (builtin files plus PostgreSQL rows); tests can pass
+// a small in-memory implementation.
+type CityCatalog interface {
+	// DefaultID is the city a caller that names none gets.
+	DefaultID() string
+	// Config returns a city, hiding another player's draft as not-found.
+	// viewerID is the account the city is being read for ("" = anonymous).
+	Config(id, viewerID string) (*engine.CityConfig, error)
+}
+
+// Manager owns the live sessions and their durable store.
 type Manager struct {
-	cityFile string
-	dir      string // sessions directory, for callers that inspect it
-	store    sessionstore.Store
+	catalog CityCatalog
+	store   sessionstore.Store
 
 	mu       sync.RWMutex
 	sessions map[string]*Session
 }
 
-// NewManager creates a manager that reads the city from cityFile and stores
-// saves in dir.
-func NewManager(cityFile, dir string) (*Manager, error) {
-	if _, err := os.Stat(cityFile); err != nil {
-		return nil, fmt.Errorf("city file %s: %w", cityFile, err)
+// NewManager creates a manager backed by catalog and the shared PostgreSQL
+// session store. Each session snapshots the city it selects; the catalogue is
+// only consulted at creation and when rehydrating a save.
+func NewManager(catalog CityCatalog, pool *pgxpool.Pool) (*Manager, error) {
+	if catalog == nil {
+		return nil, fmt.Errorf("city catalog is required")
 	}
-	store, err := sessionstore.Open(sessionstore.Options{Dir: dir, Summary: summarizePayload})
+	store, err := sessionstore.Open(sessionstore.Options{Pool: pool})
 	if err != nil {
 		return nil, err
 	}
 	return &Manager{
-		cityFile: cityFile,
-		dir:      dir,
+		catalog:  catalog,
 		store:    store,
 		sessions: map[string]*Session{},
 	}, nil
 }
 
 // Create starts a new session with the given id (or a random one when empty),
-// an optional seed, and returns the session plus the secret owner token that
-// proves the caller created it. Only the token's hash is stored. accountID is
-// the signed-in creator ("" = guest).
+// an optional seed, the signed-in creator ("" = guest), and a city id ("" =
+// catalogue default). It returns the session plus the secret owner token that
+// proves the caller created it. Only the token's hash is stored.
 //
-// A client-supplied id is accepted when ValidID; otherwise one is generated.
-func (m *Manager) Create(id string, seed uint64, accountID string) (*Session, string, error) {
-	city, cfg, err := engine.CityFromFile(m.cityFile)
-	if err != nil {
-		return nil, "", err
-	}
+// A client-supplied session id is accepted when ValidID; otherwise one is
+// generated. The selected city is snapshotted into the session: editing or
+// deleting it afterwards cannot change a session that already exists.
+func (m *Manager) Create(id string, seed uint64, accountID, cityID string) (*Session, string, error) {
 	if id == "" {
+		var err error
 		id, err = newSessionID()
 		if err != nil {
 			return nil, "", err
@@ -70,20 +87,29 @@ func (m *Manager) Create(id string, seed uint64, accountID string) (*Session, st
 	if _, exists := m.Get(id); exists {
 		return nil, "", fmt.Errorf("session %q already exists", id)
 	}
-	// A save already on disk with this id must not be adopted by a new creator:
-	// its owner credentials live in that file. A corrupt file also blocks the id
-	// rather than being silently overwritten.
+	// A save already stored under this id must not be adopted by a new creator:
+	// its owner credentials live in that payload. A corrupt payload also blocks
+	// the id rather than being silently overwritten.
 	if _, _, err := m.store.Load(id); err == nil {
 		return nil, "", fmt.Errorf("session %q already exists", id)
 	} else if !errors.Is(err, sessionstore.ErrNotFound) {
 		return nil, "", fmt.Errorf("session %q already exists", id)
 	}
 
+	accountID = sanitizeAccountID(accountID)
+	if cityID == "" {
+		cityID = m.catalog.DefaultID()
+	}
+	cfg, city, err := m.cityForCreate(cityID, accountID)
+	if err != nil {
+		return nil, "", err
+	}
+
 	token, hash, err := newOwnerToken()
 	if err != nil {
 		return nil, "", err
 	}
-	s, err := newWithStore(id, city, cfg, seed, m.store, sanitizeAccountID(accountID), hash)
+	s, err := newWithStore(id, city, cfg, cityID, seed, m.store, accountID, hash)
 	if err != nil {
 		return nil, "", err
 	}
@@ -93,6 +119,24 @@ func (m *Manager) Create(id string, seed uint64, accountID string) (*Session, st
 
 	s.Start()
 	return s, token, nil
+}
+
+// cityForCreate resolves and builds a city for a new session. The creator is
+// the viewer, so their own drafts are playable; another player's draft looks
+// exactly like a missing city.
+func (m *Manager) cityForCreate(cityID, accountID string) (*engine.CityConfig, *engine.City, error) {
+	cfg, err := m.catalog.Config(cityID, accountID)
+	if err != nil {
+		if errors.Is(err, cityconfig.ErrNotFound) {
+			return nil, nil, fmt.Errorf("city %q: %w", cityID, ErrCityNotFound)
+		}
+		return nil, nil, fmt.Errorf("city %q: %w", cityID, err)
+	}
+	city, err := engine.CityFromConfig(cfg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("city %q: %w", cityID, err)
+	}
+	return cfg, city, nil
 }
 
 // Claim attaches a session to accountID when token proves ownership. A session
@@ -112,14 +156,17 @@ func (m *Manager) Claim(accountID, id, token string) (string, error) {
 	}
 	status := s.claim(accountID, token)
 	if status == ClaimAttached {
-		if err := s.Save(filepath.Base(m.cityFile)); err != nil {
+		if err := s.Save(); err != nil {
 			return status, err
 		}
 	}
 	return status, nil
 }
 
-// Get returns a live session, loading it from disk if it is not in memory.
+// Get returns only a session already resident in memory. It does not touch the
+// store, so a false result means "not loaded", not "does not exist": request
+// paths must use GetOrLoad, and list views get the same distinction from
+// Summary.Loaded.
 func (m *Manager) Get(id string) (*Session, bool) {
 	m.mu.RLock()
 	s, ok := m.sessions[id]
@@ -130,8 +177,8 @@ func (m *Manager) Get(id string) (*Session, bool) {
 	return nil, false
 }
 
-// GetOrLoad returns a session, rehydrating it from disk when necessary. This is
-// what the HTTP layer uses, so a server restart does not lose saves.
+// GetOrLoad returns a session, rehydrating it from the store when necessary.
+// This is what the HTTP layer uses, so a server restart does not lose saves.
 func (m *Manager) GetOrLoad(id string) (*Session, error) {
 	if !ValidID(id) {
 		return nil, fmt.Errorf("invalid session id %q", id)
@@ -158,7 +205,7 @@ func (m *Manager) GetOrLoad(id string) (*Session, error) {
 	return s, nil
 }
 
-// load rebuilds a session from its save file.
+// load rebuilds a session from its stored payload.
 func (m *Manager) load(id string) (*Session, error) {
 	_, blob, err := m.store.Load(id)
 	if err != nil {
@@ -172,11 +219,15 @@ func (m *Manager) load(id string) (*Session, error) {
 		return nil, fmt.Errorf("parse save %s: %w", id, err)
 	}
 
-	city, cfg, err := engine.CityFromFile(m.cityFile)
+	cityID, cfg, err := m.cityForLoad(p)
 	if err != nil {
 		return nil, err
 	}
-	s, err := newWithStore(id, city, cfg, p.World.Seed, m.store,
+	city, err := engine.CityFromConfig(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("session %s city %q: %w", id, cityID, err)
+	}
+	s, err := newWithStore(id, city, cfg, cityID, p.World.Seed, m.store,
 		sanitizeAccountID(p.AccountID), sanitizeHash(p.OwnerHash))
 	if err != nil {
 		return nil, err
@@ -204,7 +255,76 @@ func (m *Manager) load(id string) (*Session, error) {
 	return s, nil
 }
 
-// List returns every session known on disk plus any live ones, newest first.
+// cityForLoad resolves which city a save was created on and returns its
+// current config.
+//
+// A current payload stores city_id and a missing/hidden city is a hard error:
+// silently swapping in the default would replay the save's deltas against
+// different geography. A legacy payload stores only city_file (the old basename
+// such as "city.json"); its base is tried as an id first, then the default,
+// which is the documented compatibility path. The save's owner is the viewer,
+// so their own draft remains loadable after an edit puts it back in review.
+func (m *Manager) cityForLoad(p persisted) (string, *engine.CityConfig, error) {
+	viewer := sanitizeAccountID(p.AccountID)
+	if p.CityID != "" {
+		cfg, err := m.catalog.Config(p.CityID, viewer)
+		if err != nil {
+			return "", nil, cityLoadError(p.CityID, err)
+		}
+		return p.CityID, cfg, nil
+	}
+	if base := legacyCityFileBase(p.CityFile); base != "" && cityconfig.ValidID(base) {
+		cfg, err := m.catalog.Config(base, viewer)
+		if err == nil {
+			return base, cfg, nil
+		}
+		if !errors.Is(err, cityconfig.ErrNotFound) {
+			return "", nil, cityLoadError(base, err)
+		}
+	}
+	id := m.catalog.DefaultID()
+	cfg, err := m.catalog.Config(id, viewer)
+	if err != nil {
+		return "", nil, cityLoadError(id, err)
+	}
+	return id, cfg, nil
+}
+
+func cityLoadError(id string, err error) error {
+	if errors.Is(err, cityconfig.ErrNotFound) {
+		return fmt.Errorf("city %q: %w", id, ErrCityNotFound)
+	}
+	return fmt.Errorf("city %q: %w", id, err)
+}
+
+// legacyCityFileBase turns a pre-catalogue payload's city_file ("maps/city.json")
+// into the id it maps to ("city"). Empty means the payload did not record a
+// usable file and the default applies.
+func legacyCityFileBase(file string) string {
+	file = strings.TrimSpace(file)
+	if file == "" {
+		return ""
+	}
+	base := strings.TrimSuffix(filepath.Base(file), ".json")
+	if base == "." || base == string(filepath.Separator) {
+		return ""
+	}
+	return base
+}
+
+// resolvedCityID is the id a save reports in summaries. It never consults the
+// catalogue: listing must keep working when a referenced city was deleted.
+func (m *Manager) resolvedCityID(p persisted) string {
+	if p.CityID != "" {
+		return p.CityID
+	}
+	if base := legacyCityFileBase(p.CityFile); base != "" && cityconfig.ValidID(base) {
+		return base
+	}
+	return m.catalog.DefaultID()
+}
+
+// List returns every session in the store plus any live ones, newest first.
 //
 // It never returns nil: an empty list must marshal as [] rather than null, or
 // every client has to special-case "no sessions" as a null check.
@@ -245,8 +365,8 @@ func (m *Manager) List() []Summary {
 	return out
 }
 
-// summaryFromDisk reads just enough of a save to describe it without loading
-// the whole world into memory.
+// summaryFromDisk reads just enough of a stored payload to describe it without
+// loading the whole world into memory.
 func (m *Manager) summaryFromDisk(id string) (Summary, error) {
 	_, blob, err := m.store.Load(id)
 	if err != nil {
@@ -257,7 +377,7 @@ func (m *Manager) summaryFromDisk(id string) (Summary, error) {
 		return Summary{}, err
 	}
 	sum := Summary{ID: id, CreatedAt: p.CreatedAt, Speed: p.Speed, Loaded: false,
-		AccountID: sanitizeAccountID(p.AccountID)}
+		AccountID: sanitizeAccountID(p.AccountID), CityID: m.resolvedCityID(p)}
 	if p.World.Ledger != nil {
 		sum.Money = p.World.Ledger.Money
 		sum.Reputation = p.World.Ledger.Reputation
@@ -267,14 +387,21 @@ func (m *Manager) summaryFromDisk(id string) (Summary, error) {
 	return sum, nil
 }
 
-// CityFileName returns the basename of the configured city file, which is what
-// a save records so content fixes apply to existing saves.
-func (m *Manager) CityFileName() string { return filepath.Base(m.cityFile) }
+// DefaultCityID is the catalogue's default city id.
+func (m *Manager) DefaultCityID() string { return m.catalog.DefaultID() }
 
-// CityFile returns the full path of the configured city file.
-func (m *Manager) CityFile() string { return m.cityFile }
+// DefaultCity returns a fresh City for the default id. The catalogue decodes a
+// new config per call, so the caller owns the returned city and may reveal its
+// districts for a preview without touching any session.
+func (m *Manager) DefaultCity() (*engine.City, error) {
+	cfg, err := m.catalog.Config(m.catalog.DefaultID(), "")
+	if err != nil {
+		return nil, err
+	}
+	return engine.CityFromConfig(cfg)
+}
 
-// Evict stops a session and drops it from memory, leaving its save on disk.
+// Evict stops a session and drops it from memory, leaving its stored payload.
 // A later GetOrLoad rehydrates it.
 func (m *Manager) Evict(id string) {
 	m.mu.Lock()
@@ -286,11 +413,12 @@ func (m *Manager) Evict(id string) {
 	}
 }
 
-// Delete stops a session, removes it from memory and deletes its save.
+// Delete stops a session, removes it from memory and deletes its stored
+// payload.
 //
-// The id is validated first: filepath.Join cleans ".." segments, so an
-// unvalidated id like "../other" would delete a file outside the sessions
-// directory. Every other entry point validates; this one used to be the gap.
+// The id is validated first: ids double as primary keys, so an unvalidated
+// id like "../other" would be rejected by the store anyway, but every entry
+// point validates rather than relying on that.
 func (m *Manager) Delete(id string) error {
 	if !ValidID(id) {
 		return fmt.Errorf("invalid session id %q", id)
@@ -302,7 +430,8 @@ func (m *Manager) Delete(id string) error {
 	return nil
 }
 
-// SaveAll persists every live session.
+// SaveAll persists every session currently in memory, returning the first
+// error. Sessions that exist only in the store are not re-saved.
 func (m *Manager) SaveAll() error {
 	m.mu.RLock()
 	list := make([]*Session, 0, len(m.sessions))
@@ -313,14 +442,17 @@ func (m *Manager) SaveAll() error {
 
 	var firstErr error
 	for _, s := range list {
-		if err := s.Save(filepath.Base(m.cityFile)); err != nil && firstErr == nil {
+		if err := s.Save(); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("save %s: %w", s.ID, err)
 		}
 	}
 	return firstErr
 }
 
-// Close stops every session and flushes saves.
+// Close flushes every in-memory session to the store, then stops its ticker and
+// drops it from memory. It still closes the sessions when a save fails, and
+// returns the first save error afterwards so a failed flush cannot leave
+// goroutines running.
 func (m *Manager) Close() error {
 	err := m.SaveAll()
 	m.mu.Lock()
@@ -339,7 +471,7 @@ func (m *Manager) Close() error {
 
 // Summary is the list-view of a session: what a save picker shows.
 //
-// Loaded is true only for a session currently in memory. An on-disk row is a
+// Loaded is true only for a session currently in memory. A stored row is a
 // save that has not been opened this process, so its Speed is the value it was
 // saved with, not a running clock.
 type Summary struct {
@@ -351,6 +483,9 @@ type Summary struct {
 	Reputation float64   `json:"reputation"`
 	Deliveries int       `json:"deliveries"`
 	Loaded     bool      `json:"loaded"`
+	// CityID is the catalogue id the session snapshotted at creation. It is
+	// informational here; the session already owns its city.
+	CityID string `json:"city_id,omitempty"`
 	// AccountID is the owning account id ("" = guest). It never leaves the
 	// server: the GraphQL layer turns it into a display name and a `mine` flag.
 	AccountID string `json:"-"`

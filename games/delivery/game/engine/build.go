@@ -5,10 +5,10 @@ import (
 	"fmt"
 )
 
-// applyEffects applies a build's effects in order to this city. It mutates
-// the receiver, so callers that need atomicity must run it on a Clone and
-// only commit the clone if it succeeds (see ValidatePlacement / ApplyBuild).
-func (c *City) applyEffects(effects []BuildEffect) error {
+// applyEffects applies one growth stage's effects in order to this city. It
+// mutates the receiver, so callers that need atomicity must run it on a Clone
+// and only commit the clone if it succeeds (see World.applyGrowth).
+func (c *City) applyEffects(effects []GrowthEffect) error {
 	for i, e := range effects {
 		if err := c.applyEffect(e); err != nil {
 			return fmt.Errorf("effect %d (%s): %w", i, e.Type, err)
@@ -19,7 +19,7 @@ func (c *City) applyEffects(effects []BuildEffect) error {
 
 // applyEffect applies one effect. Every case is deterministic and touches only
 // the grid, hidden flags and entity lists.
-func (c *City) applyEffect(e BuildEffect) error {
+func (c *City) applyEffect(e GrowthEffect) error {
 	switch e.Type {
 	case EffectBuildBridge, EffectPaveRoad:
 		// Both are "write these tiles to this terrain". The distinction is
@@ -83,7 +83,19 @@ func (c *City) applyEffect(e BuildEffect) error {
 			if err := json.Unmarshal(raw, &ch); err != nil {
 				return fmt.Errorf("bad charger: %w", err)
 			}
-			c.Chargers = append(c.Chargers, Charger{ID: ch.ID, Pos: ch.Pos, Capacity: ch.Capacity})
+			// The entity list is display/routing metadata; charging is decided by
+			// the terrain (City.ChargingAt reads the cell type). A build that only
+			// appended to Chargers left its "C" tile as plain road, so a player
+			// parked there never recovered a single unit of battery.
+			if err := c.SetTerrain(ch.Pos, ChargerTile); err != nil {
+				return fmt.Errorf("charger %q: %w", ch.ID, err)
+			}
+			c.RevealTile(ch.Pos)
+			charger, err := c.chargerFromConfig(ch)
+			if err != nil {
+				return err
+			}
+			c.Chargers = append(c.Chargers, charger)
 		}
 		return nil
 
@@ -93,6 +105,12 @@ func (c *City) applyEffect(e BuildEffect) error {
 			if err := json.Unmarshal(raw, &d); err != nil {
 				return fmt.Errorf("bad depot: %w", err)
 			}
+			// Same rule as a charger: DepotTile terrain is what parks and
+			// recharges cars, so the effect has to write it.
+			if err := c.SetTerrain(d.Pos, DepotTile); err != nil {
+				return fmt.Errorf("depot %q: %w", d.ID, err)
+			}
+			c.RevealTile(d.Pos)
 			c.Depots = append(c.Depots, Depot{
 				ID: d.ID, Pos: d.Pos, Capacity: d.Capacity, ChargeSlots: d.ChargeSlots,
 			})
@@ -116,29 +134,13 @@ func (c *City) applyEffect(e BuildEffect) error {
 
 	case EffectGrantCarClass, EffectGrantMoney, EffectGrantRep:
 		// These do not touch the grid: they unlock economy options or pay out.
-		// They are carried here so a build's effect list stays a single
-		// ordered script; the session applies the economic half.
+		// They are carried here so a stage's effect list stays a single
+		// ordered script; the world applies the economic half.
 		return nil
 	}
 
 	return fmt.Errorf("unknown effect type %q", e.Type)
 }
 
-// ApplyBuild validates a build against this city and, if it is safe, applies it
-// in place. It returns the number of tiles revealed and any error.
-//
-// The whole build is atomic: either every effect lands or none does.
-func (c *City) ApplyBuild(b BuildConfig) (revealed int, err error) {
-	before := c.HiddenCount()
-	next := c.Clone()
-	if err := next.applyEffects(b.Effects); err != nil {
-		return 0, err
-	}
-	if stranded := next.StrandedEntities(); len(stranded) > 0 {
-		return 0, fmt.Errorf("build %q would strand %v", b.ID, stranded)
-	}
-
-	*c = *next
-	after := c.HiddenCount()
-	return before - after, nil
-}
+// effectCities are the effects that mutate the grid or the entity lists; the
+// grant effects are applied by World.applyGrowth.

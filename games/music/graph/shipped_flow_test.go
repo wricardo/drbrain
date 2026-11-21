@@ -12,6 +12,7 @@ import (
 	musicgraph "github.com/wricardo/drbrain/games/music/graph"
 	"github.com/wricardo/drbrain/games/music/transport/websocket"
 	rootgraph "github.com/wricardo/drbrain/graph"
+	"github.com/wricardo/drbrain/platform/pgdb/pgtest"
 )
 
 type measureJSON struct {
@@ -41,9 +42,9 @@ func newServerForScores(t *testing.T, scoresDir string) *httptest.Server {
 	if err != nil {
 		t.Fatalf("NewCatalogue(%s): %v", scoresDir, err)
 	}
-	persistence, err := session.NewStorePersistence(t.TempDir(), 100)
+	persistence, err := session.NewPostgresPersistence(pgtest.Pool(t), 100)
 	if err != nil {
-		t.Fatalf("NewStorePersistence: %v", err)
+		t.Fatalf("NewPostgresPersistence: %v", err)
 	}
 	manager := session.NewManager(persistence, 100)
 	if err := manager.LoadAll(); err != nil {

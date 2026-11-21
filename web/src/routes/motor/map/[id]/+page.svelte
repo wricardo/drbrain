@@ -9,8 +9,9 @@
 	import TileLegend from '$lib/motor/components/TileLegend.svelte';
 	import { describeError, type DescribedError } from '@drbrain/ui/errors';
 	import { recursionChip } from '$lib/motor/recursion';
-	import { CREATE_SESSION_MUTATION, MAP_QUERY } from '$lib/motor/queries';
+	import { CREATE_SESSION_MUTATION, MAP_QUERY, PUBLISH_MAP_MUTATION } from '$lib/motor/queries';
 	import { rememberSession, statusLine } from '$lib/motor/sessions';
+	import { canEditMap } from '$lib/motor/maps';
 	import { account } from '$lib/account/stores/account';
 	import type { GameMap, Session } from '$lib/motor/types';
 
@@ -53,6 +54,21 @@
 		if (mapId) void load(mapId);
 	});
 
+	async function publish(m: GameMap) {
+		busy = true;
+		error = null;
+		try {
+			const data = await unwrap<{ publishMap: GameMap }>(
+				client.mutation(PUBLISH_MAP_MUTATION, { id: m.id })
+			);
+			map = data.publishMap;
+		} catch (e) {
+			error = describeError(e);
+		} finally {
+			busy = false;
+		}
+	}
+
 	async function play(m: GameMap) {
 		busy = true;
 		error = null;
@@ -86,7 +102,7 @@
 			<div>
 				<h1 class="text-2xl font-semibold text-indigo-950">{map.name}</h1>
 				<p class="text-sm text-slate-600">
-					{map.difficulty} · {map.builtin ? 'official map' : 'player-made map'} · {map.width}×{map.height} ·
+					{map.difficulty} · {map.builtin ? 'official map' : 'player-made map'} · {map.status.toLowerCase()} · {map.width}×{map.height} ·
 					<a class="underline" href="/motor/maps">all maps</a>
 				</p>
 			</div>
@@ -120,19 +136,30 @@
 						onclick={() => map && play(map)}
 						data-testid="play-map">{busy ? 'Creating…' : 'Play'}</button
 					>
-					<div class="flex gap-2">
+					<div class="flex flex-wrap gap-2">
 						<a
 							href="/motor/leaderboard?map={encodeURIComponent(map.id)}"
 							class="flex-1 rounded-lg border border-indigo-300 px-3 py-1.5 text-center text-sm text-indigo-800 hover:bg-indigo-50">Leaderboard</a
 						>
-						<a
-							href="/motor/editor?map={encodeURIComponent(map.id)}"
-							class="flex-1 rounded-lg border border-indigo-300 px-3 py-1.5 text-center text-sm text-indigo-800 hover:bg-indigo-50">Edit</a
-						>
+						{#if canEditMap(map)}
+							<a
+								href="/motor/editor?map={encodeURIComponent(map.id)}"
+								class="flex-1 rounded-lg border border-indigo-300 px-3 py-1.5 text-center text-sm text-indigo-800 hover:bg-indigo-50">Edit</a
+							>
+						{/if}
 						<a
 							href="/motor/editor?map={encodeURIComponent(map.id)}&duplicate=1"
 							class="flex-1 rounded-lg border border-indigo-300 px-3 py-1.5 text-center text-sm text-indigo-800 hover:bg-indigo-50">Duplicate</a
 						>
+						{#if map.status === 'DRAFT' && map.ownedByMe}
+							<button
+								type="button"
+								class="flex-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-center text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+								disabled={busy}
+								onclick={() => map && publish(map)}
+								data-testid="publish-map">Publish</button
+							>
+						{/if}
 					</div>
 					<p class="text-xs text-slate-600">Play starts a fresh session on this map. The program itself is yours alone.</p>
 				</div>

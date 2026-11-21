@@ -11,8 +11,13 @@ import (
 	"github.com/wricardo/drbrain/platform/pgdb"
 )
 
-// PostgresUserMaps is a UserStore on the maps table. It holds player-created
-// maps only: shipped maps are never inserted, they are the files in maps/.
+// PostgresUserMaps is a UserStore on the legacy maps table. It holds
+// player-created maps only: shipped maps are never inserted, they are the files
+// in maps/.
+//
+// Deprecated: Motor reads and writes platform_maps through platform/mapstore.
+// This type remains for the T16 legacy import path and its tests; do not wire
+// it into production.
 type PostgresUserMaps struct {
 	pool *pgxpool.Pool
 }

@@ -93,9 +93,12 @@ type Snapshot {
 	The purchasable catalogue with per-session unlock and affordability flags, cheapest first.
 	"""
 	carClasses: [CarClassView!]!
-	achievements: [AchievementView!]!
-	unlocks: [UnlockView!]!
-	builds: [BuildView!]!
+	"""
+	The city's scheduled expansion: stages in tick order, each with its fire
+	tick and whether it has already applied. Read-only — the city grows on its
+	own timeline, not through purchases.
+	"""
+	growth: [GrowthView!]!
 	events: [EventView!]!
 	"""
 	Street works currently closing part of the map.
@@ -121,11 +124,68 @@ type CarWindow {
 	visibleCars: [CarView!]!
 	nearbyOrders: [OrderView!]!
 }
-type CityView {
+enum CityStatus {
+	"""
+	A work in progress: only its owner can see, edit, play or publish it.
+	"""
+	DRAFT
+	"""
+	Visible to everyone and selectable for a session.
+	"""
+	PUBLISHED
+}
+"""
+One entry in the city catalogue: a published city or the caller's own draft.
+"""
+type CityInfo {
+	id: ID!
 	name: String!
 	gridSize: Int!
 	"""
-	Full map as glyph rows. Unexplored tiles render '?'.
+	DRAFT cities are visible only to their owner. The owner may play and publish a draft;
+	another player can neither see nor select it.
+	"""
+	status: CityStatus!
+	"""
+	True when the signed-in caller created this city.
+	"""
+	ownedByMe: Boolean!
+	"""
+	True for a shipped city file. Builtins are published and admin-managed.
+	"""
+	builtin: Boolean!
+	"""
+	True for a community row with no owner (imported or legacy). Ownerless cities are
+	published and admin-managed.
+	"""
+	ownerless: Boolean!
+}
+type CityView {
+	id: ID!
+	name: String!
+	gridSize: Int!
+	"""
+	DRAFT cities are visible only to their owner. The owner may play a draft; another
+	player can neither see nor select it.
+	"""
+	status: CityStatus!
+	"""
+	True when the signed-in caller created this city; false for shipped cities.
+	"""
+	ownedByMe: Boolean!
+	"""
+	True for a shipped city file. Builtins are published and admin-managed.
+	"""
+	builtin: Boolean!
+	"""
+	True for a community row with no owner (imported or legacy). Ownerless cities are
+	published and admin-managed.
+	"""
+	ownerless: Boolean!
+	"""
+	Full map as glyph rows. Unexplored tiles render '?'. A house renders 'h'
+	when nobody is waiting there and 'H' while a customer is waiting for a
+	delivery.
 	"""
 	rows: [String!]!
 	"""
@@ -133,9 +193,24 @@ type CityView {
 	"""
 	hiddenTiles: Int!
 	kitchens: [PointView!]!
+	"""
+	Customers currently waiting for a delivery. A customer appears when it
+	raises an order and leaves once that order is delivered or expires; a house
+	with nobody waiting is not listed. Empty on the static city query, which
+	shows authored houses as 'h' and carries no session state.
+	"""
 	customers: [PointView!]!
 	depots: [PointView!]!
 	chargers: [PointView!]!
+}
+"""
+The outcome of validateCity: valid means the JSON parses into a city; publishable means the
+full publication gate (the same validation the server runs at startup) accepts it.
+"""
+type CityValidationResult {
+	valid: Boolean!
+	publishable: Boolean!
+	issues: [String!]!
 }
 type PointView {
 	id: ID!
@@ -174,6 +249,11 @@ type CarView {
 	Why the most recent move was rejected, if it was.
 	"""
 	lastReject: RejectReason
+	"""
+	Unpaid balance of a charging session in progress, in dollars. Zero when the
+	car is not charging or the session has already been billed.
+	"""
+	chargeDue: Int!
 }
 enum CarState {
 	IDLE
@@ -282,17 +362,13 @@ type LedgerView {
 	onTimeStreak: Int!
 	tows: Int!
 	"""
-	Completed builds. Chapter() derives from this, capped at 4.
-	"""
-	buildsCompleted: Int!
-	"""
 	Delivered ORDERS per item, not boxes: a two-box delivery adds 1.
 	"""
 	deliveriesByItem: [ItemCount!]!
 	"""
 	Lifetime fleet running cost paid, cumulative. Zero when the map disables
 	upkeep. Not subtracted from moneyEarned: upkeep is a cost, not negative
-	income, and achievements read moneyEarned.
+	income, and progression is measured by the city's own growth schedule.
 	"""
 	upkeepPaid: Int!
 	"""
@@ -305,71 +381,132 @@ type LedgerView {
 	client show the drain before it lands rather than only after.
 	"""
 	upkeepDue: Int!
+	"""
+	Checking-account statement, newest first: every movement of money with the
+	car it belongs to when the movement is car-specific. Snapshots carry the
+	most recent rows; the engine retains the full statement with the save. The
+	live subscription carries fewer rows than a query.
+	"""
+	cashEntries: [CashEntryView!]!
+	"""
+	Length of one accounting month in simulation ticks.
+	"""
+	ticksPerMonth: Int!
+	"""
+	Monthly income/expense report, newest first. Snapshots carry at most 12
+	months; quiet months are included as zero rows so month numbers do not skip.
+	"""
+	months: [MonthView!]!
+}
+"""
+One movement through the player's checking account.
+"""
+type CashEntryView {
+	"""
+	Stable, monotonic id within the session. Use it as the list key.
+	"""
+	seq: Int!
+	tick: Int!
+	kind: CashKind!
+	"""
+	Economic bucket used by the monthly report.
+	"""
+	category: CashCategory!
+	"""
+	Signed dollars: positive for money in, negative for money out. This is what
+	was actually charged, so a fee clamped by an empty balance shows the
+	clamped amount rather than the nominal bill.
+	"""
+	amount: Int!
+	"""
+	Running balance after this movement.
+	"""
+	balance: Int!
+	"""
+	The car this movement belongs to, when it belongs to one.
+	"""
+	carId: ID
+	carName: String
+	orderId: ID
+	"""
+	Short human-readable detail, e.g. "pizza to Rosa's" or "fleet upkeep".
+	"""
+	memo: String!
+}
+enum CashKind {
+	OPENING
+	DELIVERY
+	LATE_DELIVERY
+	ORDER_FINE
+	UPKEEP
+	CHARGING
+	TOW
+	CAR_PURCHASE
+	BUILD
+	GRANT
+}
+enum CashCategory {
+	OPENING
+	DELIVERY_INCOME
+	REWARDS
+	ORDER_FINES
+	UPKEEP
+	CHARGING
+	TOWS
+	CAR_PURCHASES
+	BUILDS
+	OTHER
+}
+"""
+One accounting month of income and expenses.
+"""
+type MonthView {
+	"""
+	One-based month number. Month 1 covers ticks 0 through ticksPerMonth-1.
+	"""
+	index: Int!
+	startTick: Int!
+	endTick: Int!
+	"""
+	Positive magnitude of money in.
+	"""
+	income: Int!
+	"""
+	Positive magnitude of money out.
+	"""
+	expenses: Int!
+	"""
+	income minus expenses.
+	"""
+	net: Int!
+	categories: [MonthCategoryView!]!
+}
+type MonthCategoryView {
+	category: CashCategory!
+	"""
+	Positive magnitude in this category, or zero.
+	"""
+	income: Int!
+	"""
+	Positive magnitude out in this category, or zero.
+	"""
+	expenses: Int!
 }
 type ItemCount {
 	item: String!
 	count: Int!
 }
-type AchievementView {
+type GrowthView {
 	id: ID!
+	tick: Int!
 	title: String!
 	description: String!
 	done: Boolean!
-	"""
-	Progress toward target, in that requirement's own units.
-	"""
-	progress: Int!
-	target: Int!
-}
-type UnlockView {
-	id: ID!
-	title: String!
-	description: String!
-	"""
-	The gate in words, e.g. "5 deliveries" or "earn $2000".
-	"""
-	requires: String!
-	earned: Boolean!
-	"""
-	Progress toward the strictest requirement, in that requirement's own units.
-	"""
-	progress: Int!
-	"""
-	The target that progress is measured against.
-	"""
-	target: Int!
-	"""
-	The build ids this unlock makes purchasable.
-	"""
-	builds: [ID!]!
-}
-type BuildView {
-	id: ID!
-	title: String!
-	description: String!
-	cost: Int!
-	"""
-	The right to build has been earned.
-	"""
-	unlocked: Boolean!
-	completed: Boolean!
-	"""
-	Money covers the cost right now.
-	"""
-	affordable: Boolean!
-	"""
-	A legal placement exists right now.
-	"""
-	applicable: Boolean!
-	"""
-	Why the build cannot be placed, when it cannot.
-	"""
-	problem: String
 }
 type EventView {
 	tick: Int!
 	"""
-	One of the car_* / order_* / build_* / unlock_* / closure_* names the engine emits.
+	One of the car_* / order_* / city_growth / closure_* names the engine emits.
 	"""
 	type: String!
 	message: String!
@@ -414,9 +551,21 @@ type Query {
 	"""
 	health: Health!
 	"""
-	The static city with every district revealed.
+	Published cities plus the signed-in caller's own drafts. Another player's draft is never listed.
 	"""
-	city: CityView!
+	cities: [CityInfo!]!
+	"""
+	The static city with every district revealed. An omitted id selects the default city; a
+	published city or the caller's own draft is visible, another player's draft is null.
+	"""
+	city(id: ID): CityView
+	"""
+	The exact city JSON document for a published city or the caller's own draft.
+	Another player's draft and a missing city return null. Built-in cities are readable
+	by everyone. This is the authoring document: it carries the decoded, defaulted config
+	with the same key names players write.
+	"""
+	cityConfig(id: ID!): String
 	"""
 	Every save on disk, newest first.
 	"""
@@ -443,12 +592,13 @@ type Query {
 }
 type Mutation {
 	"""
-	Start a new city. Both fields optional; a seed makes it reproducible, and an
-	omitted id is generated. A signed-in creator's session belongs to their
-	account. The response carries the secret ownerToken, needed to change the
-	session later, so keep it.
+	Start a new city. Both fields optional; a seed makes it reproducible, and an omitted id is
+	generated. cityId selects the city config to snapshot (omitted = the default city); the
+	session keeps that snapshot, so later city edits never change a running game. A signed-in
+	creator's session belongs to their account. The response carries the secret ownerToken,
+	needed to change the session later, so keep it.
 	"""
-	createSession(id: ID, seed: Int): CreateSessionResult!
+	createSession(id: ID, seed: Int, cityId: ID): CreateSessionResult!
 	"""
 	Queue one step for one car. Does NOT advance the clock. Only the session's
 	creator may change it: pass the ownerToken from createSession, or be signed in
@@ -479,10 +629,6 @@ type Mutation {
 	"""
 	towCar(id: ID!, carId: ID!, ownerToken: String): Snapshot!
 	"""
-	Purchase an unlocked build; mutates the map atomically. Creator-only, as moveCar.
-	"""
-	build(id: ID!, buildId: ID!, ownerToken: String): Snapshot!
-	"""
 	Write the save to disk. Creator-only, as moveCar.
 	"""
 	saveSession(id: ID!, ownerToken: String): Snapshot!
@@ -501,6 +647,33 @@ type Mutation {
 	its owner token (up to 100 per call). UNAUTHENTICATED when not signed in.
 	"""
 	claimSessions(claims: [SessionClaimInput!]!): [SessionClaimResult!]!
+	"""
+	Saves a new DRAFT city owned by the signed-in player (UNAUTHENTICATED otherwise). config is
+	the raw city JSON; it is stored as written, so validateCity and publishCity can report every
+	problem.
+	"""
+	createCity(id: ID!, config: String!): CityView!
+	"""
+	Replaces the caller's own city and puts it back into DRAFT. Only the owner may edit a
+	community city; shipped and legacy unowned cities need X-Admin-Key.
+	"""
+	updateCity(id: ID!, config: String!): CityView!
+	"""
+	Publishes a draft after the full startup validation (grid, districts, orders and
+	reachability). Only the owner may do it, and an invalid city is refused with
+	INVALID_ARGUMENT.
+	"""
+	publishCity(id: ID!): CityView!
+	"""
+	Removes a city. Community cities need their owner; shipped and legacy unowned cities need
+	X-Admin-Key. Sessions already started keep their snapshot.
+	"""
+	deleteCity(id: ID!): Boolean!
+	"""
+	Checks raw city JSON and stores nothing. Signed-in players only. valid means it parses into a
+	city; publishable means publishCity would accept it.
+	"""
+	validateCity(config: String!): CityValidationResult!
 }
 type Subscription {
 	"""

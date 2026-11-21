@@ -133,6 +133,52 @@ func (f *fakeMaps) Delete(id string) error {
 	return nil
 }
 
+// Lifecycle methods: the fake keeps one published, ownerless catalogue, enough
+// for service tests that do not exercise drafts.
+
+func (f *fakeMaps) ListEntries(viewerID string) ([]*service.MapEntry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]*service.MapEntry, 0, len(f.m))
+	for _, m := range f.m {
+		out = append(out, &service.MapEntry{ID: m.ID, Config: m.Config(), Status: service.MapStatusPublished})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}
+
+func (f *fakeMaps) GetEntry(id string) (*service.MapEntry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	m, ok := f.m[id]
+	if !ok {
+		return nil, service.Errorf(service.CodeNotFound, "map %q not found", id)
+	}
+	return &service.MapEntry{ID: m.ID, Config: m.Config(), Status: service.MapStatusPublished}, nil
+}
+
+func (f *fakeMaps) CreateDraft(cfg engine.MapConfig, ownerID string) (string, error) {
+	m, err := f.Create(cfg)
+	if err != nil {
+		return "", err
+	}
+	_ = m
+	return "", nil
+}
+
+func (f *fakeMaps) SaveOwned(cfg engine.MapConfig, actor service.MapActor) (*service.MapEntry, error) {
+	if _, err := f.Save(cfg); err != nil {
+		return nil, err
+	}
+	return f.GetEntry(cfg.ID)
+}
+
+func (f *fakeMaps) Publish(id string, actor service.MapActor) (*service.MapEntry, error) {
+	return f.GetEntry(id)
+}
+
+func (f *fakeMaps) DeleteOwned(id string, actor service.MapActor) error { return f.Delete(id) }
+
 // ---- persistence spy -------------------------------------------------------
 
 // spyPersistence is an in-memory SessionPersistence that counts saves.
@@ -298,7 +344,7 @@ func (e *env) get(t testing.TB, id string) *service.Session {
 
 func (e *env) create(t testing.TB, mapID string) *service.Session {
 	t.Helper()
-	s, err := e.svc.CreateSession(mapID, "")
+	s, _, err := e.svc.CreateSession(mapID, "", "")
 	if err != nil {
 		t.Fatalf("CreateSession(%s): %v", mapID, err)
 	}

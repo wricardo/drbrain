@@ -9,8 +9,10 @@
 //   4. collects console errors and failed requests
 //   5. saves a screenshot for human review
 //
-//   6. phase 2: drops this browser's owner token and proves the same session
-//      opens read-only (spectator notice shown, no speed controls)
+//   6. phase 2: drops this browser's owner token and proves the same ?city=
+//      deep link opens read-only (spectator notice shown, no speed controls)
+//   7. phase 3: returns to /delivery and proves a city this browser owns is
+//      attributed as "Your city" with a badge and no owner @handle link
 //
 // Usage: node scripts/ui-smoke.mjs [baseUrl] [ownerPng] [spectatorPng]
 
@@ -199,18 +201,18 @@ try {
 		mobile: false
 	});
 
-	// Seed the session id so the app resumes straight into it.
+	// Deep-link straight into the session. The open city lives in the URL, so
+	// only the owner token is needed in localStorage; there is no auto-resume.
+	const cityUrl = `${BASE}/delivery?city=${encodeURIComponent(sessionId)}`;
 	const nav = await page.send('Page.navigate', { url: BASE + '/delivery' });
 	if (nav.errorText) throw new Error(`navigate: ${nav.errorText}`);
 
-	// localStorage must be set on the origin before the app reads it. The app
-	// only calls resume() on mount, so set it then reload.
+	// localStorage must be set on the origin before the app reads it.
 	await page.eval('1');
-	await page.eval(`localStorage.setItem('drbrain-delivery.lastSession', ${JSON.stringify(sessionId)})`);
 	await page.eval(
 		`localStorage.setItem('drbrain-delivery.ownerTokens', ${JSON.stringify(JSON.stringify({ [sessionId]: ownerToken }))})`
 	);
-	await page.send('Page.reload', {});
+	await page.send('Page.navigate', { url: cityUrl });
 
 	// The map is 400 buttons; wait for the grid plus a ledger value.
 	const rendered = await page.waitFor(
@@ -363,6 +365,47 @@ try {
 	const tickAfter = await headerTick();
 	console.log('external tick while paused:', tickBefore, '->', tickAfter, refreshOk ? '(refreshed)' : '(STALE)');
 
+	// --- touch path: the "Queue only" toggle stands in for Shift+arrow ------
+	//
+	// Shift+arrow is keyboard-only, so a touch player needs a control that
+	// queues without advancing the clock. Pressing a D-pad direction with the
+	// toggle on must leave the tick and the car where they were; "step" must
+	// then advance the tick and apply the queued move.
+	const queueTickBefore = await headerTick();
+	const queuePosBefore = await carPos();
+	const pressToggle = () =>
+		page.eval(`(() => {
+			const toggle = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Queue only');
+			if (!toggle) throw new Error('Queue only toggle not found');
+			toggle.click();
+		})()`);
+	await pressToggle();
+	await sleep(100);
+	const queuePressed = await page.eval(`(() => {
+		const toggle = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Queue only');
+		return toggle ? toggle.getAttribute('aria-pressed') : null;
+	})()`);
+	await page.eval(`document.querySelector('button[aria-label="Move north"]').click()`);
+	await sleep(600);
+	const queueTickAfter = await headerTick();
+	const queuePosAfter = await carPos();
+	await page.eval(`(() => {
+		const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'step');
+		if (!btn) throw new Error('step button not found');
+		btn.click();
+	})()`);
+	await sleep(600);
+	const queueTickAfterStep = await headerTick();
+	const queuePosAfterStep = await carPos();
+	console.log(
+		'queue-only report:',
+		JSON.stringify({
+			pressed: queuePressed,
+			tick: [queueTickBefore, queueTickAfter, queueTickAfterStep],
+			position: [queuePosBefore, queuePosAfter, queuePosAfterStep]
+		})
+	);
+
 	// Screenshot for human review.
 	const shot = await page.send('Page.captureScreenshot', { format: 'png' });
 	writeFileSync(OUT, Buffer.from(shot.data, 'base64'));
@@ -374,12 +417,12 @@ try {
 
 	// --- phase 2: spectator mode ---------------------------------------------
 	//
-	// Same browser, same session, but without the owner token. Only the token is
-	// cleared; lastSession stays so the app resumes into the session it cannot play.
+	// Same browser, same deep link, but without the owner token. The URL stays
+	// the source of truth, so the city still opens; it just cannot be played.
 	page.errors.length = 0;
 	page.failedRequests.length = 0;
 	await page.eval(`localStorage.removeItem('drbrain-delivery.ownerTokens')`);
-	await page.send('Page.reload', {});
+	await page.send('Page.navigate', { url: cityUrl });
 	const noticeShown = await page.waitFor(`document.querySelector('[data-testid="spectator-notice"]')`);
 	const spectator = noticeShown
 		? await page.eval(`(() => {
@@ -401,6 +444,40 @@ try {
 	console.log('screenshot:', SPECTATOR_OUT);
 	console.log('phase 2 console errors:', JSON.stringify(page.errors));
 	console.log('phase 2 failed requests:', JSON.stringify(page.failedRequests));
+
+	// --- phase 3: city picker attribution ------------------------------------
+	//
+	// Back to the picker without ?city=. The owner token is restored so the
+	// created city belongs to this browser again: it must be labelled "Your
+	// city", carry the local-owner badge, and leak neither its raw id nor an
+	// @handle link.
+	const spectatorErrors = [...page.errors];
+	const spectatorFailed = [...page.failedRequests];
+	page.errors.length = 0;
+	page.failedRequests.length = 0;
+	await page.eval(
+		`localStorage.setItem('drbrain-delivery.ownerTokens', ${JSON.stringify(JSON.stringify({ [sessionId]: ownerToken }))})`
+	);
+	await page.send('Page.navigate', { url: BASE + '/delivery' });
+	const pickerReady = await page.waitFor(
+		`document.querySelector('button[title=${JSON.stringify(`Open ${sessionId}`)}]')`
+	);
+	const picker = pickerReady
+		? await page.eval(`(() => {
+			const btn = document.querySelector('button[title=${JSON.stringify(`Open ${sessionId}`)}]');
+			const li = btn.closest('li');
+			const badge = [...btn.querySelectorAll('span')].find((el) => el.textContent.trim() === 'yours');
+			return {
+				label: btn.innerText.split('\\n')[0].trim(),
+				hasBadge: !!badge,
+				rawIdShown: !!li && li.innerText.includes(${JSON.stringify(sessionId)}),
+				handleLinks: li ? [...li.querySelectorAll('a[href^="/u/"]')].map((a) => a.getAttribute('href')) : []
+			};
+		})()`)
+		: null;
+	console.log('picker report:', JSON.stringify(picker));
+	console.log('phase 3 console errors:', JSON.stringify(page.errors));
+	console.log('phase 3 failed requests:', JSON.stringify(page.failedRequests));
 
 	const problems = [];
 	if (!report.hasTick) problems.push('no tick counter in header');
@@ -442,6 +519,31 @@ try {
 			`UI did not auto-refresh: tick stayed at ${tickAfter} after an external tick (was ${tickBefore})`
 		);
 	}
+	// Touch queue-only path (stands in for keyboard Shift+arrow).
+	if (queuePressed !== 'true') {
+		problems.push(`queue-only toggle did not report aria-pressed=true: ${queuePressed}`);
+	}
+	if (queueTickAfter !== queueTickBefore) {
+		problems.push(`queue-only D-pad advanced the tick (${queueTickBefore} -> ${queueTickAfter})`);
+	}
+	if (
+		!queuePosBefore ||
+		!queuePosAfter ||
+		queuePosBefore[0] !== queuePosAfter[0] ||
+		queuePosBefore[1] !== queuePosAfter[1]
+	) {
+		problems.push(`queue-only D-pad moved the car instead of queueing (${queuePosBefore} -> ${queuePosAfter})`);
+	}
+	if (!(queueTickAfterStep > queueTickAfter)) {
+		problems.push(`step after queueing did not advance the tick (${queueTickAfter} -> ${queueTickAfterStep})`);
+	}
+	if (
+		!queuePosAfter ||
+		!queuePosAfterStep ||
+		(queuePosAfterStep[0] === queuePosAfter[0] && queuePosAfterStep[1] === queuePosAfter[1])
+	) {
+		problems.push(`the queued move was not applied on step (${queuePosAfter} -> ${queuePosAfterStep})`);
+	}
 	if (ownerErrors.length) problems.push(`phase 1 console errors: ${ownerErrors.join(' | ')}`);
 	if (ownerFailed.length) problems.push(`phase 1 failed requests: ${ownerFailed.join(' | ')}`);
 
@@ -455,8 +557,25 @@ try {
 		if (spectator.dpad) problems.push('drive D-pad still shown to a spectator');
 		if (spectator.tiles < 100) problems.push(`spectator sees only ${spectator.tiles} tiles`);
 	}
-	if (page.errors.length) problems.push(`phase 2 console errors: ${page.errors.join(' | ')}`);
-	if (page.failedRequests.length) problems.push(`phase 2 failed requests: ${page.failedRequests.join(' | ')}`);
+	if (spectatorErrors.length) problems.push(`phase 2 console errors: ${spectatorErrors.join(' | ')}`);
+	if (spectatorFailed.length) problems.push(`phase 2 failed requests: ${spectatorFailed.join(' | ')}`);
+
+	// Picker phase.
+	if (!picker) {
+		const body = await page.eval('document.body.innerText.slice(0, 600)');
+		problems.push(`picker row for the created city never appeared. Body was:\n${body}`);
+	} else {
+		if (!/Your city/.test(picker.label)) {
+			problems.push(`picker row for a locally owned city is not named "Your city": "${picker.label}"`);
+		}
+		if (!picker.hasBadge) problems.push('picker row for a locally owned city has no "yours" badge');
+		if (picker.rawIdShown) problems.push('picker row for a locally owned city still shows its raw id');
+		if (picker.handleLinks.length) {
+			problems.push(`picker row for a locally owned city links to an owner profile: ${picker.handleLinks.join(', ')}`);
+		}
+	}
+	if (page.errors.length) problems.push(`phase 3 console errors: ${page.errors.join(' | ')}`);
+	if (page.failedRequests.length) problems.push(`phase 3 failed requests: ${page.failedRequests.join(' | ')}`);
 
 	page.close();
 

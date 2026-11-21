@@ -95,6 +95,15 @@ type Map {
 	True for a map shipped with the game: only an admin may change or delete it.
 	"""
 	builtin: Boolean!
+	"""
+	DRAFT maps are visible only to their owner and cannot be played or published
+	by anyone else. Every shipped map is PUBLISHED.
+	"""
+	status: MapStatus!
+	"""
+	True when the signed-in caller created this community map.
+	"""
+	ownedByMe: Boolean!
 	width: Int!
 	height: Int!
 	layout: [String!]!
@@ -243,6 +252,16 @@ type MapValidationResult {
 	"""
 	unreachableTreats: [Position!]!
 }
+enum MapStatus {
+	"""
+	A work in progress: only its owner can see, edit, play or publish it.
+	"""
+	DRAFT
+	"""
+	Visible to everyone and playable by anyone.
+	"""
+	PUBLISHED
+}
 input MapInput {
 	id: ID!
 	name: String!
@@ -360,7 +379,13 @@ type SessionClaimResult {
 }
 scalar Time
 type Query {
+	"""
+	Published maps plus the signed-in caller's own drafts. Another player's draft is never listed.
+	"""
 	maps: [Map!]!
+	"""
+	One map. Another player's draft is null, exactly like an unknown id.
+	"""
 	map(id: ID!): Map
 	"""
 	One session. The program is included only for a caller who may change it; pass the ownerToken
@@ -432,14 +457,27 @@ type Mutation {
 	"""
 	claimSessions(claims: [SessionClaimInput!]!): [SessionClaimResult!]!
 	"""
-	Creating a map needs a signed-in player (UNAUTHENTICATED otherwise); validateMap is open to everyone.
+	Creates a DRAFT map owned by the signed-in player (UNAUTHENTICATED otherwise). The map is
+	saved even when it is not valid yet; publishMap checks it. Use validateMap to preview problems.
 	"""
 	createMap(map: MapInput!): Map!
+	"""
+	Checks a map definition and stores nothing. Signed-in players only.
+	"""
 	validateMap(map: MapInput!): MapValidationResult!
 	"""
-	Anyone may change or remove a player-created map; shipped maps need X-Admin-Key.
+	Replaces the caller's community map and puts it back into DRAFT. Only the owner may edit a
+	community map; shipped and legacy unowned maps need X-Admin-Key.
 	"""
 	updateMap(map: MapInput!): Map!
+	"""
+	Publishes a valid draft. Only its owner may do it, and an invalid map (unreachable treats,
+	bad layout) is refused with INVALID_ARGUMENT.
+	"""
+	publishMap(id: ID!): Map!
+	"""
+	Removes a map. Community maps need their owner; shipped and legacy unowned maps need X-Admin-Key.
+	"""
 	deleteMap(id: ID!): Boolean!
 }
 type Subscription {

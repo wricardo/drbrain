@@ -8,6 +8,7 @@ export type {
 	Mazes_LossReason as LossReason,
 	Mazes_Map as GameMap,
 	Mazes_MapInput as MapInput,
+	Mazes_MapStatus as MapStatus,
 	Mazes_MapValidationResult as MapValidationResult,
 	Mazes_MoveEvent as MoveEvent,
 	Mazes_Portal as Portal,

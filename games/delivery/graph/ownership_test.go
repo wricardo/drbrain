@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -15,38 +14,55 @@ import (
 
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/handler/transport"
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/wricardo/drbrain/games/delivery/game/session"
 	"github.com/wricardo/drbrain/games/delivery/graph/generated"
 	"github.com/wricardo/drbrain/platform/account"
 	"github.com/wricardo/drbrain/platform/auth"
+	"github.com/wricardo/drbrain/platform/pgdb/pgtest"
+	"github.com/wricardo/drbrain/platform/sessionstore"
 )
 
 // newOwnershipServer is a GraphQL server with the account service wired in. A
 // request carries the signed-in viewer as X-Test-Account: <id>, which the test
 // middleware turns into the same auth.Viewer the platform handler installs.
-func newOwnershipServer(t *testing.T) (*httptest.Server, *session.Manager, *account.Service, string, string) {
+//
+// The manager, the session store and the accounts all share one fresh test
+// schema; the pool is returned so a test can also start a second manager over
+// the same data, which is what a server restart looks like.
+func newOwnershipServer(t *testing.T) (*httptest.Server, *session.Manager, *account.Service, string, *pgxpool.Pool) {
 	t.Helper()
-	city, err := filepath.Abs(filepath.Join("..", "maps", "city.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	mgr, err := session.NewManager(city, dir)
+	pool := pgtest.Pool(t)
+	mgr, err := session.NewManager(newCityCatalog(t, pool), pool)
 	if err != nil {
 		t.Fatalf("manager: %v", err)
 	}
 	t.Cleanup(func() { _ = mgr.Close() })
 
-	repo, err := account.Open(t.TempDir(), nil)
-	if err != nil {
-		t.Fatalf("accounts: %v", err)
-	}
-	accounts := account.New(account.Options{Store: repo})
+	accounts := account.New(account.Options{Store: account.NewPostgresStore(pool)})
 	acct, _, err := accounts.SignIn("password", "alice")
 	if err != nil {
 		t.Fatalf("sign in: %v", err)
 	}
 
+	ts := ownershipTestServer(t, mgr, accounts)
+	return ts, mgr, accounts, acct.ID, pool
+}
+
+func deliveryCityPath(t *testing.T) string {
+	t.Helper()
+	city, err := filepath.Abs(filepath.Join("..", "maps", "city.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return city
+}
+
+// ownershipTestServer serves the delivery schema over one manager and account
+// service.
+func ownershipTestServer(t *testing.T, mgr *session.Manager, accounts *account.Service) *httptest.Server {
+	t.Helper()
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{
 		Resolvers: &Resolver{Mgr: mgr, Accounts: accounts},
 	}))
@@ -57,20 +73,52 @@ func newOwnershipServer(t *testing.T) (*httptest.Server, *session.Manager, *acco
 	srv.AddTransport(transport.Options{})
 
 	h := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := auth.WithRequest(r.Context(), r)
 		if id := r.Header.Get("X-Test-Account"); id != "" {
 			if a, ok := accounts.Lookup(id); ok {
-				r = r.WithContext(auth.WithViewer(r.Context(), &auth.Viewer{Account: &a}))
+				ctx = auth.WithViewer(ctx, &auth.Viewer{Account: &a})
 			}
 		}
-		srv.ServeHTTP(w, r)
+		srv.ServeHTTP(w, r.WithContext(ctx))
 	})
 	ts := httptest.NewServer(h)
 	t.Cleanup(ts.Close)
-	return ts, mgr, accounts, acct.ID, dir
+	return ts
+}
+
+// rewriteStoredPayload edits a stored payload through a store of its own,
+// standing in for a save written by an older build.
+func rewriteStoredPayload(t *testing.T, pool *pgxpool.Pool, id string, fn func(map[string]any)) {
+	t.Helper()
+	store, err := sessionstore.Open(sessionstore.Options{Pool: pool})
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	meta, blob, err := store.Load(id)
+	if err != nil {
+		t.Fatalf("load %s: %v", id, err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(blob, &doc); err != nil {
+		t.Fatal(err)
+	}
+	fn(doc)
+	out, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Persist(meta, out); err != nil {
+		t.Fatalf("persist %s: %v", id, err)
+	}
 }
 
 // gqlAs posts one operation, optionally as a signed-in account.
 func gqlAs(t *testing.T, ts *httptest.Server, accountID, q string, vars map[string]any) gqlResponse {
+	return gqlAsHeaders(t, ts, accountID, nil, q, vars)
+}
+
+// gqlAsHeaders posts one operation with extra HTTP headers.
+func gqlAsHeaders(t *testing.T, ts *httptest.Server, accountID string, headers map[string]string, q string, vars map[string]any) gqlResponse {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{"query": q, "variables": vars})
 	if err != nil {
@@ -83,6 +131,9 @@ func gqlAs(t *testing.T, ts *httptest.Server, accountID, q string, vars map[stri
 	req.Header.Set("Content-Type", "application/json")
 	if accountID != "" {
 		req.Header.Set("X-Test-Account", accountID)
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -222,34 +273,28 @@ func TestSignedInOwnerNeedsNoToken(t *testing.T) {
 }
 
 func TestLegacySaveStaysOpen(t *testing.T) {
-	ts, mgr, _, _, dir := newOwnershipServer(t)
+	ts, mgr, accounts, _, pool := newOwnershipServer(t)
 	id, _ := createForToken(t, ts, "", "legacy1")
 	if err := mgr.SaveAll(); err != nil {
 		t.Fatal(err)
 	}
 
-	// Rewrite the save into the pre-owner-token shape.
-	path := filepath.Join(dir, id+".json")
-	blob, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var doc map[string]any
-	if err := json.Unmarshal(blob, &doc); err != nil {
-		t.Fatal(err)
-	}
-	delete(doc, "account_id")
-	delete(doc, "owner_hash")
-	out, err := json.Marshal(doc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, out, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	mgr.Evict(id)
+	// Rewrite the saved payload into the pre-owner-token shape.
+	rewriteStoredPayload(t, pool, id, func(doc map[string]any) {
+		delete(doc, "account_id")
+		delete(doc, "owner_hash")
+	})
 
-	res := gqlAs(t, ts, "", `mutation ($id: ID!) { tick(id: $id, count: 1) { tick } }`, map[string]any{"id": id})
+	// A second manager on the same pool sees no live copy, so this is also the
+	// restart path: it must load the rewritten payload from the store.
+	mgr2, err := session.NewManager(newCityCatalog(t, pool), pool)
+	if err != nil {
+		t.Fatalf("second manager: %v", err)
+	}
+	t.Cleanup(func() { _ = mgr2.Close() })
+	ts2 := ownershipTestServer(t, mgr2, accounts)
+
+	res := gqlAs(t, ts2, "", `mutation ($id: ID!) { tick(id: $id, count: 1) { tick } }`, map[string]any{"id": id})
 	if len(res.Errors) > 0 {
 		t.Fatalf("a legacy save was locked: %v", res.Errors)
 	}

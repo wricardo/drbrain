@@ -29,6 +29,8 @@
 		class?: string;
 		/** Extra classes on the body wrapper, e.g. for an inner scroller. */
 		bodyClass?: string;
+		/** When set, the body is a labelled, keyboard-focusable scroll region. */
+		bodyLabel?: string;
 		children: Snippet;
 	}
 
@@ -39,6 +41,7 @@
 		defaultOpen = true,
 		class: className = '',
 		bodyClass = '',
+		bodyLabel = '',
 		children
 	}: Props = $props();
 
@@ -85,7 +88,7 @@
 	<h2 class="m-0">
 		<button
 			type="button"
-			class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors hover:bg-surface-muted {open
+			class="flex min-h-11 w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors hover:bg-surface-muted {open
 				? 'border-b border-edge'
 				: ''}"
 			aria-expanded={open}
@@ -98,7 +101,6 @@
 				// (which happens on keydown for Enter, keyup for Space) intact.
 				if (e.key === ' ' || e.key === 'Enter') e.stopPropagation();
 			}}
-			title={open ? `Collapse ${title}` : `Expand ${title}`}
 		>
 			<span class="flex items-baseline gap-2">
 				<span class="text-xs font-semibold tracking-wide text-muted uppercase">{title}</span>
@@ -114,7 +116,14 @@
 	</h2>
 
 	{#if open}
-		<div id={bodyId} class={bodyClass}>
+		<!-- svelte-ignore a11y_no_noninteractive_tabindex (A labelled scroll region must be keyboard-focusable.) -->
+		<div
+			id={bodyId}
+			class={bodyClass}
+			role={bodyLabel ? 'region' : undefined}
+			aria-label={bodyLabel || undefined}
+			tabindex={bodyLabel ? 0 : undefined}
+		>
 			{@render children()}
 		</div>
 	{/if}

@@ -35,6 +35,87 @@ CANAL_Y_MAX = 12
 SEA_X_MIN = 13
 SEA_Y_MIN = 13
 
+# The city's scheduled expansion. This is content, not geometry: the generator
+# copies the campaign schedule so a regenerated city.json keeps the same stages
+# the engine and UI were tuned against.
+GROWTH = [
+    {"id": "g01_corner_charger", "tick": 180, "title": "Corner Charger",
+     "description": "The city installs a charger a block north of the depot, and the corner cafe opens.",
+     "effects": [
+         {"type": "add_charger", "entities": [
+             {"id": "ch_corner", "pos": {"x": 3, "y": 0}, "capacity": 1}]},
+         {"type": "add_customer", "entities": [
+             {"id": "c_corner", "name": "Corner Cafe", "pos": {"x": 9, "y": 6},
+              "demands": ["pizza"], "order_interval_ticks": 50, "jitter_ticks": 10}]},
+     ]},
+    {"id": "g02_harbour_gate", "tick": 420, "title": "Harbour Gate",
+     "description": "The canal is bridged and the harbour opens with its two regulars and a charger.",
+     "effects": [
+         {"type": "build_bridge", "tiles": [
+             {"x": 13, "y": 3, "terrain": "road"},
+             {"x": 14, "y": 3, "terrain": "road"}]},
+         {"type": "reveal_district", "district": "harbour"},
+         {"type": "add_charger", "entities": [
+             {"id": "ch_bridgehead", "pos": {"x": 12, "y": 3}, "capacity": 1}]},
+     ]},
+    {"id": "g03_market_flats", "tick": 720, "title": "Market Flats",
+     "description": "The dirt track is paved, and a new harbour block opens with the Dock Diner.",
+     "effects": [
+         {"type": "pave_road", "tiles": [
+             {"x": 3, "y": 13, "terrain": "road"},
+             {"x": 3, "y": 14, "terrain": "road"},
+             {"x": 6, "y": 13, "terrain": "road"},
+             {"x": 6, "y": 14, "terrain": "road"},
+             {"x": 15, "y": 3, "terrain": "house"},
+             {"x": 15, "y": 6, "terrain": "kitchen"}]},
+         {"type": "add_kitchen", "entities": [
+             {"id": "k_dock", "name": "Dock Diner", "pos": {"x": 15, "y": 6},
+              "menu": ["sushi"]}]},
+         {"type": "add_customer", "entities": [
+             {"id": "c_market", "name": "Market Flats", "pos": {"x": 15, "y": 3},
+              "demands": ["sushi"], "order_interval_ticks": 55, "jitter_ticks": 10}]},
+     ]},
+    {"id": "g04_hills_road", "tick": 1200, "title": "Hills Road",
+     "description": "The hills open: pharmacy, villa, observatory, and the Office Block.",
+     "effects": [
+         {"type": "reveal_district", "district": "hills"},
+         {"type": "add_charger", "entities": [
+             {"id": "ch_hilltop", "pos": {"x": 12, "y": 18}, "capacity": 1}]},
+         {"type": "pave_road", "tiles": [
+             {"x": 0, "y": 18, "terrain": "house"}]},
+         {"type": "add_customer", "entities": [
+             {"id": "c_office", "name": "Office Block", "pos": {"x": 0, "y": 18},
+              "demands": ["meds"], "order_interval_ticks": 60, "jitter_ticks": 15}]},
+     ]},
+    {"id": "g05_hilltop_kitchen", "tick": 1680, "title": "Hilltop Kitchen",
+     "description": "The depot adds charging bays; a new kitchen and home open on the ridge.",
+     "effects": [
+         {"type": "upgrade_depot", "depot": "d_main", "capacity": 8, "charge_slots": 8},
+         {"type": "pave_road", "tiles": [
+             {"x": 12, "y": 15, "terrain": "kitchen"},
+             {"x": 12, "y": 21, "terrain": "house"}]},
+         {"type": "add_kitchen", "entities": [
+             {"id": "k_ridge", "name": "Ridge Kitchen", "pos": {"x": 12, "y": 15},
+              "menu": ["meds", "pizza"]}]},
+         {"type": "add_customer", "entities": [
+             {"id": "c_ridge", "name": "Ridge House", "pos": {"x": 12, "y": 21},
+              "demands": ["meds"], "order_interval_ticks": 65, "jitter_ticks": 15}]},
+     ]},
+    {"id": "g06_night_market", "tick": 2400, "title": "Night Market",
+     "description": "A second harbour kitchen opens for the late crowd.",
+     "effects": [
+         {"type": "pave_road", "tiles": [
+             {"x": 21, "y": 9, "terrain": "kitchen"},
+             {"x": 21, "y": 10, "terrain": "house"}]},
+         {"type": "add_kitchen", "entities": [
+             {"id": "k_night", "name": "Night Market", "pos": {"x": 21, "y": 9},
+              "menu": ["sushi"]}]},
+         {"type": "add_customer", "entities": [
+             {"id": "c_night", "name": "Night Flat", "pos": {"x": 21, "y": 10},
+              "demands": ["sushi"], "order_interval_ticks": 70, "jitter_ticks": 20}]},
+     ]},
+]
+
 
 def base_terrain(x, y):
     if x >= SEA_X_MIN and y >= SEA_Y_MIN:
@@ -65,6 +146,9 @@ def build_layout():
         (9, 9): "C",    # downtown charger
         (3, 6): "H",    # Anna's Flat
         (12, 6): "H",   # Ben's Workshop
+        (6, 6): "H",    # Market Flats (growth)
+        (9, 6): "H",    # Corner Cafe (growth)
+        (9, 3): "H",    # Office Block (growth)
         (18, 6): "K",   # Harbour Fish Market
         (21, 3): "H",   # Dockside Diner
         (18, 0): "H",   # Lighthouse Keep
@@ -103,6 +187,12 @@ def city_config(rows):
         "name": "DrBrain City",
         "grid_size": GRID,
         "tick_ms": 300,
+        "ground_extra_step_cost": 1,
+        "ticks_per_month": 600,
+        "max_events": 500,
+        "max_reputation": 5.0,
+        "max_chapter": 5,
+        "autosave_ticks": 60,
         "starting_money": 0,
         "legend": {
             "W": "water", "B": "building", "R": "road", "G": "ground",
@@ -143,10 +233,9 @@ def city_config(rows):
         # property of the vehicle. The truck's hold is what makes a forty-box
         # order possible at all.
         "car_classes": {
-            "scooter": {"speed": 1, "capacity": 4, "max_battery": 24, "step_cost": 1, "price": 0},
-            "van": {"speed": 1, "capacity": 12, "max_battery": 36, "step_cost": 1, "price": 400},
-            "truck": {"speed": 1, "capacity": 40, "max_battery": 48, "step_cost": 1, "price": 900,
-                      "requires_grant": True},
+            "scooter": {"capacity": 4, "max_battery": 24, "step_cost": 1, "price": 0},
+            "van": {"capacity": 24, "max_battery": 36, "step_cost": 1, "price": 1000},
+            "truck": {"capacity": 40, "max_battery": 48, "step_cost": 1, "price": 3500},
         },
         "districts": {
             "downtown": {
@@ -166,15 +255,22 @@ def city_config(rows):
             },
         },
         "orders": {
-            "max_active_orders": 8,
-            # One queued order per car, damped: a full 1.0 keeps every car busy
-            # but floods the board when a truck joins, and 0.6 starves it.
-            # 0.75 was tuned against the harness at 6k ticks, three seeds.
-            "target_orders_per_car": 0.75,
+            "max_active_orders": 10,
+            # Demand follows the visible customer population, not the fleet.
+            # 0.6 leaves some headroom while the queue is being served.
+            "target_orders_per_customer": 0.6,
+            "ramp_ticks": 2400,
+            "customer_cooldown_min_scale": 0.75,
             "min_spawn_gap_ticks": 12,
-            "deadline_slack": 1.8,
-            "deadline_slack_by_chapter": [1.8, 1.7, 1.6, 1.5, 1.4],
+            "deadline_slack": 3.0,
+            "deadline_slack_by_chapter": [3.0, 2.9, 2.8, 2.7, 2.6],
             "reward_base": {"pizza": 40, "sushi": 55, "meds": 70},
+            "reward_bulk_base": 0.6,
+            "reward_bulk_per_box": 0.4,
+            "expire_fine_divisor": 4,
+            "min_route_ticks": 5,
+            "min_deadline_ticks": 10,
+            "unreachable_leg_ticks": 20,
             "chapter_reward_multiplier": [1.0, 1.1, 1.25, 1.5, 1.8],
             "distance_bonus_per_tile": 3,
             "expire_penalty_reputation": 0.05,
@@ -183,13 +279,21 @@ def city_config(rows):
             "reputation_per_delivery": 0.02,
             "reputation_per_late": 0.05,
             "quantity_bands": [
-                {"min_size": 1, "max_size": 3, "from_chapter": 0, "weight": 70},
-                {"min_size": 4, "max_size": 10, "from_chapter": 1, "weight": 25},
-                {"min_size": 12, "max_size": 24, "from_chapter": 2, "weight": 6},
-                {"min_size": 30, "max_size": 40, "from_chapter": 3, "weight": 8},
+                {"min_size": 1, "max_size": 3, "from_progress": 0.0, "weight": 40},
+                {"min_size": 5, "max_size": 10, "from_progress": 0.175, "weight": 35},
+                {"min_size": 13, "max_size": 24, "from_progress": 0.30, "weight": 25},
+                {"min_size": 30, "max_size": 40, "from_progress": 0.70, "weight": 30},
             ],
         },
-        "charging": {"depot_rate": 6, "charger_rate": 2},
+        "charging": {"depot_rate": 6, "charger_rate": 2, "charger_price_per_tick": 1},
+        "fleet": {
+            "upkeep_interval_ticks": 120,
+            "upkeep_per_box_per_interval": 1,
+            "upkeep_box_divisor": 4,
+            "default_upkeep_per_interval": 1,
+            "tow_fee_per_tile": 2,
+            "tow_fee_min": 25,
+        },
         # Street works. Off for the first chapter so a player with one scooter
         # has time to learn the map; a detour is only interesting once there is
         # more than one route to choose between.
@@ -201,90 +305,7 @@ def city_config(rows):
             "max_concurrent": 1,
             "segment_tiles": 3,
         },
-        "achievements": [
-            {"id": "a01_first_drop", "title": "First Drop",
-             "description": "Deliver your first order.", "requires": {"deliveries": 1}},
-            {"id": "a02_getting_known", "title": "Getting Known",
-             "description": "Complete 5 deliveries.", "requires": {"deliveries": 5}},
-            {"id": "a03_first_500", "title": "First $500",
-             "description": "Earn $500 in total.", "requires": {"money_earned": 500}},
-            {"id": "a50_first_tow", "title": "First Tow",
-             "description": "Get a car towed. It happens to everyone.",
-             "requires": {"tows": 1}, "grant_money": 50},
-            {"id": "a04_harbour_trade", "title": "Harbour Trade",
-             "description": "Deliver 5 dishes from the harbour.",
-             "requires": {"item_delivered": {"item": "sushi", "delivered": 5}},
-             "grant_money": 100},
-            {"id": "a05_house_call", "title": "House Call",
-             "description": "Deliver 5 medicines to the hills.",
-             "requires": {"item_delivered": {"item": "meds", "delivered": 5}},
-             "grant_money": 150},
-        ],
-        "unlocks": [
-            {"id": "u01_corner_charger", "title": "Corner Charger",
-             "description": "A first upgrade: a charger a block from the depot.",
-             "requires": {"deliveries": 1}, "grants_build": ["b01_corner_charger"]},
-            {"id": "u02_east_bridge", "title": "East Bridge",
-             "description": "Bridge the canal and open the harbour road.",
-             "requires": {"deliveries": 5}, "grants_build": ["b02_east_bridge"]},
-            {"id": "u03_alley_pavement", "title": "Alley Pavement",
-             "description": "Pave the southern dirt track: cheaper than driving dirt.",
-             "requires": {"money_earned": 500}, "grants_build": ["b03_alley_pavement"]},
-            {"id": "u04_harbour_gate", "title": "Harbour Gate",
-             "description": "Bridge is done and the city trusts you: open the harbour.",
-             "requires": {"deliveries": 15}, "grants_build": ["b04_harbour_gate"]},
-            {"id": "u05_fleet_yard", "title": "Fleet Yard",
-             "description": "Earn enough to expand the depot and license a truck.",
-             "requires": {"money_earned": 2000}, "grants_build": ["b06_depot_yard"]},
-            {"id": "u06_hills_road", "title": "Hills Road",
-             "description": "A serious investment: the southern hills open up.",
-             "requires": {"money_earned": 4000}, "grants_build": ["b05_hills_road"]},
-        ],
-        "builds": [
-            {"id": "b01_corner_charger", "title": "Corner Charger",
-             "description": "Add a charger beside the depot approach.", "cost": 150,
-             "effects": [{"type": "add_charger", "entities": [
-                 {"id": "ch_corner", "pos": {"x": 3, "y": 0}, "capacity": 1}]}]},
-            {"id": "b02_east_bridge", "title": "East Bridge",
-             "description": "Turn the canal crossing into road.", "cost": 300,
-             "effects": [
-                 {"type": "build_bridge", "tiles": [
-                     {"x": 13, "y": 3, "terrain": "road"},
-                     {"x": 14, "y": 3, "terrain": "road"}]},
-                 {"type": "add_charger", "entities": [
-                     {"id": "ch_bridgehead", "pos": {"x": 12, "y": 3}, "capacity": 1}]},
-             ]},
-            {"id": "b03_alley_pavement", "title": "Alley Pavement",
-             "description": "Pave the dirt track south of the depot.", "cost": 250,
-             "effects": [{"type": "pave_road", "tiles": [
-                 {"x": 3, "y": 13, "terrain": "road"},
-                 {"x": 3, "y": 14, "terrain": "road"},
-                 {"x": 6, "y": 13, "terrain": "road"},
-                 {"x": 6, "y": 14, "terrain": "road"}]}]},
-            {"id": "b04_harbour_gate", "title": "Harbour Gate",
-             "description": "Open the harbour district: fish market, dock diner and a charger.",
-             "cost": 800,
-             "effects": [
-                 {"type": "reveal_district", "district": "harbour"},
-                 {"type": "add_charger", "entities": [
-                     {"id": "ch_harbour_gate", "pos": {"x": 15, "y": 6}, "capacity": 1}]},
-             ]},
-            {"id": "b05_hills_road", "title": "Hills Road",
-             "description": "Grade a road into the hills: pharmacy, villa and observatory.",
-             "cost": 1200,
-             "effects": [
-                 {"type": "reveal_district", "district": "hills"},
-                 {"type": "add_charger", "entities": [
-                     {"id": "ch_hilltop", "pos": {"x": 12, "y": 18}, "capacity": 1}]},
-             ]},
-            {"id": "b06_depot_yard", "title": "Depot Yard",
-             "description": "Extend the depot so the fleet has somewhere to park, and license the truck.",
-             "cost": 700,
-             "effects": [
-                 {"type": "upgrade_depot", "depot": "d_main", "capacity": 8, "charge_slots": 8},
-                 {"type": "grant_car_class", "class": "truck"},
-             ]},
-        ],
+        "growth": GROWTH,
     }
 
 

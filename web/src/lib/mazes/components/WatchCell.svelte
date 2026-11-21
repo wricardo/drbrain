@@ -11,7 +11,7 @@
 	import { createReplay, prefersReducedMotion, replayFrame } from '$lib/mazes/replay';
 	import { levelName } from '$lib/mazes/tower';
 
-	/** One compact live board on the multi-watch page; same store and replay as /watch/<id>. */
+	/** One compact live board on the multi-watch page; same store and replay as /mazes/play/<id>. */
 	let { id, client }: { id: string; client: Client } = $props();
 
 	const store = createSessionStore(createSessionSource(untrack(() => client)), untrack(() => id));
@@ -54,6 +54,6 @@
 		<div class="flex justify-center" style="--board-max-h: 300px">
 			<Board view={session.view} game={session.state} lastEvent={session.lastEvent} bumpKey={frame?.replaying ? 0 : session.seq} facing={frame?.facing} />
 		</div>
-		<a href="/mazes/watch/{session.id}" class="mt-auto text-sm font-medium text-indigo-700 underline">Open full watch page →</a>
+		<a href="/mazes/play/{session.id}" class="mt-auto text-sm font-medium text-indigo-700 underline">Open full board →</a>
 	{/if}
 </article>

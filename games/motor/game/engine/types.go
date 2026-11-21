@@ -148,7 +148,18 @@ var idRe = regexp.MustCompile(`^[a-z0-9_-]{1,64}$`)
 // ValidID reports whether id is a legal map id (also a safe filename).
 func ValidID(id string) bool { return idRe.MatchString(id) }
 
-// MapConfig is the JSON representation of a map (maps/*.json).
+// MapStatus says whether a community map is public. Shipped and legacy maps
+// are published.
+type MapStatus string
+
+const (
+	MapStatusDraft     MapStatus = "DRAFT"
+	MapStatusPublished MapStatus = "PUBLISHED"
+)
+
+// MapConfig is the JSON representation of a map (maps/*.json). OwnerID and
+// Status are community metadata: shipped maps leave them empty, and a stored
+// community map always carries both.
 type MapConfig struct {
 	ID             string   `json:"id"`
 	Name           string   `json:"name"`
@@ -160,6 +171,8 @@ type MapConfig struct {
 	MaxSteps       int      `json:"max_steps,omitempty"`
 	MaxCallDepth   int      `json:"max_call_depth,omitempty"`
 	AllowRecursion bool     `json:"allow_recursion"`
+	OwnerID        string     `json:"owner_id,omitempty"`
+	Status         MapStatus  `json:"status,omitempty"`
 }
 
 // Map is a parsed, validated map.

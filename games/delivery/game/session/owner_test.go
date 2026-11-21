@@ -2,8 +2,6 @@ package session
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -18,7 +16,7 @@ const (
 // createOwned makes a session through the manager and returns it with its token.
 func createOwned(t *testing.T, mgr *Manager, id string, accountID string) (*Session, string) {
 	t.Helper()
-	sess, token, err := mgr.Create(id, 1, accountID)
+	sess, token, err := mgr.Create(id, 1, accountID, "")
 	if err != nil {
 		t.Fatalf("create %s: %v", id, err)
 	}
@@ -27,7 +25,7 @@ func createOwned(t *testing.T, mgr *Manager, id string, accountID string) (*Sess
 }
 
 func TestCreateMintsA256BitTokenStoredOnlyAsAHash(t *testing.T) {
-	mgr := newTestManager(t)
+	mgr := newMemoryManager(t)
 	sess, token := createOwned(t, mgr, "owned", "")
 
 	if len(token) != 43 {
@@ -36,13 +34,10 @@ func TestCreateMintsA256BitTokenStoredOnlyAsAHash(t *testing.T) {
 	if !regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`).MatchString(token) {
 		t.Fatalf("token %q is not base64url", token)
 	}
-	if err := sess.Save(mgr.CityFileName()); err != nil {
+	if err := sess.Save(); err != nil {
 		t.Fatal(err)
 	}
-	raw, err := os.ReadFile(filepath.Join(mgr.dir, "owned.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	raw := storedPayload(t, mgr, "owned")
 	if strings.Contains(string(raw), token) {
 		t.Fatal("the plaintext owner token was written to the save")
 	}
@@ -62,8 +57,8 @@ func TestCreateMintsA256BitTokenStoredOnlyAsAHash(t *testing.T) {
 }
 
 func TestCreateGeneratesARandomIDWhenOmitted(t *testing.T) {
-	mgr := newTestManager(t)
-	sess, _, err := mgr.Create("", 1, "")
+	mgr := newMemoryManager(t)
+	sess, _, err := mgr.Create("", 1, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +71,7 @@ func TestCreateGeneratesARandomIDWhenOmitted(t *testing.T) {
 }
 
 func TestAuthorizationMatrix(t *testing.T) {
-	mgr := newTestManager(t)
+	mgr := newMemoryManager(t)
 	guest, guestTok := createOwned(t, mgr, "guest", "")
 	owned, ownedTok := createOwned(t, mgr, "owned", ownerAccount)
 	claimed, claimedTok := createOwned(t, mgr, "claimed", "")
@@ -120,7 +115,7 @@ func TestAuthorizationMatrix(t *testing.T) {
 // Deleting needs the credential for a guest session too: unlike motor, delivery
 // saves are long-lived progress, not ephemeral runs.
 func TestDeleteNeedsTheCredentialEvenForAGuestSession(t *testing.T) {
-	mgr := newTestManager(t)
+	mgr := newMemoryManager(t)
 	live, token := createOwned(t, mgr, "guestlive", "")
 	// The manager does not authorize; the resolver applies this rule. A guest
 	// session is not open by id, because delivery saves are long-lived progress.
@@ -133,7 +128,7 @@ func TestDeleteNeedsTheCredentialEvenForAGuestSession(t *testing.T) {
 }
 
 func TestClaimStatuses(t *testing.T) {
-	mgr := newTestManager(t)
+	mgr := newMemoryManager(t)
 	guest, tok := createOwned(t, mgr, "c1", "")
 	owned, _ := createOwned(t, mgr, "c2", otherAccount)
 	legacy, _ := createLegacy(t, mgr, "c3")
@@ -181,20 +176,17 @@ func TestClaimStatuses(t *testing.T) {
 }
 
 func TestSaveShapePerOwner(t *testing.T) {
-	mgr := newTestManager(t)
+	mgr := newMemoryManager(t)
 	guest, _ := createOwned(t, mgr, "guestfile", "")
 	owned, token := createOwned(t, mgr, "ownedfile", ownerAccount)
 	for _, s := range []*Session{guest, owned} {
-		if err := s.Save(mgr.CityFileName()); err != nil {
+		if err := s.Save(); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	// A guest save has a hash (the creator's token) but no account link.
-	raw, err := os.ReadFile(filepath.Join(mgr.dir, "guestfile.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	raw := storedPayload(t, mgr, "guestfile")
 	if strings.Contains(string(raw), "account_id") {
 		t.Fatalf("guest save carries an account link: %s", raw)
 	}
@@ -218,29 +210,15 @@ func TestSaveShapePerOwner(t *testing.T) {
 }
 
 func TestLoadDropsImplausibleOwnerFields(t *testing.T) {
-	mgr := newTestManager(t)
+	mgr := newMemoryManager(t)
 	sess, _ := createOwned(t, mgr, "bad", ownerAccount)
-	if err := sess.Save(mgr.CityFileName()); err != nil {
+	if err := sess.Save(); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(mgr.dir, "bad.json")
-	blob, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var doc map[string]any
-	if err := json.Unmarshal(blob, &doc); err != nil {
-		t.Fatal(err)
-	}
-	doc["account_id"] = "../../etc"
-	doc["owner_hash"] = "not-a-hash"
-	out, err := json.Marshal(doc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, out, 0o644); err != nil {
-		t.Fatal(err)
-	}
+	rewritePayload(t, mgr, "bad", func(doc map[string]any) {
+		doc["account_id"] = "../../etc"
+		doc["owner_hash"] = "not-a-hash"
+	})
 	mgr.Evict("bad")
 	reloaded, err := mgr.GetOrLoad("bad")
 	if err != nil {
@@ -259,27 +237,13 @@ func TestLoadDropsImplausibleOwnerFields(t *testing.T) {
 func createLegacy(t *testing.T, mgr *Manager, id string) (*Session, string) {
 	t.Helper()
 	sess, _ := createOwned(t, mgr, id, "")
-	if err := sess.Save(mgr.CityFileName()); err != nil {
+	if err := sess.Save(); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(mgr.dir, id+".json")
-	blob, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var doc map[string]any
-	if err := json.Unmarshal(blob, &doc); err != nil {
-		t.Fatal(err)
-	}
-	delete(doc, "account_id")
-	delete(doc, "owner_hash")
-	out, err := json.Marshal(doc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, out, 0o644); err != nil {
-		t.Fatal(err)
-	}
+	rewritePayload(t, mgr, id, func(doc map[string]any) {
+		delete(doc, "account_id")
+		delete(doc, "owner_hash")
+	})
 	mgr.Evict(id)
 	legacy, err := mgr.GetOrLoad(id)
 	if err != nil {

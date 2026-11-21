@@ -92,28 +92,32 @@ start:
     mkdir -p tmp
     rm -f "{{pidfile}}"
 
-    export DRBRAIN_ADDR="{{addr}}"
-    export DRBRAIN_STATIC_DIR="web/build"
+    # .env (gitignored) can override every default below. PostgreSQL is
+    # required: accounts, sessions and custom maps/cities live there; only
+    # builtin maps/cities, score libraries and the built web app are files.
+    if [[ -f .env ]]; then
+        set -a
+        # shellcheck disable=SC1091
+        . ./.env
+        set +a
+    fi
+
+    export DRBRAIN_ADDR="${DRBRAIN_ADDR:-{{addr}}}"
+    export DRBRAIN_STATIC_DIR="${DRBRAIN_STATIC_DIR:-web/build}"
     export DRBRAIN_DEBUG="${DRBRAIN_DEBUG:-false}"
-    export DRBRAIN_ACCOUNTS_DIR="tmp/state/accounts"
+    export DRBRAIN_DATABASE_URL="${DRBRAIN_DATABASE_URL:-postgres://drbrain:drbrain@127.0.0.1:55432/drbrain?sslmode=disable}"
     # Signs Bearer tokens. Dev-only value; production must set a real secret.
     export DRBRAIN_AUTH_JWT_SECRET="${DRBRAIN_AUTH_JWT_SECRET:-dev-only-insecure-jwt-secret-change-me}"
-    # Built-in maps come from the repo; sessions/accounts stay under tmp/.
-    export MAZES_MAPS_DIR="games/mazes/maps"
-    export MAZES_SESSIONS_DIR="tmp/state/mazes/sessions"
-    export MOTOR_MAPS_DIR="games/motor/maps"
-    export MOTOR_USER_MAPS_DIR="tmp/state/motor/maps-user"
-    export MOTOR_SESSIONS_DIR="tmp/state/motor/sessions"
-    export MOTOR_ACCOUNTS_DIR="tmp/state/motor/accounts"
-    export MUSIC_SCORES_DIR="games/music/scores"
-    export MUSIC_CUSTOM_SCORES_DIR="tmp/state/music/scores-custom"
-    export MUSIC_SESSIONS_DIR="tmp/state/music/sessions"
-    export TESLA_CONFIG_DIR="games/tesla/maps"
-    export TESLA_SESSIONS_DIR="tmp/state/tesla/sessions"
-    export TESLA_CUSTOM_MAPS_DIR="tmp/state/tesla/maps-custom"
-    export DELIVERY_CITY="games/delivery/maps/city.json"
-    export DELIVERY_SESSIONS_DIR="tmp/state/delivery/sessions"
-    mkdir -p tmp/state/{mazes,motor/{maps-user,sessions,accounts},music/{sessions,scores-custom},tesla/{sessions,maps-custom},delivery/sessions}
+    # Builtin maps/cities and the score library stay files; everything else is
+    # in PostgreSQL. No custom map/city/session directory is created here.
+    export MAZES_MAPS_DIR="${MAZES_MAPS_DIR:-games/mazes/maps}"
+    export MOTOR_MAPS_DIR="${MOTOR_MAPS_DIR:-games/motor/maps}"
+    export MUSIC_SCORES_DIR="${MUSIC_SCORES_DIR:-games/music/scores}"
+    export MUSIC_CUSTOM_SCORES_DIR="${MUSIC_CUSTOM_SCORES_DIR:-tmp/state/music/scores-custom}"
+    export TESLA_CONFIG_DIR="${TESLA_CONFIG_DIR:-games/tesla/maps}"
+    export DELIVERY_CITIES_DIR="${DELIVERY_CITIES_DIR:-games/delivery/maps}"
+    export DELIVERY_CITY="${DELIVERY_CITY:-games/delivery/maps/city.json}"
+    mkdir -p tmp/state/music/scores-custom
 
     nohup "{{bin}}" serve >"{{logfile}}" 2>&1 &
     pid=$!

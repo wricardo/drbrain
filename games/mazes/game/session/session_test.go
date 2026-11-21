@@ -5,17 +5,15 @@ import (
 	"errors"
 	"io"
 	"log"
-	"os"
-	"path/filepath"
 	"reflect"
-	"sort"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/wricardo/drbrain/games/mazes/game/engine"
 	"github.com/wricardo/drbrain/games/mazes/game/service"
+	"github.com/wricardo/drbrain/platform/pgdb/pgtest"
+	"github.com/wricardo/drbrain/platform/sessionstore"
 )
 
 const (
@@ -35,7 +33,7 @@ var towerCfg = engine.MapConfig{
 }
 
 func init() {
-	// Skipped/corrupt-file tests log on purpose.
+	// Skipped/corrupt-payload tests log on purpose.
 	log.SetOutput(io.Discard)
 }
 
@@ -78,14 +76,11 @@ func fixture(t testing.TB, id string) *service.Session {
 	}
 }
 
-func newFile(t testing.TB) (*FilePersistence, string) {
+// newMemory returns a persistence backed by the in-memory store, for tests
+// that do not exercise durability.
+func newMemory(t testing.TB) *StorePersistence {
 	t.Helper()
-	dir := filepath.Join(t.TempDir(), "sessions")
-	fp, err := NewFilePersistence(dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return fp, dir
+	return &StorePersistence{store: sessionstore.NewMemory(sessionstore.Options{})}
 }
 
 func TestValidID(t *testing.T) {
@@ -107,34 +102,14 @@ func TestValidID(t *testing.T) {
 	}
 }
 
-func TestFileRoundTrip(t *testing.T) {
-	fp, dir := newFile(t)
+func TestRoundTrip(t *testing.T) {
+	sp := newMemory(t)
 	want := fixture(t, idA)
-	if err := fp.Save(want); err != nil {
+	if err := sp.Save(want); err != nil {
 		t.Fatal(err)
 	}
 
-	raw, err := os.ReadFile(filepath.Join(dir, idA+".json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var generic map[string]any
-	if err := json.Unmarshal(raw, &generic); err != nil {
-		t.Fatal(err)
-	}
-	if generic["schema_version"] != float64(SchemaVersion) {
-		t.Fatalf("schema_version = %v", generic["schema_version"])
-	}
-	for _, k := range []string{"id", "display_name", "map", "state", "seq", "created_at", "last_action_at", "attempts", "best_moves"} {
-		if _, ok := generic[k]; !ok {
-			t.Errorf("persisted file lacks %q", k)
-		}
-	}
-	if _, ok := generic["last_event"]; ok {
-		t.Error("persisted file contains transient field last_event")
-	}
-
-	got, err := fp.Load(idA)
+	got, err := sp.Load(idA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,15 +143,56 @@ func TestFileRoundTrip(t *testing.T) {
 	}
 }
 
-// A BestMoves of nil (never won) must survive the round trip as nil, not 0.
-func TestFileRoundTripWithoutBest(t *testing.T) {
-	fp, _ := newFile(t)
-	m := mustMap(t, towerCfg)
-	s := &service.Session{ID: idA, MapID: m.ID, Map: m, State: engine.NewState(m), Seq: 1}
-	if err := fp.Save(s); err != nil {
+// A session's owner (account and token hash) survives the round trip; a
+// payload written before ownership existed loads without an owner and stays
+// open.
+func TestRoundTripOwnership(t *testing.T) {
+	sp := newMemory(t)
+	token, hash, err := service.NewOwnerToken()
+	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := fp.Load(idA)
+	want := fixture(t, idA)
+	want.OwnerAccountID = "acct-1"
+	want.OwnerTokenHash = hash
+	if err := sp.Save(want); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := sp.Load(idA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.OwnerAccountID != "acct-1" || got.OwnerTokenHash != hash {
+		t.Fatalf("restored ownership = %q/%q", got.OwnerAccountID, got.OwnerTokenHash)
+	}
+	if !got.CanPlay(service.Actor{OwnerToken: token}) || !got.CanPlay(service.Actor{AccountID: "acct-1"}) {
+		t.Fatal("the restored owner must be able to play")
+	}
+	if got.CanPlay(service.Actor{OwnerToken: "wrong"}) || got.CanPlay(service.Actor{AccountID: "acct-2"}) {
+		t.Fatal("a stranger must not play the restored session")
+	}
+
+	// A payload without ownership fields is open to anyone.
+	putPayload(t, sp, idB, nil)
+	legacy, err := sp.Load(idB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if legacy.OwnerAccountID != "" || legacy.OwnerTokenHash != "" || !legacy.CanPlay(service.Actor{}) {
+		t.Fatalf("legacy ownership = %q/%q open %v", legacy.OwnerAccountID, legacy.OwnerTokenHash, legacy.CanPlay(service.Actor{}))
+	}
+}
+
+// A BestMoves of nil (never won) must survive the round trip as nil, not 0.
+func TestRoundTripWithoutBest(t *testing.T) {
+	sp := newMemory(t)
+	m := mustMap(t, towerCfg)
+	s := &service.Session{ID: idA, MapID: m.ID, Map: m, State: engine.NewState(m), Seq: 1}
+	if err := sp.Save(s); err != nil {
+		t.Fatal(err)
+	}
+	got, err := sp.Load(idA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,8 +202,8 @@ func TestFileRoundTripWithoutBest(t *testing.T) {
 }
 
 // Terminal states (won on the last allowed move, lost at the limit) load back.
-func TestFileRoundTripTerminalStates(t *testing.T) {
-	fp, _ := newFile(t)
+func TestRoundTripTerminalStates(t *testing.T) {
+	sp := newMemory(t)
 	m := mustMap(t, towerCfg)
 	won, _ := play(t, m, engine.DirRight, engine.DirRight, engine.DirRight, engine.DirUp, engine.DirDown)
 	limit := mustMap(t, engine.MapConfig{ID: "limit", Name: "L", MaxMoves: 2, Levels: [][]string{{"...", "So.", "..F"}}})
@@ -199,10 +215,10 @@ func TestFileRoundTripTerminalStates(t *testing.T) {
 		m  *engine.Map
 		st engine.State
 	}{idA: {m, won}, idB: {limit, lost}} {
-		if err := fp.Save(&service.Session{ID: id, MapID: c.m.ID, Map: c.m, State: c.st, Seq: 1}); err != nil {
+		if err := sp.Save(&service.Session{ID: id, MapID: c.m.ID, Map: c.m, State: c.st, Seq: 1}); err != nil {
 			t.Fatal(err)
 		}
-		got, err := fp.Load(id)
+		got, err := sp.Load(id)
 		if err != nil {
 			t.Fatalf("%s state %s did not load: %v", id, c.st.Status, err)
 		}
@@ -212,89 +228,37 @@ func TestFileRoundTripTerminalStates(t *testing.T) {
 	}
 }
 
-func TestFileSaveIsAtomicAndListIgnoresStrays(t *testing.T) {
-	fp, dir := newFile(t)
-	s := fixture(t, idA)
-	for range 3 {
-		s.Seq++
-		if err := fp.Save(s); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := fp.Save(fixture(t, idB)); err != nil {
+func TestDelete(t *testing.T) {
+	sp := newMemory(t)
+	if err := sp.Save(fixture(t, idA)); err != nil {
 		t.Fatal(err)
 	}
-	// Strays that must never be treated as sessions.
-	for _, name := range []string{".tmp-" + idC + "-123", "notes.json", "0123456789ABCDEF.json", "short.json", idC + ".json.bak", "readme.txt"} {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := os.Mkdir(filepath.Join(dir, idC+".json"), 0o755); err != nil {
+	if err := sp.Delete(idA); err != nil {
 		t.Fatal(err)
 	}
-
-	ids, err := fp.ListAll()
-	if err != nil {
-		t.Fatal(err)
-	}
-	sort.Strings(ids)
-	if !reflect.DeepEqual(ids, []string{idA, idB}) {
-		t.Fatalf("ListAll = %v", ids)
-	}
-	// Overwrites leave no temp files behind.
-	entries, _ := os.ReadDir(dir)
-	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), ".tmp-"+idA) || strings.HasPrefix(e.Name(), ".tmp-"+idB) {
-			t.Fatalf("temp file left behind: %s", e.Name())
-		}
-	}
-	got, _ := fp.Load(idA)
-	if got.Seq != 20 {
-		t.Fatalf("latest save not visible: seq %d", got.Seq)
-	}
-}
-
-func TestFileDelete(t *testing.T) {
-	fp, dir := newFile(t)
-	if err := fp.Save(fixture(t, idA)); err != nil {
-		t.Fatal(err)
-	}
-	if err := fp.Delete(idA); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, idA+".json")); !os.IsNotExist(err) {
-		t.Fatalf("file still exists: %v", err)
-	}
-	if err := fp.Delete(idA); !errors.Is(err, ErrNotFound) {
+	if err := sp.Delete(idA); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("second Delete = %v, want ErrNotFound", err)
 	}
-	if _, err := fp.Load(idA); !errors.Is(err, ErrNotFound) {
+	if _, err := sp.Load(idA); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("Load after Delete = %v, want ErrNotFound", err)
 	}
 }
 
-func TestPathTraversalRejected(t *testing.T) {
-	fp, dir := newFile(t)
-	parent := filepath.Dir(dir)
-	secret := filepath.Join(parent, "secret.json")
-	if err := os.WriteFile(secret, []byte(`{"schema_version":1}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
+func TestInvalidIDRejected(t *testing.T) {
+	sp := newMemory(t)
 	for _, id := range []string{"../secret", "../../etc/passwd", "..", ".", "", "/abs", `..\secret`, idA + "/../" + idB} {
 		bad := fixture(t, idA)
 		bad.ID = id
-		if err := fp.Save(bad); !errors.Is(err, ErrInvalidID) {
+		if err := sp.Save(bad); !errors.Is(err, ErrInvalidID) {
 			t.Errorf("Save(%q) = %v, want ErrInvalidID", id, err)
 		}
-		if _, err := fp.Load(id); !errors.Is(err, ErrInvalidID) {
+		if _, err := sp.Load(id); !errors.Is(err, ErrInvalidID) {
 			t.Errorf("Load(%q) = %v, want ErrInvalidID", id, err)
 		}
-		if err := fp.Delete(id); !errors.Is(err, ErrInvalidID) {
+		if err := sp.Delete(id); !errors.Is(err, ErrInvalidID) {
 			t.Errorf("Delete(%q) = %v, want ErrInvalidID", id, err)
 		}
-		mgr := NewManager(fp, 10)
+		mgr := NewManager(sp, 10)
 		if err := mgr.Put(bad); !errors.Is(err, ErrInvalidID) {
 			t.Errorf("Put(%q) = %v, want ErrInvalidID", id, err)
 		}
@@ -303,29 +267,25 @@ func TestPathTraversalRejected(t *testing.T) {
 			t.Errorf("Manager.Delete(%q) = %v, want NOT_FOUND", id, err)
 		}
 	}
-	if _, err := os.Stat(secret); err != nil {
-		t.Fatalf("file outside the sessions dir was touched: %v", err)
-	}
-	entries, _ := os.ReadDir(parent)
-	for _, e := range entries {
-		if e.Name() != "sessions" && e.Name() != "secret.json" {
-			t.Errorf("unexpected entry outside sessions dir: %s", e.Name())
-		}
-	}
-	if ids, _ := fp.ListAll(); len(ids) != 0 {
-		t.Fatalf("rejected ids produced files: %v", ids)
+	if ids, _ := sp.ListAll(); len(ids) != 0 {
+		t.Fatalf("rejected ids produced sessions: %v", ids)
 	}
 }
 
-// writeFile writes a persisted session after letting mutate edit it.
-func writeFile(t *testing.T, dir, id string, mutate func(*PersistedSession)) {
-	t.Helper()
-	s := fixture(t, id)
-	ps := PersistedSession{
-		SchemaVersion: SchemaVersion, ID: id, DisplayName: s.DisplayName, Map: s.Map.Config(),
+func persistedFrom(s *service.Session) PersistedSession {
+	return PersistedSession{
+		SchemaVersion: SchemaVersion, ID: s.ID, DisplayName: s.DisplayName, Map: s.Map.Config(),
 		State: s.State.Clone(), Seq: s.Seq,
 		CreatedAt: s.CreatedAt, LastActionAt: s.LastActionAt, Attempts: s.Attempts, BestMoves: s.BestMoves,
+		OwnerAccountID: s.OwnerAccountID, OwnerTokenHash: s.OwnerTokenHash,
 	}
+}
+
+// putPayload stores a persisted session after letting mutate edit it,
+// bypassing Save so invalid payloads can be written.
+func putPayload(t *testing.T, sp *StorePersistence, id string, mutate func(*PersistedSession)) {
+	t.Helper()
+	ps := persistedFrom(fixture(t, id))
 	if mutate != nil {
 		mutate(&ps)
 	}
@@ -333,12 +293,12 @@ func writeFile(t *testing.T, dir, id string, mutate func(*PersistedSession)) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, id+".json"), data, 0o600); err != nil {
+	if err := sp.store.Persist(sessionstore.Meta{ID: id, DisplayName: ps.DisplayName, MapID: ps.Map.ID}, data); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestLoadRejectsInvalidFiles(t *testing.T) {
+func TestLoadRejectsInvalidPayloads(t *testing.T) {
 	pos := func(l, x, y int) engine.Position { return engine.Position{Level: l, X: x, Y: y} }
 	zero := 0
 	huge := 7
@@ -378,31 +338,31 @@ func TestLoadRejectsInvalidFiles(t *testing.T) {
 	}
 	for name, mutate := range cases {
 		t.Run(name, func(t *testing.T) {
-			fp, dir := newFile(t)
-			writeFile(t, dir, idA, mutate)
-			if _, err := fp.Load(idA); err == nil {
-				t.Fatal("invalid file loaded")
+			sp := newMemory(t)
+			putPayload(t, sp, idA, mutate)
+			if _, err := sp.Load(idA); err == nil {
+				t.Fatal("invalid payload loaded")
 			} else if errors.Is(err, ErrNotFound) {
-				t.Fatalf("invalid file reported as not found: %v", err)
+				t.Fatalf("invalid payload reported as not found: %v", err)
 			}
 		})
 	}
 }
 
-func TestLoadAllSkipsCorruptFiles(t *testing.T) {
-	fp, dir := newFile(t)
-	writeFile(t, dir, idA, nil)
-	writeFile(t, dir, idB, func(p *PersistedSession) { p.SchemaVersion = 99 })
-	if err := os.WriteFile(filepath.Join(dir, idC+".json"), []byte("{ not json"), 0o600); err != nil {
+func TestLoadAllSkipsCorruptPayloads(t *testing.T) {
+	sp := newMemory(t)
+	putPayload(t, sp, idA, nil)
+	putPayload(t, sp, idB, func(p *PersistedSession) { p.SchemaVersion = 99 })
+	if err := sp.store.Persist(sessionstore.Meta{ID: idC}, []byte(`{"schema_version":"x"}`)); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "0000000000000000.json"), nil, 0o600); err != nil {
+	if err := sp.store.Persist(sessionstore.Meta{ID: "0000000000000000"}, []byte("null")); err != nil {
 		t.Fatal(err)
 	}
 
-	m := NewManager(fp, 10)
+	m := NewManager(sp, 10)
 	if err := m.LoadAll(); err != nil {
-		t.Fatalf("corrupt files must not be fatal: %v", err)
+		t.Fatalf("corrupt payloads must not be fatal: %v", err)
 	}
 	if m.Count() != 1 {
 		t.Fatalf("loaded %d sessions, want 1", m.Count())
@@ -456,20 +416,20 @@ func TestManagerDefaultLimit(t *testing.T) {
 }
 
 func TestManagerPersistAndDelete(t *testing.T) {
-	fp, dir := newFile(t)
-	m := NewManager(fp, 10)
+	sp := newMemory(t)
+	m := NewManager(sp, 10)
 	s := fixture(t, idA)
 	if err := m.Put(s); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, idA+".json")); !os.IsNotExist(err) {
-		t.Fatal("Put must not write; the service persists explicitly")
+	if _, err := sp.Load(idA); !errors.Is(err, ErrNotFound) {
+		t.Fatal("Put must not persist; the service persists explicitly")
 	}
 	if err := m.Persist(s); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, idA+".json")); err != nil {
-		t.Fatalf("Persist wrote nothing: %v", err)
+	if got, err := sp.Load(idA); err != nil || got.Seq != s.Seq {
+		t.Fatalf("Persist wrote %v: %v", got, err)
 	}
 	// Persist snapshots under the session lock.
 	s.Lock()
@@ -478,34 +438,34 @@ func TestManagerPersistAndDelete(t *testing.T) {
 	if err := m.Persist(s); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := fp.Load(idA); got.Seq != 99 {
+	if got, _ := sp.Load(idA); got.Seq != 99 {
 		t.Fatalf("persisted seq = %d, want 99", got.Seq)
 	}
 
 	if err := m.Delete(idA); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, idA+".json")); !os.IsNotExist(err) {
-		t.Fatal("Delete left the file")
+	if _, err := sp.Load(idA); !errors.Is(err, ErrNotFound) {
+		t.Fatal("Delete left the session stored")
 	}
 	// A late Persist (e.g. from a move racing the delete) must not resurrect it.
 	if err := m.Persist(s); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, idA+".json")); !os.IsNotExist(err) {
+	if _, err := sp.Load(idA); !errors.Is(err, ErrNotFound) {
 		t.Fatal("Persist resurrected a deleted session")
 	}
 }
 
-func TestManagerDeleteRemovesFileOfUnloadedSession(t *testing.T) {
-	fp, dir := newFile(t)
-	writeFile(t, dir, idA, nil)
-	m := NewManager(fp, 10) // LoadAll not called: only on disk
+func TestManagerDeleteRemovesUnloadedSession(t *testing.T) {
+	sp := newMemory(t)
+	putPayload(t, sp, idA, nil)
+	m := NewManager(sp, 10) // LoadAll not called: only in the store
 	if err := m.Delete(idA); err != nil {
-		t.Fatalf("Delete of disk-only session: %v", err)
+		t.Fatalf("Delete of store-only session: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, idA+".json")); !os.IsNotExist(err) {
-		t.Fatal("file not removed")
+	if _, err := sp.Load(idA); !errors.Is(err, ErrNotFound) {
+		t.Fatal("stored session not removed")
 	}
 }
 
@@ -527,8 +487,8 @@ func TestManagerMemoryOnly(t *testing.T) {
 }
 
 func TestManagerLoadAllRoundTripKeepsLimitOnPut(t *testing.T) {
-	fp, _ := newFile(t)
-	m1 := NewManager(fp, 10)
+	sp := newMemory(t)
+	m1 := NewManager(sp, 10)
 	for _, id := range []string{idA, idB, idC} {
 		s := fixture(t, id)
 		if err := m1.Put(s); err != nil {
@@ -538,7 +498,7 @@ func TestManagerLoadAllRoundTripKeepsLimitOnPut(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	m2 := NewManager(fp, 2) // fewer slots than persisted sessions
+	m2 := NewManager(sp, 2) // fewer slots than persisted sessions
 	if err := m2.LoadAll(); err != nil {
 		t.Fatal(err)
 	}
@@ -553,8 +513,8 @@ func TestManagerLoadAllRoundTripKeepsLimitOnPut(t *testing.T) {
 
 // TestManagerConcurrentPersist races mutation, Persist and Delete (run with -race).
 func TestManagerConcurrentPersist(t *testing.T) {
-	fp, _ := newFile(t)
-	m := NewManager(fp, 10)
+	sp := newMemory(t)
+	m := NewManager(sp, 10)
 	s := fixture(t, idA)
 	if err := m.Put(s); err != nil {
 		t.Fatal(err)
@@ -577,7 +537,7 @@ func TestManagerConcurrentPersist(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	got, err := fp.Load(idA)
+	got, err := sp.Load(idA)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -585,6 +545,39 @@ func TestManagerConcurrentPersist(t *testing.T) {
 	want := s.Seq
 	s.Unlock()
 	if got.Seq != want {
-		t.Fatalf("last write wins: file has seq %d, live has %d", got.Seq, want)
+		t.Fatalf("last write wins: stored seq %d, live has %d", got.Seq, want)
+	}
+}
+
+// TestPostgresPersistenceRoundTrip exercises the real durable backend.
+func TestPostgresPersistenceRoundTrip(t *testing.T) {
+	pool := pgtest.Pool(t)
+	sp, err := NewPostgresPersistence(pool, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := fixture(t, idA)
+	if err := sp.Save(want); err != nil {
+		t.Fatal(err)
+	}
+	got, err := sp.Load(idA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Seq != want.Seq || got.DisplayName != want.DisplayName || !reflect.DeepEqual(got.State, want.State) {
+		t.Fatalf("restored %+v, want %+v", got, want)
+	}
+	ids, err := sp.ListAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(ids, []string{idA}) {
+		t.Fatalf("ListAll = %v", ids)
+	}
+	if err := sp.Delete(idA); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sp.Load(idA); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Load after Delete = %v, want ErrNotFound", err)
 	}
 }

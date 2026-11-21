@@ -2,11 +2,16 @@ package graph
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"errors"
 
+	cityconfig "github.com/wricardo/drbrain/games/delivery/game/config"
 	"github.com/wricardo/drbrain/games/delivery/game/session"
 	"github.com/wricardo/drbrain/games/delivery/graph/model"
 	"github.com/wricardo/drbrain/platform/account"
 	"github.com/wricardo/drbrain/platform/auth"
+	"github.com/wricardo/drbrain/platform/mapstore"
 )
 
 // This file holds the ownership/authorization helpers. They live outside
@@ -30,12 +35,71 @@ func actor(ctx context.Context, ownerToken *string) session.Actor {
 	return a
 }
 
-// requireViewer returns the signed-in account or an unauthenticated: error.
+// requireViewer returns the signed-in account or an UNAUTHENTICATED error. The
+// message keeps the historical "unauthenticated:" prefix while the machine
+// code travels in extensions.
 func requireViewer(ctx context.Context) (*account.Account, error) {
 	if v := auth.ViewerFrom(ctx); v != nil {
 		return v.Account, nil
 	}
-	return nil, gqlErr("unauthenticated", "sign in first")
+	return nil, prefixedCodedErr("unauthenticated", codeUnauthenticated, "sign in first")
+}
+
+// adminAuthorized reports whether the request carries the delivery admin key.
+// With no key configured, the explicit local-development opt-out is the only
+// way to authorize an admin operation.
+func (r *Resolver) adminAuthorized(ctx context.Context) bool {
+	if r.AdminKey == "" {
+		return r.AllowUnauthenticatedAdmin
+	}
+	req := auth.RequestFrom(ctx)
+	if req == nil {
+		return false
+	}
+	// Compare fixed-length digests so the configured key's length is not
+	// leaked through timing.
+	got := sha256.Sum256([]byte(req.Header.Get("X-Admin-Key")))
+	want := sha256.Sum256([]byte(r.AdminKey))
+	return subtle.ConstantTimeCompare(got[:], want[:]) == 1
+}
+
+// requireAdmin returns a FORBIDDEN error unless adminAuthorized. Sign-in is
+// checked separately by every city mutation that uses it.
+func (r *Resolver) requireAdmin(ctx context.Context) error {
+	if r.adminAuthorized(ctx) {
+		return nil
+	}
+	if r.AdminKey == "" && !r.AllowUnauthenticatedAdmin {
+		return codedErr(codeForbidden, "admin operation disabled: set DELIVERY_ADMIN_API_KEY and send X-Admin-Key")
+	}
+	return codedErr(codeForbidden, "admin operation requires a valid X-Admin-Key")
+}
+
+// sessionCityVisible reports whether this viewer may read a session whose city
+// is cityID.
+//
+// A session snapshots its city, but the city's ownership still controls who may
+// see the session: a DRAFT is private to its owner, so a guest (or another
+// player) must not learn its rows through the session. A published or builtin
+// city is public. A city that no longer exists leaves the old load behaviour
+// alone: rehydration reports the city error, while a still-live session stays
+// readable.
+func (r *Resolver) sessionCityVisible(ctx context.Context, cityID string) (bool, error) {
+	if cityID == "" || r.Catalog == nil {
+		return true, nil
+	}
+	entry, err := r.Catalog.Lookup(cityID)
+	if err != nil {
+		if errors.Is(err, cityconfig.ErrNotFound) {
+			return true, nil
+		}
+		return false, cityCodedError(err)
+	}
+	if entry.Status != mapstore.StatusDraft {
+		return true, nil
+	}
+	viewer := viewerID(ctx)
+	return entry.OwnerID != "" && entry.OwnerID == viewer, nil
 }
 
 // authorize loads a session and checks that this caller may change it. A
@@ -43,7 +107,7 @@ func requireViewer(ctx context.Context) (*account.Account, error) {
 // never confirms whether a save exists to an unauthorized caller. A present
 // session the caller cannot prove ownership of is forbidden:.
 func (r *Resolver) authorize(ctx context.Context, id string, ownerToken *string) (*session.Session, error) {
-	sess, err := r.load(id)
+	sess, err := r.loadRaw(id)
 	if err != nil {
 		return nil, err
 	}

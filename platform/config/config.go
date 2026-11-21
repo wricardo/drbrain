@@ -31,11 +31,9 @@ type Config struct {
 	// AllowedOrigins is the comma-separated origin allowlist for CORS and
 	// websocket upgrades. Empty or "*" allows every origin.
 	AllowedOrigins string `envconfig:"DRBRAIN_ALLOWED_ORIGINS"`
-	// DatabaseURL enables PostgreSQL for accounts and, when a game chooses to
-	// use it, sessions and maps. Empty keeps file storage.
+	// DatabaseURL is required: every process stores accounts and sessions in
+	// PostgreSQL. Only maps (and the built web app) are read from disk.
 	DatabaseURL string `envconfig:"DRBRAIN_DATABASE_URL"`
-	// AccountsDir is the file-backed account store root (when DatabaseURL is empty).
-	AccountsDir string `envconfig:"DRBRAIN_ACCOUNTS_DIR" default:"accounts"`
 	// AuthPassword enables username/password sign-up and sign-in.
 	AuthPassword bool `envconfig:"DRBRAIN_AUTH_PASSWORD" default:"true"`
 	// AuthJWTSecret signs access tokens (HS256). Empty means a random
@@ -79,8 +77,8 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.StaticDir) == "" {
 		return errors.New("DRBRAIN_STATIC_DIR is empty")
 	}
-	if strings.TrimSpace(c.AccountsDir) == "" {
-		return errors.New("DRBRAIN_ACCOUNTS_DIR is empty")
+	if strings.TrimSpace(c.DatabaseURL) == "" {
+		return errors.New("DRBRAIN_DATABASE_URL is required: accounts and sessions live in PostgreSQL")
 	}
 	for _, name := range c.EnabledGames() {
 		if name == "" {

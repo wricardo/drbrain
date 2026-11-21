@@ -14,20 +14,23 @@ import (
 )
 
 // CreateSession is the resolver for the createSession field.
-func (r *mutationResolver) CreateSession(ctx context.Context, mapID string, displayName *string) (*model.Session, error) {
+func (r *mutationResolver) CreateSession(ctx context.Context, mapID string, displayName *string) (*model.CreateSessionResult, error) {
 	name := ""
 	if displayName != nil {
 		name = *displayName
 	}
-	s, err := r.Service.CreateSession(mapID, name)
+	s, token, err := r.Service.CreateSession(mapID, name, viewerID(ctx))
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	return toSession(s), nil
+	return &model.CreateSessionResult{Session: r.sessionView(ctx, s), OwnerToken: token}, nil
 }
 
 // DeleteSession is the resolver for the deleteSession field.
-func (r *mutationResolver) DeleteSession(ctx context.Context, id string) (bool, error) {
+func (r *mutationResolver) DeleteSession(ctx context.Context, id string, ownerToken *string) (bool, error) {
+	if _, err := r.authorize(ctx, id, ownerToken); err != nil {
+		return false, toGQLError(err)
+	}
 	if err := r.Service.DeleteSession(id); err != nil {
 		return false, toGQLError(err)
 	}
@@ -35,82 +38,140 @@ func (r *mutationResolver) DeleteSession(ctx context.Context, id string) (bool, 
 }
 
 // RenameSession is the resolver for the renameSession field.
-func (r *mutationResolver) RenameSession(ctx context.Context, id string, displayName string) (*model.Session, error) {
+func (r *mutationResolver) RenameSession(ctx context.Context, id string, displayName string, ownerToken *string) (*model.Session, error) {
+	if _, err := r.authorize(ctx, id, ownerToken); err != nil {
+		return nil, toGQLError(err)
+	}
 	s, err := r.Service.RenameSession(id, displayName)
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	return toSession(s), nil
+	return r.sessionView(ctx, s), nil
 }
 
 // Move is the resolver for the move field.
-func (r *mutationResolver) Move(ctx context.Context, sessionID string, direction model.Direction) (*model.Session, error) {
+func (r *mutationResolver) Move(ctx context.Context, sessionID string, direction model.Direction, ownerToken *string) (*model.Session, error) {
+	if _, err := r.authorize(ctx, sessionID, ownerToken); err != nil {
+		return nil, toGQLError(err)
+	}
 	s, err := r.Service.Move(sessionID, fromDirection(direction))
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	return toSession(s), nil
+	return r.sessionView(ctx, s), nil
 }
 
 // BulkMove is the resolver for the bulkMove field.
-func (r *mutationResolver) BulkMove(ctx context.Context, sessionID string, directions []model.Direction, stopOnBlocked *bool) (*model.Session, error) {
+func (r *mutationResolver) BulkMove(ctx context.Context, sessionID string, directions []model.Direction, stopOnBlocked *bool, ownerToken *string) (*model.Session, error) {
+	if _, err := r.authorize(ctx, sessionID, ownerToken); err != nil {
+		return nil, toGQLError(err)
+	}
 	s, err := r.Service.BulkMove(sessionID, fromDirections(directions), stopOnBlocked == nil || *stopOnBlocked)
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	return toSession(s), nil
+	return r.sessionView(ctx, s), nil
 }
 
 // Reset is the resolver for the reset field.
-func (r *mutationResolver) Reset(ctx context.Context, sessionID string) (*model.Session, error) {
+func (r *mutationResolver) Reset(ctx context.Context, sessionID string, ownerToken *string) (*model.Session, error) {
+	if _, err := r.authorize(ctx, sessionID, ownerToken); err != nil {
+		return nil, toGQLError(err)
+	}
 	s, err := r.Service.Reset(sessionID)
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	return toSession(s), nil
+	return r.sessionView(ctx, s), nil
 }
 
-// CreateMap is the resolver for the createMap field.
+// CreateMap is the resolver for the createMap field. It creates a DRAFT owned
+// by the signed-in player; the map may be invalid until publishMap checks it.
 func (r *mutationResolver) CreateMap(ctx context.Context, mapArg model.MapInput) (*model.AdminMap, error) {
-	if err := checkAdminKey(ctx); err != nil {
+	viewer, err := requireViewer(ctx)
+	if err != nil {
 		return nil, err
 	}
-	m, err := r.Service.CreateMap(fromMapInput(mapArg))
+	entry, err := r.Service.CreateMapDraft(fromMapInput(mapArg), viewer)
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	return toAdminMap(m), nil
+	return toAdminMapEntry(entry, viewer), nil
 }
 
-// UpdateMap is the resolver for the updateMap field.
+// UpdateMap is the resolver for the updateMap field. Owners edit their own
+// maps and the save resets them to DRAFT; shipped and legacy unowned maps need
+// an admin key.
 func (r *mutationResolver) UpdateMap(ctx context.Context, mapArg model.MapInput) (*model.AdminMap, error) {
-	if err := checkAdminKey(ctx); err != nil {
+	viewer, err := requireViewer(ctx)
+	if err != nil {
 		return nil, err
 	}
-	if _, err := r.Service.GetMap(mapArg.ID); err != nil {
-		return nil, toGQLError(err)
-	}
-	m, err := r.Service.SaveMap(fromMapInput(mapArg))
+	entry, err := r.Service.GetMapEntry(mapArg.ID)
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	return toAdminMap(m), nil
+	actor := mapActor(ctx, viewer)
+	if err := authorizeMapEntry(ctx, entry, actor); err != nil {
+		return nil, err
+	}
+	updated, err := r.Service.UpdateMapOwned(fromMapInput(mapArg), actor)
+	if err != nil {
+		return nil, toGQLError(err)
+	}
+	return toAdminMapEntry(updated, viewer), nil
 }
 
-// DeleteMap is the resolver for the deleteMap field.
+// PublishMap is the resolver for the publishMap field. Only the owner may
+// publish a community draft; an admin key may repair any draft.
+func (r *mutationResolver) PublishMap(ctx context.Context, id string) (*model.AdminMap, error) {
+	viewer, err := requireViewer(ctx)
+	if err != nil {
+		return nil, err
+	}
+	entry, err := r.Service.GetMapEntry(id)
+	if err != nil {
+		return nil, toGQLError(err)
+	}
+	actor := mapActor(ctx, viewer)
+	if entry.Builtin {
+		return nil, codedError(service.CodeForbidden, "shipped maps are always published")
+	}
+	if entry.OwnerID != viewer && !actor.Admin {
+		return nil, codedError(service.CodeForbidden, "only the map's owner may publish it")
+	}
+	published, err := r.Service.PublishMap(id, actor)
+	if err != nil {
+		return nil, toGQLError(err)
+	}
+	return toAdminMapEntry(published, viewer), nil
+}
+
+// DeleteMap is the resolver for the deleteMap field. Owners delete their own
+// maps; shipped and legacy unowned maps need an admin key.
 func (r *mutationResolver) DeleteMap(ctx context.Context, id string) (bool, error) {
-	if err := checkAdminKey(ctx); err != nil {
+	viewer, err := requireViewer(ctx)
+	if err != nil {
 		return false, err
 	}
-	if err := r.Service.DeleteMap(id); err != nil {
+	entry, err := r.Service.GetMapEntry(id)
+	if err != nil {
+		return false, toGQLError(err)
+	}
+	actor := mapActor(ctx, viewer)
+	if err := authorizeMapEntry(ctx, entry, actor); err != nil {
+		return false, err
+	}
+	if err := r.Service.DeleteMapOwned(id, actor); err != nil {
 		return false, toGQLError(err)
 	}
 	return true, nil
 }
 
-// ValidateMap is the resolver for the validateMap field.
+// ValidateMap is the resolver for the validateMap field. It stores nothing and
+// reports both structural validity and finish reachability.
 func (r *mutationResolver) ValidateMap(ctx context.Context, mapArg model.MapInput) (*model.MapValidationResult, error) {
-	if err := checkAdminKey(ctx); err != nil {
+	if _, err := requireViewer(ctx); err != nil {
 		return nil, err
 	}
 	res := validate.Check(fromMapInput(mapArg))
@@ -128,36 +189,64 @@ func (r *mutationResolver) ValidateMap(ctx context.Context, mapArg model.MapInpu
 	return out, nil
 }
 
-// Maps is the resolver for the maps field.
+// Maps is the resolver for the maps field: published maps plus the caller's
+// own drafts.
 func (r *queryResolver) Maps(ctx context.Context) ([]*model.Map, error) {
-	return toMaps(r.Service.ListMaps()), nil
+	viewer := viewerID(ctx)
+	entries, err := r.Service.ListMapEntries(viewer)
+	if err != nil {
+		return nil, toGQLError(err)
+	}
+	out := make([]*model.Map, 0, len(entries))
+	for _, entry := range entries {
+		if m := toMapEntry(entry, viewer); m != nil {
+			out = append(out, m)
+		}
+	}
+	return out, nil
 }
 
-// Map is the resolver for the map field.
+// Map is the resolver for the map field. Another player's draft is hidden and
+// reported as null, exactly like an unknown id.
 func (r *queryResolver) Map(ctx context.Context, id string) (*model.Map, error) {
-	m, err := r.Service.GetMap(id)
+	viewer := viewerID(ctx)
+	entry, err := r.Service.GetMapEntry(id)
 	if err != nil {
 		if isNotFound(err) {
 			return nil, nil
 		}
 		return nil, toGQLError(err)
 	}
-	return toMap(m), nil
+	if !entryVisible(entry, viewer) {
+		return nil, nil
+	}
+	return toMapEntry(entry, viewer), nil
 }
 
-// AdminMap is the resolver for the adminMap field.
+// AdminMap is the resolver for the adminMap field: the full layout of every
+// level, for the map editor. A signed-in owner may load their own community
+// map (draft or published); shipped maps still need X-Admin-Key. Another
+// player's map is hidden and null, exactly like an unknown id, so the field
+// never confirms someone else's work in progress.
 func (r *queryResolver) AdminMap(ctx context.Context, id string) (*model.AdminMap, error) {
-	if err := checkAdminKey(ctx); err != nil {
-		return nil, err
-	}
-	m, err := r.Service.GetMap(id)
+	entry, err := r.Service.GetMapEntry(id)
 	if err != nil {
 		if isNotFound(err) {
 			return nil, nil
 		}
 		return nil, toGQLError(err)
 	}
-	return toAdminMap(m), nil
+	viewer := viewerID(ctx)
+	admin := adminAuthorized(ctx)
+	if !admin {
+		if entry.Builtin {
+			return nil, codedError(service.CodeForbidden, "shipped maps can only be read with an admin key")
+		}
+		if entry.OwnerID == "" || entry.OwnerID != viewer {
+			return nil, nil
+		}
+	}
+	return toAdminMapEntry(entry, viewer), nil
 }
 
 // Session is the resolver for the session field.
@@ -169,7 +258,10 @@ func (r *queryResolver) Session(ctx context.Context, id string) (*model.Session,
 		}
 		return nil, toGQLError(err)
 	}
-	return toSession(s), nil
+	if !r.sessionVisible(ctx, s) {
+		return nil, nil
+	}
+	return r.sessionView(ctx, s), nil
 }
 
 // Sessions is the resolver for the sessions field.
@@ -188,11 +280,28 @@ func (r *queryResolver) Sessions(ctx context.Context, sort *model.SessionSort, l
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	out := make([]*model.Session, len(list))
-	for i, s := range list {
-		out[i] = toSession(s)
+	out := make([]*model.Session, 0, len(list))
+	for _, s := range list {
+		if !r.sessionVisible(ctx, s) {
+			continue
+		}
+		out = append(out, r.sessionView(ctx, s))
 	}
 	return out, nil
+}
+
+// CanPlaySession is the resolver for the canPlaySession field.
+func (r *queryResolver) CanPlaySession(ctx context.Context, id string, ownerToken *string) (bool, error) {
+	if s, err := r.Service.GetSession(id); err == nil {
+		if !r.sessionVisible(ctx, s) {
+			return false, nil
+		}
+	}
+	ok, err := r.canPlay(ctx, id, ownerToken)
+	if err != nil {
+		return false, toGQLError(err)
+	}
+	return ok, nil
 }
 
 // SessionUpdated is the resolver for the sessionUpdated field. It subscribes
@@ -200,11 +309,11 @@ func (r *queryResolver) Sessions(ctx context.Context, sort *model.SessionSort, l
 // snapshot immediately, then forwards hub updates.
 func (r *subscriptionResolver) SessionUpdated(ctx context.Context, sessionID string) (<-chan *model.SessionUpdate, error) {
 	updates := r.Hub.SubscribeSession(ctx, sessionID)
-	s, err := r.Service.GetSession(sessionID)
+	s, err := r.visibleSession(ctx, sessionID)
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	return forwardSessionUpdates(ctx, s, updates, subscriptionBuffer), nil
+	return r.forwardSessionUpdates(ctx, s, updates, subscriptionBuffer), nil
 }
 
 // Mutation returns generated.MutationResolver implementation.

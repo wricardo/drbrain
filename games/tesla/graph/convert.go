@@ -211,6 +211,25 @@ func toMapInfo(c *service.MapInfo) *model.MapInfo {
 	}
 	return &model.MapInfo{Filename: c.Filename, MapID: c.MapID, Name: c.Name, Description: c.Description, GridSize: c.GridSize, MaxBattery: c.MaxBattery, Builtin: c.Builtin}
 }
+
+// toMapInfoEntry converts a catalogue entry, filling the viewer-dependent
+// lifecycle fields. ViewerID "" (guest) owns nothing.
+func toMapInfoEntry(e *service.MapEntry, viewerID string) *model.MapInfo {
+	if e == nil || e.Config == nil {
+		return nil
+	}
+	return &model.MapInfo{
+		Filename:    e.Name + ".json",
+		MapID:       e.Name,
+		Name:        e.Config.Name,
+		Description: e.Config.Description,
+		GridSize:    e.Config.GridSize,
+		MaxBattery:  e.Config.MaxBattery,
+		Builtin:     e.Builtin,
+		Status:      mapStatus(e.Status),
+		OwnedByMe:   viewerID != "" && e.OwnerID == viewerID,
+	}
+}
 func toAttempt(a *service.AttemptInfo) *model.AttemptInfo {
 	if a == nil {
 		return nil

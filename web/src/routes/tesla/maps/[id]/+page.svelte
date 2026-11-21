@@ -3,9 +3,10 @@
 	import { page } from '$app/stores';
 	import { MAPS_QUERY } from '$lib/tesla/queries';
 	import { fetchMapLayout } from '$lib/tesla/mapData';
-	import { countTiles, prettyMapName, type MapLayout, type MapSummary } from '$lib/tesla/maps';
+	import { countTiles, mapStatusLabel, prettyMapName, type MapLayout, type MapSummary } from '$lib/tesla/maps';
 	import { MapSessionStarter } from '$lib/tesla/mapStart.svelte';
 	import { getMapEditKey } from '$lib/tesla/mapEditKeys';
+	import { account } from '$lib/account/stores/account';
 	import { buildEditWithAIPrompt, graphqlEndpointUrl } from '$lib/tesla/editWithAI';
 	import MapThumb from '$lib/tesla/components/MapThumb.svelte';
 	import StartSessionModal from '$lib/tesla/components/StartSessionModal.svelte';
@@ -36,6 +37,9 @@
 	const maxBattery = $derived(summary?.maxBattery ?? layout?.maxBattery ?? 0);
 	const startingBattery = $derived(layout?.startingBattery ?? 0);
 	const description = $derived(summary?.description || layout?.description || '');
+	const statusLabel = $derived(summary ? mapStatusLabel(summary) : '');
+	const ownedByMe = $derived(summary?.ownedByMe === true);
+	const signedIn = $derived($account.me !== null);
 
 	const stats = $derived.by(() => {
 		if (!layout) return [];
@@ -52,9 +56,9 @@
 		!$mapsResult.fetching && $mapsResult.error === undefined && layout === null && summary === null
 	);
 
-	// The edit key lives in localStorage. Surface it on the page too, so the user
-	// can see (and hand to an AI) the token that authorizes edits — not just the
-	// browser silently holding it.
+	// Legacy edit keys live in localStorage. Surface one on the page so the user
+	// can see (and hand to an AI) the token that claims the map. Account-owned
+	// maps need no token.
 	const editKey = $derived(mapId ? getMapEditKey(mapId) : null);
 
 	const aiPrompt = $derived(
@@ -66,6 +70,7 @@
 				maxBattery
 			},
 			editKey,
+			owned: ownedByMe,
 			apiUrl: graphqlEndpointUrl()
 		})
 	);
@@ -106,10 +111,26 @@
 		{:else}
 			<div class="mt-4 flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
 				<div class="min-w-0">
-					<p class="text-xs font-bold uppercase tracking-widest text-red-600 mb-3">🗺️ Map</p>
+					<div class="flex flex-wrap items-center gap-2 mb-3">
+						<p class="text-xs font-bold uppercase tracking-widest text-red-600">🗺️ Map</p>
+						{#if statusLabel}
+							<span
+								class={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+									statusLabel === 'Draft' ? 'bg-amber-100 text-amber-900' : 'bg-emerald-50 text-emerald-800'
+								}`}
+								data-testid="map-status"
+							>{statusLabel}</span>
+						{/if}
+						{#if ownedByMe}
+							<span class="rounded-full bg-[#fbeae5] text-[#962d26] px-2 py-0.5 text-[11px] font-medium" data-testid="map-yours">Your map</span>
+						{/if}
+					</div>
 					<h1 class="text-3xl lg:text-5xl font-light text-[#171a20] tracking-tight">{displayName}</h1>
 					{#if description}
 						<p class="text-lg text-gray-500 font-light max-w-2xl mt-3">{description}</p>
+					{/if}
+					{#if statusLabel === 'Draft'}
+						<p class="text-sm text-amber-800 mt-2">Draft: only you can see and play this map. Publish it when the layout is ready.</p>
 					{/if}
 				</div>
 				<div class="flex flex-wrap gap-3">
@@ -192,7 +213,11 @@
 					<section class="bg-white rounded-2xl border border-[#e8e8e8] shadow-sm p-6">
 						<h2 class="text-lg font-light text-[#393c41] mb-2">Share this map</h2>
 						<p class="text-xs text-gray-500">
-							Send this page's link and your friend can start a session on {displayName} straight away.
+							{#if statusLabel === 'Draft'}
+								This draft is visible only to you. Publish it before sharing; this link will work for everyone then.
+							{:else}
+								Send this page's link and your friend can start a session on {displayName} straight away.
+							{/if}
 						</p>
 						<button
 							type="button"
@@ -202,11 +227,25 @@
 					</section>
 
 					<section class="bg-white rounded-2xl border border-[#e8e8e8] shadow-sm p-6" data-testid="edit-key-section">
-						<h2 class="text-lg font-light text-[#393c41] mb-2">Edit key</h2>
-						{#if editKey}
+						<h2 class="text-lg font-light text-[#393c41] mb-2">{ownedByMe ? 'Your map' : 'Legacy edit key'}</h2>
+						{#if ownedByMe}
 							<p class="text-xs text-gray-500">
-								Anyone with this key can change {displayName}. It was issued once, when the map was created,
-								and is stored in this browser — keep it if you want to edit the map later.
+								{displayName} belongs to your account. Open the editor to change it; no edit key is needed.
+								Saving an edit puts the map back into draft until you publish it again.
+							</p>
+							<a
+								href={`/tesla/editor?map=${encodeURIComponent(mapId)}`}
+								class="mt-4 inline-block border border-gray-200 bg-white text-[#393c41] text-sm px-4 py-2.5 rounded-full hover:border-gray-400 transition-colors"
+							>Edit this map</a>
+						{:else if summary?.builtin}
+							<p class="text-xs text-gray-500">
+								{displayName} ships with the server. Only an administrator can change it; use the editor to save
+								your own copy instead.
+							</p>
+						{:else if editKey}
+							<p class="text-xs text-gray-500">
+								This map was created before accounts existed. The key below claims it to your account and still
+								authorizes edits until it is claimed. Keep it if you want to claim the map later.
 							</p>
 							<div class="mt-3 flex items-start gap-2">
 								<code class="flex-1 min-w-0 break-all rounded-xl bg-[#f7f7f7] px-3 py-2 text-xs text-[#393c41] font-mono" data-testid="edit-key-value">{editKey}</code>
@@ -216,10 +255,19 @@
 									class="shrink-0 border border-gray-200 bg-white text-[#393c41] text-xs px-3 py-2 rounded-full hover:border-gray-400 transition-colors"
 								>{copied === 'key' ? 'Copied ✓' : 'Copy'}</button>
 							</div>
+							<a
+								href={`/tesla/editor?map=${encodeURIComponent(mapId)}`}
+								class="mt-4 inline-block border border-gray-200 bg-white text-[#393c41] text-sm px-4 py-2.5 rounded-full hover:border-gray-400 transition-colors"
+							>Claim in the editor</a>
 						{:else}
 							<p class="text-xs text-gray-500">
-								This browser has no edit key for {displayName}, so it can only be changed by an administrator
-								or with a key you saved when you created the map.
+								{#if $account.loaded && !signedIn}
+									Sign in to check whether this map belongs to you; otherwise it belongs to another player, or
+									it predates accounts and can only be claimed by the browser that created it.
+								{:else}
+									This map belongs to another player, or it predates accounts and this browser has no legacy
+									key for it. Only its creator can change it; use the editor to save your own copy instead.
+								{/if}
 							</p>
 						{/if}
 					</section>
@@ -227,8 +275,14 @@
 					<section class="bg-white rounded-2xl border border-[#e8e8e8] shadow-sm p-6" data-testid="edit-with-ai-section">
 						<h2 class="text-lg font-light text-[#393c41] mb-2">Edit with AI</h2>
 						<p class="text-xs text-gray-500">
-							Copy this prompt into an AI agent. It includes the GraphQL endpoint, this map's id and its edit key,
-							so the agent can read the map, change it and save it back.
+							Copy this prompt into an AI agent. It includes the GraphQL endpoint and this map's id.
+							{#if ownedByMe}
+								It explains that saving needs your signed-in account's bearer token.
+							{:else if editKey}
+								It includes the legacy edit key, so the agent can claim or edit the map.
+							{:else}
+								It tells the agent to ask you for the legacy edit key before saving.
+							{/if}
 						</p>
 						<button
 							type="button"

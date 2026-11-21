@@ -18,10 +18,39 @@ import (
 type fakeService struct {
 	service.GameService
 	maps    []*engine.Map
+	owners  map[string]string
 	builtin map[string]bool
 }
 
-func (f *fakeService) ListMaps() []*engine.Map { return f.maps }
+func (f *fakeService) ListMaps(string) []*engine.Map { return f.maps }
+
+func (f *fakeService) ListEntries() []service.MapEntry {
+	out := make([]service.MapEntry, len(f.maps))
+	for i, m := range f.maps {
+		out[i] = service.MapEntry{Map: m, OwnerID: f.owners[m.ID], Status: engine.MapStatusPublished}
+	}
+	return out
+}
+
+func (f *fakeService) Entry(id string) (service.MapEntry, error) {
+	m, err := f.GetMap(id)
+	if err != nil {
+		return service.MapEntry{}, err
+	}
+	return service.MapEntry{Map: m, OwnerID: f.owners[id], Status: engine.MapStatusPublished}, nil
+}
+
+func (f *fakeService) GetMapFor(id, _ string) (*engine.Map, error) { return f.GetMap(id) }
+
+func (f *fakeService) SessionVisibleTo(s *service.Session, viewerID string) bool {
+	entry, err := f.Entry(s.MapID)
+	if err != nil {
+		return true
+	}
+	return entry.VisibleTo(viewerID)
+}
+
+func (f *fakeService) MapEntry(id string) (service.MapEntry, error) { return f.Entry(id) }
 
 func (f *fakeService) GetMap(id string) (*engine.Map, error) {
 	for _, m := range f.maps {
@@ -34,10 +63,16 @@ func (f *fakeService) GetMap(id string) (*engine.Map, error) {
 
 func (f *fakeService) IsBuiltinMap(id string) bool { return f.builtin[id] }
 
-func (f *fakeService) SaveMap(cfg engine.MapConfig) (*engine.Map, error) {
+func (f *fakeService) SaveMap(cfg engine.MapConfig, actor service.MapActor) (*engine.Map, error) {
 	m, err := engine.NewMap(cfg)
 	if err != nil {
 		return nil, err
+	}
+	if f.owners == nil {
+		f.owners = map[string]string{}
+	}
+	if actor.AccountID != "" {
+		f.owners[cfg.ID] = actor.AccountID
 	}
 	for i, existing := range f.maps {
 		if existing.ID == cfg.ID {
@@ -49,14 +84,18 @@ func (f *fakeService) SaveMap(cfg engine.MapConfig) (*engine.Map, error) {
 	return m, nil
 }
 
-func (f *fakeService) CreateMap(cfg engine.MapConfig) (*engine.Map, error) {
+func (f *fakeService) CreateMap(cfg engine.MapConfig, ownerID string) (*engine.Map, error) {
 	if _, err := f.GetMap(cfg.ID); err == nil {
 		return nil, service.Errorf(service.CodeInvalidArgument, "map %q already exists", cfg.ID)
 	}
-	return f.SaveMap(cfg)
+	return f.SaveMap(cfg, service.MapActor{AccountID: ownerID})
 }
 
-func (f *fakeService) DeleteMap(id string) error {
+func (f *fakeService) PublishMap(id string, _ service.MapActor) (*engine.Map, error) {
+	return f.GetMap(id)
+}
+
+func (f *fakeService) DeleteMap(id string, _ service.MapActor) error {
 	for i, m := range f.maps {
 		if m.ID == id {
 			f.maps = append(f.maps[:i], f.maps[i+1:]...)
@@ -151,37 +190,45 @@ func TestMapMutationsOverHTTP(t *testing.T) {
 	if created == nil || created["builtin"] != false {
 		t.Fatalf("create: out=%v", out)
 	}
-	// Editing a shipped map (wide) needs the admin key.
+	// Editing a shipped map (wide) needs the admin key, even for the owner.
 	const updateShipped = `mutation { updateMap(map: {id: "wide", name: "F", layout: ["...", ">.*", "..."]}) { id } }`
-	if out = guest.gql(updateShipped, nil); firstErrCode(out) != service.CodeForbidden {
+	if out = signedIn.gql(updateShipped, nil); firstErrCode(out) != service.CodeForbidden {
 		t.Fatalf("no key: out=%v", out)
 	}
-	guest.headers["X-Admin-Key"] = "wrong"
-	if out = guest.gql(updateShipped, nil); firstErrCode(out) != service.CodeForbidden {
+	signedIn.headers["X-Admin-Key"] = "wrong"
+	if out = signedIn.gql(updateShipped, nil); firstErrCode(out) != service.CodeForbidden {
 		t.Fatalf("wrong key: %v", out)
 	}
-	guest.headers["X-Admin-Key"] = "secret"
-	if out = guest.gql(updateShipped, nil); out["errors"] != nil {
+	signedIn.headers["X-Admin-Key"] = "secret"
+	if out = signedIn.gql(updateShipped, nil); out["errors"] != nil {
 		t.Fatalf("right key rejected: %v", out)
 	}
-	delete(guest.headers, "X-Admin-Key")
+	delete(signedIn.headers, "X-Admin-Key")
 	const deleteShipped = `mutation { deleteMap(id: "wide") }`
-	if out = guest.gql(deleteShipped, nil); firstErrCode(out) != service.CodeForbidden {
+	if out = signedIn.gql(deleteShipped, nil); firstErrCode(out) != service.CodeForbidden {
 		t.Fatalf("delete no key: %v", out)
 	}
-	// A player-created map stays fully open: update and delete need no login or key.
+	// Anonymous callers can do nothing on maps.
+	if out = guest.gql(updateShipped, nil); firstErrCode(out) != service.CodeUnauthenticated {
+		t.Fatalf("guest update: %v", out)
+	}
+	// The owner can update and delete their own map without a key.
 	const updateMine = `mutation { updateMap(map: {id: "mine", name: "Mine 2", layout: ["...", ">.*", "..."]}) { id name } }`
-	if out = guest.gql(updateMine, nil); out["errors"] != nil {
+	if out = guest.gql(updateMine, nil); firstErrCode(out) != service.CodeUnauthenticated {
+		t.Fatalf("guest update own map: %v", out)
+	}
+	if out = signedIn.gql(updateMine, nil); out["errors"] != nil {
 		t.Fatalf("update own map: %v", out)
 	}
 	const deleteMine = `mutation { deleteMap(id: "mine") }`
-	if out = guest.gql(deleteMine, nil); out["errors"] != nil {
+	if out = signedIn.gql(deleteMine, nil); out["errors"] != nil {
 		t.Fatalf("delete own map: %v", out)
 	}
 	// Deleting a map that does not exist is NOT_FOUND, not silently true.
-	if out = guest.gql(deleteMine, nil); firstErrCode(out) != service.CodeNotFound {
+	if out = signedIn.gql(deleteMine, nil); firstErrCode(out) != service.CodeNotFound {
 		t.Fatalf("delete missing: out=%v", out)
 	}
+
 }
 
 func TestIntrospectionGate(t *testing.T) {

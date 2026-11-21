@@ -120,7 +120,9 @@ type ComplexityRoot struct {
 		Legend          func(childComplexity int) int
 		MaxBattery      func(childComplexity int) int
 		Name            func(childComplexity int) int
+		OwnedByMe       func(childComplexity int) int
 		StartingBattery func(childComplexity int) int
+		Status          func(childComplexity int) int
 	}
 
 	GameState struct {
@@ -170,6 +172,8 @@ type ComplexityRoot struct {
 		MapID       func(childComplexity int) int
 		MaxBattery  func(childComplexity int) int
 		Name        func(childComplexity int) int
+		OwnedByMe   func(childComplexity int) int
+		Status      func(childComplexity int) int
 	}
 
 	MapValidationResult struct {
@@ -200,11 +204,13 @@ type ComplexityRoot struct {
 
 	Mutation struct {
 		BulkMove      func(childComplexity int, sessionID string, moves []model.Direction, reset *bool) int
+		ClaimMap      func(childComplexity int, name string, editKey string) int
 		CreateMap     func(childComplexity int, name string, mapArg model.GameMapInput) int
 		CreateSession func(childComplexity int, mapID *string, mapName *string, fogEnabled *bool, fogRadius *int, gridPassword *string, moveDelayMs *int) int
 		DeleteMap     func(childComplexity int, name string, editKey *string) int
 		DeleteSession func(childComplexity int, id string) int
 		Move          func(childComplexity int, sessionID string, direction model.Direction, reset *bool) int
+		PublishMap    func(childComplexity int, name string) int
 		Reset         func(childComplexity int, sessionID string) int
 		UpdateMap     func(childComplexity int, name string, patch model.GameMapPatchInput, editKey *string) int
 		UpdateSession func(childComplexity int, id string, displayName string) int
@@ -300,6 +306,8 @@ type MutationResolver interface {
 	Reset(ctx context.Context, sessionID string) (*model.GameState, error)
 	CreateMap(ctx context.Context, name string, mapArg model.GameMapInput) (*model.GameMap, error)
 	UpdateMap(ctx context.Context, name string, patch model.GameMapPatchInput, editKey *string) (*model.GameMap, error)
+	PublishMap(ctx context.Context, name string) (*model.GameMap, error)
+	ClaimMap(ctx context.Context, name string, editKey string) (*model.GameMap, error)
 	DeleteMap(ctx context.Context, name string, editKey *string) (*model.DeleteSessionResult, error)
 	ValidateMap(ctx context.Context, mapArg model.GameMapInput) (*model.MapValidationResult, error)
 }
@@ -698,12 +706,26 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.GameMap.Name(childComplexity), true
 
+	case "GameMap.ownedByMe":
+		if e.complexity.GameMap.OwnedByMe == nil {
+			break
+		}
+
+		return e.complexity.GameMap.OwnedByMe(childComplexity), true
+
 	case "GameMap.startingBattery":
 		if e.complexity.GameMap.StartingBattery == nil {
 			break
 		}
 
 		return e.complexity.GameMap.StartingBattery(childComplexity), true
+
+	case "GameMap.status":
+		if e.complexity.GameMap.Status == nil {
+			break
+		}
+
+		return e.complexity.GameMap.Status(childComplexity), true
 
 	case "GameState.battery":
 		if e.complexity.GameState.Battery == nil {
@@ -969,6 +991,20 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.MapInfo.Name(childComplexity), true
 
+	case "MapInfo.ownedByMe":
+		if e.complexity.MapInfo.OwnedByMe == nil {
+			break
+		}
+
+		return e.complexity.MapInfo.OwnedByMe(childComplexity), true
+
+	case "MapInfo.status":
+		if e.complexity.MapInfo.Status == nil {
+			break
+		}
+
+		return e.complexity.MapInfo.Status(childComplexity), true
+
 	case "MapValidationResult.error":
 		if e.complexity.MapValidationResult.Error == nil {
 			break
@@ -1100,6 +1136,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Mutation.BulkMove(childComplexity, args["sessionID"].(string), args["moves"].([]model.Direction), args["reset"].(*bool)), true
 
+	case "Mutation.claimMap":
+		if e.complexity.Mutation.ClaimMap == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_claimMap_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.ClaimMap(childComplexity, args["name"].(string), args["editKey"].(string)), true
+
 	case "Mutation.createMap":
 		if e.complexity.Mutation.CreateMap == nil {
 			break
@@ -1159,6 +1207,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mutation.Move(childComplexity, args["sessionID"].(string), args["direction"].(model.Direction), args["reset"].(*bool)), true
+
+	case "Mutation.publishMap":
+		if e.complexity.Mutation.PublishMap == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_publishMap_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.PublishMap(childComplexity, args["name"].(string)), true
 
 	case "Mutation.reset":
 		if e.complexity.Mutation.Reset == nil {
@@ -1707,6 +1767,16 @@ enum SessionSort {
 	CREATED
 	ACTION
 }
+enum MapStatus {
+	"""
+	A work in progress: only its owner can see, edit, play or publish it.
+	"""
+	DRAFT
+	"""
+	Visible to everyone and playable by anyone.
+	"""
+	PUBLISHED
+}
 type DeleteSessionResult {
 	message: String!
 }
@@ -1818,9 +1888,19 @@ type GameMap {
 	"""
 	builtin: Boolean!
 	"""
-	Only set in the createMap response: the token that authorizes updateMap and
-	deleteMap for this map (send it as the editKey argument). It is never returned
-	again, so store it. Always null on every other query/mutation.
+	DRAFT maps are visible only to their owner and cannot be played or published by anyone else.
+	Every shipped map is PUBLISHED.
+	"""
+	status: MapStatus!
+	"""
+	True when the signed-in caller created this community map.
+	"""
+	ownedByMe: Boolean!
+	"""
+	Only set when a legacy, unowned map is created: the token that claimMap accepts to attach it
+	to the signed-in account (until then it also authorizes updateMap and deleteMap). It is never
+	returned again, so store it. Null on every other query/mutation; new maps are owned by their
+	creator and need no token.
 	"""
 	editKey: String
 }
@@ -1873,6 +1953,15 @@ type MapInfo {
 	True for maps shipped with the server.
 	"""
 	builtin: Boolean!
+	"""
+	DRAFT maps are visible only to their owner and cannot be played or published by anyone else.
+	Every shipped map is PUBLISHED.
+	"""
+	status: MapStatus!
+	"""
+	True when the signed-in caller created this community map.
+	"""
+	ownedByMe: Boolean!
 }
 type MoveResult {
 	success: Boolean!
@@ -1949,7 +2038,13 @@ type Query {
 	unifiedSessions(mapName: String): UnifiedSessions!
 	gameState(sessionID: ID!): GameState!
 	history(sessionID: ID!, page: Int = 1, limit: Int = 50, order: SortOrder = DESC): HistoryResponse!
+	"""
+	Published maps plus the signed-in caller's own drafts. Another player's draft is never listed.
+	"""
 	maps: [MapInfo!]!
+	"""
+	One map. Another player's draft is hidden and null, exactly like an unknown name.
+	"""
 	map(name: String!, password: String): GameMap!
 }
 type Mutation {
@@ -1959,8 +2054,30 @@ type Mutation {
 	move(sessionID: ID!, direction: Direction!, reset: Boolean = false): MoveResult!
 	bulkMove(sessionID: ID!, moves: [Direction!]!, reset: Boolean = false): BulkMoveResult!
 	reset(sessionID: ID!): GameState!
+	"""
+	Creates a DRAFT map owned by the signed-in player (UNAUTHENTICATED otherwise). Update it
+	until it wins, then publishMap.
+	"""
 	createMap(name: String!, map: GameMapInput!): GameMap!
+	"""
+	Replaces the caller's own map and puts it back into DRAFT. Only the owner may edit a
+	community map; shipped and legacy unowned maps need X-Admin-Key. editKey is accepted only for
+	legacy unowned maps, never as a substitute for ownership.
+	"""
 	updateMap(name: String!, patch: GameMapPatchInput!, editKey: String): GameMap!
+	"""
+	Publishes a valid draft. Only its owner may do it; a map whose parks cannot all be visited is
+	refused with INVALID_ARGUMENT.
+	"""
+	publishMap(name: String!): GameMap!
+	"""
+	Attaches a legacy unowned map to the signed-in player using the editKey it was created with.
+	"""
+	claimMap(name: String!, editKey: String!): GameMap!
+	"""
+	Removes a map. The owner may delete their own community map; shipped and legacy unowned maps
+	need X-Admin-Key. editKey is accepted only for legacy unowned maps.
+	"""
 	deleteMap(name: String!, editKey: String): DeleteSessionResult!
 	validateMap(map: GameMapInput!): MapValidationResult!
 }
@@ -2103,6 +2220,57 @@ func (ec *executionContext) field_Mutation_bulkMove_argsReset(
 	}
 
 	var zeroVal *bool
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Mutation_claimMap_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Mutation_claimMap_argsName(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["name"] = arg0
+	arg1, err := ec.field_Mutation_claimMap_argsEditKey(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["editKey"] = arg1
+	return args, nil
+}
+func (ec *executionContext) field_Mutation_claimMap_argsName(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["name"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("name"))
+	if tmp, ok := rawArgs["name"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Mutation_claimMap_argsEditKey(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["editKey"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("editKey"))
+	if tmp, ok := rawArgs["editKey"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
 	return zeroVal, nil
 }
 
@@ -2450,6 +2618,34 @@ func (ec *executionContext) field_Mutation_move_argsReset(
 	}
 
 	var zeroVal *bool
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Mutation_publishMap_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Mutation_publishMap_argsName(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["name"] = arg0
+	return args, nil
+}
+func (ec *executionContext) field_Mutation_publishMap_argsName(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["name"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("name"))
+	if tmp, ok := rawArgs["name"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
 	return zeroVal, nil
 }
 
@@ -5492,6 +5688,94 @@ func (ec *executionContext) fieldContext_GameMap_builtin(_ context.Context, fiel
 	return fc, nil
 }
 
+func (ec *executionContext) _GameMap_status(ctx context.Context, field graphql.CollectedField, obj *model.GameMap) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_GameMap_status(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Status, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(model.MapStatus)
+	fc.Result = res
+	return ec.marshalNMapStatus2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMapStatus(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_GameMap_status(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "GameMap",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type MapStatus does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _GameMap_ownedByMe(ctx context.Context, field graphql.CollectedField, obj *model.GameMap) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_GameMap_ownedByMe(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.OwnedByMe, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_GameMap_ownedByMe(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "GameMap",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _GameMap_editKey(ctx context.Context, field graphql.CollectedField, obj *model.GameMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_GameMap_editKey(ctx, field)
 	if err != nil {
@@ -7260,6 +7544,94 @@ func (ec *executionContext) fieldContext_MapInfo_builtin(_ context.Context, fiel
 	return fc, nil
 }
 
+func (ec *executionContext) _MapInfo_status(ctx context.Context, field graphql.CollectedField, obj *model.MapInfo) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_MapInfo_status(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Status, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(model.MapStatus)
+	fc.Result = res
+	return ec.marshalNMapStatus2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMapStatus(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_MapInfo_status(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "MapInfo",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type MapStatus does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _MapInfo_ownedByMe(ctx context.Context, field graphql.CollectedField, obj *model.MapInfo) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_MapInfo_ownedByMe(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.OwnedByMe, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_MapInfo_ownedByMe(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "MapInfo",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _MapValidationResult_valid(ctx context.Context, field graphql.CollectedField, obj *model.MapValidationResult) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_MapValidationResult_valid(ctx, field)
 	if err != nil {
@@ -8636,6 +9008,10 @@ func (ec *executionContext) fieldContext_Mutation_createMap(ctx context.Context,
 				return ec.fieldContext_GameMap_cellConfigs(ctx, field)
 			case "builtin":
 				return ec.fieldContext_GameMap_builtin(ctx, field)
+			case "status":
+				return ec.fieldContext_GameMap_status(ctx, field)
+			case "ownedByMe":
+				return ec.fieldContext_GameMap_ownedByMe(ctx, field)
 			case "editKey":
 				return ec.fieldContext_GameMap_editKey(ctx, field)
 			}
@@ -8713,6 +9089,10 @@ func (ec *executionContext) fieldContext_Mutation_updateMap(ctx context.Context,
 				return ec.fieldContext_GameMap_cellConfigs(ctx, field)
 			case "builtin":
 				return ec.fieldContext_GameMap_builtin(ctx, field)
+			case "status":
+				return ec.fieldContext_GameMap_status(ctx, field)
+			case "ownedByMe":
+				return ec.fieldContext_GameMap_ownedByMe(ctx, field)
 			case "editKey":
 				return ec.fieldContext_GameMap_editKey(ctx, field)
 			}
@@ -8727,6 +9107,168 @@ func (ec *executionContext) fieldContext_Mutation_updateMap(ctx context.Context,
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_updateMap_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_publishMap(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_publishMap(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().PublishMap(rctx, fc.Args["name"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.GameMap)
+	fc.Result = res
+	return ec.marshalNGameMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameMap(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mutation_publishMap(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "name":
+				return ec.fieldContext_GameMap_name(ctx, field)
+			case "description":
+				return ec.fieldContext_GameMap_description(ctx, field)
+			case "gridSize":
+				return ec.fieldContext_GameMap_gridSize(ctx, field)
+			case "maxBattery":
+				return ec.fieldContext_GameMap_maxBattery(ctx, field)
+			case "startingBattery":
+				return ec.fieldContext_GameMap_startingBattery(ctx, field)
+			case "layout":
+				return ec.fieldContext_GameMap_layout(ctx, field)
+			case "legend":
+				return ec.fieldContext_GameMap_legend(ctx, field)
+			case "cellConfigs":
+				return ec.fieldContext_GameMap_cellConfigs(ctx, field)
+			case "builtin":
+				return ec.fieldContext_GameMap_builtin(ctx, field)
+			case "status":
+				return ec.fieldContext_GameMap_status(ctx, field)
+			case "ownedByMe":
+				return ec.fieldContext_GameMap_ownedByMe(ctx, field)
+			case "editKey":
+				return ec.fieldContext_GameMap_editKey(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type GameMap", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_publishMap_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_claimMap(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_claimMap(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().ClaimMap(rctx, fc.Args["name"].(string), fc.Args["editKey"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.GameMap)
+	fc.Result = res
+	return ec.marshalNGameMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐGameMap(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mutation_claimMap(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "name":
+				return ec.fieldContext_GameMap_name(ctx, field)
+			case "description":
+				return ec.fieldContext_GameMap_description(ctx, field)
+			case "gridSize":
+				return ec.fieldContext_GameMap_gridSize(ctx, field)
+			case "maxBattery":
+				return ec.fieldContext_GameMap_maxBattery(ctx, field)
+			case "startingBattery":
+				return ec.fieldContext_GameMap_startingBattery(ctx, field)
+			case "layout":
+				return ec.fieldContext_GameMap_layout(ctx, field)
+			case "legend":
+				return ec.fieldContext_GameMap_legend(ctx, field)
+			case "cellConfigs":
+				return ec.fieldContext_GameMap_cellConfigs(ctx, field)
+			case "builtin":
+				return ec.fieldContext_GameMap_builtin(ctx, field)
+			case "status":
+				return ec.fieldContext_GameMap_status(ctx, field)
+			case "ownedByMe":
+				return ec.fieldContext_GameMap_ownedByMe(ctx, field)
+			case "editKey":
+				return ec.fieldContext_GameMap_editKey(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type GameMap", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_claimMap_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -9371,6 +9913,10 @@ func (ec *executionContext) fieldContext_Query_maps(_ context.Context, field gra
 				return ec.fieldContext_MapInfo_maxBattery(ctx, field)
 			case "builtin":
 				return ec.fieldContext_MapInfo_builtin(ctx, field)
+			case "status":
+				return ec.fieldContext_MapInfo_status(ctx, field)
+			case "ownedByMe":
+				return ec.fieldContext_MapInfo_ownedByMe(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type MapInfo", field.Name)
 		},
@@ -9435,6 +9981,10 @@ func (ec *executionContext) fieldContext_Query_map(ctx context.Context, field gr
 				return ec.fieldContext_GameMap_cellConfigs(ctx, field)
 			case "builtin":
 				return ec.fieldContext_GameMap_builtin(ctx, field)
+			case "status":
+				return ec.fieldContext_GameMap_status(ctx, field)
+			case "ownedByMe":
+				return ec.fieldContext_GameMap_ownedByMe(ctx, field)
 			case "editKey":
 				return ec.fieldContext_GameMap_editKey(ctx, field)
 			}
@@ -9948,6 +10498,10 @@ func (ec *executionContext) fieldContext_Session_gameMap(_ context.Context, fiel
 				return ec.fieldContext_GameMap_cellConfigs(ctx, field)
 			case "builtin":
 				return ec.fieldContext_GameMap_builtin(ctx, field)
+			case "status":
+				return ec.fieldContext_GameMap_status(ctx, field)
+			case "ownedByMe":
+				return ec.fieldContext_GameMap_ownedByMe(ctx, field)
 			case "editKey":
 				return ec.fieldContext_GameMap_editKey(ctx, field)
 			}
@@ -11268,6 +11822,10 @@ func (ec *executionContext) fieldContext_UnifiedSession_gameMap(_ context.Contex
 				return ec.fieldContext_GameMap_cellConfigs(ctx, field)
 			case "builtin":
 				return ec.fieldContext_GameMap_builtin(ctx, field)
+			case "status":
+				return ec.fieldContext_GameMap_status(ctx, field)
+			case "ownedByMe":
+				return ec.fieldContext_GameMap_ownedByMe(ctx, field)
 			case "editKey":
 				return ec.fieldContext_GameMap_editKey(ctx, field)
 			}
@@ -14197,6 +14755,16 @@ func (ec *executionContext) _GameMap(ctx context.Context, sel ast.SelectionSet, 
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&out.Invalids, 1)
 			}
+		case "status":
+			out.Values[i] = ec._GameMap_status(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "ownedByMe":
+			out.Values[i] = ec._GameMap_ownedByMe(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
 		case "editKey":
 			out.Values[i] = ec._GameMap_editKey(ctx, field, obj)
 		default:
@@ -14551,6 +15119,16 @@ func (ec *executionContext) _MapInfo(ctx context.Context, sel ast.SelectionSet, 
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "status":
+			out.Values[i] = ec._MapInfo_status(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "ownedByMe":
+			out.Values[i] = ec._MapInfo_ownedByMe(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -14823,6 +15401,20 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "updateMap":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_updateMap(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "publishMap":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_publishMap(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "claimMap":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_claimMap(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -16376,6 +16968,16 @@ func (ec *executionContext) marshalNMapInfo2ᚖgithubᚗcomᚋwricardoᚋdrbrain
 		return graphql.Null
 	}
 	return ec._MapInfo(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNMapStatus2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMapStatus(ctx context.Context, v any) (model.MapStatus, error) {
+	var res model.MapStatus
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNMapStatus2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMapStatus(ctx context.Context, sel ast.SelectionSet, v model.MapStatus) graphql.Marshaler {
+	return v
 }
 
 func (ec *executionContext) marshalNMapValidationResult2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋteslaᚋgraphᚋmodelᚐMapValidationResult(ctx context.Context, sel ast.SelectionSet, v model.MapValidationResult) graphql.Marshaler {

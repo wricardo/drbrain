@@ -12,7 +12,7 @@ cd "$(dirname "$0")/.."
 
 TMP="$(mktemp -d)"
 go build -o "${TMP}/drbrain-mazes" .
-ADMIN_API_KEY=smoke-key ALLOW_UNAUTHENTICATED_ADMIN=false "${TMP}/drbrain-mazes" -port "${PORT}" -host 127.0.0.1 -sessions-dir "${TMP}/sessions" >"${TMP}/server.log" 2>&1 &
+ADMIN_API_KEY=smoke-key ALLOW_UNAUTHENTICATED_ADMIN=false "${TMP}/drbrain-mazes" -port "${PORT}" -host 127.0.0.1 >"${TMP}/server.log" 2>&1 &
 PID=$!
 trap 'kill "${PID}" 2>/dev/null || true; wait "${PID}" 2>/dev/null || true; rm -rf "${TMP}"' EXIT
 

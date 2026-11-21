@@ -31,7 +31,6 @@ var llmsTemplate string
 type Env struct {
 	ScoresDir       string        `envconfig:"SCORES_DIR" default:"scores"`
 	CustomScoresDir string        `envconfig:"CUSTOM_SCORES_DIR"`
-	SessionsDir     string        `envconfig:"SESSIONS_DIR" default:"sessions"`
 	MaxSessions     int           `envconfig:"MAX_SESSIONS" default:"1000"`
 	SessionTTL      time.Duration `envconfig:"SESSION_TTL" default:"168h"`
 	PublicURL       string        `envconfig:"PUBLIC_URL"`
@@ -73,9 +72,9 @@ func (g *Game) LLMSTemplate() string { return llmsTemplate }
 // LLMSPublicURL implements platform.LLMSProvider.
 func (g *Game) LLMSPublicURL() string { return g.publicURL }
 
-// Mount loads the score catalogue and persisted sessions, then wires the
-// service and resolver. Both run before the listener binds, so a bad score or
-// session file aborts startup with the game named.
+// Mount loads the score catalogue, opens the PostgreSQL session store, then
+// wires the service and resolver. All of it runs before the listener binds, so
+// a bad score file aborts startup with the game named.
 func (g *Game) Mount(mux *http.ServeMux, deps platform.Deps) error {
 	env, err := loadEnv()
 	if err != nil {
@@ -88,7 +87,10 @@ func (g *Game) Mount(mux *http.ServeMux, deps platform.Deps) error {
 	if err != nil {
 		return fmt.Errorf("load scores: %w", err)
 	}
-	persistence, err := session.NewStorePersistence(env.SessionsDir, env.MaxSessions)
+	if deps.DB == nil {
+		return fmt.Errorf("session persistence: PostgreSQL is required")
+	}
+	persistence, err := session.NewPostgresPersistence(deps.DB, env.MaxSessions)
 	if err != nil {
 		return fmt.Errorf("session persistence: %w", err)
 	}

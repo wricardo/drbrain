@@ -11,6 +11,8 @@ const map = (over: Partial<GameMap> = {}): GameMap => ({
 	description: '',
 	difficulty: 'easy',
 	builtin: false,
+	status: 'PUBLISHED',
+	ownedByMe: false,
 	width: 4,
 	height: 2,
 	layout: ['>U/*', '....'],

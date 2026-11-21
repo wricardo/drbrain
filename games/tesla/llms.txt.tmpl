@@ -115,12 +115,14 @@ A session created with `fogEnabled: true` hides the map:
 ```graphql
 query {
   tesla {
-  maps { mapId name description gridSize maxBattery }
+  maps { mapId name description gridSize maxBattery status ownedByMe }
   }
 }
 ```
 
-Use `mapId` (e.g. `"easy"`, `"classic"`) when creating sessions.
+`maps` returns every PUBLISHED map plus the signed-in caller's own DRAFTs; another player's
+draft is never listed. `ownedByMe` says whether the caller created the map. Use `mapId`
+(e.g. `"easy"`, `"classic"`) when creating sessions; `status` is `DRAFT` or `PUBLISHED`.
 
 ### 2. Create a session
 
@@ -389,24 +391,31 @@ declared in `cellConfigs`, e.g.
 
 ### Map administration
 
-`createMap(name, map: GameMapInput)` and `updateMap(name, patch: GameMapPatchInput, editKey)`
-take the same fields as `validateMap` (patch fields are all optional).
+Map authoring needs a signed-in player (the global `account` sign-in); signed-out calls are
+`UNAUTHENTICATED`.
 
-Creating a map needs **no credentials**. `createMap` returns the new map plus
-`editKey` (and `builtin: false`); the token is returned exactly once, so store it.
-`updateMap` and `deleteMap` require that token in their `editKey` argument.
-Maps shipped with the server report `builtin: true` in `maps { builtin }` and are
-**read-only** for token holders — use `createMap` with a new name to make your own
-editable copy. The owner of a map is whoever holds its edit key; there are no accounts.
+| Mutation | Effect |
+| --- | --- |
+| `createMap(name, map: GameMapInput)` | Creates a `DRAFT` owned by the caller. It never overwrites a shipped map. The response says `status: DRAFT`, `ownedByMe: true`, `builtin: false`. |
+| `updateMap(name, patch: GameMapPatchInput)` | Owner-only. An edit puts the map back into `DRAFT`; patch fields are optional. |
+| `publishMap(name)` | Owner-only; runs the full winnability gate (every park reachable) and moves the draft to `PUBLISHED`. |
+| `deleteMap(name)` | Owner-only for the caller's own map. |
+| `claimMap(name, editKey)` | One-time claim of a legacy ownerless map with the edit key it was created with. |
+| `validateMap(map)` | Checks a map without saving it. |
 
-`deleteMap(name, editKey): DeleteSessionResult` deletes a map you created. Built-in
-maps cannot be deleted without the admin key.
+Visibility follows the lifecycle: `maps` shows published maps plus your own drafts, and
+`map(name)` returns `null` for another player's draft exactly like an unknown name. A `DRAFT`
+cannot be played or published by anyone else.
 
-The MCP tools `create_map`, `update_map` and `delete_map` follow the same rules, using
-an `edit_key` argument; `create_map` returns the key in its result.
+Shipped maps are `builtin: true`, `PUBLISHED` and ownerless; changing or deleting one needs
+`X-Admin-Key` equal to `TESLA_ADMIN_API_KEY`. A legacy ownerless custom map also needs the admin
+key until `claimMap` attaches it to an account; after that its owner edits it without any key.
 
-Operators can override both rules by setting `ADMIN_API_KEY` and sending it as the
-`X-Admin-Key` HTTP header (this works for built-in maps too).
+Custom maps live in PostgreSQL (`platform_maps`), capped by `TESLA_MAX_USER_MAPS` (default 200).
+`TESLA_CUSTOM_MAPS_DIR` is not a runtime setting: existing custom maps are imported once with
+`drbrain import-maps --game=tesla --dir=<legacy directory>`. Imported maps become `PUBLISHED`
+and ownerless; use `claimMap` with the old edit key to attach them to an account. `pg_dump` is
+the only backup for custom maps; builtin `maps/*.json` files stay release-managed.
 
 ---
 
@@ -475,9 +484,15 @@ Most tool results are text in TOON format (compact YAML-like) with snake_case fi
 | validate_map     | map* (create_map fields; `description` also required here)                      |
 | get_map          | name*, password (UI password; restricted)                                       |
 | create_map       | name*, grid_size*, max_battery*, starting_battery*, layout*, legend*,           |
-|                  | description, cell_configs — no auth; returns edit_key                           |
-| update_map       | name*, edit_key (unless admin), any create_map field                            |
-| delete_map       | name*, edit_key (unless admin)                                                  |
+|                  | description, cell_configs — admin only; returns edit_key                        |
+| update_map       | name*, any create_map field — admin only (edit_key accepted, ignored)           |
+| delete_map       | name* — admin only (edit_key accepted, ignored)                                 |
+
+Map mutations (`create_map`, `update_map`, `delete_map`) are operator tools: they need
+`X-Admin-Key` equal to `TESLA_ADMIN_API_KEY`. Player map authoring is account-owned in GraphQL
+(see Map administration). `create_map` makes a published, ownerless map (a legacy import) and
+returns the legacy edit key; `update_map` and `delete_map` work on community maps too.
+`get_map` returns published maps to everyone but a `DRAFT` only with the admin key.
 
 `intent` is a free-text note explaining your reasoning; it is not interpreted.
 `game_state`, `move` and `bulk_move` results include `local_view_3x3`: always 3 rows of 3,

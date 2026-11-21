@@ -13,7 +13,12 @@ import (
 
 	"github.com/wricardo/drbrain/games/motor/game/engine"
 	"github.com/wricardo/drbrain/games/motor/game/service"
+	"github.com/wricardo/drbrain/platform/pgdb/pgtest"
 )
+
+func player(id string) service.MapActor { return service.MapActor{AccountID: id} }
+
+func admin() service.MapActor { return service.MapActor{Admin: true} }
 
 func cfg(id string) engine.MapConfig {
 	return engine.MapConfig{
@@ -29,11 +34,11 @@ func TestSaveReloadRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved, err := m.Save(cfg("b_map"))
+	saved, err := m.Save(cfg("b_map"), player("tester"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.Save(cfg("a_map")); err != nil {
+	if _, err := m.Save(cfg("a_map"), player("tester")); err != nil {
 		t.Fatal(err)
 	}
 	m2, err := NewManager(Options{Dir: dir})
@@ -63,16 +68,16 @@ func TestGetNotFoundAndDelete(t *testing.T) {
 	if _, err := m.Get("nope"); !errors.As(err, &se) || se.Code != service.CodeNotFound {
 		t.Fatalf("want NOT_FOUND, got %v", err)
 	}
-	if _, err := m.Save(cfg("x")); err != nil {
+	if _, err := m.Save(cfg("x"), player("tester")); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.Delete("x"); err != nil {
+	if err := m.Delete("x", player("tester")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "x.json")); !os.IsNotExist(err) {
 		t.Fatalf("file should be gone: %v", err)
 	}
-	if err := m.Delete("x"); !errors.As(err, &se) || se.Code != service.CodeNotFound {
+	if err := m.Delete("x", player("tester")); !errors.As(err, &se) || se.Code != service.CodeNotFound {
 		t.Fatalf("want NOT_FOUND on second delete, got %v", err)
 	}
 }
@@ -85,10 +90,10 @@ func TestPathTraversalRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range []string{"../evil", "a/b", "..", "", "UPPER", strings.Repeat("a", 65)} {
-		if _, err := m.Save(cfg(id)); err == nil {
+		if _, err := m.Save(cfg(id), player("tester")); err == nil {
 			t.Errorf("Save(%q) succeeded", id)
 		}
-		if err := m.Delete(id); err == nil {
+		if err := m.Delete(id, player("tester")); err == nil {
 			t.Errorf("Delete(%q) succeeded", id)
 		}
 	}
@@ -102,7 +107,7 @@ func TestSaveInvalidMapRejected(t *testing.T) {
 	bad := cfg("bad")
 	bad.Layout = []string{"...", "...", "..."} // no start, no treat
 	var se *service.Error
-	if _, err := m.Save(bad); !errors.As(err, &se) || se.Code != service.CodeInvalidArgument {
+	if _, err := m.Save(bad, player("tester")); !errors.As(err, &se) || se.Code != service.CodeInvalidArgument {
 		t.Fatalf("want INVALID_ARGUMENT, got %v", err)
 	}
 	if len(m.List()) != 0 {
@@ -134,7 +139,7 @@ func TestIDFilenameMismatchFailsFast(t *testing.T) {
 
 func TestReturnedMapsAreCopies(t *testing.T) {
 	m, _ := NewManager(Options{Dir: t.TempDir()})
-	if _, err := m.Save(cfg("c")); err != nil {
+	if _, err := m.Save(cfg("c"), player("tester")); err != nil {
 		t.Fatal(err)
 	}
 	a, _ := m.Get("c")
@@ -169,7 +174,7 @@ func TestCreateFailsIfExistsAndIsAtomic(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, err := m.Create(c)
+			_, err := m.Create(c, "tester")
 			errs <- err
 		}()
 	}
@@ -200,7 +205,7 @@ func TestCreateFailsIfExistsAndIsAtomic(t *testing.T) {
 		t.Fatalf("memory %q != disk %q", got.Name, disk.Name)
 	}
 	// Save still overwrites.
-	if _, err := m.Save(cfg("race")); err != nil {
+	if _, err := m.Save(cfg("race"), player("tester")); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -233,14 +238,14 @@ func TestSplitStoreShippedMapsAreBuiltin(t *testing.T) {
 	if !m.Builtin("shipped") {
 		t.Fatal("shipped map not reported as builtin")
 	}
-	created, err := m.Create(cfg("player"))
+	created, err := m.Create(cfg("player"), "tester")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if created.ID != "player" || m.Builtin("player") {
 		t.Fatalf("player map: builtin=%v", m.Builtin("player"))
 	}
-	if _, err := m.Create(cfg("shipped")); err == nil {
+	if _, err := m.Create(cfg("shipped"), "tester"); err == nil {
 		t.Fatal("create over a shipped id succeeded")
 	}
 }
@@ -250,7 +255,7 @@ func TestSplitStoreShippedMapsAreBuiltin(t *testing.T) {
 func TestSplitStoreWritesToUserDir(t *testing.T) {
 	m := splitStore(t, 0)
 	dir, userDir := m.opts.Dir, m.opts.UserDir
-	if _, err := m.Create(cfg("player")); err != nil {
+	if _, err := m.Create(cfg("player"), "tester"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(userDir, "player.json")); err != nil {
@@ -273,7 +278,7 @@ func TestSplitStoreWritesToUserDir(t *testing.T) {
 	// Editing a shipped map writes to Dir.
 	edited := cfg("shipped")
 	edited.Name = "Edited"
-	if _, err := m2.Save(edited); err != nil {
+	if _, err := m2.Save(edited, admin()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "shipped.json")); err != nil {
@@ -290,16 +295,16 @@ func TestSplitStoreWritesToUserDir(t *testing.T) {
 // Delete removes the file from the directory the map actually lives in.
 func TestSplitStoreDeletePicksTheRightDir(t *testing.T) {
 	m := splitStore(t, 0)
-	if _, err := m.Create(cfg("player")); err != nil {
+	if _, err := m.Create(cfg("player"), "tester"); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.Delete("player"); err != nil {
+	if err := m.Delete("player", player("tester")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(m.opts.UserDir, "player.json")); !os.IsNotExist(err) {
 		t.Fatal("player map file not removed")
 	}
-	if err := m.Delete("shipped"); err != nil {
+	if err := m.Delete("shipped", admin()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(m.opts.Dir, "shipped.json")); !os.IsNotExist(err) {
@@ -313,17 +318,17 @@ func TestSplitStoreDeletePicksTheRightDir(t *testing.T) {
 func TestSplitStoreMaxUserMaps(t *testing.T) {
 	m := splitStore(t, 2)
 	for _, id := range []string{"a", "b"} {
-		if _, err := m.Create(cfg(id)); err != nil {
+		if _, err := m.Create(cfg(id), "tester"); err != nil {
 			t.Fatalf("create %s: %v", id, err)
 		}
 	}
-	_, err := m.Create(cfg("c"))
+	_, err := m.Create(cfg("c"), "tester")
 	var se *service.Error
 	if !errors.As(err, &se) || se.Code != service.CodeLimit {
 		t.Fatalf("want LIMIT_REACHED at the cap, got %v", err)
 	}
 	// Editing an existing map is not blocked by the cap.
-	if _, err := m.Save(cfg("a")); err != nil {
+	if _, err := m.Save(cfg("a"), player("tester")); err != nil {
 		t.Fatalf("save at cap: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(m.opts.UserDir, "c.json")); !os.IsNotExist(err) {
@@ -377,5 +382,112 @@ func TestSplitStoreUserMapCannotShadowShipped(t *testing.T) {
 	}
 	if !m2.Builtin("shipped") {
 		t.Fatal("shadowed map lost its builtin flag")
+	}
+}
+
+// A community map is born as the creator's draft, can be saved even when it
+// cannot be published yet, and becomes public only after a successful publish.
+func TestCommunityMapDraftLifecycle(t *testing.T) {
+	pool := pgtest.Pool(t)
+	shipped := t.TempDir()
+	m, err := NewManager(Options{Dir: shipped, Pool: pool})
+	if err != nil {
+		t.Fatal(err)
+	}
+	alice, bob := player("alice"), player("bob")
+
+	invalid := cfg("my_map")
+	invalid.Layout = []string{"#####", ">#*##", "#####"} // treat walled off from the start
+	if _, err := m.Create(invalid, "alice"); err != nil {
+		t.Fatalf("create invalid draft: %v", err)
+	}
+	e, err := m.Entry("my_map")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.Status != engine.MapStatusDraft || e.OwnerID != "alice" {
+		t.Fatalf("new map = status %q owner %q, want DRAFT/alice", e.Status, e.OwnerID)
+	}
+	if !e.VisibleTo("alice") || e.VisibleTo("bob") || e.VisibleTo("") {
+		t.Fatal("draft visibility is wrong")
+	}
+	if _, err := m.Save(invalid, bob); err == nil {
+		t.Fatal("another player saved the draft")
+	}
+	if _, err := m.Publish("my_map", bob); err == nil {
+		t.Fatal("another player published the draft")
+	}
+	if _, err := m.Publish("my_map", alice); err == nil {
+		t.Fatal("an invalid draft was published")
+	}
+
+	valid := cfg("my_map")
+	valid.Layout = []string{"....", ".>.*", "...."}
+	if _, err := m.Save(valid, alice); err != nil {
+		t.Fatalf("owner save: %v", err)
+	}
+	if _, err := m.Publish("my_map", alice); err != nil {
+		t.Fatalf("publish valid draft: %v", err)
+	}
+	if e, _ = m.Entry("my_map"); e.Status != engine.MapStatusPublished || !e.VisibleTo("bob") {
+		t.Fatalf("published map = %+v", e)
+	}
+	if _, err := m.Publish("my_map", bob); err == nil {
+		t.Fatal("another player published an already published map")
+	}
+
+	// Editing a published map hides it again until the owner publishes.
+	valid.Name = "Renamed"
+	if _, err := m.Save(valid, alice); err != nil {
+		t.Fatal(err)
+	}
+	if e, _ = m.Entry("my_map"); e.Status != engine.MapStatusDraft {
+		t.Fatalf("edit left status %q, want DRAFT", e.Status)
+	}
+
+	// Ownership and status survive a restart.
+	m2, err := NewManager(Options{Dir: shipped, Pool: pool})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e, _ = m2.Entry("my_map"); e.Status != engine.MapStatusDraft || e.OwnerID != "alice" {
+		t.Fatalf("reloaded map = %+v", e)
+	}
+	if _, err := m2.Publish("my_map", alice); err != nil {
+		t.Fatal(err)
+	}
+	m3, err := NewManager(Options{Dir: shipped, Pool: pool})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e, _ = m3.Entry("my_map"); e.Status != engine.MapStatusPublished || !e.VisibleTo("bob") {
+		t.Fatalf("published map did not survive restart: %+v", e)
+	}
+}
+
+// A map written before ownership existed has no owner and stays published; it
+// is changeable only with the admin key, so nobody can claim it silently.
+func TestLegacyUserMapIsPublishedAndAdminOnly(t *testing.T) {
+	pool := pgtest.Pool(t)
+	m, err := NewManager(Options{Dir: t.TempDir(), Pool: pool})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The legacy import path and the migration both produce ownerless rows.
+	if _, err := m.store.Create("legacy", cfg("legacy")); err != nil {
+		t.Fatal(err)
+	}
+	e, err := m.Entry("legacy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if e.Status != engine.MapStatusPublished || e.OwnerID != "" || !e.VisibleTo("bob") {
+		t.Fatalf("legacy map = %+v", e)
+	}
+	if _, err := m.Save(cfg("legacy"), player("bob")); err == nil {
+		t.Fatal("a player claimed a legacy map")
+	}
+	if _, err := m.Save(cfg("legacy"), admin()); err != nil {
+		t.Fatalf("admin save: %v", err)
 	}
 }

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Button from '@drbrain/ui/components/Button.svelte';
 	import { api } from '$lib/delivery/api';
 	import { claimableSessions, forgetOwnerTokens } from '$lib/delivery/ownerTokens';
 	import { account } from '$lib/account/stores/account';
@@ -52,23 +53,17 @@
 </script>
 
 {#if $account.me && !dismissed && (claimable.length > 0 || message)}
-	<div class="border-b border-indigo-200 bg-indigo-50 px-4 py-2 text-sm text-indigo-950 sm:px-6" role="region" aria-label="Guest cities" data-testid="claim-banner">
-		<div class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-2">
-			<p class="flex-1" role="status">
+	<div class="border-b border-edge bg-[var(--db-tint)] py-2 text-sm text-body" role="region" aria-label="Guest cities" data-testid="claim-banner">
+		<div class="db-container flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-x-3">
+			<p class="basis-full sm:flex-1" role="status">
 				{message || `Add ${claimable.length} ${claimable.length === 1 ? 'city' : 'cities'} you started as a guest to your account?`}
 			</p>
-			{#if claimable.length > 0 && !message}
-				<button
-					type="button"
-					class="rounded-full bg-indigo-600 px-4 py-1 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
-					disabled={busy}
-					onclick={claim}
-					data-testid="claim-button">{busy ? 'Adding…' : 'Add them'}</button
-				>
-			{/if}
-			<button type="button" class="rounded-full border border-indigo-300 bg-white px-3 py-1 text-sm hover:bg-indigo-100" onclick={dismiss}
-				>{message ? 'Close' : 'Not now'}</button
-			>
+			<div class="flex flex-wrap gap-2">
+				{#if claimable.length > 0 && !message}
+					<Button disabled={busy} onclick={claim} data-testid="claim-button">{busy ? 'Adding…' : 'Add them'}</Button>
+				{/if}
+				<Button variant="quiet" disabled={busy} onclick={dismiss}>{message ? 'Close' : 'Not now'}</Button>
+			</div>
 		</div>
 	</div>
 {/if}

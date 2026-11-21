@@ -40,7 +40,7 @@ describe('buildEditWithAIPrompt', () => {
 
 	it('degrades to asking for the key when this browser has none', () => {
 		const prompt = buildEditWithAIPrompt({ map, editKey: null, apiUrl: 'http://x/graphql' });
-		expect(prompt).toContain('I do not have the edit key');
+		expect(prompt).toContain('I do not have the legacy edit key');
 		expect(prompt).toContain('<ASK_ME>');
 		// It must not fabricate a token or emit an empty string as the key.
 		expect(prompt).not.toMatch(/"editKey":\s*""/);
@@ -51,6 +51,14 @@ describe('buildEditWithAIPrompt', () => {
 		for (const rule of ['At least one H', 'at least one P', 'reachable', 'R road']) {
 			expect(prompt).toContain(rule);
 		}
+	});
+
+	it('tells the agent to use the account and omit the key for an owned map', () => {
+		const prompt = buildEditWithAIPrompt({ map, editKey: null, owned: true, apiUrl: 'http://x/graphql' });
+		expect(prompt).toContain('belongs to my drbrain account');
+		expect(prompt).toContain('Authorization: Bearer');
+		expect(prompt).not.toContain('"editKey":');
+		expect(prompt).not.toContain('<ASK_ME>');
 	});
 
 	it('falls back to the map id when the display name is empty', () => {

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"reflect"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -16,6 +17,8 @@ import (
 	"github.com/wricardo/drbrain/games/mazes/game/service"
 	"github.com/wricardo/drbrain/games/mazes/graph/model"
 	"github.com/wricardo/drbrain/games/mazes/transport/websocket"
+	"github.com/wricardo/drbrain/platform/account"
+	"github.com/wricardo/drbrain/platform/auth"
 )
 
 // fakeService overrides only what the tests exercise; any other call panics
@@ -40,6 +43,14 @@ func (f *fakeService) GetMap(id string) (*engine.Map, error) {
 	return nil, service.Errorf(service.CodeNotFound, "map %q not found", id)
 }
 
+// GetMapEntry backs the viewer-aware session/map conversions in these tests.
+func (f *fakeService) GetMapEntry(id string) (*service.MapEntry, error) {
+	if m, ok := f.maps[id]; ok {
+		return &service.MapEntry{ID: m.ID, Config: m.Config(), Builtin: true, Status: service.MapStatusPublished}, nil
+	}
+	return nil, service.Errorf(service.CodeNotFound, "map %q not found", id)
+}
+
 func (f *fakeService) SaveMap(cfg engine.MapConfig) (*engine.Map, error) {
 	m, err := engine.NewMap(cfg)
 	if err != nil {
@@ -60,6 +71,55 @@ func (f *fakeService) CreateMap(cfg engine.MapConfig) (*engine.Map, error) {
 }
 
 func (f *fakeService) DeleteMap(id string) error { return nil }
+
+func (f *fakeService) ListMapEntries(viewerID string) ([]*service.MapEntry, error) {
+	out := make([]*service.MapEntry, 0, len(f.maps))
+	for _, m := range f.maps {
+		out = append(out, &service.MapEntry{ID: m.ID, Config: m.Config(), Status: service.MapStatusPublished})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}
+
+func (f *fakeService) CreateMapDraft(cfg engine.MapConfig, ownerID string) (*service.MapEntry, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	if _, ok := f.maps[cfg.ID]; ok {
+		return nil, service.Errorf(service.CodeInvalidArgument, "map %q already exists", cfg.ID)
+	}
+	m, err := f.SaveMap(cfg)
+	if err != nil {
+		return nil, service.Errorf(service.CodeInvalidArgument, "invalid map: %v", err)
+	}
+	f.maps[m.ID] = m
+	return &service.MapEntry{ID: m.ID, Config: m.Config(), OwnerID: ownerID, Status: service.MapStatusDraft}, nil
+}
+
+func (f *fakeService) UpdateMapOwned(cfg engine.MapConfig, actor service.MapActor) (*service.MapEntry, error) {
+	if _, ok := f.maps[cfg.ID]; !ok {
+		return nil, service.Errorf(service.CodeNotFound, "map %q not found", cfg.ID)
+	}
+	m, err := f.SaveMap(cfg)
+	if err != nil {
+		return nil, service.Errorf(service.CodeInvalidArgument, "invalid map: %v", err)
+	}
+	f.maps[m.ID] = m
+	return &service.MapEntry{ID: m.ID, Config: m.Config(), OwnerID: actor.AccountID, Status: service.MapStatusDraft}, nil
+}
+
+func (f *fakeService) PublishMap(id string, actor service.MapActor) (*service.MapEntry, error) {
+	m, ok := f.maps[id]
+	if !ok {
+		return nil, service.Errorf(service.CodeNotFound, "map %q not found", id)
+	}
+	return &service.MapEntry{ID: m.ID, Config: m.Config(), OwnerID: actor.AccountID, Status: service.MapStatusPublished}, nil
+}
+
+func (f *fakeService) DeleteMapOwned(id string, actor service.MapActor) error {
+	delete(f.maps, id)
+	return nil
+}
 
 func (f *fakeService) GetSession(id string) (*service.Session, error) {
 	if s, ok := f.sessions[id]; ok {
@@ -138,8 +198,14 @@ func ctxWithKey(key string) context.Context {
 	return context.WithValue(context.Background(), HTTPRequestKey{}, r)
 }
 
-func TestAdminGate(t *testing.T) {
-	input := model.MapInput{ID: "new_map", Name: "n", Levels: testMapConfig("x").Levels}
+// viewerCtx signs a test request in as acct.
+func viewerCtx(acct string) context.Context {
+	return auth.WithViewer(context.Background(), &auth.Viewer{Account: &account.Account{ID: acct}})
+}
+
+// TestAdminMapGate keeps the X-Admin-Key semantics for the admin-only editor
+// query; map mutations moved to account ownership (see TestMapMutationsRequireSignIn).
+func TestAdminMapGate(t *testing.T) {
 	cases := []struct {
 		name      string
 		adminKey  string
@@ -162,47 +228,68 @@ func TestAdminGate(t *testing.T) {
 			t.Setenv("ADMIN_API_KEY", tc.adminKey)
 			t.Setenv("ALLOW_UNAUTHENTICATED_ADMIN", tc.allowOpen)
 			fs := &fakeService{maps: map[string]*engine.Map{"existing": mustMap(t, "existing")}}
-			r := &Resolver{Service: fs}
-			m := &mutationResolver{r}
-
-			check := func(op string, err error) {
-				t.Helper()
-				if tc.wantCode == "" {
-					if err != nil {
-						t.Fatalf("%s: unexpected error %v", op, err)
-					}
-					return
+			q := &queryResolver{&Resolver{Service: fs}}
+			_, err := q.AdminMap(tc.ctx, "existing")
+			if tc.wantCode == "" {
+				if err != nil {
+					t.Fatalf("adminMap: unexpected error %v", err)
 				}
-				if err == nil {
-					t.Fatalf("%s: expected %s error, got none", op, tc.wantCode)
-				}
-				if got := codeOf(t, err); got != tc.wantCode {
-					t.Fatalf("%s: code = %q, want %q", op, got, tc.wantCode)
-				}
+				return
 			}
-			_, err := m.CreateMap(tc.ctx, input)
-			check("createMap", err)
-			upd := input
-			upd.ID = "existing"
-			_, err = m.UpdateMap(tc.ctx, upd)
-			check("updateMap", err)
-			_, err = m.DeleteMap(tc.ctx, "existing")
-			check("deleteMap", err)
-			_, err = m.ValidateMap(tc.ctx, input)
-			check("validateMap", err)
-			if tc.wantCode != "" && len(fs.saved) != 0 {
-				t.Fatalf("map saved despite gate: %v", fs.saved)
+			if err == nil {
+				t.Fatalf("adminMap: expected %s error, got none", tc.wantCode)
+			}
+			if got := codeOf(t, err); got != tc.wantCode {
+				t.Fatalf("adminMap: code = %q, want %q", got, tc.wantCode)
+			}
+		})
+	}
+}
+
+func TestMapMutationsRequireSignIn(t *testing.T) {
+	fs := &fakeService{maps: map[string]*engine.Map{"existing": mustMap(t, "existing")}}
+	m := &mutationResolver{&Resolver{Service: fs}}
+	levels := testMapConfig("x").Levels
+	ops := []struct {
+		name string
+		call func() error
+	}{
+		{"createMap", func() error {
+			_, err := m.CreateMap(context.Background(), model.MapInput{ID: "new", Name: "n", Levels: levels})
+			return err
+		}},
+		{"updateMap", func() error {
+			_, err := m.UpdateMap(context.Background(), model.MapInput{ID: "existing", Name: "n", Levels: levels})
+			return err
+		}},
+		{"deleteMap", func() error {
+			_, err := m.DeleteMap(context.Background(), "existing")
+			return err
+		}},
+		{"publishMap", func() error {
+			_, err := m.PublishMap(context.Background(), "existing")
+			return err
+		}},
+		{"validateMap", func() error {
+			_, err := m.ValidateMap(context.Background(), model.MapInput{ID: "new", Name: "n", Levels: levels})
+			return err
+		}},
+	}
+	for _, op := range ops {
+		t.Run(op.name, func(t *testing.T) {
+			if got := codeOf(t, op.call()); got != "UNAUTHENTICATED" {
+				t.Fatalf("guest %s = %q, want UNAUTHENTICATED", op.name, got)
 			}
 		})
 	}
 }
 
 func TestCreateUpdateMapSemantics(t *testing.T) {
-	t.Setenv("ALLOW_UNAUTHENTICATED_ADMIN", "true")
+	t.Setenv("ALLOW_UNAUTHENTICATED_ADMIN", "")
 	t.Setenv("ADMIN_API_KEY", "")
 	fs := &fakeService{maps: map[string]*engine.Map{"existing": mustMap(t, "existing")}}
 	m := &mutationResolver{&Resolver{Service: fs}}
-	ctx := context.Background()
+	ctx := viewerCtx("acct-1")
 	levels := testMapConfig("x").Levels
 
 	if _, err := m.CreateMap(ctx, model.MapInput{ID: "existing", Name: "n", Levels: levels}); codeOf(t, err) != service.CodeInvalidArgument {
@@ -218,6 +305,9 @@ func TestCreateUpdateMapSemantics(t *testing.T) {
 	got, err := m.CreateMap(ctx, model.MapInput{ID: "fresh", Name: "n", Levels: levels})
 	if err != nil || got.ID != "fresh" || got.Start.X != 0 || got.Start.Y != 0 || got.Start.Level != 0 || *got.Finish != (model.Position{Level: 2, X: 1, Y: 1}) {
 		t.Fatalf("create fresh = %+v, %v", got, err)
+	}
+	if got.Status != model.MapStatusDraft || !got.OwnedByMe {
+		t.Fatalf("fresh map status/owner = %v/%v", got.Status, got.OwnedByMe)
 	}
 }
 
@@ -293,9 +383,10 @@ func TestAdminMapQueryGateAndLookup(t *testing.T) {
 			t.Fatalf("%s: got %v err %v, want FORBIDDEN and no map", name, got, err)
 		}
 	}
-	// The gate runs before the lookup: an unknown id must not reveal existence either.
-	if _, err := q.AdminMap(ctxWithKey("nope"), "missing"); codeOf(t, err) != service.CodeForbidden {
-		t.Fatalf("unauthenticated lookup of a missing id: %v", err)
+	// The lookup runs first now (ownership decides access), so an unknown id is
+	// simply null and never reveals whether it exists.
+	if got, err := q.AdminMap(ctxWithKey("nope"), "missing"); got != nil || err != nil {
+		t.Fatalf("unauthenticated lookup of a missing id: %v %v", got, err)
 	}
 
 	got, err := q.AdminMap(ctxWithKey("secret"), "m")
@@ -343,25 +434,84 @@ func TestMoveResolversConvertAndPropagate(t *testing.T) {
 	m := &mutationResolver{&Resolver{Service: fs}}
 	ctx := context.Background()
 
-	got, err := m.Move(ctx, "s", model.DirectionLeft)
+	got, err := m.Move(ctx, "s", model.DirectionLeft, nil)
 	if err != nil || got.ID != "s1" || !reflect.DeepEqual(fs.dirs, []engine.Direction{engine.DirLeft}) {
 		t.Fatalf("Move: %+v %v dirs %v", got, err, fs.dirs)
 	}
 	// stopOnBlocked defaults to true when omitted, and an explicit false is passed through.
-	if _, err := m.BulkMove(ctx, "s", []model.Direction{model.DirectionUp, model.DirectionDown}, nil); err != nil || !reflect.DeepEqual(fs.dirs, []engine.Direction{engine.DirUp, engine.DirDown}) || !fs.stop {
+	if _, err := m.BulkMove(ctx, "s", []model.Direction{model.DirectionUp, model.DirectionDown}, nil, nil); err != nil || !reflect.DeepEqual(fs.dirs, []engine.Direction{engine.DirUp, engine.DirDown}) || !fs.stop {
 		t.Fatalf("BulkMove: %v dirs %v stop %v", err, fs.dirs, fs.stop)
 	}
 	no := false
-	if _, err := m.BulkMove(ctx, "s", []model.Direction{model.DirectionUp}, &no); err != nil || fs.stop {
+	if _, err := m.BulkMove(ctx, "s", []model.Direction{model.DirectionUp}, &no, nil); err != nil || fs.stop {
 		t.Fatalf("BulkMove(stopOnBlocked:false): %v stop %v", err, fs.stop)
 	}
 
 	fs.err = service.Errorf(service.CodeSessionTerminal, "game is already WON")
-	if _, err := m.Move(ctx, "s", model.DirectionUp); codeOf(t, err) != service.CodeSessionTerminal {
+	if _, err := m.Move(ctx, "s", model.DirectionUp, nil); codeOf(t, err) != service.CodeSessionTerminal {
 		t.Fatalf("Move err = %v", err)
 	}
-	if _, err := m.BulkMove(ctx, "s", nil, nil); codeOf(t, err) != service.CodeSessionTerminal {
+	if _, err := m.BulkMove(ctx, "s", nil, nil, nil); codeOf(t, err) != service.CodeSessionTerminal {
 		t.Fatalf("BulkMove err = %v", err)
+	}
+}
+
+func TestSessionOwnership(t *testing.T) {
+	token := "creator-token"
+	guest := liveSession(t, 2)
+	guest.OwnerTokenHash = account.HashToken(token)
+	owned := liveSession(t, 2)
+	owned.OwnerTokenHash = account.HashToken(token)
+	owned.OwnerAccountID = "acct-1"
+	legacy := liveSession(t, 2) // pre-ownership session: stays open
+	fs := &fakeService{sessions: map[string]*service.Session{"guest": guest, "owned": owned, "legacy": legacy}, maps: map[string]*engine.Map{"m": mustMap(t, "m")}}
+	m := &mutationResolver{&Resolver{Service: fs}}
+	q := &queryResolver{&Resolver{Service: fs}}
+
+	if ok, err := q.CanPlaySession(context.Background(), "guest", nil); err != nil || ok {
+		t.Fatalf("guest without token can play = %v %v", ok, err)
+	}
+	if ok, err := q.CanPlaySession(context.Background(), "guest", &token); err != nil || !ok {
+		t.Fatalf("creator token can play = %v %v", ok, err)
+	}
+	if ok, err := q.CanPlaySession(context.Background(), "missing", &token); err != nil || ok {
+		t.Fatalf("unknown session can play = %v %v", ok, err)
+	}
+
+	// A token-gated session refuses everyone without the credential.
+	wrong := "not-the-token"
+	if _, err := m.Move(context.Background(), "guest", model.DirectionUp, nil); codeOf(t, err) != service.CodeForbidden {
+		t.Fatalf("Move without token err = %v", err)
+	}
+	if _, err := m.Move(context.Background(), "guest", model.DirectionUp, &wrong); codeOf(t, err) != service.CodeForbidden {
+		t.Fatalf("Move with wrong token err = %v", err)
+	}
+	if _, err := m.Reset(context.Background(), "guest", &wrong); codeOf(t, err) != service.CodeForbidden {
+		t.Fatalf("Reset with wrong token err = %v", err)
+	}
+	if _, err := m.Move(context.Background(), "guest", model.DirectionUp, &token); err != nil {
+		t.Fatalf("Move with the token: %v", err)
+	}
+
+	// The owning account needs no token; other accounts and guests do.
+	ownerCtx := auth.WithViewer(context.Background(), &auth.Viewer{Account: &account.Account{ID: "acct-1"}})
+	if _, err := m.Move(ownerCtx, "owned", model.DirectionUp, nil); err != nil {
+		t.Fatalf("Move as the owning account: %v", err)
+	}
+	otherCtx := auth.WithViewer(context.Background(), &auth.Viewer{Account: &account.Account{ID: "acct-2"}})
+	if _, err := m.Move(otherCtx, "owned", model.DirectionUp, nil); codeOf(t, err) != service.CodeForbidden {
+		t.Fatalf("Move as another account err = %v", err)
+	}
+	if _, err := m.Move(ownerCtx, "guest", model.DirectionUp, nil); codeOf(t, err) != service.CodeForbidden {
+		t.Fatalf("another session's account err = %v", err)
+	}
+
+	// Sessions created before owner tokens stay open to anyone.
+	if _, err := m.Move(context.Background(), "legacy", model.DirectionUp, nil); err != nil {
+		t.Fatalf("legacy session: %v", err)
+	}
+	if ok, err := q.CanPlaySession(context.Background(), "legacy", nil); err != nil || !ok {
+		t.Fatalf("legacy can play = %v %v", ok, err)
 	}
 }
 
@@ -369,7 +519,7 @@ func TestValidateMapResult(t *testing.T) {
 	t.Setenv("ALLOW_UNAUTHENTICATED_ADMIN", "true")
 	t.Setenv("ADMIN_API_KEY", "")
 	m := &mutationResolver{&Resolver{Service: &fakeService{}}}
-	ctx := context.Background()
+	ctx := viewerCtx("acct-1")
 
 	ok, err := m.ValidateMap(ctx, model.MapInput{ID: "ok", Name: "n", Levels: testMapConfig("x").Levels})
 	if err != nil || !ok.Valid || len(ok.Issues) != 0 || !ok.FinishReachable || ok.ParMoves == nil || *ok.ParMoves != 4 {
@@ -471,7 +621,8 @@ func TestForwardInitialThenUpdatesAndSeqFilter(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	updates := make(chan *service.Session, 4)
-	out := forwardSessionUpdates(ctx, liveSession(t, 5), updates, 4)
+	r := &Resolver{Service: &fakeService{}}
+	out := r.forwardSessionUpdates(ctx, liveSession(t, 5), updates, 4)
 
 	recv := func() *model.SessionUpdate {
 		t.Helper()
@@ -514,7 +665,8 @@ func TestForwardEndsOnCancelWithoutReader(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	updates := make(chan *service.Session)
 	// Buffer 1 and nobody reading: the initial send fits, the next blocks.
-	out := forwardSessionUpdates(ctx, liveSession(t, 1), updates, 1)
+	r := &Resolver{Service: &fakeService{}}
+	out := r.forwardSessionUpdates(ctx, liveSession(t, 1), updates, 1)
 	go func() { updates <- liveSession(t, 2) }()
 	time.Sleep(50 * time.Millisecond)
 	cancel()
@@ -525,7 +677,7 @@ func TestForwardEndsOnCancelWithoutReader(t *testing.T) {
 
 func TestSubscriptionResolverEmitsSnapshotAndStopsOnCancel(t *testing.T) {
 	hub := websocket.NewHub()
-	fs := &fakeService{sessions: map[string]*service.Session{"s1": liveSession(t, 2)}}
+	fs := &fakeService{sessions: map[string]*service.Session{"s1": liveSession(t, 2)}, maps: map[string]*engine.Map{"m": mustMap(t, "m")}}
 	sub := &subscriptionResolver{&Resolver{Service: fs, Hub: hub}}
 
 	base := runtime.NumGoroutine()

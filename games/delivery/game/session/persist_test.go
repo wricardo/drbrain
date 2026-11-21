@@ -2,21 +2,21 @@ package session
 
 import (
 	"encoding/json"
-	"os"
+	"errors"
 	"path/filepath"
 	"testing"
 
+	cityconfig "github.com/wricardo/drbrain/games/delivery/game/config"
 	"github.com/wricardo/drbrain/games/delivery/game/engine"
+	"github.com/wricardo/drbrain/platform/pgdb/pgtest"
+	"github.com/wricardo/drbrain/platform/sessionstore"
 )
 
-// newTestManager builds a manager over a temp dir and the repo city.
+// newTestManager builds a manager over a fresh database schema and the repo
+// city. The schema is isolated per test, so tests never share sessions.
 func newTestManager(t *testing.T) *Manager {
 	t.Helper()
-	city, err := filepath.Abs(filepath.Join("..", "..", "maps", "city.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	mgr, err := NewManager(city, t.TempDir())
+	mgr, err := NewManager(newTestCatalog(t), pgtest.Pool(t))
 	if err != nil {
 		t.Fatalf("manager: %v", err)
 	}
@@ -24,10 +24,78 @@ func newTestManager(t *testing.T) *Manager {
 	return mgr
 }
 
+// newTestCatalog serves the repo's shipped city as the "city" builtin. It has
+// no pool: these tests exercise sessions, not community cities.
+func newTestCatalog(t *testing.T) CityCatalog {
+	t.Helper()
+	cat, err := cityconfig.Open(cityconfig.Options{
+		BuiltinDir:    filepath.Dir(testCityPath(t)),
+		DefaultCityID: "city",
+	})
+	if err != nil {
+		t.Fatalf("catalog: %v", err)
+	}
+	return cat
+}
+
+// newMemoryManager is newTestManager without a database: saves live for the
+// process only, which is enough for ownership and payload-shape tests.
+func newMemoryManager(t *testing.T) *Manager {
+	t.Helper()
+	mgr := &Manager{
+		catalog:  newTestCatalog(t),
+		store:    sessionstore.NewMemory(sessionstore.Options{}),
+		sessions: map[string]*Session{},
+	}
+	t.Cleanup(func() { _ = mgr.Close() })
+	return mgr
+}
+
+func testCityPath(t *testing.T) string {
+	t.Helper()
+	city, err := filepath.Abs(filepath.Join("..", "..", "maps", "city.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return city
+}
+
+// storedPayload returns a session's durable payload.
+func storedPayload(t *testing.T, mgr *Manager, id string) []byte {
+	t.Helper()
+	_, blob, err := mgr.store.Load(id)
+	if err != nil {
+		t.Fatalf("load stored %s: %v", id, err)
+	}
+	return blob
+}
+
+// rewritePayload edits a stored payload in place, standing in for a hand edit
+// or for a save written by an older build.
+func rewritePayload(t *testing.T, mgr *Manager, id string, fn func(map[string]any)) {
+	t.Helper()
+	meta, blob, err := mgr.store.Load(id)
+	if err != nil {
+		t.Fatalf("load stored %s: %v", id, err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(blob, &doc); err != nil {
+		t.Fatalf("parse stored %s: %v", id, err)
+	}
+	fn(doc)
+	out, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := mgr.store.Persist(meta, out); err != nil {
+		t.Fatalf("persist %s: %v", id, err)
+	}
+}
+
 func TestSaveLoadRoundTripPreservesState(t *testing.T) {
 	mgr := newTestManager(t)
 
-	sess, _, err := mgr.Create("rt", 7, "")
+	sess, _, err := mgr.Create("rt", 7, "", "")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -57,12 +125,10 @@ func TestSaveLoadRoundTripPreservesState(t *testing.T) {
 		beforeOrders = len(w.Orders)
 	})
 
-	if err := sess.Save(mgr.CityFileName()); err != nil {
+	if err := sess.Save(); err != nil {
 		t.Fatalf("save: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(mgr.dir, "rt.json")); err != nil {
-		t.Fatalf("save file missing: %v", err)
-	}
+	_ = storedPayload(t, mgr, "rt")
 
 	// Evict and reload from disk.
 	mgr.Evict("rt")
@@ -98,7 +164,7 @@ func TestSaveLoadRoundTripPreservesState(t *testing.T) {
 
 func TestClassNameSurvivesPersistence(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, _, err := mgr.Create("cls", 1, "")
+	sess, _, err := mgr.Create("cls", 1, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +197,7 @@ func TestClassNameSurvivesPersistence(t *testing.T) {
 		t.Fatalf("van class = %q, want \"van\"", vanClass)
 	}
 
-	if err := sess.Save(mgr.CityFileName()); err != nil {
+	if err := sess.Save(); err != nil {
 		t.Fatal(err)
 	}
 	mgr.Evict("cls")
@@ -151,13 +217,12 @@ func TestClassNameSurvivesPersistence(t *testing.T) {
 	}
 }
 
-// TestBuildTerrainSurvivesPersistence checks the TILES a build rewrote, which
-// is a different question from the entities it added (see
-// TestBuildAddedEntitiesSurviveReload). Both come back because the save replays
-// completed builds rather than storing either list.
-func TestBuildTerrainSurvivesPersistence(t *testing.T) {
+// TestGrowthTerrainSurvivesPersistence checks the TILES the schedule rewrote,
+// which is a different question from the entities it added. Both come back
+// because ImportState replays the schedule by tick rather than storing either.
+func TestGrowthTerrainSurvivesPersistence(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, _, err := mgr.Create("deltas", 3, "")
+	sess, _, err := mgr.Create("deltas", 3, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,32 +230,23 @@ func TestBuildTerrainSurvivesPersistence(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Build the east bridge by granting the unlock and the money directly, so
-	// the test isolates the persistence question from the progression grind.
-	const buildID = "b02_east_bridge"
-	sess.Do(func(w *engine.World) {
-		w.Ledger.Money = 5000
-		w.Grant([]string{buildID}, nil)
-	})
-	sess.Do(func(w *engine.World) {
-		if _, err := w.Build(buildID); err != nil {
-			t.Fatalf("build: %v", err)
-		}
-	})
+	// Apply the whole schedule: the persistence question is whether its terrain
+	// writes survive, not whether the player can afford them.
+	sess.Do(advancePastGrowth)
 
 	// Record the actual TERRAIN at the bridge tiles before saving. RenderRows
-	// overlays entity glyphs, and the build also adds a charger on this row, so
+	// overlays entity glyphs, and the stage also adds a charger on this row, so
 	// comparing rendered rows would fail for a reason unrelated to terrain.
-	// Read the grid directly, at the coordinates the build itself declares.
+	// Read the grid directly, at the coordinates the stage itself declares.
 	terrainAt := func(w *engine.World, x, y int) engine.CellType {
 		t, _ := w.City.At(engine.Position{X: x, Y: y})
 		return t
 	}
 	// The bridge tiles come from the shipped city config, not from a literal:
 	// the map is generated and its coordinates move when the layout changes.
-	bridgeTiles := engine.BridgeTilesForTest(mgr.CityFile(), buildID)
+	bridgeTiles := engine.BridgeTilesForTest(testCityPath(t), "g02_harbour_gate")
 	if len(bridgeTiles) == 0 {
-		t.Fatalf("build %s declares no bridge tiles", buildID)
+		t.Fatalf("growth stage declares no bridge tiles")
 	}
 	got := make([]engine.CellType, len(bridgeTiles))
 	sess.Do(func(w *engine.World) {
@@ -204,7 +260,7 @@ func TestBuildTerrainSurvivesPersistence(t *testing.T) {
 		}
 	}
 
-	if err := sess.Save(mgr.CityFileName()); err != nil {
+	if err := sess.Save(); err != nil {
 		t.Fatal(err)
 	}
 	mgr.Evict("deltas")
@@ -214,15 +270,9 @@ func TestBuildTerrainSurvivesPersistence(t *testing.T) {
 		t.Fatalf("reload: %v", err)
 	}
 	var after []engine.CellType
-	var completed bool
 	reloaded.Do(func(w *engine.World) {
 		for _, tw := range bridgeTiles {
 			after = append(after, terrainAt(w, tw.X, tw.Y))
-		}
-		for _, b := range w.Builds() {
-			if b.ID == buildID {
-				completed = b.Completed
-			}
 		}
 	})
 
@@ -231,42 +281,12 @@ func TestBuildTerrainSurvivesPersistence(t *testing.T) {
 			t.Errorf("terrain not restored at (%d,%d): %s -> %s", tw.X, tw.Y, got[i], after[i])
 		}
 	}
-	if !completed {
-		t.Error("build not marked completed after reload")
-	}
-}
-
-func TestSaveIsAtomicAcrossRepeatedWrites(t *testing.T) {
-	mgr := newTestManager(t)
-	sess, _, err := mgr.Create("atomic", 1, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_ = sess.SetSpeed(SpeedPaused)
-
-	for range 5 {
-		sess.Do(func(w *engine.World) { w.Advance() })
-		if err := sess.Save(mgr.CityFileName()); err != nil {
-			t.Fatalf("save: %v", err)
-		}
-	}
-
-	// No temp files may be left behind.
-	entries, err := os.ReadDir(mgr.dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, e := range entries {
-		if filepath.Ext(e.Name()) == ".tmp" {
-			t.Errorf("leftover temp file %q", e.Name())
-		}
-	}
 }
 
 func TestSaveAllPersistsEveryLiveSession(t *testing.T) {
 	mgr := newTestManager(t)
 	for _, id := range []string{"s1", "s2", "s3"} {
-		sess, _, err := mgr.Create(id, 1, "")
+		sess, _, err := mgr.Create(id, 1, "", "")
 		if err != nil {
 			t.Fatalf("create %s: %v", id, err)
 		}
@@ -278,134 +298,116 @@ func TestSaveAllPersistsEveryLiveSession(t *testing.T) {
 		t.Fatalf("save all: %v", err)
 	}
 	for _, id := range []string{"s1", "s2", "s3"} {
-		if _, err := os.Stat(filepath.Join(mgr.dir, id+".json")); err != nil {
+		if _, _, err := mgr.store.Load(id); err != nil {
 			t.Errorf("%s not saved: %v", id, err)
 		}
 	}
 }
 
-func TestListIncludesDiskOnlySessions(t *testing.T) {
+func TestListIncludesUnloadedSessions(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, _, err := mgr.Create("ondisk", 5, "")
+	sess, _, err := mgr.Create("unloaded", 5, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = sess.SetSpeed(SpeedPaused)
 	sess.Do(func(w *engine.World) { w.Advance() })
-	if err := sess.Save(mgr.CityFileName()); err != nil {
+	if err := sess.Save(); err != nil {
 		t.Fatal(err)
 	}
-	mgr.Evict("ondisk")
+	mgr.Evict("unloaded")
 
 	list := mgr.List()
 	var found *Summary
 	for i := range list {
-		if list[i].ID == "ondisk" {
+		if list[i].ID == "unloaded" {
 			found = &list[i]
 		}
 	}
 	if found == nil {
-		t.Fatal("disk-only session missing from List")
+		t.Fatal("unloaded session missing from List")
 	}
 	if found.Loaded {
-		t.Error("disk-only session reported as loaded")
+		t.Error("unloaded session reported as loaded")
 	}
 	if found.Tick == 0 {
 		t.Error("summary has no tick")
 	}
 }
 
-func TestDeleteRemovesSaveFile(t *testing.T) {
+func TestDeleteRemovesStoredSession(t *testing.T) {
 	mgr := newTestManager(t)
-	if _, _, err := mgr.Create("gone", 1, ""); err != nil {
+	if _, _, err := mgr.Create("gone", 1, "", ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := mgr.Delete("gone"); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(mgr.dir, "gone.json")); !os.IsNotExist(err) {
-		t.Error("save file still present after Delete")
+	if _, _, err := mgr.store.Load("gone"); !errors.Is(err, sessionstore.ErrNotFound) {
+		t.Errorf("stored session still present after Delete: %v", err)
 	}
 	if _, err := mgr.GetOrLoad("gone"); err == nil {
 		t.Error("expected reload of deleted session to fail")
 	}
 }
 
-func TestEvictKeepsSaveFile(t *testing.T) {
+func TestEvictKeepsStoredSession(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, _, err := mgr.Create("kept", 1, "")
+	sess, _, err := mgr.Create("kept", 1, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = sess.SetSpeed(SpeedPaused)
-	if err := sess.Save(mgr.CityFileName()); err != nil {
+	if err := sess.Save(); err != nil {
 		t.Fatal(err)
 	}
 	mgr.Evict("kept")
 
-	if _, err := os.Stat(filepath.Join(mgr.dir, "kept.json")); err != nil {
-		t.Fatalf("evict removed the save: %v", err)
+	if _, _, err := mgr.store.Load("kept"); err != nil {
+		t.Fatalf("evict removed the stored session: %v", err)
 	}
 	if _, err := mgr.GetOrLoad("kept"); err != nil {
 		t.Fatalf("reload after evict: %v", err)
 	}
 }
 
-func TestCorruptSaveIsReportedNotFatal(t *testing.T) {
-	mgr := newTestManager(t)
-	path := filepath.Join(mgr.dir, "broken.json")
-	if err := os.WriteFile(path, []byte("{not json"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := mgr.GetOrLoad("broken"); err == nil {
-		t.Fatal("expected corrupt save to be reported")
-	}
-	// List must skip it rather than panicking.
-	for _, s := range mgr.List() {
-		if s.ID == "broken" {
-			t.Error("corrupt save appeared in List")
-		}
-	}
-}
-
-func TestSaveWithoutDirIsNoOp(t *testing.T) {
-	// A session created with no directory (as in unit tests) must not try to
-	// write anywhere.
+func TestSessionWithoutStoreSaveIsNoOp(t *testing.T) {
+	// A session built directly with New (as in unit tests) has no store; Save
+	// must be a no-op rather than a nil dereference.
 	city, cfg := testCity(t)
-	s, err := New("nodir", city, cfg, 1, "")
+	s, err := New("nostore", city, cfg, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Save("city.json"); err != nil {
-		t.Fatalf("save without dir returned error: %v", err)
+	if err := s.Save(); err != nil {
+		t.Fatalf("save without a store returned error: %v", err)
 	}
 }
 
-func TestPersistedFileHasExpectedShape(t *testing.T) {
+func TestPersistedPayloadHasExpectedShape(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, _, err := mgr.Create("shape", 9, "")
+	sess, _, err := mgr.Create("shape", 9, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	_ = sess.SetSpeed(SpeedPaused)
 	sess.Do(func(w *engine.World) { w.Advance() })
-	if err := sess.Save(mgr.CityFileName()); err != nil {
+	if err := sess.Save(); err != nil {
 		t.Fatal(err)
 	}
 
-	blob, err := os.ReadFile(filepath.Join(mgr.dir, "shape.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
 	var p persisted
-	if err := json.Unmarshal(blob, &p); err != nil {
+	if err := json.Unmarshal(storedPayload(t, mgr, "shape"), &p); err != nil {
 		t.Fatalf("save is not valid persisted JSON: %v", err)
 	}
 	if p.ID != "shape" {
 		t.Errorf("id = %q", p.ID)
 	}
-	if p.CityFile != "city.json" {
-		t.Errorf("city_file = %q, want city.json (save stores the name, not a grid)", p.CityFile)
+	if p.CityID != "city" {
+		t.Errorf("city_id = %q, want city (save stores the id, not a grid)", p.CityID)
+	}
+	if p.CityFile != "" {
+		t.Errorf("city_file = %q, want empty (legacy field is read-only)", p.CityFile)
 	}
 	if p.World.Seed != 9 {
 		t.Errorf("seed = %d, want 9", p.World.Seed)

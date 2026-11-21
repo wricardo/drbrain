@@ -32,6 +32,7 @@ type PersistedSessionData struct {
 	CreatedAt            time.Time `json:"created_at"`
 	LastActionAt         time.Time `json:"last_action_at"`
 	LastAccessedAtLegacy time.Time `json:"last_accessed_at,omitempty"` // backward compatibility
+	OwnerAccountID       string    `json:"owner_account_id,omitempty"`
 	FogEnabled           bool      `json:"fog_enabled,omitempty"`
 	FogRadius            int       `json:"fog_radius,omitempty"`
 	GridPassword         string    `json:"grid_password,omitempty"`

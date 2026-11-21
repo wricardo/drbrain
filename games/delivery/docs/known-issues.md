@@ -154,20 +154,19 @@ order and emits nothing to say why, so a player sees a customer that simply neve
 places work. `TestEveryCustomerHasASupplyingKitchen` catches a permanently
 unsupplied item at authoring time, which is why this stays low severity.
 
-## 5. The sim table's `tgt` column is not the governor's target
+## 5. ~~The sim table's `tgt` column is not the governor's target~~ — FIXED
 
-**Ticket:** `drbrain-delivery-swd` (cleanup, part c) · **Severity:** cosmetic,
-but it misleads tuning.
+**Ticket:** `drbrain-delivery-swd` (closed) · **Severity:** was cosmetic but
+misled tuning.
 
-`cmd/drbrain/sim.go:targetOf` hardcodes ratio `1.0` and cap `8`; the engine uses
-`target_orders_per_car` (`0.75` in `city.json`). With four driving cars the
-harness prints `tgt=4` while `World.targetActive()` returns `3`.
+Was: `cmd/drbrain/sim.go:targetOf` hardcoded ratio `1.0` and cap `8`; the engine
+used a fleet ratio (`0.75` in `city.json`). With four driving cars the harness
+printed `tgt=4` while the governor returned `3`.
 
-Observed: `cars=4 driving=4 ratio=0.75 max=8 → engine 3, harness 4`.
+Fixed by exposing `World.TargetActive()` and having the harness print that exact
+number. The target now comes from visible customers, not fleet size, so the
+column also reflects the demand ramp rather than a re-derivation.
 
-The `tgt` column is therefore an approximation that runs high, and the tuning
-table in the README has been read as if it were governor output. Exposing the
-engine's own number (a small accessor) is the honest fix.
 ## 6. ~~The `sim` harness panicked on two inputs and silently lied on a third~~ — FIXED
 
 **Ticket:** `drbrain-delivery-tzn` (closed) · **Severity:** was low for the game,
@@ -219,9 +218,10 @@ as `#.2...#`), and `Map.svelte` keyed cars by `x,y` with `map.set`, so the
 invisible car was also unclickable — the player could not select it to drive it
 away.
 
-Now: a tile holds one car, a depot holds `DepotConfig.Capacity` and a charger its
-own capacity, so parking and fast charging still work. The limit is on entry, and
-occupancy is evaluated last so a flat car in traffic is told it is flat.
+Now: a road tile holds one car; a depot accepts any number of cars (fleet size is
+money-gated), and a charger holds its own capacity, so parking and fast charging
+still work. The limit is on entry, and occupancy is evaluated last so a flat car
+in traffic is told it is flat.
 
 Two behaviours are load-bearing and are pinned by
 `game/engine/occupancy_test.go`:

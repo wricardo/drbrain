@@ -105,10 +105,12 @@ type ComplexityRoot struct {
 		MaxSteps       func(childComplexity int) int
 		Mirrors        func(childComplexity int) int
 		Name           func(childComplexity int) int
+		OwnedByMe      func(childComplexity int) int
 		Portals        func(childComplexity int) int
 		Rocks          func(childComplexity int) int
 		Start          func(childComplexity int) int
 		StartFacing    func(childComplexity int) int
+		Status         func(childComplexity int) int
 		SubTapeLengths func(childComplexity int) int
 		Treats         func(childComplexity int) int
 		Width          func(childComplexity int) int
@@ -136,6 +138,7 @@ type ComplexityRoot struct {
 		DeleteMap     func(childComplexity int, id string) int
 		DeleteSession func(childComplexity int, id string, ownerToken *string) int
 		Pause         func(childComplexity int, sessionID string, ownerToken *string) int
+		PublishMap    func(childComplexity int, id string) int
 		Reset         func(childComplexity int, sessionID string, ownerToken *string) int
 		Run           func(childComplexity int, sessionID string, speedMs *int, ownerToken *string) int
 		SetProgram    func(childComplexity int, sessionID string, program model.ProgramInput, ownerToken *string) int
@@ -245,6 +248,8 @@ type ComplexityRoot struct {
 
 type MapResolver interface {
 	Builtin(ctx context.Context, obj *model.Map) (bool, error)
+	Status(ctx context.Context, obj *model.Map) (model.MapStatus, error)
+	OwnedByMe(ctx context.Context, obj *model.Map) (bool, error)
 }
 type MutationResolver interface {
 	CreateSession(ctx context.Context, mapID string) (*model.Session, error)
@@ -258,6 +263,7 @@ type MutationResolver interface {
 	CreateMap(ctx context.Context, mapArg model.MapInput) (*model.Map, error)
 	ValidateMap(ctx context.Context, mapArg model.MapInput) (*model.MapValidationResult, error)
 	UpdateMap(ctx context.Context, mapArg model.MapInput) (*model.Map, error)
+	PublishMap(ctx context.Context, id string) (*model.Map, error)
 	DeleteMap(ctx context.Context, id string) (bool, error)
 }
 type QueryResolver interface {
@@ -545,6 +551,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Map.Name(childComplexity), true
 
+	case "Map.ownedByMe":
+		if e.complexity.Map.OwnedByMe == nil {
+			break
+		}
+
+		return e.complexity.Map.OwnedByMe(childComplexity), true
+
 	case "Map.portals":
 		if e.complexity.Map.Portals == nil {
 			break
@@ -572,6 +585,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Map.StartFacing(childComplexity), true
+
+	case "Map.status":
+		if e.complexity.Map.Status == nil {
+			break
+		}
+
+		return e.complexity.Map.Status(childComplexity), true
 
 	case "Map.subTapeLengths":
 		if e.complexity.Map.SubTapeLengths == nil {
@@ -707,6 +727,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mutation.Pause(childComplexity, args["sessionID"].(string), args["ownerToken"].(*string)), true
+
+	case "Mutation.publishMap":
+		if e.complexity.Mutation.PublishMap == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_publishMap_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.PublishMap(childComplexity, args["id"].(string)), true
 
 	case "Mutation.reset":
 		if e.complexity.Mutation.Reset == nil {
@@ -1497,6 +1529,15 @@ type Map {
 	True for a map shipped with the game: only an admin may change or delete it.
 	"""
 	builtin: Boolean!
+	"""
+	DRAFT maps are visible only to their owner and cannot be played or published
+	by anyone else. Every shipped map is PUBLISHED.
+	"""
+	status: MapStatus!
+	"""
+	True when the signed-in caller created this community map.
+	"""
+	ownedByMe: Boolean!
 	width: Int!
 	height: Int!
 	layout: [String!]!
@@ -1645,6 +1686,16 @@ type MapValidationResult {
 	"""
 	unreachableTreats: [Position!]!
 }
+enum MapStatus {
+	"""
+	A work in progress: only its owner can see, edit, play or publish it.
+	"""
+	DRAFT
+	"""
+	Visible to everyone and playable by anyone.
+	"""
+	PUBLISHED
+}
 input MapInput {
 	id: ID!
 	name: String!
@@ -1762,7 +1813,13 @@ type SessionClaimResult {
 }
 scalar Time
 type Query {
+	"""
+	Published maps plus the signed-in caller's own drafts. Another player's draft is never listed.
+	"""
 	maps: [Map!]!
+	"""
+	One map. Another player's draft is null, exactly like an unknown id.
+	"""
 	map(id: ID!): Map
 	"""
 	One session. The program is included only for a caller who may change it; pass the ownerToken
@@ -1834,14 +1891,27 @@ type Mutation {
 	"""
 	claimSessions(claims: [SessionClaimInput!]!): [SessionClaimResult!]!
 	"""
-	Creating a map needs a signed-in player (UNAUTHENTICATED otherwise); validateMap is open to everyone.
+	Creates a DRAFT map owned by the signed-in player (UNAUTHENTICATED otherwise). The map is
+	saved even when it is not valid yet; publishMap checks it. Use validateMap to preview problems.
 	"""
 	createMap(map: MapInput!): Map!
+	"""
+	Checks a map definition and stores nothing. Signed-in players only.
+	"""
 	validateMap(map: MapInput!): MapValidationResult!
 	"""
-	Anyone may change or remove a player-created map; shipped maps need X-Admin-Key.
+	Replaces the caller's community map and puts it back into DRAFT. Only the owner may edit a
+	community map; shipped and legacy unowned maps need X-Admin-Key.
 	"""
 	updateMap(map: MapInput!): Map!
+	"""
+	Publishes a valid draft. Only its owner may do it, and an invalid map (unreachable treats,
+	bad layout) is refused with INVALID_ARGUMENT.
+	"""
+	publishMap(id: ID!): Map!
+	"""
+	Removes a map. Community maps need their owner; shipped and legacy unowned maps need X-Admin-Key.
+	"""
 	deleteMap(id: ID!): Boolean!
 }
 type Subscription {
@@ -2070,6 +2140,34 @@ func (ec *executionContext) field_Mutation_pause_argsOwnerToken(
 	}
 
 	var zeroVal *string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Mutation_publishMap_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Mutation_publishMap_argsID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	return args, nil
+}
+func (ec *executionContext) field_Mutation_publishMap_argsID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["id"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
+	if tmp, ok := rawArgs["id"]; ok {
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	var zeroVal string
 	return zeroVal, nil
 }
 
@@ -4127,6 +4225,94 @@ func (ec *executionContext) fieldContext_Map_builtin(_ context.Context, field gr
 	return fc, nil
 }
 
+func (ec *executionContext) _Map_status(ctx context.Context, field graphql.CollectedField, obj *model.Map) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Map_status(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Map().Status(rctx, obj)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(model.MapStatus)
+	fc.Result = res
+	return ec.marshalNMapStatus2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMapStatus(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Map_status(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Map",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type MapStatus does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Map_ownedByMe(ctx context.Context, field graphql.CollectedField, obj *model.Map) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Map_ownedByMe(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Map().OwnedByMe(rctx, obj)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Map_ownedByMe(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Map",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Map_width(ctx context.Context, field graphql.CollectedField, obj *model.Map) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Map_width(ctx, field)
 	if err != nil {
@@ -5878,6 +6064,10 @@ func (ec *executionContext) fieldContext_Mutation_createMap(ctx context.Context,
 				return ec.fieldContext_Map_difficulty(ctx, field)
 			case "builtin":
 				return ec.fieldContext_Map_builtin(ctx, field)
+			case "status":
+				return ec.fieldContext_Map_status(ctx, field)
+			case "ownedByMe":
+				return ec.fieldContext_Map_ownedByMe(ctx, field)
 			case "width":
 				return ec.fieldContext_Map_width(ctx, field)
 			case "height":
@@ -6042,6 +6232,10 @@ func (ec *executionContext) fieldContext_Mutation_updateMap(ctx context.Context,
 				return ec.fieldContext_Map_difficulty(ctx, field)
 			case "builtin":
 				return ec.fieldContext_Map_builtin(ctx, field)
+			case "status":
+				return ec.fieldContext_Map_status(ctx, field)
+			case "ownedByMe":
+				return ec.fieldContext_Map_ownedByMe(ctx, field)
 			case "width":
 				return ec.fieldContext_Map_width(ctx, field)
 			case "height":
@@ -6088,6 +6282,111 @@ func (ec *executionContext) fieldContext_Mutation_updateMap(ctx context.Context,
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_updateMap_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_publishMap(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_publishMap(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().PublishMap(rctx, fc.Args["id"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.Map)
+	fc.Result = res
+	return ec.marshalNMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMap(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mutation_publishMap(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Map_id(ctx, field)
+			case "name":
+				return ec.fieldContext_Map_name(ctx, field)
+			case "description":
+				return ec.fieldContext_Map_description(ctx, field)
+			case "difficulty":
+				return ec.fieldContext_Map_difficulty(ctx, field)
+			case "builtin":
+				return ec.fieldContext_Map_builtin(ctx, field)
+			case "status":
+				return ec.fieldContext_Map_status(ctx, field)
+			case "ownedByMe":
+				return ec.fieldContext_Map_ownedByMe(ctx, field)
+			case "width":
+				return ec.fieldContext_Map_width(ctx, field)
+			case "height":
+				return ec.fieldContext_Map_height(ctx, field)
+			case "layout":
+				return ec.fieldContext_Map_layout(ctx, field)
+			case "start":
+				return ec.fieldContext_Map_start(ctx, field)
+			case "startFacing":
+				return ec.fieldContext_Map_startFacing(ctx, field)
+			case "rocks":
+				return ec.fieldContext_Map_rocks(ctx, field)
+			case "treats":
+				return ec.fieldContext_Map_treats(ctx, field)
+			case "conveyors":
+				return ec.fieldContext_Map_conveyors(ctx, field)
+			case "mirrors":
+				return ec.fieldContext_Map_mirrors(ctx, field)
+			case "keys":
+				return ec.fieldContext_Map_keys(ctx, field)
+			case "doors":
+				return ec.fieldContext_Map_doors(ctx, field)
+			case "portals":
+				return ec.fieldContext_Map_portals(ctx, field)
+			case "mainTapeLength":
+				return ec.fieldContext_Map_mainTapeLength(ctx, field)
+			case "subTapeLengths":
+				return ec.fieldContext_Map_subTapeLengths(ctx, field)
+			case "maxSteps":
+				return ec.fieldContext_Map_maxSteps(ctx, field)
+			case "maxCallDepth":
+				return ec.fieldContext_Map_maxCallDepth(ctx, field)
+			case "allowRecursion":
+				return ec.fieldContext_Map_allowRecursion(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Map", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_publishMap_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -6618,6 +6917,10 @@ func (ec *executionContext) fieldContext_Query_maps(_ context.Context, field gra
 				return ec.fieldContext_Map_difficulty(ctx, field)
 			case "builtin":
 				return ec.fieldContext_Map_builtin(ctx, field)
+			case "status":
+				return ec.fieldContext_Map_status(ctx, field)
+			case "ownedByMe":
+				return ec.fieldContext_Map_ownedByMe(ctx, field)
 			case "width":
 				return ec.fieldContext_Map_width(ctx, field)
 			case "height":
@@ -6705,6 +7008,10 @@ func (ec *executionContext) fieldContext_Query_map(ctx context.Context, field gr
 				return ec.fieldContext_Map_difficulty(ctx, field)
 			case "builtin":
 				return ec.fieldContext_Map_builtin(ctx, field)
+			case "status":
+				return ec.fieldContext_Map_status(ctx, field)
+			case "ownedByMe":
+				return ec.fieldContext_Map_ownedByMe(ctx, field)
 			case "width":
 				return ec.fieldContext_Map_width(ctx, field)
 			case "height":
@@ -7437,6 +7744,10 @@ func (ec *executionContext) fieldContext_Session_map(_ context.Context, field gr
 				return ec.fieldContext_Map_difficulty(ctx, field)
 			case "builtin":
 				return ec.fieldContext_Map_builtin(ctx, field)
+			case "status":
+				return ec.fieldContext_Map_status(ctx, field)
+			case "ownedByMe":
+				return ec.fieldContext_Map_ownedByMe(ctx, field)
 			case "width":
 				return ec.fieldContext_Map_width(ctx, field)
 			case "height":
@@ -12138,6 +12449,78 @@ func (ec *executionContext) _Map(ctx context.Context, sel ast.SelectionSet, obj 
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "status":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Map_status(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "ownedByMe":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Map_ownedByMe(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "width":
 			out.Values[i] = ec._Map_width(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -12470,6 +12853,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "updateMap":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_updateMap(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "publishMap":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_publishMap(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -14199,6 +14589,16 @@ func (ec *executionContext) marshalNMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋg
 func (ec *executionContext) unmarshalNMapInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMapInput(ctx context.Context, v any) (model.MapInput, error) {
 	res, err := ec.unmarshalInputMapInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) unmarshalNMapStatus2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMapStatus(ctx context.Context, v any) (model.MapStatus, error) {
+	var res model.MapStatus
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNMapStatus2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMapStatus(ctx context.Context, sel ast.SelectionSet, v model.MapStatus) graphql.Marshaler {
+	return v
 }
 
 func (ec *executionContext) marshalNMapValidationIssue2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmotorᚋgraphᚋmodelᚐMapValidationIssueᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.MapValidationIssue) graphql.Marshaler {

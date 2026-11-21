@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mapLabel, nextMap, prettyMapName, sortMaps } from './maps';
+import { canEdit, isDraft, isPublished, mapLabel, mapStatusLabel, nextMap, prettyMapName, sortMaps } from './maps';
 
 const maps = [
 	{ mapId: 'hub_maze', name: 'hub_maze', gridSize: 20 },
@@ -20,10 +20,52 @@ describe('sortMaps', () => {
 	it('orders by grid size, then name', () => {
 		expect(sortMaps(maps).map((m) => m.mapId)).toEqual(['easy', 'easy_trapped_park', 'classic', 'hub_maze']);
 	});
+	it('keeps drafts first so the owner can find a work in progress', () => {
+		const withDraft = [
+			...maps,
+			{ mapId: 'mine', name: 'Mine', gridSize: 50, status: 'DRAFT' as const },
+			{ mapId: 'big', name: 'Big', gridSize: 60, status: 'PUBLISHED' as const }
+		];
+		expect(sortMaps(withDraft).map((m) => m.mapId)).toEqual([
+			'mine',
+			'easy',
+			'easy_trapped_park',
+			'classic',
+			'hub_maze',
+			'big'
+		]);
+	});
 	it('does not mutate its input', () => {
 		const copy = [...maps];
 		sortMaps(maps);
 		expect(maps).toEqual(copy);
+	});
+});
+
+describe('map lifecycle helpers', () => {
+	it('treats only the explicit DRAFT status as a draft', () => {
+		expect(isDraft({ status: 'DRAFT' })).toBe(true);
+		expect(isDraft({ status: 'PUBLISHED' })).toBe(false);
+		expect(isDraft({})).toBe(false);
+	});
+
+	it('treats a missing status as published for old responses', () => {
+		expect(isPublished({ status: 'PUBLISHED' })).toBe(true);
+		expect(isPublished({})).toBe(true);
+		expect(isPublished({ status: 'DRAFT' })).toBe(false);
+	});
+
+	it('labels the state for badges', () => {
+		expect(mapStatusLabel({ status: 'DRAFT' })).toBe('Draft');
+		expect(mapStatusLabel({ status: 'PUBLISHED' })).toBe('Published');
+		expect(mapStatusLabel({})).toBe('');
+	});
+
+	it('lets the owner or a legacy key holder edit, never a shipped map', () => {
+		expect(canEdit({ ownedByMe: true })).toBe(true);
+		expect(canEdit({ ownedByMe: false }, 'legacy-key')).toBe(true);
+		expect(canEdit({ ownedByMe: false })).toBe(false);
+		expect(canEdit({ builtin: true, ownedByMe: true }, 'legacy-key')).toBe(false);
 	});
 });
 

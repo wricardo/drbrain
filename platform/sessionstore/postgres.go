@@ -6,28 +6,150 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const queryTimeout = 10 * time.Second
 
-// initPostgres creates the shared table. It stores no game types: meta is the
-// platform's Meta and payload is the game's own JSON.
-func (s *store) initPostgres() error {
-	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
-	defer cancel()
-	_, err := s.pool.Exec(ctx, `
-CREATE TABLE IF NOT EXISTS platform_sessions (
-    id         text PRIMARY KEY,
-    meta       jsonb NOT NULL,
-    payload    bytea NOT NULL,
-    updated_at timestamptz NOT NULL DEFAULT now()
-)`)
-	if err != nil {
-		return fmt.Errorf("sessionstore: create table: %w", err)
+// store is the PostgreSQL backend. mem holds this process's live entries; the
+// platform_sessions table holds every persisted one.
+type store struct {
+	mu    sync.Mutex
+	pool  *pgxpool.Pool
+	max   int
+	evict bool
+	mem   map[string]entry
+}
+
+var _ Store = (*store)(nil)
+
+// Put registers a live entry without writing it.
+func (s *store) Put(meta Meta, payload []byte) error {
+	if err := validID(meta.ID); err != nil {
+		return err
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.mem[meta.ID]; !ok {
+		if err := s.roomLocked(); err != nil {
+			return err
+		}
+	}
+	meta.Loaded = true
+	s.mem[meta.ID] = entry{meta: meta, payload: payload}
+	return nil
+}
+
+// Get returns a loaded entry.
+func (s *store) Get(id string) (Meta, []byte, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	e, ok := s.mem[id]
+	return e.meta, e.payload, ok
+}
+
+// Count is the number of loaded entries.
+func (s *store) Count() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.mem)
+}
+
+// Delete removes the entry everywhere.
+func (s *store) Delete(id string) error {
+	if err := validID(id); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, inMem := s.mem[id]
+	delete(s.mem, id)
+	durable, err := s.pgDelete(id)
+	if err != nil {
+		return err
+	}
+	if !inMem && !durable {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// List merges durable saves with loaded-in-memory entries, newest first.
+func (s *store) List() ([]Meta, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	byID := make(map[string]Meta)
+	if err := s.pgList(byID); err != nil {
+		return nil, err
+	}
+	for id, e := range s.mem {
+		m := e.meta
+		m.Loaded = true
+		byID[id] = m
+	}
+	return sortedMetas(byID), nil
+}
+
+// Persist writes the payload, then marks the entry loaded.
+func (s *store) Persist(meta Meta, payload []byte) error {
+	if err := validID(meta.ID); err != nil {
+		return err
+	}
+	if len(payload) == 0 || !json.Valid(payload) {
+		return fmt.Errorf("%w: payload for %s is not JSON", ErrInvalid, meta.ID)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.mem[meta.ID]; !ok {
+		if err := s.roomLocked(); err != nil {
+			return err
+		}
+	}
+	if err := s.pgPersist(meta, payload); err != nil {
+		return err
+	}
+	meta.Loaded = true
+	s.mem[meta.ID] = entry{meta: meta, payload: payload}
+	return nil
+}
+
+// Load returns an entry, reading PostgreSQL when it is not in memory.
+func (s *store) Load(id string) (Meta, []byte, error) {
+	if err := validID(id); err != nil {
+		return Meta{}, nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Always read durable storage: another process (or the same one via a
+	// separate adapter) may have written a newer payload.
+	meta, payload, err := s.pgLoad(id)
+	if err != nil {
+		return Meta{}, nil, err
+	}
+	meta.Loaded = true
+	s.mem[id] = entry{meta: meta, payload: payload}
+	return meta, payload, nil
+}
+
+// roomLocked enforces the limit, evicting the least recently active entry when
+// the store is configured to evict.
+func (s *store) roomLocked() error {
+	if s.max <= 0 || len(s.mem) < s.max {
+		return nil
+	}
+	if !s.evict {
+		return ErrLimit
+	}
+	oldest := oldestLocked(s.mem)
+	if oldest == "" {
+		return ErrLimit
+	}
+	delete(s.mem, oldest)
+	_, _ = s.pgDelete(oldest)
 	return nil
 }
 
@@ -104,37 +226,17 @@ func (s *store) pgList(dst map[string]Meta) error {
 	return rows.Err()
 }
 
-// pgEvictOldest deletes the least recently active stored session. The in-memory
-// map is pruned by the caller.
-func (s *store) pgEvictOldest() (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
-	defer cancel()
-	rows, err := s.pool.Query(ctx,
-		`SELECT id FROM platform_sessions ORDER BY (meta->>'last_action_at')::timestamptz ASC LIMIT 1`)
-	if err != nil {
-		return "", fmt.Errorf("sessionstore: evict lookup: %w", err)
+// sortedMetas orders metas newest-created first, id ascending on ties.
+func sortedMetas(byID map[string]Meta) []Meta {
+	out := make([]Meta, 0, len(byID))
+	for _, m := range byID {
+		out = append(out, m)
 	}
-	defer rows.Close()
-	if !rows.Next() {
-		return "", ErrNotFound
-	}
-	var id string
-	if err := rows.Scan(&id); err != nil {
-		return "", err
-	}
-	rows.Close()
-	if _, err := s.pool.Exec(ctx, `DELETE FROM platform_sessions WHERE id = $1`, id); err != nil {
-		return "", fmt.Errorf("sessionstore: evict %s: %w", id, err)
-	}
-	return id, nil
-}
-
-// sortedIDs is a small helper for deterministic eviction fallbacks.
-func sortedIDs(m map[string]entry) []string {
-	ids := make([]string, 0, len(m))
-	for id := range m {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	return ids
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].CreatedAt.Equal(out[j].CreatedAt) {
+			return out[i].CreatedAt.After(out[j].CreatedAt)
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out
 }

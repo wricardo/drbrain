@@ -92,8 +92,14 @@ save, because there is no periodic autosave.
 query {
   health { status }
 
-  "Static city, every district revealed."
-  city { name gridSize rows hiddenTiles kitchens { id name x y } }
+  "Published cities plus your own drafts; another player's draft is never listed."
+  cities { id name gridSize status ownedByMe builtin ownerless }
+
+  "Static city with every district revealed; omit id for the default city."
+  city(id: "city") { id name gridSize status ownedByMe builtin ownerless rows hiddenTiles kitchens { id name x y } }
+
+  "Exact authored city JSON (decoded/defaulted); null for missing or another player's draft."
+  cityConfig(id: "city")
 
   "Every save on disk, newest first."
   sessions { id createdAt tick money reputation deliveries loaded }
@@ -106,13 +112,11 @@ query {
       kitchens { id name x y } customers { id name x y }
       depots { id name x y } chargers { id name x y }
     }
-    cars { id className x y battery maxBattery batteryPct capacity load freeBoxes state cargo queuedMove lastReject }
+    cars { id className x y battery maxBattery batteryPct capacity load freeBoxes state cargo queuedMove lastReject chargeDue }
     orders { id itemName quantity kitchenId kitchenName customerId customerName state reward ticksLeft paid late assignedCar createdTick deadlineTick }
-    ledger { money moneyEarned reputation deliveries lateDeliveries expiredOrders ordersSpawned onTimeStreak tows buildsCompleted deliveriesByItem { item count } upkeepPaid towFees upkeepDue }
+    ledger { money moneyEarned reputation deliveries lateDeliveries expiredOrders ordersSpawned onTimeStreak tows deliveriesByItem { item count } upkeepPaid towFees upkeepDue ticksPerMonth cashEntries { seq tick kind category amount balance carId carName orderId memo } months { index startTick endTick income expenses net categories { category income expenses } } }
     carClasses { className price capacity maxBattery stepCost unlocked affordable }
-    achievements { id title description done progress target }
-    unlocks { id title description requires earned progress target builds }
-    builds { id title description cost unlocked completed affordable applicable problem }
+    growth { id tick title description done }
     closures { id reason startTick endTick ticksLeft minX minY maxX maxY tiles { x y } }
     events { tick type message carId x y }
   }
@@ -123,15 +127,22 @@ query {
 closed tile renders `X` and rejects entry with `CLOSED`, but a car already
 standing on it may drive off.
 
-`unlocks[].requires` is the gate in words (`5 deliveries`, `earn $2000`) and
-`progress`/`target` measure the strictest condition in its own units, which is
-what the City growth panel draws its bar from. A gate with two conditions names
-both in `requires`, while the bar tracks only the one furthest from satisfied.
+`growth` is the city's expansion timeline: stages in tick order, each with the
+tick it fires at, a title/description, and `done` once it has applied. Nothing
+in it is purchasable — the city opens districts, adds customers, kitchens and
+chargers, and adds depot charging bays on its own clock. Each stage that applies
+raises `Chapter()`, which drives reward and deadline tables; quantity bands and
+customer cooldowns scale by session tick as a percentage of `ramp_ticks`.
 
 `capacity`, `load` and `freeBoxes` are measured in **boxes**, not orders. A
 customer can ask for forty pizzas; whether that fits is a property of the
 vehicle, so `assignOrder` rejects an order larger than the car's free hold with
 an error naming both numbers. `quantity` on an order is that box count.
+
+`chargeDue` is the unpaid balance of a charging session in progress, in
+dollars. It is zero when the car is not on a paid charger and after the session
+settles; the fleet panel uses it to show the running bill before the single
+`CHARGING` statement row lands.
 
 ### Reading order state
 
@@ -170,21 +181,77 @@ the last command".
 | field | counts |
 |---|---|
 | `money` | spendable balance (goes down when you buy) |
-| `moneyEarned` | lifetime earnings, never decreases — achievements read this |
+| `moneyEarned` | lifetime earnings, never decreases — the economy reports on this |
 | `deliveries` | on-time deliveries only |
 | `lateDeliveries` | delivered past the deadline, at reduced pay |
 | `expiredOrders` | never delivered |
 | `ordersSpawned` | every order ever raised, including expired ones |
 | `onTimeStreak` | consecutive on-time deliveries; late and expired both reset it |
-| `buildsCompleted` | the same number `Chapter()` derives from, capped at 4 |
 | `deliveriesByItem` | per-item **order** counts, not boxes — a two-box order adds 1 |
 | `upkeepPaid` | lifetime fleet running cost paid; cumulative, **not** subtracted from `moneyEarned` |
 | `towFees` | lifetime spend on tows; cumulative |
 | `upkeepDue` | what the next upkeep interval would charge at the cars' current positions |
+| `ticksPerMonth` | length of one accounting month, currently 600 ticks |
+| `months` | monthly income/expense report, newest first, at most 12 rows |
 
 `deliveries + lateDeliveries + expiredOrders` equals `ordersSpawned` minus the
 orders still live, so a client that wants "jobs that failed" must not read
 `deliveries` alone.
+
+### Cash statement
+
+`cashEntries` is the checking account behind `money`, newest first. Every
+movement of money has one row:
+
+| field | meaning |
+|---|---|
+| `seq` | stable id within the session; use it as the list key |
+| `tick` | tick the movement landed |
+| `kind` | `OPENING` `DELIVERY` `LATE_DELIVERY` `ORDER_FINE` `UPKEEP` `CHARGING` `TOW` `CAR_PURCHASE` `BUILD` `GRANT` |
+| `category` | monthly bucket: `DELIVERY_INCOME` `REWARDS` `ORDER_FINES` `UPKEEP` `CHARGING` `TOWS` `CAR_PURCHASES` `BUILDS` `OTHER` `OPENING` |
+| `amount` | signed dollars: positive in, negative out |
+| `balance` | running balance **after** the movement |
+| `carId` / `carName` | the vehicle the movement belongs to, when it belongs to one |
+| `orderId` | the order behind a delivery or fine, when there is one |
+| `memo` | short human-readable detail, e.g. `pizza to Rosa's` |
+
+Car tags are set for deliveries (the delivering car), upkeep (the car billed),
+charging sessions (the car charged), tows (the towed car) and car purchases
+(the car bought). Growth grants and opening balances are fleet-wide and leave
+`carId` null. `carName` is a snapshot, so a statement row stays readable even if
+the fleet changes.
+
+`amount` is **what was actually charged**, not what was billed. A `$25` tow
+against a `$5` balance records `-5`, and a charge against an empty balance
+records no row at all — the balance never goes negative. That keeps the
+statement chain self-consistent: each `balance` is the previous one plus
+`amount`.
+
+The engine keeps the full statement in the save. A snapshot carries at most the
+latest 200 rows, and the live `deliverySession` stream carries the latest 40:
+the statement is re-sent on every mutation and every streamed tick, and the
+panel only renders recent activity. Old rows stay in the save as the audit
+record.
+
+### Monthly report
+
+`months` aggregates the statement by `ticksPerMonth` (600 ticks). Each month
+has positive `income` and `expenses` magnitudes, `net`, and category totals:
+
+```graphql
+months {
+  index startTick endTick
+  income expenses net
+  categories { category income expenses }
+}
+```
+
+Months are newest first and a snapshot carries at most 12. Quiet months are
+included with zero totals so month numbers do not skip. The first month starts
+at tick 0, so month 1 is `startTick: 0, endTick: 599`. Opening capital is
+excluded from monthly income; the statement row remains visible in
+`cashEntries`. The engine derives the report from `cashEntries` and rebuilds it
+on load, so old saves need no migration.
 
 ### The static `city` is fully revealed
 
@@ -199,20 +266,35 @@ while `session.city` for a running session returned `hiddenTiles: 182` with one
 car digit. So the static map is a terrain blueprint, not a snapshot — do not use
 it to show the player their fleet or current street works.
 
-The resolver reloads the city from disk on every call rather than reusing a live
-session's, so `Query.city` cannot cost a running game its fog. That also means it
-reflects `maps/city.json` as it is on disk right now, even if a session was
-created from an older version of the file.
+It has **no customers either**: `customers` is empty and every house renders
+`h`. Customers are live state (a site raises an order, appears as `H`, and
+leaves when that order is delivered or expires), so there is nothing to show
+without a session. Read authored dropoff addresses from `city.json` if you need
+content, and from `session.city.customers` if you need who is waiting right now.
+
+The resolver loads the selected city config on every call (a builtin file or a
+`platform_maps` row) rather than reusing a live session's, so `Query.city` cannot cost a
+running game its fog. A builtin city therefore reflects the release file as it is on disk
+right now, even if a session was created from an older version of it; a custom city reflects
+its current database row.
 
 ### Glyphs
 
 `?` unexplored · `#` water · `B` building · `.` road · `,` ground (costs 2
 steps to enter — slower to drive on, but does **not** charge) ·
-`D` depot (charges 6/tick) · `C` charger (charges 2/tick) · `K` kitchen ·
-`H` customer · `X` closed for works
+`D` depot (charges 6/tick, free) · `C` charger (charges 2/tick, paid per the
+map's `charging.charger_price_per_tick`) · `K` kitchen ·
+`H` customer waiting · `h` house, nobody home · `X` closed for works
 
 Only `D` and `C` recharge. `CellType.Charges()` is `depot || charger`, so a
 car parked on ground — however it looks — never recovers battery.
+
+Customers are not permanently on the map. A site raises an order, at which
+point it appears as `H` and is listed in `city.customers`; when the order is
+delivered or expires the customer leaves and the tile drops back to `h`. Spawns
+are drawn at random among the eligible sites (cooldown elapsed, no live order,
+not hidden, reachable kitchen), so a reveal build is what lets the customers of
+a locked district start appearing.
 
 `1`–`9` car by index. Closures are drawn under cars: a car parked on a closed
 street still renders as a car.
@@ -221,11 +303,11 @@ Three limits matter when you draw the map yourself:
 
 - **Only the first nine cars get a glyph.** The renderer stops at `i >= 9`, so a
   tenth car is simply absent from `rows` while still present in `cars`.
-- **Co-located cars collapse.** A depot may hold several cars (it authors a
-  capacity, 4 on the shipped map), so they share one tile and the last one's
-  digit wins. Measured with four cars parked at the depot: four cars, one glyph
-  (`4`). The UI compensates with a `×N` badge and cycles selection on click;
-  a client drawing its own map should read `cars` for the full list.
+- **Co-located cars collapse.** A depot holds any number of cars (fleet size is
+  money-limited), so they share one tile and the last one's digit wins. Measured
+  with four cars parked at the depot: four cars, one glyph (`4`). The UI
+  compensates with a `×N` badge and cycles selection on click; a client drawing
+  its own map should read `cars` for the full list.
 - **Entity tiles beat terrain, and fog beats both.** A hidden tile renders `?`
   even if a kitchen sits on it, so fog cannot leak a building's position.
 
@@ -286,10 +368,10 @@ query { events(id: "demo", sinceTick: 42) { tick type message } }
 so a client that stores `lastTick` and re-polls with it will see the last tick's
 events twice. Poll with `lastTick + 1`, or dedupe on `(tick, type, message)`.
 
-The feed is a ring, not a log: it retains the most recent 500 events
-(`engine.MaxEvents`) and drops the oldest silently. A client that falls further
-behind than that loses deltas with no error — resync from `session` instead of
-trusting an empty delta as "nothing happened".
+The feed is a ring, not a log: it retains the most recent `max_events` events
+(500 on the shipped map) and drops the oldest silently. A client that falls
+further behind than that loses deltas with no error — resync from `session`
+instead of trusting an empty delta as "nothing happened".
 
 Event `type` values, all of which the engine emits:
 
@@ -304,8 +386,7 @@ Event `type` values, all of which the engine emits:
 | `order_picked_up` | a car collected from a kitchen |
 | `order_delivered` | a dropoff settled payment |
 | `order_expired` | the deadline passed undelivered, and the penalty was charged |
-| `build_completed` | a build applied |
-| `unlock_earned` | an achievement or unlock fired |
+| `city_growth` | a scheduled growth stage applied (or was rejected) |
 | `closure_started` / `closure_ended` | street works began or reopened |
 
 Every event carries `tick` and a human-readable `message`; `carId` is null for
@@ -322,8 +403,8 @@ session is `not_found:` regardless of the credential.
 
 ```graphql
 mutation {
-  "Returns the session AND the secret that proves you created it. Keep it."
-  createSession(id: "demo", seed: 7) {
+  "Returns the session AND the secret that proves you created it. Keep it. cityId picks the city snapshot; omit it for the default."
+  createSession(id: "demo", seed: 7, cityId: "city") {
     session { id tick paused }
     ownerToken
   }
@@ -342,7 +423,8 @@ mutation {
   buyCar(id: "demo", className: "van", depotId: "d_main", ownerToken: "…") { cars { id className } }
   "Costs tow_fee_per_tile x route distance (min tow_fee_min), clamped to the balance."
   towCar(id: "demo", carId: "car_1", ownerToken: "…") { ledger { money towFees } cars { state } }
-  build(id: "demo", buildId: "b02_east_bridge", ownerToken: "…") { city { rows } }
+
+  # The city grows on its own schedule: there is no build mutation.
 
   saveSession(id: "demo", ownerToken: "…") { tick }
   evictSession(id: "demo", ownerToken: "…")   # save, then drop from memory
@@ -359,6 +441,65 @@ each, with no snapshot in the payload).
 An omitted `createSession` id is generated (16 random hex characters); a
 client-supplied id is accepted when it is 1-64 characters of `[A-Za-z0-9_-]`.
 A signed-in creator's session belongs to their account automatically.
+
+### City catalogue and authoring
+
+`Query.cities` lists every PUBLISHED city plus the signed-in caller's own DRAFTs; another
+player's draft is never listed. `Query.city(id)` selects one (an omitted id is the default
+city from `DELIVERY_CITY`) and returns `null` for another player's draft, exactly like an
+unknown id. Every entry carries `status` (`DRAFT`/`PUBLISHED`), `ownedByMe`, `builtin`
+(shipped file) and `ownerless` (community row with no owner, imported/legacy). Builtins and
+ownerless cities are admin-managed; another player's owned city is never an admin path.
+
+A draft is private to its owner: the owner may play and publish it, while another player
+cannot see or select it. A session created on a draft city inherits that visibility — guests
+and other players get NOT_FOUND from `session`, `carView`, `events`, `canPlaySession` and the
+`deliverySession` subscription, and the save is omitted from `sessions`. Published and
+builtin-city sessions remain public. A city deleted after a session started leaves the
+existing reload error in place; a still-live session stays readable.
+
+`Query.cityConfig(id)` returns the exact authored city JSON for a published city, a builtin,
+or the caller's own draft, and `null` for a missing city or another player's draft. It is the
+editor's read: the server returns its decoded, defaulted document, so the keys match the ones
+players write and unknown fields cannot survive a round trip. Guests can read published and
+builtin cities; the authoring mutations still require sign-in.
+
+`createSession(cityId: "…")` snapshots that city; an omitted `cityId` uses the default. The
+session keeps the snapshot, so later city edits never change a running game. A DRAFT city
+cannot be started, played or published by anyone but its owner.
+
+```graphql
+mutation {
+  "Signed-in only: stores a DRAFT owned by the caller. config is raw city JSON."
+  createCity(id: "harbour", config: "{ ...city JSON... }") { id name status ownedByMe }
+
+  "Owner-only; replaces the config and puts the city back into DRAFT."
+  updateCity(id: "harbour", config: "{ ...city JSON... }") { id status }
+
+  "Owner-only; runs the full startup validation (grid, districts, orders, reachability)."
+  publishCity(id: "harbour") { id status }
+
+  "Stores nothing; signed-in only."
+  validateCity(config: "{ ...city JSON... }") { valid publishable issues }
+
+  "Owner-only for community cities; shipped/legacy ownerless cities need X-Admin-Key."
+  deleteCity(id: "harbour")
+}
+```
+
+`createCity`, `updateCity`, `publishCity`, `deleteCity` and `validateCity` need a signed-in
+viewer (`UNAUTHENTICATED` otherwise). `createCity` never overwrites a builtin city. Shipped
+cities are builtin files and always PUBLISHED; changing or deleting one, or editing a legacy
+ownerless custom city, needs the operator `X-Admin-Key`. `valid` means the JSON parses into a
+city; `publishable` means `publishCity` would accept it. An invalid publish is
+`INVALID_ARGUMENT`.
+
+Custom cities live in PostgreSQL (`platform_maps`), capped by `DELIVERY_MAX_USER_CITIES`
+(default 200). `DELIVERY_CITIES_DIR` points at the builtin city files (release-managed), and
+`DELIVERY_CITY` is the legacy default file and must live inside that directory. `pg_dump` is
+the only backup for custom cities. Legacy custom city files, if any, are imported once with
+`drbrain import-maps --game=delivery --dir=<legacy dir>`; imported rows are PUBLISHED and
+ownerless, so they remain admin-managed until the schema grows an ownership claim.
 
 ### Ownership, claiming and the save list
 
@@ -441,7 +582,7 @@ Errors are GraphQL errors whose message begins with a machine-readable code:
 ```
 "not_found: session \"nope\": session not found"
 "bad_request: count must be <= 1000"
-"conflict: van costs $400, you have $0"
+"conflict: van costs $1000, you have $0"
 ```
 
 | code | meaning |
@@ -488,7 +629,8 @@ the new case is handled.
 | `D` | depot | yes, recharges fast |
 | `C` | charger | yes, recharges |
 | `K` | kitchen | pickup |
-| `H` | customer | dropoff |
+| `H` | customer waiting for a delivery | dropoff |
+| `h` | house, no customer there right now | yes |
 | `?` | unexplored | **no** |
 | `X` | closed for street works | no (may drive off) |
 | `1`–`9` | car by index (first nine only; a depot holding several cars draws one digit plus a `×N` badge) | — |

@@ -22,7 +22,7 @@ import (
 // --- optional map fields through the HTTP path ---
 
 func TestCreateMapMaxMovesOverHTTP(t *testing.T) {
-	t.Setenv("ALLOW_UNAUTHENTICATED_ADMIN", "true")
+	t.Setenv("ALLOW_UNAUTHENTICATED_ADMIN", "")
 	t.Setenv("ADMIN_API_KEY", "")
 	ts := newTestServer(t, Options{})
 	const levels = `[["...", "SoF", "..."]]`
@@ -37,7 +37,7 @@ func TestCreateMapMaxMovesOverHTTP(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			q := `mutation { createMap(map: {id: "fresh", name: "F", levels: ` + levels + tc.extra + `}) { maxMoves parMoves } }`
-			_, out := gql(t, ts.URL, q, nil)
+			_, out := gql(t, ts.URL, q, map[string]string{"Authorization": "Bearer acct-1"})
 			if out["errors"] != nil {
 				t.Fatalf("errors: %v", out)
 			}

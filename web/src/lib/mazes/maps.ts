@@ -1,14 +1,44 @@
-import type { GameMap } from './types';
+import type { GameMap, MapStatus } from './types';
 
 const RANK: Record<string, number> = { easy: 0, medium: 1, hard: 2 };
 
+/** True for the caller's unpublished work in progress. */
+export function isDraft(map: { status?: MapStatus }): boolean {
+	return map.status === 'DRAFT';
+}
+
+/** True for a map everyone can see and play. Absent status counts as published (legacy responses). */
+export function isPublished(map: { status?: MapStatus }): boolean {
+	return !isDraft(map);
+}
+
+/** A word for the map's state, or "" when the response predates the lifecycle fields. */
+export function mapStatusLabel(map: { status?: MapStatus }): '' | 'Draft' | 'Published' {
+	if (!map.status) return '';
+	return isDraft(map) ? 'Draft' : 'Published';
+}
+
 /**
- * The one map order used everywhere (home, maps page, dropdowns, "Next map"): easy -> medium ->
+ * True when this caller may change the map: its owner, or an admin (shipped
+ * and legacy ownerless maps are admin-only). `hasAdminKey` is only the intent
+ * to act as admin; the server verifies the key.
+ */
+export function canEditMap(map: { ownedByMe?: boolean }, hasAdminKey = false): boolean {
+	return map.ownedByMe === true || hasAdminKey;
+}
+
+/**
+ * The one map order used everywhere (home, maps page, dropdowns, "Next map"):
+ * the caller's drafts first while they are unpublished, then easy -> medium ->
  * hard, then by name (unknown difficulties last). Does not mutate the input.
  */
-export function sortMapsByDifficulty<T extends Pick<GameMap, 'difficulty' | 'name'>>(maps: T[]): T[] {
+export function sortMapsByDifficulty<T extends Pick<GameMap, 'difficulty' | 'name'> & { status?: MapStatus }>(
+	maps: T[]
+): T[] {
 	const rank = (m: T) => RANK[m.difficulty] ?? 99;
-	return [...maps].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name));
+	return [...maps].sort(
+		(a, b) => Number(isDraft(b)) - Number(isDraft(a)) || rank(a) - rank(b) || a.name.localeCompare(b.name)
+	);
 }
 
 export type DifficultyFilter = 'all' | 'easy' | 'medium' | 'hard';
@@ -35,7 +65,10 @@ export function countByDifficulty(maps: Pick<GameMap, 'difficulty'>[]): Record<D
 }
 
 /** The map after `id` in the shared order; null for the last map or an unknown id. */
-export function nextMap<T extends Pick<GameMap, 'id' | 'difficulty' | 'name'>>(maps: T[], id: string): T | null {
+export function nextMap<T extends Pick<GameMap, 'id' | 'difficulty' | 'name'> & { status?: MapStatus }>(
+	maps: T[],
+	id: string
+): T | null {
 	const sorted = sortMapsByDifficulty(maps);
 	const i = sorted.findIndex((m) => m.id === id);
 	return i >= 0 && i + 1 < sorted.length ? sorted[i + 1] : null;

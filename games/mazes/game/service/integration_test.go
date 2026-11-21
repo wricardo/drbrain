@@ -2,27 +2,29 @@ package service_test
 
 import (
 	"context"
-	"encoding/json"
-	"os"
-	"path/filepath"
+	"errors"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/wricardo/drbrain/games/mazes/game/engine"
 	"github.com/wricardo/drbrain/games/mazes/game/service"
 	"github.com/wricardo/drbrain/games/mazes/game/session"
 	"github.com/wricardo/drbrain/games/mazes/transport/websocket"
+	"github.com/wricardo/drbrain/platform/pgdb/pgtest"
 )
 
-// boot builds a service on top of file persistence in dir, loading what is there.
-func boot(t *testing.T, dir string, maps service.MapStore, bc service.Broadcaster) (service.GameService, *session.Manager) {
+// boot builds a service on top of PostgreSQL persistence in pool, loading what
+// is there.
+func boot(t *testing.T, pool *pgxpool.Pool, maps service.MapStore, bc service.Broadcaster) (service.GameService, *session.Manager) {
 	t.Helper()
-	fp, err := session.NewFilePersistence(dir)
+	p, err := session.NewPostgresPersistence(pool, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
-	mgr := session.NewManager(fp, 100)
+	mgr := session.NewManager(p, 100)
 	if err := mgr.LoadAll(); err != nil {
 		t.Fatal(err)
 	}
@@ -41,11 +43,11 @@ func mustGet(t *testing.T, svc service.GameService, id string) *service.Session 
 }
 
 func TestRestartRestoresSession(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "sessions")
+	pool := pgtest.Pool(t)
 	maps := newFakeMaps(t, towerCfg)
 
-	svc1, _ := boot(t, dir, maps, nil)
-	s, err := svc1.CreateSession("tower", "restart me")
+	svc1, _ := boot(t, pool, maps, nil)
+	s, _, err := svc1.CreateSession("tower", "restart me", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,19 +64,8 @@ func TestRestartRestoresSession(t *testing.T) {
 		t.Fatalf("pre-restart state: %+v", want.State)
 	}
 
-	raw, err := os.ReadFile(filepath.Join(dir, s.ID+".json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var onDisk struct {
-		SchemaVersion int `json:"schema_version"`
-	}
-	if err := json.Unmarshal(raw, &onDisk); err != nil || onDisk.SchemaVersion != session.SchemaVersion {
-		t.Fatalf("schema_version = %d (%v)", onDisk.SchemaVersion, err)
-	}
-
-	// "Restart": brand-new manager and service over the same directory.
-	svc2, _ := boot(t, dir, maps, nil)
+	// "Restart": brand-new manager and service over the same database.
+	svc2, _ := boot(t, pool, maps, nil)
 	got, err := svc2.GetSession(s.ID)
 	if err != nil {
 		t.Fatalf("session lost across restart: %v", err)
@@ -103,27 +94,27 @@ func TestRestartRestoresSession(t *testing.T) {
 }
 
 func TestRestartKeepsOutcomeAndCounters(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "sessions")
+	pool := pgtest.Pool(t)
 	maps := newFakeMaps(t, corridorCfg)
 
-	svc1, _ := boot(t, dir, maps, nil)
-	s, _ := svc1.CreateSession("corridor", "")
+	svc1, _ := boot(t, pool, maps, nil)
+	s, _, _ := svc1.CreateSession("corridor", "", "")
 	want, err := svc1.BulkMove(s.ID, repeat(right, 4), false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The terminal outcome reaches the disk without Shutdown: every
+	// The terminal outcome reaches storage without Shutdown: every
 	// state-changing move persists.
-	fp, err := session.NewFilePersistence(dir)
+	p, err := session.NewPostgresPersistence(pool, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
-	onDisk, err := fp.Load(s.ID)
-	if err != nil || onDisk.State.Status != engine.StatusWon {
-		t.Fatalf("outcome not on disk: %v %+v", err, onDisk)
+	stored, err := p.Load(s.ID)
+	if err != nil || stored.State.Status != engine.StatusWon {
+		t.Fatalf("outcome not persisted: %v %+v", err, stored)
 	}
 
-	svc2, _ := boot(t, dir, maps, nil)
+	svc2, _ := boot(t, pool, maps, nil)
 	got, err := svc2.GetSession(s.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -138,26 +129,29 @@ func TestRestartKeepsOutcomeAndCounters(t *testing.T) {
 	}
 }
 
-func TestDeleteSessionRemovesFile(t *testing.T) {
-	dir := filepath.Join(t.TempDir(), "sessions")
+func TestDeleteSessionRemovesStoredSession(t *testing.T) {
+	pool := pgtest.Pool(t)
 	maps := newFakeMaps(t, corridorCfg)
-	svc, _ := boot(t, dir, maps, nil)
-	s, _ := svc.CreateSession("corridor", "")
+	svc, _ := boot(t, pool, maps, nil)
+	s, _, _ := svc.CreateSession("corridor", "", "")
 	if _, err := svc.Move(s.ID, right); err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(dir, s.ID+".json")
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("session file missing: %v", err)
+	p, err := session.NewPostgresPersistence(pool, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Load(s.ID); err != nil {
+		t.Fatalf("session missing from storage: %v", err)
 	}
 	if err := svc.DeleteSession(s.ID); err != nil {
 		t.Fatal(err)
 	}
-	svc.Shutdown() // persists everything still registered: must not bring the file back
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
-		t.Fatalf("deleted session file exists: %v", err)
+	svc.Shutdown() // persists everything still registered: must not bring it back
+	if _, err := p.Load(s.ID); !errors.Is(err, session.ErrNotFound) {
+		t.Fatalf("deleted session still stored: %v", err)
 	}
-	svc2, _ := boot(t, dir, maps, nil)
+	svc2, _ := boot(t, pool, maps, nil)
 	if _, err := svc2.GetSession(s.ID); err == nil {
 		t.Fatal("deleted session came back after restart")
 	}
@@ -169,11 +163,11 @@ func TestMaxSessionsFromManager(t *testing.T) {
 	svc := service.New(maps, mgr, nil, service.Options{})
 	t.Cleanup(svc.Shutdown)
 	for range 2 {
-		if _, err := svc.CreateSession("corridor", ""); err != nil {
+		if _, _, err := svc.CreateSession("corridor", "", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
-	_, err := svc.CreateSession("corridor", "")
+	_, _, err := svc.CreateSession("corridor", "", "")
 	wantCode(t, err, service.CodeLimit)
 }
 

@@ -12,6 +12,7 @@ const TITLES: Record<string, string> = {
 	SESSION_TERMINAL: 'Game is over — reset to try again',
 	INVALID_ARGUMENT: 'Invalid input',
 	FORBIDDEN: 'Forbidden — check the admin key',
+	UNAUTHENTICATED: 'Sign in required',
 	LIMIT_REACHED: 'Limit reached'
 };
 

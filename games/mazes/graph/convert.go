@@ -131,11 +131,57 @@ func toLevelView(m *engine.Map, l int) *model.LevelView {
 	return &model.LevelView{Level: v.Level, LevelCount: v.LevelCount, Rows: v.Rows, Portals: portals}
 }
 
-func toMaps(ms []*engine.Map) []*model.Map {
-	out := make([]*model.Map, len(ms))
-	for i, m := range ms {
-		out[i] = toMap(m)
+// mapStatusOf converts a service lifecycle state to the GraphQL enum.
+func mapStatusOf(status service.MapStatus) model.MapStatus {
+	if status == service.MapStatusDraft {
+		return model.MapStatusDraft
 	}
+	return model.MapStatusPublished
+}
+
+// fillMapMeta fills the viewer-dependent catalogue fields on a public map.
+func fillMapMeta(m *model.Map, entry *service.MapEntry, viewer string) {
+	if m == nil || entry == nil {
+		return
+	}
+	m.Status = mapStatusOf(entry.Status)
+	m.OwnedByMe = viewer != "" && entry.OwnerID == viewer
+}
+
+// fillAdminMapMeta fills the viewer-dependent catalogue fields on an admin map.
+func fillAdminMapMeta(m *model.AdminMap, entry *service.MapEntry, viewer string) {
+	if m == nil || entry == nil {
+		return
+	}
+	m.Status = mapStatusOf(entry.Status)
+	m.OwnedByMe = viewer != "" && entry.OwnerID == viewer
+}
+
+// toMapEntry converts a catalogue entry to the public model.
+func toMapEntry(entry *service.MapEntry, viewer string) *model.Map {
+	if entry == nil {
+		return nil
+	}
+	m, err := engine.NewMap(entry.Config)
+	if err != nil {
+		return nil
+	}
+	out := toMap(m)
+	fillMapMeta(out, entry, viewer)
+	return out
+}
+
+// toAdminMapEntry converts a catalogue entry to the full editor model.
+func toAdminMapEntry(entry *service.MapEntry, viewer string) *model.AdminMap {
+	if entry == nil {
+		return nil
+	}
+	m, err := engine.NewMap(entry.Config)
+	if err != nil {
+		return nil
+	}
+	out := toAdminMap(m)
+	fillAdminMapMeta(out, entry, viewer)
 	return out
 }
 

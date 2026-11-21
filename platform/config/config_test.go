@@ -13,6 +13,7 @@ func TestLoadReadsEnvironment(t *testing.T) {
 	t.Setenv("DRBRAIN_STATIC_DIR", "web/build")
 	t.Setenv("DRBRAIN_SHUTDOWN_TIMEOUT", "3s")
 	t.Setenv("DRBRAIN_DEBUG", "true")
+	t.Setenv("DRBRAIN_DATABASE_URL", "postgres://drbrain@127.0.0.1:5432/drbrain")
 
 	cfg, err := Load()
 	if err != nil {
@@ -42,6 +43,7 @@ func TestLoadDefaults(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	t.Setenv("DRBRAIN_DATABASE_URL", "postgres://drbrain@127.0.0.1:5432/drbrain")
 	// With the variables absent, envconfig applies every default.
 	// the deliberately empty optional fields.
 	cfg, err := Load()
@@ -56,6 +58,13 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if got := cfg.EnabledGames(); got != nil {
 		t.Errorf("EnabledGames = %v, want nil (all)", got)
+	}
+}
+
+func TestValidateRequiresDatabaseURL(t *testing.T) {
+	cfg := Config{Addr: ":8080", StaticDir: "static", ShutdownTimeout: time.Second}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate accepted a config without DRBRAIN_DATABASE_URL")
 	}
 }
 

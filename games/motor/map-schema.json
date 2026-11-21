@@ -74,6 +74,18 @@
     "allow_recursion": {
       "type": "boolean",
       "default": false
+    },
+    "owner_id": {
+      "type": "string",
+      "description": "Account id of the player who created this community map. Omitted for shipped maps and legacy maps."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "DRAFT",
+        "PUBLISHED"
+      ],
+      "description": "Community publication state. Omitted on shipped maps and read as PUBLISHED on maps written before drafts existed."
     }
   }
 }

@@ -13,6 +13,7 @@ export type {
 	Motor_LeaderboardOrder as LeaderboardOrder,
 	Motor_LossReason as LossReason,
 	Motor_Map as GameMap,
+	Motor_MapStatus as MapStatus,
 	Motor_MapInput as MapInput,
 	Motor_MapValidationResult as MapValidationResult,
 	Motor_Mirror as Mirror,

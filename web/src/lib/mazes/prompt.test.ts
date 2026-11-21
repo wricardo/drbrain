@@ -14,7 +14,9 @@ const map: GameMap = {
 	maxMoves: 40,
 	parMoves: 4,
 	minLevelChanges: 2,
-	forcedDescents: 0
+	forcedDescents: 0,
+	status: 'PUBLISHED',
+	ownedByMe: false
 };
 
 function session(over: Partial<PromptSession> = {}): PromptSession {
@@ -31,6 +33,7 @@ function session(over: Partial<PromptSession> = {}): PromptSession {
 			]
 		},
 		state: { pos: { level: 0, x: 0, y: 0 } },
+		ownerToken: 'secret-token',
 		...over
 	};
 }
@@ -52,9 +55,12 @@ describe('buildSessionPrompt', () => {
 
 	it('carries the session id, endpoints and map facts', () => {
 		expect(p).toContain('Session ID: abc123');
+		expect(p).toContain('Owner token: secret-token');
+		expect(p).toContain('ownerToken: "secret-token"');
 		expect(p).toContain('http://h:1/graphql');
 		expect(p).toContain('http://h:1/mazes/llms.txt');
-		expect(p).toContain('http://h:1/mazes/watch/abc123');
+		expect(p).toContain('http://h:1/mazes/play/abc123');
+		expect(p).not.toContain('/mazes/watch/');
 		expect(p).toContain('at most 40 counted moves');
 		expect(p).toContain('Par (shortest route) = 4 moves');
 	});
@@ -110,6 +116,7 @@ describe('buildGenericPrompt', () => {
 		expect(g).toContain('http://h:1/mazes/llms.txt');
 		expect(g).toContain('only ever see the level you stand on');
 		expect(g).toContain('createSession');
-		expect(g).toContain('http://h:1/mazes/watch/SESSION_ID');
+		expect(g).toContain('ownerToken');
+		expect(g).toContain('http://h:1/mazes/play/SESSION_ID');
 	});
 });

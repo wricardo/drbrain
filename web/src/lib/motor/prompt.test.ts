@@ -9,6 +9,8 @@ function map(over: Partial<GameMap> = {}): GameMap {
 		description: 'A tiny map.',
 		difficulty: 'easy',
 		builtin: false,
+		status: 'PUBLISHED',
+		ownedByMe: false,
 		width: 5,
 		height: 3,
 		layout: ['>...*', '.###.', '.....'],

@@ -1,18 +1,24 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
-	import { api, ApiError, SNAPSHOT_FIELDS, type Direction, type SessionSummary, type Snapshot } from '$lib/delivery/api';
+	import { onDestroy, onMount, untrack } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
+	import { api, ApiError, SNAPSHOT_FIELDS, type CityInfo, type Direction, type SessionSummary, type Snapshot } from '$lib/delivery/api';
+	import { canPlayCity, sortCities, statusLabel } from '$lib/delivery/cities';
 	import { pageTitle } from '$lib/delivery/brand';
 	import { subscribeToSession } from '$lib/delivery/subscribe';
-	import { forgetSession, lastSessionId, rememberSession } from '$lib/delivery/ownerTokens';
+	import { forgetSession, ownerTokenFor, rememberSession } from '$lib/delivery/ownerTokens';
+	import ClaimBanner from '$lib/delivery/components/ClaimBanner.svelte';
 	import Map from '$lib/delivery/Map.svelte';
 	import Panel from '$lib/delivery/Panel.svelte';
 	import FleetPanel from '$lib/delivery/FleetPanel.svelte';
+	import LedgerPanel from '$lib/delivery/LedgerPanel.svelte';
+	import MonthlyPanel from '$lib/delivery/MonthlyPanel.svelte';
 	import OrdersPanel from '$lib/delivery/OrdersPanel.svelte';
 	import Hero from '@drbrain/ui/components/Hero.svelte';
 	import Button from '@drbrain/ui/components/Button.svelte';
 	import EmptyState from '@drbrain/ui/components/EmptyState.svelte';
 	import Skeleton from '@drbrain/ui/components/Skeleton.svelte';
-	import ProgressPanel from '$lib/delivery/ProgressPanel.svelte';
+	import GrowthPanel from '$lib/delivery/GrowthPanel.svelte';
 
 	// --- state ---------------------------------------------------------------
 
@@ -22,6 +28,8 @@
 	/** Which order's route is highlighted on the map. */
 	let selectedOrderId = $state<string | null>(null);
 	let busy = $state(false);
+	/** When true the D-pad only queues a step; the clock advances via step. */
+	let queueOnly = $state(false);
 
 	/** False when the open session belongs to someone else: the page then only watches. */
 	let canPlay = $state(true);
@@ -31,6 +39,35 @@
 	let savesLoading = $state(true);
 	let savesFailed = $state(false);
 	let opening = $state(false);
+
+	/** City catalogue for the start-screen picker. */
+	let cities = $state<CityInfo[]>([]);
+	let citiesLoading = $state(true);
+	let citiesFailed = $state(false);
+	let selectedCityId = $state('city');
+
+	const selectedCity = $derived(cities.find((c) => c.id === selectedCityId) ?? null);
+
+	async function loadCities() {
+		citiesLoading = true;
+		citiesFailed = false;
+		try {
+			cities = sortCities(await api.cities());
+			const stillThere = cities.some((c) => c.id === selectedCityId);
+			if (!stillThere) {
+				selectedCityId =
+					cities.find((c) => c.id === 'city' && canPlayCity(c))?.id ??
+					cities.find((c) => canPlayCity(c))?.id ??
+					'';
+			}
+		} catch {
+			citiesFailed = true;
+			cities = [];
+			selectedCityId = '';
+		} finally {
+			citiesLoading = false;
+		}
+	}
 
 	async function loadSaves() {
 		savesLoading = true;
@@ -47,7 +84,48 @@
 		}
 	}
 
-	async function openSave(id: string) {
+	/** Cosmetic name for a save: owner's city, else a short id suffix. */
+	function cityName(s: SessionSummary): string {
+		return s.ownerDisplayName !== 'Guest' ? `${s.ownerDisplayName}’s city` : `City …${s.id.slice(-6)}`;
+	}
+
+	/** The picker entry for the open city, once the saves list has loaded. */
+	const openEntry = $derived(saves.find((s) => s.id === snap?.id) ?? null);
+
+	/**
+	 * Display name for the open city.
+	 *
+	 * Ownership resolves in the same order as the picker: the server's `mine`
+	 * flag, then the owner's display name, then this browser's owner token
+	 * (which is what makes an unclaimed city playable), and finally an id
+	 * suffix so a stranger's guest city still has a stable label.
+	 */
+	const openName = $derived.by(() => {
+		if (!snap) return '';
+		if (openEntry?.mine) return 'Your city';
+		if (openEntry && openEntry.ownerDisplayName !== 'Guest') {
+			return `${openEntry.ownerDisplayName}’s city`;
+		}
+		if (ownerTokenFor(snap.id)) return 'Your city';
+		return `City …${snap.id.slice(-6)}`;
+	});
+
+	/** Spectator copy: name a real player's city, keep a stranger's guest city generic. */
+	const spectatorText = $derived(
+		openName === 'Your city' || openName.startsWith('City …')
+			? 'Viewing a city — read-only'
+			: `Viewing ${openName} — read-only`
+	);
+
+	/** The open city lives in the URL (?city=<id>) so back, refresh and links work. */
+	const cityParam = $derived(page.url.searchParams.get('city'));
+
+	function openSave(id: string) {
+		if (opening) return;
+		void goto(`?city=${encodeURIComponent(id)}`, { noScroll: true });
+	}
+
+	async function loadCity(id: string) {
 		if (opening) return;
 		opening = true;
 		try {
@@ -59,6 +137,7 @@
 			error = null;
 		} catch (e) {
 			error = e instanceof ApiError ? `${e.message} (${e.code})` : String(e);
+			void goto('?', { replaceState: true, noScroll: true });
 			void loadSaves();
 		} finally {
 			opening = false;
@@ -284,15 +363,16 @@
 		}
 	}
 
-	async function startSession() {
+	async function startSession(cityId?: string) {
 		if (opening) return;
 		opening = true;
 		try {
-			const s = await api.createSession(); // api remembers the session and its owner token
+			const s = await api.createSession(undefined, undefined, cityId || undefined);
 			canPlay = true;
 			snap = s;
 			selectedCarId = s.cars[0]?.id ?? null;
 			error = null;
+			void goto(`?city=${encodeURIComponent(s.id)}`, { noScroll: true });
 		} catch (e) {
 			error = e instanceof ApiError ? `${e.message} (${e.code})` : String(e);
 		} finally {
@@ -300,29 +380,27 @@
 		}
 	}
 
-	async function resume() {
-		const id = lastSessionId();
-		if (!id) return;
-		try {
-			snap = await api.session(id);
-			canPlay = await api.canPlay(id);
-			selectedCarId = snap.cars[0]?.id ?? null;
-		} catch {
-			// Stale id (deleted save): fall through to the start screen.
-			forgetSession();
-		}
+	function startSelectedCity() {
+		void startSession(selectedCityId || undefined);
 	}
 
-	/** Leave the current city and return to the picker. The save stays on disk. */
-	async function leave() {
-		if (snap && canPlay) {
+	/** Back to the city picker: navigating drops ?city, and the effect below closes the city. */
+	function leave() {
+		void goto('?', { noScroll: true });
+	}
+
+	/** Close the open city. The save stays on disk. */
+	async function closeCity() {
+		const cur = snap;
+		if (cur && canPlay) {
 			// Persist before walking away so nothing since the last tick is lost.
 			try {
-				await api.saveSession(snap.id);
+				await api.saveSession(cur.id);
 			} catch {
 				/* best effort: the server also saves on shutdown */
 			}
 		}
+		if (snap?.id !== cur?.id) return; // another city opened meanwhile
 		forgetSession();
 		snap = null;
 		selectedCarId = null;
@@ -399,11 +477,6 @@
 		void apply(() => api.buyCar(snap!.id, cls));
 	}
 
-	function build(buildId: string) {
-		if (!snap || !canPlay) return;
-		void apply(() => api.build(snap!.id, buildId));
-	}
-
 	function cycleCar(delta: number) {
 		if (!snap || snap.cars.length === 0) return;
 		const i = snap.cars.findIndex((c) => c.id === selectedCarId);
@@ -427,7 +500,11 @@
 	function onKey(e: KeyboardEvent) {
 		if (!snap || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
 		const target = e.target as HTMLElement | null;
-		if (target?.closest('input, textarea, select, button, a, [contenteditable], [role="region"]')) return;
+		// Editing fields own every key. Everything else does not: selecting a car
+		// leaves focus on its map or fleet button, and driving from there is the
+		// normal way to play, so buttons and links must not swallow the keys.
+		if (target?.closest('input, textarea, select, [contenteditable]')) return;
+		const onControl = target?.closest('button, a') !== null;
 
 		const dir = KEY_DIRS[e.key];
 		if (dir) {
@@ -443,6 +520,10 @@
 			return;
 		}
 		if (e.key === ' ' || e.key === 'Enter') {
+			// Space and Enter belong to the focused control: pressing them while
+			// a button has focus must activate that button, not also advance the
+			// clock.
+			if (onControl) return;
 			e.preventDefault();
 			step(1);
 			return;
@@ -482,9 +563,21 @@
 		return () => stopStream();
 	});
 
+	// URL is the source of truth for which city is open.
+	$effect(() => {
+		const c = cityParam;
+		untrack(() => {
+			if (c) {
+				if (snap?.id !== c) void loadCity(c);
+			} else if (snap) {
+				void closeCity();
+			}
+		});
+	});
+
 	onMount(() => {
-		void resume();
 		void loadSaves();
+		void loadCities();
 		window.addEventListener('keydown', onKey);
 	});
 
@@ -495,10 +588,15 @@
 </script>
 
 <svelte:head>
-	<title>{snap ? pageTitle() : "Delivery · drbrain"}</title>
+	<title>{snap ? pageTitle(openName) : pageTitle()}</title>
 </svelte:head>
 
-{#if !snap}
+{#if cityParam && !snap && opening}
+	<div class="db-container flex flex-col gap-3 py-4">
+		<Skeleton label="Opening city…" />
+	</div>
+{:else if !snap}
+	<ClaimBanner />
 	<div class="db-container game-landing">
 		<Hero
 			label="Delivery"
@@ -508,17 +606,57 @@
 			image="/art/delivery.webp"
 			wideArt
 		>
-			<Button disabled={opening} onclick={startSession} data-testid="start-city">
-				{opening ? 'Opening city…' : 'Start a new city'} <span aria-hidden="true">→</span>
-			</Button>
+			<div class="flex flex-col gap-3">
+				<div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+					<label class="block min-w-0 flex-1" for="city-select">
+						<span class="text-xs font-semibold uppercase tracking-wide text-muted">City</span>
+						{#if citiesLoading}
+							<Skeleton label="Loading cities…" />
+						{:else if citiesFailed}
+							<span class="mt-1 flex items-center gap-2 text-sm text-muted">
+								Catalogue unavailable.
+								<Button variant="secondary" onclick={loadCities}>Retry</Button>
+							</span>
+						{:else if cities.length === 0}
+							<span class="mt-1 block text-sm text-muted">Using the server's default city.</span>
+						{:else}
+							<select id="city-select" class="db-input mt-1 max-w-md" bind:value={selectedCityId}>
+								{#each cities as c (c.id)}
+									<option value={c.id}>
+										{c.name} · {statusLabel(c.status)}{c.ownedByMe ? ' · yours' : ''}
+									</option>
+								{/each}
+							</select>
+						{/if}
+					</label>
+					<div class="flex flex-wrap gap-2">
+						<Button disabled={opening || citiesLoading} onclick={startSelectedCity} data-testid="start-city">
+							{opening
+								? 'Opening city…'
+								: selectedCity
+									? `Play ${selectedCity.name}`
+									: 'Start the default city'}
+							<span aria-hidden="true">→</span>
+						</Button>
+						<Button href="/delivery/cities" variant="secondary">Browse cities</Button>
+					</div>
+				</div>
+				{#if selectedCity}
+					<p class="text-xs text-muted">
+						{selectedCity.gridSize} × {selectedCity.gridSize} tiles · {statusLabel(selectedCity.status)}{selectedCity.ownedByMe
+							? ' · your draft'
+							: ''}
+					</p>
+				{/if}
+			</div>
 		</Hero>
-		{#if error}<p class="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900" role="alert">{error}</p>{/if}
+		{#if error}<p class="mt-4 rounded-lg border border-[var(--db-danger)]/40 bg-[var(--db-danger)]/10 px-4 py-3 text-sm text-[var(--db-danger)]" role="alert">{error}</p>{/if}
 		<section class="py-8" aria-labelledby="saved-cities">
-			<h2 id="saved-cities" class="mb-3 text-2xl font-bold tracking-tight">Saved cities</h2>
+			<h2 id="saved-cities" class="mb-3 text-2xl font-bold tracking-tight">Saved cities{saves.length > 0 ? ` (${saves.length})` : ''}</h2>
 			{#if savesLoading}
 				<Skeleton label="Loading cities…" />
 			{:else if savesFailed}
-				<EmptyState title="Could not load cities" description="Try loading your saved cities again.">
+				<EmptyState title="Could not load cities" description="Try loading the cities again.">
 					<Button variant="secondary" onclick={loadSaves}>Retry</Button>
 				</EmptyState>
 			{:else if saves.length === 0}
@@ -536,12 +674,12 @@
 							>
 								<span class="min-w-0">
 									<span class="block truncate text-sm text-body">
-										{s.ownerDisplayName !== 'Guest' ? `${s.ownerDisplayName}’s city` : s.id}
-										{#if s.mine}
-											<span class="ml-1 rounded bg-[var(--color-charger)]/15 px-1.5 py-0.5 text-[11px] font-semibold text-[var(--color-charger)]">yours</span>
+										{s.mine || ownerTokenFor(s.id) ? 'Your city' : cityName(s)}
+										{#if s.mine || ownerTokenFor(s.id)}
+											<span class="ml-1 rounded bg-[var(--db-accent)]/15 px-1.5 py-0.5 text-[11px] font-semibold text-[var(--db-accent)]">yours</span>
 										{/if}
 									</span>
-									{#if s.ownerDisplayName !== 'Guest'}
+									{#if !(s.mine || ownerTokenFor(s.id))}
 										<span class="block truncate text-[11px] text-faint">{s.id}</span>
 									{/if}
 									<span class="text-xs text-faint">
@@ -551,15 +689,15 @@
 								<span class="flex shrink-0 items-center gap-2">
 									<span class="text-sm text-[var(--color-money)]">${s.money}</span>
 									<span
-										class="rounded border border-edge-strong px-2 py-0.5 text-xs text-muted transition-colors group-hover:border-[var(--color-charger)] group-hover:text-[var(--color-charger)]"
+										class="rounded border border-edge-strong px-2 py-0.5 text-xs text-muted transition-colors group-hover:border-[var(--db-accent)] group-hover:text-[var(--db-accent)]"
 									>
 										Open
 									</span>
 								</span>
 							</button>
 							<!-- Outside the button: a link inside a button is invalid HTML. -->
-							{#if s.ownerHandle && !s.mine}
-								<a href={`/u/${s.ownerHandle}`} class="-mt-1.5 block px-4 pb-2 text-xs text-muted hover:text-body">@{s.ownerHandle}</a>
+							{#if s.ownerHandle && !s.mine && !ownerTokenFor(s.id)}
+								<a href={`/u/${s.ownerHandle}`} class="-mt-1.5 inline-flex min-h-11 items-center px-4 text-xs text-muted hover:text-body">@{s.ownerHandle}</a>
 							{/if}
 						</li>
 					{/each}
@@ -572,6 +710,7 @@
 	<div class="db-container flex min-h-0 flex-col gap-3 py-4">
 		<header class="db-panel game-run-title">
 			<h1 class="text-xl">Fleet dashboard</h1>
+			<span class="text-sm text-faint" data-testid="open-city-name">{openName}</span>
 			<div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm tabular-nums">
 				<span class="text-faint">Tick <strong class="text-body">{snap.tick}</strong></span>
 				<span class="text-[var(--color-money)]">${snap.ledger.money}</span>
@@ -622,15 +761,15 @@
 					onclick={leave}
 					title="Save and return to the city picker"
 				>
-					Cities
+					← Saved cities
 				</button>
 				{#if canPlay}
-					<span class="h-4 w-px bg-track"></span>
+					<span class="hidden h-4 w-px bg-track sm:block"></span>
 					{#each SPEEDS as s (s.value)}
 						<button
 							type="button"
-							class="min-h-11 min-w-9 rounded-lg px-2 text-sm font-semibold transition-colors {snap.speed === s.value
-								? 'bg-[var(--color-charger)]/20 text-[var(--color-charger)]'
+							class="min-h-11 min-w-11 rounded-lg px-2 text-sm font-semibold transition-colors {snap.speed === s.value
+								? 'bg-[var(--db-accent)]/15 text-[var(--db-accent)]'
 								: 'text-faint hover:text-body'}"
 							onclick={() => setSpeed(s.value)}
 							aria-pressed={snap.speed === s.value}
@@ -639,15 +778,15 @@
 							{s.value === 0 ? (snap.paused ? 'paused' : 'pause') : s.label}
 						</button>
 					{/each}
-					<span class="mx-1 h-4 w-px bg-track"></span>
+					<span class="mx-1 hidden h-4 w-px bg-track sm:block"></span>
 					<button
 						type="button"
-						class="min-h-11 rounded-lg border border-edge-strong px-2.5 text-sm font-semibold text-muted hover:bg-surface-muted hover:text-body"
+						class="min-h-11 min-w-11 rounded-lg border border-edge-strong px-2.5 text-sm font-semibold text-muted hover:bg-surface-muted hover:text-body"
 						onclick={() => step(1)}>step</button
 					>
 					<button
 						type="button"
-						class="min-h-11 rounded-lg border border-edge-strong px-2.5 text-sm font-semibold text-muted hover:bg-surface-muted hover:text-body"
+						class="min-h-11 min-w-11 rounded-lg border border-edge-strong px-2.5 text-sm font-semibold text-muted hover:bg-surface-muted hover:text-body"
 						onclick={() => step(10)}>+10</button
 					>
 				{/if}
@@ -656,13 +795,13 @@
 
 		{#if !canPlay}
 			<p class="rounded-lg border border-edge bg-surface-muted px-4 py-2 text-sm text-muted" role="status" data-testid="spectator-notice">
-				Viewing someone else's save — read-only
+				{spectatorText}
 			</p>
 		{/if}
 
 		{#if error}
 			<div
-				class="rounded-lg border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 px-4 py-2 text-sm text-[var(--color-danger)]" role="alert"
+				class="rounded-lg border border-[var(--db-danger)]/40 bg-[var(--db-danger)]/10 px-4 py-2 text-sm text-[var(--db-danger)]" role="alert"
 			>
 				{error}
 			</div>
@@ -688,54 +827,72 @@
 				</div>
 
 				{#if canPlay}
-					<Panel title="Controls" summary={selectedCar ? `driving ${selectedCar.name}` : ''}>
+					<Panel
+						title="Controls"
+						summary={selectedCar
+							? `driving ${selectedCar.name}${queueOnly ? ' · queueing — press step to advance' : ''}`
+							: ''}
+					>
 						<div class="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2 text-xs text-muted">
 							<!-- A D-pad, because keyboard-only excludes mouse and touch. -->
 							<div class="grid grid-cols-3 gap-1" role="group" aria-label="Drive">
 								<span></span>
 								<button
 									type="button"
-									class="size-11 rounded-lg border border-edge-strong text-base font-semibold text-body hover:border-[var(--color-charger)] hover:text-[var(--color-charger)]"
-									onclick={() => drive('NORTH')}
+									class="size-11 rounded-lg border border-edge-strong text-base font-semibold text-body hover:border-[var(--db-accent)] hover:text-[var(--db-accent)]"
+									onclick={() => (queueOnly ? queueStep('NORTH') : drive('NORTH'))}
 									aria-label="Move north"
-									title="Move north (w)">↑</button
+									title={queueOnly ? 'Queue north (w)' : 'Move north (w)'}>↑</button
 								>
 								<span></span>
 								<button
 									type="button"
-									class="size-11 rounded-lg border border-edge-strong text-base font-semibold text-body hover:border-[var(--color-charger)] hover:text-[var(--color-charger)]"
-									onclick={() => drive('WEST')}
+									class="size-11 rounded-lg border border-edge-strong text-base font-semibold text-body hover:border-[var(--db-accent)] hover:text-[var(--db-accent)]"
+									onclick={() => (queueOnly ? queueStep('WEST') : drive('WEST'))}
 									aria-label="Move west"
-									title="Move west (a)">←</button
+									title={queueOnly ? 'Queue west (a)' : 'Move west (a)'}>←</button
 								>
 								<button
 									type="button"
-									class="size-11 rounded-lg border border-edge-strong text-base font-semibold text-body hover:border-[var(--color-charger)] hover:text-[var(--color-charger)]"
+									class="size-11 rounded-lg border border-edge-strong text-base font-semibold text-body hover:border-[var(--db-accent)] hover:text-[var(--db-accent)]"
 									onclick={() => step(1)}
 									aria-label="Advance one tick"
 									title="Advance one tick (space)">•</button
 								>
 								<button
 									type="button"
-									class="size-11 rounded-lg border border-edge-strong text-base font-semibold text-body hover:border-[var(--color-charger)] hover:text-[var(--color-charger)]"
-									onclick={() => drive('EAST')}
+									class="size-11 rounded-lg border border-edge-strong text-base font-semibold text-body hover:border-[var(--db-accent)] hover:text-[var(--db-accent)]"
+									onclick={() => (queueOnly ? queueStep('EAST') : drive('EAST'))}
 									aria-label="Move east"
-									title="Move east (d)">→</button
+									title={queueOnly ? 'Queue east (d)' : 'Move east (d)'}>→</button
 								>
 								<span></span>
 								<button
 									type="button"
-									class="size-11 rounded-lg border border-edge-strong text-base font-semibold text-body hover:border-[var(--color-charger)] hover:text-[var(--color-charger)]"
-									onclick={() => drive('SOUTH')}
+									class="size-11 rounded-lg border border-edge-strong text-base font-semibold text-body hover:border-[var(--db-accent)] hover:text-[var(--db-accent)]"
+									onclick={() => (queueOnly ? queueStep('SOUTH') : drive('SOUTH'))}
 									aria-label="Move south"
-									title="Move south (s)">↓</button
+									title={queueOnly ? 'Queue south (s)' : 'Move south (s)'}>↓</button
 								>
 								<span></span>
 							</div>
 
+							<button
+								type="button"
+								class="min-h-11 rounded-lg border px-2.5 text-sm font-semibold transition-colors {queueOnly
+									? 'border-[var(--db-accent)]/40 bg-[var(--db-accent)]/15 text-[var(--db-accent)]'
+									: 'border-edge-strong text-muted hover:bg-surface-muted hover:text-body'}"
+								aria-pressed={queueOnly}
+								onclick={() => (queueOnly = !queueOnly)}
+								title="Queue a step without advancing the clock"
+							>
+								Queue only
+							</button>
+
 							<div class="flex flex-col gap-0.5">
 								<span><kbd class="text-body">w a s d</kbd> drive</span>
 								<span><kbd class="text-body">shift</kbd> + direction: queue only</span>
+								<span>toggle: tap to queue, step to advance</span>
 								<span><kbd class="text-body">space</kbd> tick only</span>
 								<span><kbd class="text-body">c</kbd> switch car</span>
 								<span><kbd class="text-body">p</kbd> pause/resume</span>
@@ -776,20 +933,18 @@
 					buyable={canPlay ? buyable : []}
 					onBuy={canPlay ? buy : undefined}
 				/>
+				<LedgerPanel entries={snap.ledger.cashEntries} money={snap.ledger.money} />
+				<MonthlyPanel months={snap.ledger.months} ticksPerMonth={snap.ledger.ticksPerMonth} />
 				<OrdersPanel
 					orders={snap.orders}
 					selectedCarId={selectedCar?.id ?? null}
+					selectedCarCapacity={selectedCar?.capacity ?? null}
 					selectedOrderId={highlightedOrder?.id ?? null}
 					onAssign={canPlay ? assign : undefined}
 					onUnassign={canPlay ? unassign : undefined}
 					onSelectOrder={(id) => (selectedOrderId = id)}
 				/>
-				<ProgressPanel
-					achievements={snap.achievements}
-					unlocks={snap.unlocks}
-					builds={snap.builds}
-					onBuild={canPlay ? build : undefined}
-				/>
+				<GrowthPanel growth={snap.growth} tick={snap.tick} />
 			</div>
 		</div>
 	</div>

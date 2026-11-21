@@ -8,13 +8,16 @@
 // snapshot, so the client never needs a follow-up read to know the new state.
 
 import { authHeaders } from '$lib/account/token';
+import { getAdminKey } from './admin';
 import { forgetOwnerTokens, ownerTokenFor, rememberSession } from './ownerTokens';
 import type {
 	Delivery_CarWindow as CarWindow,
 	Delivery_ClaimStatus as ClaimStatus,
+	Delivery_CityInfo as CityInfo,
+	Delivery_CityValidationResult as CityValidationResult,
+	Delivery_CityView as CityView,
 	Delivery_Direction as Direction,
 	Delivery_EventView as EventView,
-	Delivery_Query as Query,
 	Delivery_SessionSummary as SessionSummary,
 	Delivery_Snapshot as Snapshot
 } from '../graphql-types';
@@ -23,18 +26,24 @@ export * from '../graphql-types';
 
 // Keep the delivery-local names the UI already uses.
 export type {
-	Delivery_AchievementView as AchievementView,
-	Delivery_BuildView as BuildView,
 	Delivery_CarState as CarState,
+	Delivery_GrowthView as GrowthView,
 	Delivery_CarView as CarView,
+	Delivery_CashEntryView as CashEntryView,
+	Delivery_CashKind as CashKind,
+	Delivery_CashCategory as CashCategory,
+	Delivery_MonthView as MonthView,
+	Delivery_MonthCategoryView as MonthCategoryView,
+	Delivery_CityInfo as CityInfo,
+	Delivery_CityStatus as CityStatus,
+	Delivery_CityValidationResult as CityValidationResult,
 	Delivery_CityView as CityView,
 	Delivery_ClosureView as ClosureView,
 	Delivery_Direction as Direction,
 	Delivery_OrderState as OrderState,
 	Delivery_OrderView as OrderView,
 	Delivery_SessionSummary as SessionSummary,
-	Delivery_Snapshot as Snapshot,
-	Delivery_UnlockView as UnlockView
+	Delivery_Snapshot as Snapshot
 } from '../graphql-types';
 
 const ENDPOINT = '/graphql';
@@ -64,9 +73,14 @@ interface GraphQLResponse<T> {
  * without inventing an extensions scheme the schema does not declare.
  */
 async function post<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
+	const adminKey = getAdminKey();
 	const res = await fetch(ENDPOINT, {
 		method: 'POST',
-		headers: { 'Content-Type': 'application/json', ...authHeaders() },
+		headers: {
+			'Content-Type': 'application/json',
+			...authHeaders(),
+			...(adminKey ? { 'X-Admin-Key': adminKey } : {})
+		},
 		body: JSON.stringify({ query, variables })
 	});
 
@@ -78,7 +92,12 @@ async function post<T>(query: string, variables?: Record<string, unknown>): Prom
 	if (body.errors && body.errors.length > 0) {
 		const first = body.errors[0];
 		const msg = first.message;
-		// Resolver errors are "code: detail"; split so callers can branch.
+		// Newer city resolvers put the code in extensions; older session
+		// resolvers prefix the message with it. Support both.
+		const extensionCode = first.extensions?.code;
+		if (typeof extensionCode === 'string' && extensionCode) {
+			throw new ApiError(msg, extensionCode);
+		}
 		const idx = msg.indexOf(':');
 		if (idx > 0 && idx < 32) {
 			throw new ApiError(msg.slice(idx + 1).trim(), msg.slice(0, idx).trim());
@@ -101,6 +120,7 @@ const CAR_FIELDS = `
 	id name className x y
 	battery maxBattery batteryPct capacity load freeBoxes
 	cargo state queuedMove lastReject
+	chargeDue
 `;
 
 const ORDER_FIELDS = `
@@ -109,6 +129,15 @@ const ORDER_FIELDS = `
 	state assignedCar
 	createdTick deadlineTick ticksLeft
 	reward paid late
+`;
+
+/** CITY_VIEW_FIELDS is the metadata plus static map for one catalogue city. */
+export const CITY_VIEW_FIELDS = `
+	id name gridSize status ownedByMe builtin ownerless rows hiddenTiles
+	kitchens { id name x y }
+	customers { id name x y }
+	depots { id name x y }
+	chargers { id name x y }
 `;
 
 /**
@@ -132,14 +161,18 @@ export const SNAPSHOT_FIELDS = `
 	ledger {
 		money moneyEarned reputation
 		deliveries lateDeliveries expiredOrders ordersSpawned
-		onTimeStreak tows buildsCompleted
+		onTimeStreak tows
 		upkeepPaid towFees upkeepDue
+		ticksPerMonth
+		cashEntries { seq tick kind category amount balance carId carName orderId memo }
+		months {
+			index startTick endTick income expenses net
+			categories { category income expenses }
+		}
 		deliveriesByItem { item count }
 	}
 	carClasses { className price capacity maxBattery stepCost unlocked affordable }
-	achievements { id title description done progress target }
-	unlocks { id title description requires earned progress target builds }
-	builds { id title description cost unlocked completed affordable applicable problem }
+	growth { id tick title description done }
 	events { tick type message carId x y }
 	closures { id reason startTick endTick ticksLeft minX minY maxX maxY tiles { x y } }
 `;
@@ -153,19 +186,36 @@ export const api = {
 		return d.health;
 	},
 
-	/** The static city with every district revealed. */
-	city: async () => {
-		const d = await post<Pick<Query, 'city'>>(`query {
-			delivery {
-				city {
-					name gridSize rows hiddenTiles
-					kitchens { id name x y }
-					customers { id name x y }
-					depots { id name x y }
-					chargers { id name x y }
-				}
-			}
+	/**
+	 * The exact authored city JSON (decoded/defaulted server-side) for a
+	 * published city, a builtin, or the caller's own draft. Hidden or missing
+	 * cities return null.
+	 */
+	cityConfig: async (id: string): Promise<string | null> => {
+		const d = await post<{ cityConfig: string | null }>(
+			`query ($id: ID!) { delivery { cityConfig(id: $id) } }`,
+			{ id }
+		);
+		return d.cityConfig;
+	},
+
+	/** The city catalogue: published cities plus the caller's own drafts. */
+	cities: async (): Promise<CityInfo[]> => {
+		const d = await post<{ cities: CityInfo[] }>(`query {
+			delivery { cities { id name gridSize status ownedByMe builtin ownerless } }
 		}`);
+		return d.cities ?? [];
+	},
+
+	/**
+	 * One city's static map and metadata. Omitted id selects the server's
+	 * default city. Missing cities and other players' drafts return null.
+	 */
+	city: async (id?: string): Promise<CityView | null> => {
+		const d = await post<{ city: CityView | null }>(
+			`query ($id: ID) { delivery { city(id: $id) { ${CITY_VIEW_FIELDS} } } }`,
+			{ id: id ?? null }
+		);
 		return d.city;
 	},
 
@@ -215,17 +265,66 @@ export const api = {
 
 	// --- mutations ---------------------------------------------------------
 
-	/** Creates a session and keeps the owner token the server returns: it is what authorises later changes from this browser. */
-	createSession: async (id?: string, seed?: number): Promise<Snapshot> => {
+	/** Creates a session on a city (omitted = server default) and keeps the owner token. */
+	createSession: async (id?: string, seed?: number, cityId?: string): Promise<Snapshot> => {
 		const d = await post<{ createSession: { session: Snapshot; ownerToken: string } }>(
-			`mutation ($id: ID, $seed: Int) {
-				delivery { createSession(id: $id, seed: $seed) { session { ${SNAPSHOT_FIELDS} } ownerToken } }
+			`mutation ($id: ID, $seed: Int, $cityId: ID) {
+				delivery { createSession(id: $id, seed: $seed, cityId: $cityId) { session { ${SNAPSHOT_FIELDS} } ownerToken } }
 			}`,
-			{ id: id ?? null, seed: seed ?? null }
+			{ id: id ?? null, seed: seed ?? null, cityId: cityId ?? null }
 		);
 		const { session, ownerToken } = d.createSession;
 		rememberSession(session.id, ownerToken);
 		return session;
+	},
+
+	/** Saves a new owned DRAFT city. config is raw city JSON. */
+	createCity: async (id: string, config: string): Promise<CityView> => {
+		const d = await post<{ createCity: CityView }>(
+			`mutation ($id: ID!, $config: String!) {
+				delivery { createCity(id: $id, config: $config) { ${CITY_VIEW_FIELDS} } }
+			}`,
+			{ id, config }
+		);
+		return d.createCity;
+	},
+
+	/** Replaces an owned city (or a shipped/legacy city with an admin key); owners get DRAFT back. */
+	updateCity: async (id: string, config: string): Promise<CityView> => {
+		const d = await post<{ updateCity: CityView }>(
+			`mutation ($id: ID!, $config: String!) {
+				delivery { updateCity(id: $id, config: $config) { ${CITY_VIEW_FIELDS} } }
+			}`,
+			{ id, config }
+		);
+		return d.updateCity;
+	},
+
+	/** Publishes an owner's draft after full validation. */
+	publishCity: async (id: string): Promise<CityView> => {
+		const d = await post<{ publishCity: CityView }>(
+			`mutation ($id: ID!) { delivery { publishCity(id: $id) { ${CITY_VIEW_FIELDS} } } }`,
+			{ id }
+		);
+		return d.publishCity;
+	},
+
+	/** Deletes an owned city (or a shipped/legacy city with an admin key). */
+	deleteCity: async (id: string): Promise<boolean> => {
+		const d = await post<{ deleteCity: boolean }>(
+			`mutation ($id: ID!) { delivery { deleteCity(id: $id) } }`,
+			{ id }
+		);
+		return d.deleteCity;
+	},
+
+	/** Checks raw city JSON without storing it. */
+	validateCity: async (config: string): Promise<CityValidationResult> => {
+		const d = await post<{ validateCity: CityValidationResult }>(
+			`mutation ($config: String!) { delivery { validateCity(config: $config) { valid publishable issues } } }`,
+			{ config }
+		);
+		return d.validateCity;
 	},
 
 	/** Queue one step for one car. Does not advance the clock. */
@@ -297,16 +396,6 @@ export const api = {
 			{ id, ownerToken: ownerTokenFor(id), carId }
 		);
 		return d.towCar;
-	},
-
-	build: async (id: string, buildId: string): Promise<Snapshot> => {
-		const d = await post<{ build: Snapshot }>(
-			`mutation ($id: ID!, $ownerToken: String, $buildId: ID!) {
-				delivery { build(id: $id, ownerToken: $ownerToken, buildId: $buildId) { ${SNAPSHOT_FIELDS} } }
-			}`,
-			{ id, ownerToken: ownerTokenFor(id), buildId }
-		);
-		return d.build;
 	},
 
 	saveSession: async (id: string): Promise<Snapshot> => {

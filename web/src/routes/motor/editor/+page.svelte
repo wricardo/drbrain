@@ -29,10 +29,11 @@
 		CREATE_MAP_MUTATION,
 		DELETE_MAP_MUTATION,
 		MAP_QUERY,
+		PUBLISH_MAP_MUTATION,
 		UPDATE_MAP_MUTATION,
 		VALIDATE_MAP_MUTATION
 	} from '$lib/motor/queries';
-	import type { Facing, GameMap, MapInput, MapValidationResult } from '$lib/motor/types';
+	import type { Facing, GameMap, MapInput, MapStatus, MapValidationResult } from '$lib/motor/types';
 	import { MAX_SUBS } from '$lib/motor/instructions';
 	import { account } from '$lib/account/stores/account';
 	import Cookie from '@drbrain/ui/components/Cookie.svelte';
@@ -66,6 +67,10 @@
 	let existing = $state(false);
 	/** A shipped map: only an admin may overwrite or delete it. */
 	let builtin = $state(false);
+	/** The map's publication state; edits always put it back into DRAFT. */
+	let status = $state<MapStatus>('DRAFT');
+	/** True when the signed-in player created this community map. */
+	let owned = $state(false);
 	let adminKey = $state(getAdminKey());
 	let busy = $state(false);
 	let error = $state<DescribedError | null>(null);
@@ -73,8 +78,11 @@
 	let validation = $state<MapValidationResult | null>(null);
 	/** The sign-in dialog, opened from the hint shown to guests: creating a map needs an account. */
 	let signIn = $state(false);
-	/** Only a signed-in player may create a map; guests can still paint, validate and update their own. */
-	const canCreate = $derived($account.me !== null);
+	/** Every map operation needs a signed-in player. */
+	const signedIn = $derived($account.me !== null);
+	/** Only the owner (or an admin on a shipped map) may change this map. */
+	const canEdit = $derived(builtin || owned);
+	const canPublish = $derived(existing && !builtin && owned && status === 'DRAFT');
 	const next = $derived($page.url.pathname + $page.url.search);
 
 	const layout = $derived(formatLayout(cells, start));
@@ -223,6 +231,8 @@
 		// A duplicate is a brand-new map: it is never built-in, so it needs
 		// no admin key however the source map is stored.
 		builtin = duplicate ? false : m.builtin;
+		owned = duplicate ? true : m.ownedByMe;
+		status = duplicate ? 'DRAFT' : m.status;
 		validation = null;
 	}
 
@@ -311,13 +321,38 @@
 			validation = data.validateMap;
 		});
 
+	// Saving always leaves the map in DRAFT: publishing is a separate, explicit
+	// step that runs the full validation.
+	async function persist() {
+		let m: GameMap;
+		if (existing) {
+			const data = await unwrap<{ updateMap: GameMap }>(client.mutation(UPDATE_MAP_MUTATION, { map: toInput() }));
+			m = data.updateMap;
+		} else {
+			const data = await unwrap<{ createMap: GameMap }>(client.mutation(CREATE_MAP_MUTATION, { map: toInput() }));
+			m = data.createMap;
+		}
+		existing = true;
+		builtin = false;
+		owned = true;
+		status = m.status;
+	}
+
 	const save = () =>
 		run(async () => {
-			if (existing) await unwrap(client.mutation(UPDATE_MAP_MUTATION, { map: toInput() }));
-			else await unwrap(client.mutation(CREATE_MAP_MUTATION, { map: toInput() }));
-			existing = true;
-			builtin = false;
-			notice = `Saved map "${id.trim()}".`;
+			await persist();
+			notice = `Saved "${id.trim()}" as a draft. Publish it when it is ready.`;
+		});
+
+	const publish = () =>
+		run(async () => {
+			await persist();
+			const data = await unwrap<{ publishMap: GameMap }>(
+				client.mutation(PUBLISH_MAP_MUTATION, { id: id.trim() })
+			);
+			status = data.publishMap.status;
+			validation = null;
+			notice = `Published "${id.trim()}". Everyone can play it now.`;
 		});
 
 	const remove = () =>
@@ -340,7 +375,7 @@
 			);
 			await goto(`/motor/editor?map=${encodeURIComponent(data.createMap.id)}`);
 			load(data.createMap, false);
-			notice = `Created "${data.createMap.id}". It is your own map, so you can edit it without the admin key.`;
+			notice = `Created "${data.createMap.id}" as your draft. Publish it when it is ready.`;
 		});
 
 	const field = 'mt-1 w-full rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm';
@@ -353,12 +388,14 @@
 <div class="mx-auto max-w-6xl px-4 sm:px-6 py-6">
 	<h1 class="text-2xl font-semibold text-indigo-950">Map editor</h1>
 	<p class="mt-1 text-sm text-slate-700">
-		Paint the board, set the start cell and tape sizes, validate, then save. Creating a new map needs a signed-in account; changing a built-in map needs the admin key.
+		Paint the board, set the start cell and tape sizes, then save a draft. A draft is visible only to you and
+		can be played until you publish it; publishing runs the full validation. Every map operation needs a
+		signed-in account, and changing a built-in map needs the admin key.
 	</p>
 
 	{#if $account.loaded && !$account.me}
 		<p class="mt-3 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-900" data-testid="editor-signin-hint">
-			You are not signed in, so you can paint, validate and update a map you already have, but not create a new one.
+			You are not signed in. Sign in to validate, save drafts, play them and publish.
 			{#if $account.providers.length}
 				<button type="button" class="font-semibold underline" onclick={() => (signIn = true)}>Sign in</button>
 			{/if}
@@ -523,6 +560,21 @@
 			</div>
 
 			<div class="rounded-xl border border-indigo-200 bg-white p-3 space-y-3">
+				{#if existing && !builtin}
+					<p
+						class="rounded-lg px-3 py-2 text-xs {status === 'DRAFT'
+							? 'border border-amber-300 bg-amber-50 text-amber-900'
+							: 'border border-emerald-300 bg-emerald-50 text-emerald-900'}"
+						data-testid="map-status"
+					>
+						{status === 'DRAFT'
+							? 'Draft: only you can see or play it. Publish it when it is ready.'
+							: 'Published: everyone can see and play it. Editing it turns it back into a draft.'}
+						{#if !owned}
+							<span class="block">Only the player who created this map can edit it; duplicate it below to make your own copy.</span>
+						{/if}
+					</p>
+				{/if}
 				{#if builtin}
 					<p class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid="builtin-warning">
 						This is a built-in map. Saving or deleting it needs the admin key, and it ships with the game.
@@ -540,18 +592,31 @@
 					</label>
 				{/if}
 				<div class="flex flex-wrap gap-2">
-					<button type="button" class="{btn} border border-indigo-300 text-indigo-900 hover:bg-indigo-50" disabled={busy} onclick={validate}>Validate</button>
-					<button type="button" class="{btn} bg-indigo-600 text-white hover:bg-indigo-700" disabled={busy || localIssues.length > 0 || !id.trim() || !name.trim() || (!existing && !canCreate)} onclick={save}>
-						{existing ? 'Update map' : 'Create map'}
-					</button>
-					{#if existing}
+					<button type="button" class="{btn} border border-indigo-300 text-indigo-900 hover:bg-indigo-50" disabled={busy || !signedIn} onclick={validate}>Validate</button>
+					<button
+						type="button"
+						class="{btn} bg-indigo-600 text-white hover:bg-indigo-700"
+						disabled={busy || !signedIn || localIssues.length > 0 || !id.trim() || !name.trim() || (existing && !canEdit)}
+						onclick={save}
+						data-testid="save-map">{existing ? 'Save draft' : 'Create draft'}</button
+					>
+					{#if canPublish}
+						<button
+							type="button"
+							class="{btn} bg-emerald-600 text-white hover:bg-emerald-700"
+							disabled={busy || !signedIn || localIssues.length > 0 || !id.trim() || !name.trim()}
+							onclick={publish}
+							data-testid="publish-map">Publish</button
+						>
+					{/if}
+					{#if existing && canEdit}
 						<button type="button" class="{btn} border border-rose-300 text-rose-800 hover:bg-rose-50" disabled={busy} onclick={remove}>Delete</button>
 					{/if}
-					{#if builtin}
+					{#if existing}
 						<button
 							type="button"
 							class="{btn} border border-indigo-300 text-indigo-900 hover:bg-indigo-50"
-							disabled={busy || !canCreate}
+							disabled={busy || !signedIn}
 							onclick={duplicate}
 							data-testid="duplicate-map">Duplicate as my own map</button
 						>

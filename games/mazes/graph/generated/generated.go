@@ -61,10 +61,17 @@ type ComplexityRoot struct {
 		MaxMoves        func(childComplexity int) int
 		MinLevelChanges func(childComplexity int) int
 		Name            func(childComplexity int) int
+		OwnedByMe       func(childComplexity int) int
 		ParMoves        func(childComplexity int) int
 		Portals         func(childComplexity int) int
 		Start           func(childComplexity int) int
+		Status          func(childComplexity int) int
 		Width           func(childComplexity int) int
+	}
+
+	CreateSessionResult struct {
+		OwnerToken func(childComplexity int) int
+		Session    func(childComplexity int) int
 	}
 
 	GameState struct {
@@ -92,8 +99,10 @@ type ComplexityRoot struct {
 		MaxMoves        func(childComplexity int) int
 		MinLevelChanges func(childComplexity int) int
 		Name            func(childComplexity int) int
+		OwnedByMe       func(childComplexity int) int
 		ParMoves        func(childComplexity int) int
 		Preview         func(childComplexity int) int
+		Status          func(childComplexity int) int
 		Width           func(childComplexity int) int
 	}
 
@@ -123,14 +132,15 @@ type ComplexityRoot struct {
 	}
 
 	Mutation struct {
-		BulkMove      func(childComplexity int, sessionID string, directions []model.Direction, stopOnBlocked *bool) int
+		BulkMove      func(childComplexity int, sessionID string, directions []model.Direction, stopOnBlocked *bool, ownerToken *string) int
 		CreateMap     func(childComplexity int, mapArg model.MapInput) int
 		CreateSession func(childComplexity int, mapID string, displayName *string) int
 		DeleteMap     func(childComplexity int, id string) int
-		DeleteSession func(childComplexity int, id string) int
-		Move          func(childComplexity int, sessionID string, direction model.Direction) int
-		RenameSession func(childComplexity int, id string, displayName string) int
-		Reset         func(childComplexity int, sessionID string) int
+		DeleteSession func(childComplexity int, id string, ownerToken *string) int
+		Move          func(childComplexity int, sessionID string, direction model.Direction, ownerToken *string) int
+		PublishMap    func(childComplexity int, id string) int
+		RenameSession func(childComplexity int, id string, displayName string, ownerToken *string) int
+		Reset         func(childComplexity int, sessionID string, ownerToken *string) int
 		UpdateMap     func(childComplexity int, mapArg model.MapInput) int
 		ValidateMap   func(childComplexity int, mapArg model.MapInput) int
 	}
@@ -148,11 +158,12 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
-		AdminMap func(childComplexity int, id string) int
-		Map      func(childComplexity int, id string) int
-		Maps     func(childComplexity int) int
-		Session  func(childComplexity int, id string) int
-		Sessions func(childComplexity int, sort *model.SessionSort, limit *int, mapID *string) int
+		AdminMap       func(childComplexity int, id string) int
+		CanPlaySession func(childComplexity int, id string, ownerToken *string) int
+		Map            func(childComplexity int, id string) int
+		Maps           func(childComplexity int) int
+		Session        func(childComplexity int, id string) int
+		Sessions       func(childComplexity int, sort *model.SessionSort, limit *int, mapID *string) int
 	}
 
 	Session struct {
@@ -182,14 +193,15 @@ type ComplexityRoot struct {
 }
 
 type MutationResolver interface {
-	CreateSession(ctx context.Context, mapID string, displayName *string) (*model.Session, error)
-	DeleteSession(ctx context.Context, id string) (bool, error)
-	RenameSession(ctx context.Context, id string, displayName string) (*model.Session, error)
-	Move(ctx context.Context, sessionID string, direction model.Direction) (*model.Session, error)
-	BulkMove(ctx context.Context, sessionID string, directions []model.Direction, stopOnBlocked *bool) (*model.Session, error)
-	Reset(ctx context.Context, sessionID string) (*model.Session, error)
+	CreateSession(ctx context.Context, mapID string, displayName *string) (*model.CreateSessionResult, error)
+	DeleteSession(ctx context.Context, id string, ownerToken *string) (bool, error)
+	RenameSession(ctx context.Context, id string, displayName string, ownerToken *string) (*model.Session, error)
+	Move(ctx context.Context, sessionID string, direction model.Direction, ownerToken *string) (*model.Session, error)
+	BulkMove(ctx context.Context, sessionID string, directions []model.Direction, stopOnBlocked *bool, ownerToken *string) (*model.Session, error)
+	Reset(ctx context.Context, sessionID string, ownerToken *string) (*model.Session, error)
 	CreateMap(ctx context.Context, mapArg model.MapInput) (*model.AdminMap, error)
 	UpdateMap(ctx context.Context, mapArg model.MapInput) (*model.AdminMap, error)
+	PublishMap(ctx context.Context, id string) (*model.AdminMap, error)
 	DeleteMap(ctx context.Context, id string) (bool, error)
 	ValidateMap(ctx context.Context, mapArg model.MapInput) (*model.MapValidationResult, error)
 }
@@ -199,6 +211,7 @@ type QueryResolver interface {
 	AdminMap(ctx context.Context, id string) (*model.AdminMap, error)
 	Session(ctx context.Context, id string) (*model.Session, error)
 	Sessions(ctx context.Context, sort *model.SessionSort, limit *int, mapID *string) ([]*model.Session, error)
+	CanPlaySession(ctx context.Context, id string, ownerToken *string) (bool, error)
 }
 type SubscriptionResolver interface {
 	SessionUpdated(ctx context.Context, sessionID string) (<-chan *model.SessionUpdate, error)
@@ -300,6 +313,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.AdminMap.Name(childComplexity), true
 
+	case "AdminMap.ownedByMe":
+		if e.complexity.AdminMap.OwnedByMe == nil {
+			break
+		}
+
+		return e.complexity.AdminMap.OwnedByMe(childComplexity), true
+
 	case "AdminMap.parMoves":
 		if e.complexity.AdminMap.ParMoves == nil {
 			break
@@ -321,12 +341,33 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.AdminMap.Start(childComplexity), true
 
+	case "AdminMap.status":
+		if e.complexity.AdminMap.Status == nil {
+			break
+		}
+
+		return e.complexity.AdminMap.Status(childComplexity), true
+
 	case "AdminMap.width":
 		if e.complexity.AdminMap.Width == nil {
 			break
 		}
 
 		return e.complexity.AdminMap.Width(childComplexity), true
+
+	case "CreateSessionResult.ownerToken":
+		if e.complexity.CreateSessionResult.OwnerToken == nil {
+			break
+		}
+
+		return e.complexity.CreateSessionResult.OwnerToken(childComplexity), true
+
+	case "CreateSessionResult.session":
+		if e.complexity.CreateSessionResult.Session == nil {
+			break
+		}
+
+		return e.complexity.CreateSessionResult.Session(childComplexity), true
 
 	case "GameState.lossReason":
 		if e.complexity.GameState.LossReason == nil {
@@ -454,6 +495,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Map.Name(childComplexity), true
 
+	case "Map.ownedByMe":
+		if e.complexity.Map.OwnedByMe == nil {
+			break
+		}
+
+		return e.complexity.Map.OwnedByMe(childComplexity), true
+
 	case "Map.parMoves":
 		if e.complexity.Map.ParMoves == nil {
 			break
@@ -467,6 +515,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Map.Preview(childComplexity), true
+
+	case "Map.status":
+		if e.complexity.Map.Status == nil {
+			break
+		}
+
+		return e.complexity.Map.Status(childComplexity), true
 
 	case "Map.width":
 		if e.complexity.Map.Width == nil {
@@ -597,7 +652,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.BulkMove(childComplexity, args["sessionID"].(string), args["directions"].([]model.Direction), args["stopOnBlocked"].(*bool)), true
+		return e.complexity.Mutation.BulkMove(childComplexity, args["sessionID"].(string), args["directions"].([]model.Direction), args["stopOnBlocked"].(*bool), args["ownerToken"].(*string)), true
 
 	case "Mutation.createMap":
 		if e.complexity.Mutation.CreateMap == nil {
@@ -645,7 +700,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.DeleteSession(childComplexity, args["id"].(string)), true
+		return e.complexity.Mutation.DeleteSession(childComplexity, args["id"].(string), args["ownerToken"].(*string)), true
 
 	case "Mutation.move":
 		if e.complexity.Mutation.Move == nil {
@@ -657,7 +712,19 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.Move(childComplexity, args["sessionID"].(string), args["direction"].(model.Direction)), true
+		return e.complexity.Mutation.Move(childComplexity, args["sessionID"].(string), args["direction"].(model.Direction), args["ownerToken"].(*string)), true
+
+	case "Mutation.publishMap":
+		if e.complexity.Mutation.PublishMap == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_publishMap_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.PublishMap(childComplexity, args["id"].(string)), true
 
 	case "Mutation.renameSession":
 		if e.complexity.Mutation.RenameSession == nil {
@@ -669,7 +736,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.RenameSession(childComplexity, args["id"].(string), args["displayName"].(string)), true
+		return e.complexity.Mutation.RenameSession(childComplexity, args["id"].(string), args["displayName"].(string), args["ownerToken"].(*string)), true
 
 	case "Mutation.reset":
 		if e.complexity.Mutation.Reset == nil {
@@ -681,7 +748,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.Reset(childComplexity, args["sessionID"].(string)), true
+		return e.complexity.Mutation.Reset(childComplexity, args["sessionID"].(string), args["ownerToken"].(*string)), true
 
 	case "Mutation.updateMap":
 		if e.complexity.Mutation.UpdateMap == nil {
@@ -760,6 +827,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.AdminMap(childComplexity, args["id"].(string)), true
+
+	case "Query.canPlaySession":
+		if e.complexity.Query.CanPlaySession == nil {
+			break
+		}
+
+		args, err := ec.field_Query_canPlaySession_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.CanPlaySession(childComplexity, args["id"].(string), args["ownerToken"].(*string)), true
 
 	case "Query.map":
 		if e.complexity.Query.Map == nil {
@@ -1078,6 +1157,16 @@ enum SessionSort {
 	RECENT
 	CREATED
 }
+enum MapStatus {
+	"""
+	A work in progress: only its owner can see, edit, play or publish it.
+	"""
+	DRAFT
+	"""
+	Visible to everyone and playable by anyone.
+	"""
+	PUBLISHED
+}
 """
 A tile coordinate in the tower. level 0 is the bottom; x = column, y = row (row 0 on top).
 """
@@ -1127,6 +1216,15 @@ type Map {
 	Null if the finish is unreachable.
 	"""
 	forcedDescents: Int
+	"""
+	DRAFT maps are visible only to their owner and cannot be played or published by anyone else.
+	Every shipped map is PUBLISHED.
+	"""
+	status: MapStatus!
+	"""
+	True when the signed-in caller created this community map.
+	"""
+	ownedByMe: Boolean!
 }
 """
 Full map for the editor (admin only).
@@ -1151,6 +1249,15 @@ type AdminMap {
 	parMoves: Int
 	minLevelChanges: Int
 	forcedDescents: Int
+	"""
+	DRAFT maps are visible only to their owner and cannot be played or published by anyone else.
+	Every shipped map is PUBLISHED.
+	"""
+	status: MapStatus!
+	"""
+	True when the signed-in caller created this community map.
+	"""
+	ownedByMe: Boolean!
 }
 """
 What a player can see: one level only. Rows use the layout glyphs
@@ -1255,45 +1362,101 @@ input MapInput {
 	levels: [[String!]!]!
 	maxMoves: Int
 }
+"""
+The result of createSession. The ownerToken is returned only here and never by a query, a list or
+a subscription: it is the credential that lets this browser change the session, while the session
+id alone stays enough to read it.
+"""
+type CreateSessionResult {
+	session: Session!
+	"""
+	Secret that proves you created this session; keep it private.
+	"""
+	ownerToken: String!
+}
 scalar Time
 type Query {
 	"""
-	Public catalog. Never exposes layouts beyond the start level (see Map.preview).
+	Public catalog: published maps plus the signed-in caller's own drafts. Another player's draft
+	is never listed. Never exposes layouts beyond the start level (see Map.preview).
 	"""
 	maps: [Map!]!
+	"""
+	One map. Another player's draft is hidden and null, exactly like an unknown id.
+	"""
 	map(id: ID!): Map
 	"""
-	Admin (X-Admin-Key): the full layout of every level, for the map editor.
+	Full layout of every level, for the map editor. The signed-in owner may load
+	their own community map, draft or published; a shipped map still needs
+	X-Admin-Key. Another player's map is hidden and null.
 	"""
 	adminMap(id: ID!): AdminMap
+	"""
+	Public read: anyone with the id may watch a session.
+	"""
 	session(id: ID!): Session
 	sessions(sort: SessionSort = RECENT, limit: Int = 50, mapId: ID): [Session!]!
+	"""
+	Whether this caller may change the session (and so is its player rather than a spectator):
+	its creator by owner token or owning account, or anyone for a session created before owner
+	tokens. Reads stay public, so this decides between playing and spectating. Never errors: an
+	unknown id is simply false.
+	"""
+	canPlaySession(id: ID!, ownerToken: String): Boolean!
 }
 type Mutation {
-	createSession(mapID: ID!, displayName: String): Session!
-	deleteSession(id: ID!): Boolean!
-	renameSession(id: ID!, displayName: String!): Session!
 	"""
-	One move. A blocked attempt succeeds but changes nothing (lastEvent.blocked).
+	Start a new game on a map. A signed-in creator's session belongs to their account; the
+	response also carries the secret ownerToken needed to change it later, so keep it.
 	"""
-	move(sessionID: ID!, direction: Direction!): Session!
+	createSession(mapID: ID!, displayName: String): CreateSessionResult!
+	"""
+	Delete a session. Creator-only: pass the ownerToken from createSession or be signed in to the
+	owning account (FORBIDDEN otherwise). Sessions created before owner tokens stay open.
+	"""
+	deleteSession(id: ID!, ownerToken: String): Boolean!
+	renameSession(id: ID!, displayName: String!, ownerToken: String): Session!
+	"""
+	One move. A blocked attempt succeeds but changes nothing (lastEvent.blocked). Creator-only, as
+	deleteSession.
+	"""
+	move(sessionID: ID!, direction: Direction!, ownerToken: String): Session!
 	"""
 	Several moves in order; stops early once the game is WON or LOST. With stopOnBlocked (the
 	default) it also stops at the first blocked attempt, so a wrong plan cannot keep running
 	from the wrong tile: check lastEvent.blocked and state.pos, then send a corrected plan.
-	Pass stopOnBlocked: false to skip blocked moves and carry on.
+	Pass stopOnBlocked: false to skip blocked moves and carry on. Creator-only, as deleteSession.
 	"""
-	bulkMove(sessionID: ID!, directions: [Direction!]!, stopOnBlocked: Boolean = true): Session!
+	bulkMove(sessionID: ID!, directions: [Direction!]!, stopOnBlocked: Boolean = true, ownerToken: String): Session!
 	"""
-	Back to the start of the same map; keeps attempts and bestMoves.
+	Back to the start of the same map; keeps attempts and bestMoves. Creator-only, as
+	deleteSession.
 	"""
-	reset(sessionID: ID!): Session!
+	reset(sessionID: ID!, ownerToken: String): Session!
 	"""
-	Admin (X-Admin-Key) mutations.
+	Creates a DRAFT map owned by the signed-in player (UNAUTHENTICATED otherwise). A draft may be
+	saved while invalid; publishMap requires the finish to be reachable.
 	"""
 	createMap(map: MapInput!): AdminMap!
+	"""
+	Replaces the caller's community map and puts it back into DRAFT. Only the owner may edit a
+	community map; shipped and legacy unowned maps need X-Admin-Key.
+	"""
 	updateMap(map: MapInput!): AdminMap!
+	"""
+	Publishes a draft. Only its owner may do it, and a map whose finish is unreachable is refused
+	with INVALID_ARGUMENT.
+	"""
+	publishMap(id: ID!): AdminMap!
+	"""
+	Removes a map. Community maps need their owner; shipped and legacy unowned maps need
+	X-Admin-Key.
+	"""
 	deleteMap(id: ID!): Boolean!
+	"""
+	Checks a map and stores nothing. Signed-in players only. finishReachable is the publication
+	gate: a map is publishable when it is structurally valid and the finish can be reached.
+	"""
 	validateMap(map: MapInput!): MapValidationResult!
 }
 type Subscription {
@@ -1328,6 +1491,11 @@ func (ec *executionContext) field_Mutation_bulkMove_args(ctx context.Context, ra
 		return nil, err
 	}
 	args["stopOnBlocked"] = arg2
+	arg3, err := ec.field_Mutation_bulkMove_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg3
 	return args, nil
 }
 func (ec *executionContext) field_Mutation_bulkMove_argsSessionID(
@@ -1381,6 +1549,24 @@ func (ec *executionContext) field_Mutation_bulkMove_argsStopOnBlocked(
 	}
 
 	var zeroVal *bool
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Mutation_bulkMove_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
 	return zeroVal, nil
 }
 
@@ -1499,6 +1685,11 @@ func (ec *executionContext) field_Mutation_deleteSession_args(ctx context.Contex
 		return nil, err
 	}
 	args["id"] = arg0
+	arg1, err := ec.field_Mutation_deleteSession_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg1
 	return args, nil
 }
 func (ec *executionContext) field_Mutation_deleteSession_argsID(
@@ -1519,6 +1710,24 @@ func (ec *executionContext) field_Mutation_deleteSession_argsID(
 	return zeroVal, nil
 }
 
+func (ec *executionContext) field_Mutation_deleteSession_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
 func (ec *executionContext) field_Mutation_move_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -1532,6 +1741,11 @@ func (ec *executionContext) field_Mutation_move_args(ctx context.Context, rawArg
 		return nil, err
 	}
 	args["direction"] = arg1
+	arg2, err := ec.field_Mutation_move_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg2
 	return args, nil
 }
 func (ec *executionContext) field_Mutation_move_argsSessionID(
@@ -1570,6 +1784,52 @@ func (ec *executionContext) field_Mutation_move_argsDirection(
 	return zeroVal, nil
 }
 
+func (ec *executionContext) field_Mutation_move_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Mutation_publishMap_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Mutation_publishMap_argsID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	return args, nil
+}
+func (ec *executionContext) field_Mutation_publishMap_argsID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["id"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
+	if tmp, ok := rawArgs["id"]; ok {
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
 func (ec *executionContext) field_Mutation_renameSession_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -1583,6 +1843,11 @@ func (ec *executionContext) field_Mutation_renameSession_args(ctx context.Contex
 		return nil, err
 	}
 	args["displayName"] = arg1
+	arg2, err := ec.field_Mutation_renameSession_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg2
 	return args, nil
 }
 func (ec *executionContext) field_Mutation_renameSession_argsID(
@@ -1621,6 +1886,24 @@ func (ec *executionContext) field_Mutation_renameSession_argsDisplayName(
 	return zeroVal, nil
 }
 
+func (ec *executionContext) field_Mutation_renameSession_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
 func (ec *executionContext) field_Mutation_reset_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -1629,6 +1912,11 @@ func (ec *executionContext) field_Mutation_reset_args(ctx context.Context, rawAr
 		return nil, err
 	}
 	args["sessionID"] = arg0
+	arg1, err := ec.field_Mutation_reset_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg1
 	return args, nil
 }
 func (ec *executionContext) field_Mutation_reset_argsSessionID(
@@ -1646,6 +1934,24 @@ func (ec *executionContext) field_Mutation_reset_argsSessionID(
 	}
 
 	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Mutation_reset_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
 	return zeroVal, nil
 }
 
@@ -1758,6 +2064,57 @@ func (ec *executionContext) field_Query_adminMap_argsID(
 	}
 
 	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_canPlaySession_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Query_canPlaySession_argsID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	arg1, err := ec.field_Query_canPlaySession_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg1
+	return args, nil
+}
+func (ec *executionContext) field_Query_canPlaySession_argsID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["id"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
+	if tmp, ok := rawArgs["id"]; ok {
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_canPlaySession_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
 	return zeroVal, nil
 }
 
@@ -2714,6 +3071,208 @@ func (ec *executionContext) fieldContext_AdminMap_forcedDescents(_ context.Conte
 	return fc, nil
 }
 
+func (ec *executionContext) _AdminMap_status(ctx context.Context, field graphql.CollectedField, obj *model.AdminMap) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_AdminMap_status(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Status, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(model.MapStatus)
+	fc.Result = res
+	return ec.marshalNMapStatus2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapStatus(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_AdminMap_status(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "AdminMap",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type MapStatus does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _AdminMap_ownedByMe(ctx context.Context, field graphql.CollectedField, obj *model.AdminMap) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_AdminMap_ownedByMe(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.OwnedByMe, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_AdminMap_ownedByMe(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "AdminMap",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _CreateSessionResult_session(ctx context.Context, field graphql.CollectedField, obj *model.CreateSessionResult) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_CreateSessionResult_session(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Session, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.Session)
+	fc.Result = res
+	return ec.marshalNSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_CreateSessionResult_session(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "CreateSessionResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Session_id(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Session_displayName(ctx, field)
+			case "mapId":
+				return ec.fieldContext_Session_mapId(ctx, field)
+			case "map":
+				return ec.fieldContext_Session_map(ctx, field)
+			case "view":
+				return ec.fieldContext_Session_view(ctx, field)
+			case "state":
+				return ec.fieldContext_Session_state(ctx, field)
+			case "seq":
+				return ec.fieldContext_Session_seq(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Session_createdAt(ctx, field)
+			case "lastActionAt":
+				return ec.fieldContext_Session_lastActionAt(ctx, field)
+			case "attempts":
+				return ec.fieldContext_Session_attempts(ctx, field)
+			case "bestMoves":
+				return ec.fieldContext_Session_bestMoves(ctx, field)
+			case "lastEvent":
+				return ec.fieldContext_Session_lastEvent(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Session", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _CreateSessionResult_ownerToken(ctx context.Context, field graphql.CollectedField, obj *model.CreateSessionResult) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_CreateSessionResult_ownerToken(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.OwnerToken, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_CreateSessionResult_ownerToken(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "CreateSessionResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _GameState_pos(ctx context.Context, field graphql.CollectedField, obj *model.GameState) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_GameState_pos(ctx, field)
 	if err != nil {
@@ -3650,6 +4209,94 @@ func (ec *executionContext) fieldContext_Map_forcedDescents(_ context.Context, f
 	return fc, nil
 }
 
+func (ec *executionContext) _Map_status(ctx context.Context, field graphql.CollectedField, obj *model.Map) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Map_status(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Status, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(model.MapStatus)
+	fc.Result = res
+	return ec.marshalNMapStatus2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapStatus(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Map_status(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Map",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type MapStatus does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Map_ownedByMe(ctx context.Context, field graphql.CollectedField, obj *model.Map) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Map_ownedByMe(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.OwnedByMe, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Map_ownedByMe(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Map",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _MapValidationIssue_message(ctx context.Context, field graphql.CollectedField, obj *model.MapValidationIssue) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_MapValidationIssue_message(ctx, field)
 	if err != nil {
@@ -4396,9 +5043,9 @@ func (ec *executionContext) _Mutation_createSession(ctx context.Context, field g
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model.Session)
+	res := resTmp.(*model.CreateSessionResult)
 	fc.Result = res
-	return ec.marshalNSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
+	return ec.marshalNCreateSessionResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐCreateSessionResult(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Mutation_createSession(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -4409,32 +5056,12 @@ func (ec *executionContext) fieldContext_Mutation_createSession(ctx context.Cont
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
-			case "id":
-				return ec.fieldContext_Session_id(ctx, field)
-			case "displayName":
-				return ec.fieldContext_Session_displayName(ctx, field)
-			case "mapId":
-				return ec.fieldContext_Session_mapId(ctx, field)
-			case "map":
-				return ec.fieldContext_Session_map(ctx, field)
-			case "view":
-				return ec.fieldContext_Session_view(ctx, field)
-			case "state":
-				return ec.fieldContext_Session_state(ctx, field)
-			case "seq":
-				return ec.fieldContext_Session_seq(ctx, field)
-			case "createdAt":
-				return ec.fieldContext_Session_createdAt(ctx, field)
-			case "lastActionAt":
-				return ec.fieldContext_Session_lastActionAt(ctx, field)
-			case "attempts":
-				return ec.fieldContext_Session_attempts(ctx, field)
-			case "bestMoves":
-				return ec.fieldContext_Session_bestMoves(ctx, field)
-			case "lastEvent":
-				return ec.fieldContext_Session_lastEvent(ctx, field)
+			case "session":
+				return ec.fieldContext_CreateSessionResult_session(ctx, field)
+			case "ownerToken":
+				return ec.fieldContext_CreateSessionResult_ownerToken(ctx, field)
 			}
-			return nil, fmt.Errorf("no field named %q was found under type Session", field.Name)
+			return nil, fmt.Errorf("no field named %q was found under type CreateSessionResult", field.Name)
 		},
 	}
 	defer func() {
@@ -4465,7 +5092,7 @@ func (ec *executionContext) _Mutation_deleteSession(ctx context.Context, field g
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().DeleteSession(rctx, fc.Args["id"].(string))
+		return ec.resolvers.Mutation().DeleteSession(rctx, fc.Args["id"].(string), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -4520,7 +5147,7 @@ func (ec *executionContext) _Mutation_renameSession(ctx context.Context, field g
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().RenameSession(rctx, fc.Args["id"].(string), fc.Args["displayName"].(string))
+		return ec.resolvers.Mutation().RenameSession(rctx, fc.Args["id"].(string), fc.Args["displayName"].(string), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -4601,7 +5228,7 @@ func (ec *executionContext) _Mutation_move(ctx context.Context, field graphql.Co
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().Move(rctx, fc.Args["sessionID"].(string), fc.Args["direction"].(model.Direction))
+		return ec.resolvers.Mutation().Move(rctx, fc.Args["sessionID"].(string), fc.Args["direction"].(model.Direction), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -4682,7 +5309,7 @@ func (ec *executionContext) _Mutation_bulkMove(ctx context.Context, field graphq
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().BulkMove(rctx, fc.Args["sessionID"].(string), fc.Args["directions"].([]model.Direction), fc.Args["stopOnBlocked"].(*bool))
+		return ec.resolvers.Mutation().BulkMove(rctx, fc.Args["sessionID"].(string), fc.Args["directions"].([]model.Direction), fc.Args["stopOnBlocked"].(*bool), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -4763,7 +5390,7 @@ func (ec *executionContext) _Mutation_reset(ctx context.Context, field graphql.C
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().Reset(rctx, fc.Args["sessionID"].(string))
+		return ec.resolvers.Mutation().Reset(rctx, fc.Args["sessionID"].(string), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -4899,6 +5526,10 @@ func (ec *executionContext) fieldContext_Mutation_createMap(ctx context.Context,
 				return ec.fieldContext_AdminMap_minLevelChanges(ctx, field)
 			case "forcedDescents":
 				return ec.fieldContext_AdminMap_forcedDescents(ctx, field)
+			case "status":
+				return ec.fieldContext_AdminMap_status(ctx, field)
+			case "ownedByMe":
+				return ec.fieldContext_AdminMap_ownedByMe(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type AdminMap", field.Name)
 		},
@@ -4986,6 +5617,10 @@ func (ec *executionContext) fieldContext_Mutation_updateMap(ctx context.Context,
 				return ec.fieldContext_AdminMap_minLevelChanges(ctx, field)
 			case "forcedDescents":
 				return ec.fieldContext_AdminMap_forcedDescents(ctx, field)
+			case "status":
+				return ec.fieldContext_AdminMap_status(ctx, field)
+			case "ownedByMe":
+				return ec.fieldContext_AdminMap_ownedByMe(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type AdminMap", field.Name)
 		},
@@ -4998,6 +5633,97 @@ func (ec *executionContext) fieldContext_Mutation_updateMap(ctx context.Context,
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_updateMap_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_publishMap(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_publishMap(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().PublishMap(rctx, fc.Args["id"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.AdminMap)
+	fc.Result = res
+	return ec.marshalNAdminMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐAdminMap(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mutation_publishMap(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_AdminMap_id(ctx, field)
+			case "name":
+				return ec.fieldContext_AdminMap_name(ctx, field)
+			case "description":
+				return ec.fieldContext_AdminMap_description(ctx, field)
+			case "difficulty":
+				return ec.fieldContext_AdminMap_difficulty(ctx, field)
+			case "width":
+				return ec.fieldContext_AdminMap_width(ctx, field)
+			case "height":
+				return ec.fieldContext_AdminMap_height(ctx, field)
+			case "levelCount":
+				return ec.fieldContext_AdminMap_levelCount(ctx, field)
+			case "levels":
+				return ec.fieldContext_AdminMap_levels(ctx, field)
+			case "start":
+				return ec.fieldContext_AdminMap_start(ctx, field)
+			case "finish":
+				return ec.fieldContext_AdminMap_finish(ctx, field)
+			case "portals":
+				return ec.fieldContext_AdminMap_portals(ctx, field)
+			case "maxMoves":
+				return ec.fieldContext_AdminMap_maxMoves(ctx, field)
+			case "parMoves":
+				return ec.fieldContext_AdminMap_parMoves(ctx, field)
+			case "minLevelChanges":
+				return ec.fieldContext_AdminMap_minLevelChanges(ctx, field)
+			case "forcedDescents":
+				return ec.fieldContext_AdminMap_forcedDescents(ctx, field)
+			case "status":
+				return ec.fieldContext_AdminMap_status(ctx, field)
+			case "ownedByMe":
+				return ec.fieldContext_AdminMap_ownedByMe(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type AdminMap", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_publishMap_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -5468,6 +6194,10 @@ func (ec *executionContext) fieldContext_Query_maps(_ context.Context, field gra
 				return ec.fieldContext_Map_minLevelChanges(ctx, field)
 			case "forcedDescents":
 				return ec.fieldContext_Map_forcedDescents(ctx, field)
+			case "status":
+				return ec.fieldContext_Map_status(ctx, field)
+			case "ownedByMe":
+				return ec.fieldContext_Map_ownedByMe(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Map", field.Name)
 		},
@@ -5535,6 +6265,10 @@ func (ec *executionContext) fieldContext_Query_map(ctx context.Context, field gr
 				return ec.fieldContext_Map_minLevelChanges(ctx, field)
 			case "forcedDescents":
 				return ec.fieldContext_Map_forcedDescents(ctx, field)
+			case "status":
+				return ec.fieldContext_Map_status(ctx, field)
+			case "ownedByMe":
+				return ec.fieldContext_Map_ownedByMe(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Map", field.Name)
 		},
@@ -5619,6 +6353,10 @@ func (ec *executionContext) fieldContext_Query_adminMap(ctx context.Context, fie
 				return ec.fieldContext_AdminMap_minLevelChanges(ctx, field)
 			case "forcedDescents":
 				return ec.fieldContext_AdminMap_forcedDescents(ctx, field)
+			case "status":
+				return ec.fieldContext_AdminMap_status(ctx, field)
+			case "ownedByMe":
+				return ec.fieldContext_AdminMap_ownedByMe(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type AdminMap", field.Name)
 		},
@@ -5790,6 +6528,61 @@ func (ec *executionContext) fieldContext_Query_sessions(ctx context.Context, fie
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Query_sessions_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_canPlaySession(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Query_canPlaySession(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().CanPlaySession(rctx, fc.Args["id"].(string), fc.Args["ownerToken"].(*string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Query_canPlaySession(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_canPlaySession_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -6122,6 +6915,10 @@ func (ec *executionContext) fieldContext_Session_map(_ context.Context, field gr
 				return ec.fieldContext_Map_minLevelChanges(ctx, field)
 			case "forcedDescents":
 				return ec.fieldContext_Map_forcedDescents(ctx, field)
+			case "status":
+				return ec.fieldContext_Map_status(ctx, field)
+			case "ownedByMe":
+				return ec.fieldContext_Map_ownedByMe(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Map", field.Name)
 		},
@@ -8867,6 +9664,60 @@ func (ec *executionContext) _AdminMap(ctx context.Context, sel ast.SelectionSet,
 			out.Values[i] = ec._AdminMap_minLevelChanges(ctx, field, obj)
 		case "forcedDescents":
 			out.Values[i] = ec._AdminMap_forcedDescents(ctx, field, obj)
+		case "status":
+			out.Values[i] = ec._AdminMap_status(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "ownedByMe":
+			out.Values[i] = ec._AdminMap_ownedByMe(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var createSessionResultImplementors = []string{"CreateSessionResult"}
+
+func (ec *executionContext) _CreateSessionResult(ctx context.Context, sel ast.SelectionSet, obj *model.CreateSessionResult) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, createSessionResultImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("CreateSessionResult")
+		case "session":
+			out.Values[i] = ec._CreateSessionResult_session(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "ownerToken":
+			out.Values[i] = ec._CreateSessionResult_ownerToken(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -9062,6 +9913,16 @@ func (ec *executionContext) _Map(ctx context.Context, sel ast.SelectionSet, obj 
 			out.Values[i] = ec._Map_minLevelChanges(ctx, field, obj)
 		case "forcedDescents":
 			out.Values[i] = ec._Map_forcedDescents(ctx, field, obj)
+		case "status":
+			out.Values[i] = ec._Map_status(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "ownedByMe":
+			out.Values[i] = ec._Map_ownedByMe(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -9330,6 +10191,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "publishMap":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_publishMap(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "deleteMap":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_deleteMap(ctx, field)
@@ -9570,6 +10438,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 					}
 				}()
 				res = ec._Query_sessions(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "canPlaySession":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_canPlaySession(ctx, field)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
@@ -10132,6 +11022,20 @@ func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.Se
 	return res
 }
 
+func (ec *executionContext) marshalNCreateSessionResult2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐCreateSessionResult(ctx context.Context, sel ast.SelectionSet, v model.CreateSessionResult) graphql.Marshaler {
+	return ec._CreateSessionResult(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNCreateSessionResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐCreateSessionResult(ctx context.Context, sel ast.SelectionSet, v *model.CreateSessionResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._CreateSessionResult(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalNDirection2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐDirection(ctx context.Context, v any) (model.Direction, error) {
 	var res model.Direction
 	err := res.UnmarshalGQL(v)
@@ -10310,6 +11214,16 @@ func (ec *executionContext) marshalNMap2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋg
 func (ec *executionContext) unmarshalNMapInput2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapInput(ctx context.Context, v any) (model.MapInput, error) {
 	res, err := ec.unmarshalInputMapInput(ctx, v)
 	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) unmarshalNMapStatus2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapStatus(ctx context.Context, v any) (model.MapStatus, error) {
+	var res model.MapStatus
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNMapStatus2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapStatus(ctx context.Context, sel ast.SelectionSet, v model.MapStatus) graphql.Marshaler {
+	return v
 }
 
 func (ec *executionContext) marshalNMapValidationIssue2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐMapValidationIssueᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.MapValidationIssue) graphql.Marshaler {

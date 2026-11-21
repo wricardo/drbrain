@@ -6,16 +6,21 @@ package graph
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"sort"
 
+	cityconfig "github.com/wricardo/drbrain/games/delivery/game/config"
 	"github.com/wricardo/drbrain/games/delivery/game/engine"
 	"github.com/wricardo/drbrain/games/delivery/game/session"
 	"github.com/wricardo/drbrain/games/delivery/graph/generated"
 	"github.com/wricardo/drbrain/games/delivery/graph/model"
+	"github.com/wricardo/drbrain/platform/mapstore"
 )
 
 // CreateSession is the resolver for the createSession field.
-func (r *mutationResolver) CreateSession(ctx context.Context, id *string, seed *int) (*model.CreateSessionResult, error) {
+func (r *mutationResolver) CreateSession(ctx context.Context, id *string, seed *int, cityID *string) (*model.CreateSessionResult, error) {
 	var sid string
 	if id != nil {
 		sid = *id
@@ -29,10 +34,17 @@ func (r *mutationResolver) CreateSession(ctx context.Context, id *string, seed *
 	} else {
 		s = engine.RandomSeed()
 	}
+	var cid string
+	if cityID != nil {
+		cid = *cityID
+	}
 	// A signed-in creator owns the session; everyone else gets a guest save. The
 	// token is shown only in this response.
-	sess, token, err := r.Mgr.Create(sid, s, viewerID(ctx))
+	sess, token, err := r.Mgr.Create(sid, s, viewerID(ctx), cid)
 	if err != nil {
+		if errors.Is(err, session.ErrCityNotFound) {
+			return nil, codedErr(codeNotFound, err.Error())
+		}
 		return nil, errConflict(err.Error())
 	}
 	return &model.CreateSessionResult{
@@ -161,29 +173,13 @@ func (r *mutationResolver) TowCar(ctx context.Context, id string, carID string, 
 	return snapshotFrom(sess.Snapshot()), nil
 }
 
-// Build is the resolver for the build field.
-func (r *mutationResolver) Build(ctx context.Context, id string, buildID string, ownerToken *string) (*model.Snapshot, error) {
-	sess, err := r.authorize(ctx, id, ownerToken)
-	if err != nil {
-		return nil, err
-	}
-	var opErr error
-	sess.Do(func(w *engine.World) {
-		_, opErr = w.Build(buildID)
-	})
-	if opErr != nil {
-		return nil, errConflict(opErr.Error())
-	}
-	return snapshotFrom(sess.Snapshot()), nil
-}
-
 // SaveSession is the resolver for the saveSession field.
 func (r *mutationResolver) SaveSession(ctx context.Context, id string, ownerToken *string) (*model.Snapshot, error) {
 	sess, err := r.authorize(ctx, id, ownerToken)
 	if err != nil {
 		return nil, err
 	}
-	if err := sess.Save(r.Mgr.CityFileName()); err != nil {
+	if err := sess.Save(); err != nil {
 		return nil, err
 	}
 	return snapshotFrom(sess.Snapshot()), nil
@@ -198,7 +194,7 @@ func (r *mutationResolver) EvictSession(ctx context.Context, id string, ownerTok
 	if err != nil {
 		return false, err
 	}
-	if err := sess.Save(r.Mgr.CityFileName()); err != nil {
+	if err := sess.Save(); err != nil {
 		return false, err
 	}
 	r.Mgr.Evict(id)
@@ -246,18 +242,234 @@ func (r *mutationResolver) ClaimSessions(ctx context.Context, claims []*model.Se
 	return out, nil
 }
 
+// CreateCity is the resolver for the createCity field.
+func (r *mutationResolver) CreateCity(ctx context.Context, id string, config string) (*model.CityView, error) {
+	acct, err := requireViewer(ctx)
+	if err != nil {
+		return nil, err
+	}
+	catalog, err := r.catalogue()
+	if err != nil {
+		return nil, err
+	}
+	if !cityconfig.ValidID(id) {
+		return nil, codedErr(codeInvalidArgument, fmt.Sprintf("invalid city id %q", id))
+	}
+	cfg, err := parseDraftCity(config)
+	if err != nil {
+		return nil, err
+	}
+	if err := catalog.CreateDraft(id, cfg, acct.ID); err != nil {
+		return nil, cityCodedError(err)
+	}
+	entry, err := catalog.Get(id, acct.ID)
+	if err != nil {
+		return nil, cityCodedError(err)
+	}
+	return cityViewForEntry(entry, acct.ID)
+}
+
+// UpdateCity is the resolver for the updateCity field.
+func (r *mutationResolver) UpdateCity(ctx context.Context, id string, config string) (*model.CityView, error) {
+	acct, err := requireViewer(ctx)
+	if err != nil {
+		return nil, err
+	}
+	catalog, err := r.catalogue()
+	if err != nil {
+		return nil, err
+	}
+	entry, err := catalog.Get(id, acct.ID)
+	if err != nil {
+		return nil, cityCodedError(err)
+	}
+
+	admin := false
+	switch {
+	case entry.Builtin || entry.OwnerID == "":
+		// Shipped and legacy ownerless cities are maintenance assets.
+		if err := r.requireAdmin(ctx); err != nil {
+			return nil, err
+		}
+		admin = true
+	case entry.OwnerID != acct.ID:
+		return nil, codedErr(codeForbidden, "only this city's owner may edit it")
+	}
+
+	cfg, err := parseDraftCity(config)
+	if err != nil {
+		return nil, err
+	}
+	// An admin edit keeps a published legacy row published (mapstore semantics),
+	// so that path must remain fully simulatable. Community owner edits become
+	// DRAFT and stay structural.
+	if admin && !entry.Builtin && entry.Status == mapstore.StatusPublished {
+		if err := engine.ValidateCityConfig(cfg); err != nil {
+			return nil, codedErr(codeInvalidArgument, err.Error())
+		}
+	}
+	updated, err := catalog.SaveOwned(id, cfg, cityconfig.Actor{AccountID: acct.ID, Admin: admin})
+	if err != nil {
+		return nil, cityCodedError(err)
+	}
+	return cityViewForEntry(updated, acct.ID)
+}
+
+// PublishCity is the resolver for the publishCity field.
+func (r *mutationResolver) PublishCity(ctx context.Context, id string) (*model.CityView, error) {
+	acct, err := requireViewer(ctx)
+	if err != nil {
+		return nil, err
+	}
+	catalog, err := r.catalogue()
+	if err != nil {
+		return nil, err
+	}
+	entry, err := catalog.Get(id, acct.ID)
+	if err != nil {
+		return nil, cityCodedError(err)
+	}
+	if entry.Builtin {
+		return nil, codedErr(codeInvalidArgument, "shipped cities are already published")
+	}
+	if entry.OwnerID == "" || entry.OwnerID != acct.ID {
+		return nil, codedErr(codeForbidden, "only this city's owner may publish it")
+	}
+	published, err := catalog.Publish(id, cityconfig.Actor{AccountID: acct.ID})
+	if err != nil {
+		return nil, cityCodedError(err)
+	}
+	return cityViewForEntry(published, acct.ID)
+}
+
+// DeleteCity is the resolver for the deleteCity field.
+func (r *mutationResolver) DeleteCity(ctx context.Context, id string) (bool, error) {
+	acct, err := requireViewer(ctx)
+	if err != nil {
+		return false, err
+	}
+	catalog, err := r.catalogue()
+	if err != nil {
+		return false, err
+	}
+	entry, err := catalog.Get(id, acct.ID)
+	if err != nil {
+		return false, cityCodedError(err)
+	}
+
+	admin := false
+	switch {
+	case entry.Builtin || entry.OwnerID == "":
+		if err := r.requireAdmin(ctx); err != nil {
+			return false, err
+		}
+		admin = true
+	case entry.OwnerID != acct.ID:
+		return false, codedErr(codeForbidden, "only this city's owner may delete it")
+	}
+	if err := catalog.DeleteOwned(id, cityconfig.Actor{AccountID: acct.ID, Admin: admin}); err != nil {
+		return false, cityCodedError(err)
+	}
+	return true, nil
+}
+
+// ValidateCity is the resolver for the validateCity field.
+//
+// It never stores anything and never errors for bad city content: an invalid
+// document is a result with valid=false and its issues, so an editor can show
+// every problem.
+func (r *mutationResolver) ValidateCity(ctx context.Context, config string) (*model.CityValidationResult, error) {
+	if _, err := requireViewer(ctx); err != nil {
+		return nil, err
+	}
+	cfg, err := engine.DecodeCityConfig([]byte(config))
+	if err != nil {
+		return &model.CityValidationResult{Valid: false, Publishable: false, Issues: []string{err.Error()}}, nil
+	}
+	if err := engine.ValidateCityConfigStructural(cfg); err != nil {
+		return &model.CityValidationResult{Valid: false, Publishable: false, Issues: []string{err.Error()}}, nil
+	}
+	if err := engine.ValidateCityConfig(cfg); err != nil {
+		return &model.CityValidationResult{Valid: true, Publishable: false, Issues: []string{err.Error()}}, nil
+	}
+	return &model.CityValidationResult{Valid: true, Publishable: true, Issues: []string{}}, nil
+}
+
 // Health is the resolver for the health field.
 func (r *queryResolver) Health(ctx context.Context) (*model.Health, error) {
 	return &model.Health{Status: "ok"}, nil
 }
 
-// City is the resolver for the city field.
-func (r *queryResolver) City(ctx context.Context) (*model.CityView, error) {
-	city, _, err := engine.CityFromFile(r.Mgr.CityFile())
+// Cities is the resolver for the cities field.
+func (r *queryResolver) Cities(ctx context.Context) ([]*model.CityInfo, error) {
+	catalog, err := r.catalogue()
 	if err != nil {
 		return nil, err
 	}
-	return cityFrom(session.CityOnlyView(city)), nil
+	viewer := viewerID(ctx)
+	list, err := catalog.ListFor(viewer)
+	if err != nil {
+		return nil, cityCodedError(err)
+	}
+	out := make([]*model.CityInfo, 0, len(list))
+	for _, entry := range list {
+		out = append(out, cityInfoFrom(entry, viewer))
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}
+
+// City is the resolver for the city field.
+//
+// An omitted id selects the default city. A missing city or another player's
+// draft is null rather than an error, matching the schema's nullable field.
+func (r *queryResolver) City(ctx context.Context, id *string) (*model.CityView, error) {
+	catalog, err := r.catalogue()
+	if err != nil {
+		return nil, err
+	}
+	cityID := ""
+	if id != nil {
+		cityID = *id
+	}
+	if cityID == "" {
+		cityID = catalog.DefaultID()
+	}
+	viewer := viewerID(ctx)
+	entry, err := catalog.Get(cityID, viewer)
+	if err != nil {
+		if errors.Is(err, cityconfig.ErrNotFound) {
+			return nil, nil
+		}
+		return nil, cityCodedError(err)
+	}
+	return cityViewForEntry(entry, viewer)
+}
+
+// CityConfig is the resolver for the cityConfig field.
+//
+// It returns the decoded, defaulted city document for a published city, a
+// builtin, or the caller's own draft. Another player's draft is null, exactly
+// like a missing city. The document is JSON-marshalled from the catalogue's
+// CityConfig, so its keys are the ones players author.
+func (r *queryResolver) CityConfig(ctx context.Context, id string) (*string, error) {
+	catalog, err := r.catalogue()
+	if err != nil {
+		return nil, err
+	}
+	entry, err := catalog.Get(id, viewerID(ctx))
+	if err != nil {
+		if errors.Is(err, cityconfig.ErrNotFound) {
+			return nil, nil
+		}
+		return nil, cityCodedError(err)
+	}
+	raw, err := json.Marshal(entry.Config)
+	if err != nil {
+		return nil, codedErr(codeInternal, fmt.Sprintf("encode city %q: %v", id, err))
+	}
+	text := string(raw)
+	return &text, nil
 }
 
 // Sessions is the resolver for the sessions field.
@@ -265,6 +477,13 @@ func (r *queryResolver) Sessions(ctx context.Context) ([]*model.SessionSummary, 
 	list := r.Mgr.List()
 	out := make([]*model.SessionSummary, 0, len(list))
 	for _, s := range list {
+		visible, err := r.sessionCityVisible(ctx, s.CityID)
+		if err != nil {
+			return nil, err
+		}
+		if !visible {
+			continue
+		}
 		out = append(out, r.summaryView(ctx, s))
 	}
 	return out, nil
@@ -272,7 +491,7 @@ func (r *queryResolver) Sessions(ctx context.Context) ([]*model.SessionSummary, 
 
 // Session is the resolver for the session field.
 func (r *queryResolver) Session(ctx context.Context, id string) (*model.Snapshot, error) {
-	sess, err := r.load(id)
+	sess, err := r.load(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -285,7 +504,7 @@ func (r *queryResolver) Session(ctx context.Context, id string) (*model.Snapshot
 // client with a large map wants: it returns the local terrain, the cars in
 // view and the nearby open orders instead of the whole snapshot.
 func (r *queryResolver) CarView(ctx context.Context, id string, carID string, radius int) (*model.CarWindow, error) {
-	sess, err := r.load(id)
+	sess, err := r.load(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -380,7 +599,7 @@ func (r *queryResolver) CarView(ctx context.Context, id string, carID string, ra
 
 // Events is the resolver for the events field.
 func (r *queryResolver) Events(ctx context.Context, id string, sinceTick int) ([]*model.EventView, error) {
-	sess, err := r.load(id)
+	sess, err := r.load(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -412,6 +631,10 @@ func (r *queryResolver) CanPlaySession(ctx context.Context, id string, ownerToke
 		}
 		return false, err
 	}
+	visible, err := r.sessionCityVisible(ctx, sess.CityID())
+	if err != nil || !visible {
+		return false, err
+	}
 	return sess.CanPlay(actor(ctx, ownerToken)), nil
 }
 
@@ -425,7 +648,7 @@ func (r *queryResolver) CanPlaySession(ctx context.Context, id string, ownerToke
 // would show an empty screen for a full tick on a running clock — and forever
 // on a paused one, which is the default state.
 func (r *subscriptionResolver) Session(ctx context.Context, id string) (<-chan *model.Snapshot, error) {
-	sess, err := r.load(id)
+	sess, err := r.load(ctx, id)
 	if err != nil {
 		return nil, err
 	}

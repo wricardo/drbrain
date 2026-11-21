@@ -21,7 +21,8 @@ const STYLES: Record<string, GlyphStyle> = {
 	D: { cls: 'bg-[var(--color-depot)]', label: 'Depot — parks and recharges fast', passable: true },
 	C: { cls: 'bg-[var(--color-charger)]', label: 'Charger', passable: true },
 	K: { cls: 'bg-[var(--color-kitchen)]', label: 'Kitchen — pickup', passable: true },
-	H: { cls: 'bg-[var(--color-customer)]', label: 'Customer — dropoff', passable: true },
+	H: { cls: 'bg-[var(--color-customer)]', label: 'Customer — waiting for a delivery', passable: true },
+	h: { cls: 'bg-[var(--color-customer)]/20', label: 'House — nobody waiting right now', passable: true },
 	'?': { cls: 'bg-surface-muted border border-dashed border-edge-faint', label: 'Unexplored — impassable', passable: false }
 };
 

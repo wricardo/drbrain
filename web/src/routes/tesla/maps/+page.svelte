@@ -2,7 +2,7 @@
 	import { getContextClient, queryStore, gql } from '@urql/svelte';
 	import { goto } from '$app/navigation';
 	import { MAPS_QUERY } from '$lib/tesla/queries';
-	import { prettyMapName, sortMaps, type MapLayout, type MapSummary } from '$lib/tesla/maps';
+	import { isDraft, prettyMapName, sortMaps, type MapLayout, type MapSummary } from '$lib/tesla/maps';
 	import { fetchMapLayout } from '$lib/tesla/mapData';
 	import { createGameSession } from '$lib/tesla/createSession';
 	import type { StartSettings } from '$lib/tesla/startSettings';
@@ -13,6 +13,7 @@
 	const mapsResult = queryStore({ client, query: gql(MAPS_QUERY) });
 
 	const maps = $derived<MapSummary[]>(sortMaps($mapsResult?.data?.maps ?? []));
+	const draftCount = $derived(maps.filter((m) => isDraft(m)).length);
 
 	// undefined = loading, null = failed.
 	let previews = $state<Record<string, MapLayout | null>>({});
@@ -85,6 +86,9 @@
 				<h1 class="text-4xl lg:text-5xl font-light text-[#171a20] tracking-tight mb-4">Choose your road trip</h1>
 				<p class="text-lg text-gray-500 font-light max-w-2xl">
 					Compare routes, chargers, parks and obstacles at a glance, then press Play to start a session.
+					{#if draftCount > 0}
+						Your unpublished drafts are listed first; only you can see or play them.
+					{/if}
 				</p>
 			</div>
 			<div class="flex flex-wrap gap-3">
@@ -99,7 +103,7 @@
 		<div>
 			<h2 class="text-xl font-light text-[#393c41]">All maps</h2>
 			<p class="text-sm text-gray-500 mt-0.5">
-				{visible.length}{visible.length === maps.length ? '' : ` of ${maps.length}`} maps · smallest first{#if loadingPreviews} · loading previews…{/if}
+				{visible.length}{visible.length === maps.length ? '' : ` of ${maps.length}`} maps · drafts first, then smallest{#if loadingPreviews} · loading previews…{/if}
 			</p>
 		</div>
 		<input

@@ -13,38 +13,41 @@ package engine
 // district reveals, achievement flags and the order spawner's memory were all
 // lost across a reload while every individual setter looked correct.
 //
-// City mutations are NOT stored a second time. Built names the completed builds
-// and ImportState replays their effects, so there is exactly one description of
-// what a build does: the city config.
+// City mutations are NOT stored a second time. ImportState replays every growth
+// stage due by the saved tick, so there is exactly one description of what a
+// stage does: the city config.
 
 // SavedState is the restartable half of a World: everything that is not derived
 // from the city file.
 type SavedState struct {
-	Tick   int64   `json:"tick"`
-	Seed   uint64  `json:"seed"`
+	// Tick is the number of completed ticks; a restore resumes at this tick.
+	Tick int64 `json:"tick"`
+	// Seed drives every deterministic decision, so a save without it cannot
+	// replay.
+	Seed uint64 `json:"seed"`
+	// Ledger is the cash, reputation and achievement state.
 	Ledger *Ledger `json:"ledger"`
 
+	// Cars and Orders are deep copies taken by ExportState, so serialising them
+	// does not race the ticker.
 	Cars   []*Car   `json:"cars"`
 	Orders []*Order `json:"orders"`
 
+	// NextCarSeq and OrderSeq keep generated ids unique after a restore.
 	NextCarSeq int `json:"next_car_seq"`
 	OrderSeq   int `json:"order_seq"`
 
-	// Built is the authoritative record of what the city has become. Permitted
-	// and BuyableClasses are the economy half of progression; Achievements
-	// records which one-shot triggers already fired, so reloading cannot pay
-	// their rewards a second time.
-	Built          map[string]bool `json:"built"`
-	Permitted      map[string]bool `json:"permitted"`
-	BuyableClasses map[string]bool `json:"buyable_classes"`
-	Achievements   map[string]bool `json:"achievements"`
+	// Growth is deliberately NOT stored: stage application is a pure function
+	// of the tick, so ImportState replays every stage due by the saved tick and
+	// derives districts, roads, licensed classes and chargers from the content.
 
-	// Order spawner memory. Without it a reload cannot tell a fresh city from a
-	// resumed one, so every reload raised the forced first order again.
+	// Order spawner memory. Without it a reload looks like a fresh city and
+	// re-raises the forced first order.
 	NextEligibleTick map[string]int64 `json:"next_eligible_tick"`
 	LastSpawnTick    int64            `json:"last_spawn_tick"`
 	HasSpawned       bool             `json:"has_spawned"`
 
+	// Events is the retained feed, newest last.
 	Events []Event `json:"events"`
 }
 
@@ -61,10 +64,6 @@ func (w *World) ExportState() SavedState {
 		Orders:           make([]*Order, len(w.Orders)),
 		NextCarSeq:       w.NextCarSeq,
 		OrderSeq:         w.orderSeq,
-		Built:            cloneBoolMap(w.built),
-		Permitted:        cloneBoolMap(w.permitted),
-		BuyableClasses:   cloneBoolMap(w.buyableClasses),
-		Achievements:     map[string]bool{},
 		NextEligibleTick: make(map[string]int64, len(w.spawn.NextEligibleTick)),
 		LastSpawnTick:    w.spawn.LastSpawnTick,
 		HasSpawned:       w.spawn.HasSpawned,
@@ -77,36 +76,42 @@ func (w *World) ExportState() SavedState {
 		cp := *o
 		s.Orders[i] = &cp
 	}
-	for i := range w.achievements {
-		if w.achievements[i].Done {
-			s.Achievements[w.achievements[i].ID] = true
-		}
-	}
 	for k, v := range w.spawn.NextEligibleTick {
 		s.NextEligibleTick[k] = v
 	}
 	return s
 }
 
-// ImportState restores a world from a saved state. The world must have been
-// built from the same city file as the save.
+// ImportState restores the mutable half of a world from a save. The city is
+// NOT part of SavedState: the caller must build it from the same city file
+// first, because growth, terrain and fog are reconstructed from that content.
+//
+// Most restored state is derived rather than trusted: growth stages due by
+// s.Tick are replayed, closure windows are re-derived from (Seed, Tick) and the
+// current fog, Ledger.Months is rebuilt from Cash, each car's box load is
+// recomputed from its cargo, and NextCashSeq is backfilled for saves written
+// before the cash ledger existed. The error return is currently always nil.
 func (w *World) ImportState(s SavedState) error {
-	// Geography first, in config order so the result is deterministic.
-	for _, b := range w.builds {
-		if !s.Built[b.ID] {
-			continue
-		}
-		if err := w.City.applyEffects(b.Effects); err != nil {
-			return err
-		}
-	}
-
 	if s.Ledger != nil {
 		w.Ledger = s.Ledger
 	}
 	if w.Ledger.DeliveriesByItem == nil {
 		w.Ledger.DeliveriesByItem = map[string]int{}
 	}
+	// Saves written before the cash ledger existed have no NextCashSeq. Start
+	// at 1 and step past any seq already present so a restored session can
+	// never hand out a duplicate entry id.
+	if w.Ledger.NextCashSeq < 1 {
+		w.Ledger.NextCashSeq = 1
+	}
+	for _, e := range w.Ledger.Cash {
+		if e.Seq >= w.Ledger.NextCashSeq {
+			w.Ledger.NextCashSeq = e.Seq + 1
+		}
+	}
+	// Monthly summaries are derived, not saved. Rebuilding from Cash also
+	// backfills sessions written before the report existed.
+	w.Ledger.rebuildCashMonths(w.ticksPerMonth)
 	if s.Cars != nil {
 		w.Cars = s.Cars
 	}
@@ -117,9 +122,14 @@ func (w *World) ImportState(s SavedState) error {
 	w.Tick = s.Tick
 	w.NextCarSeq = s.NextCarSeq
 	w.orderSeq = s.OrderSeq
-	w.built = orEmpty(s.Built)
-	w.permitted = orEmpty(s.Permitted)
-	w.buyableClasses = orEmpty(s.BuyableClasses)
+
+	// The city is rebuilt, not restored: growth is a pure function of the tick,
+	// so replaying every stage due by this tick reproduces the same districts,
+	// roads, chargers and licensed classes. Events produced by the replay are
+	// overwritten when the saved log is restored below.
+	w.growthApplied = 0
+	w.buyableClasses = map[string]bool{}
+	w.applyGrowth()
 
 	w.spawn.NextEligibleTick = orEmptyInt64(s.NextEligibleTick)
 	w.spawn.LastSpawnTick = s.LastSpawnTick
@@ -138,13 +148,6 @@ func (w *World) ImportState(s SavedState) error {
 		}
 	}
 
-	for i := range w.achievements {
-		w.achievements[i].Done = s.Achievements[w.achievements[i].ID]
-	}
-	for i := range w.unlocks {
-		w.unlocks[i].Earned = w.permitted[buildOfUnlock(&w.unlocks[i])]
-	}
-
 	if s.Events != nil {
 		w.Events = s.Events
 	}
@@ -158,41 +161,30 @@ func (w *World) ImportState(s SavedState) error {
 	return nil
 }
 
-// Grant permits builds and car classes without charging for them. It exists for
-// tests and tooling that need a progressed world directly; gameplay reaches
-// these states through progression.
-func (w *World) Grant(permittedBuilds, buyableClasses []string) {
-	for _, id := range permittedBuilds {
-		w.permitted[id] = true
-	}
-	for _, class := range buyableClasses {
+// GrantClasses licenses car classes without running the growth schedule. It
+// exists for tests and tooling that need a progressed world directly; gameplay
+// reaches these states through scheduled growth.
+func (w *World) GrantClasses(classes []string) {
+	for _, class := range classes {
 		w.buyableClasses[class] = true
 	}
 }
 
-// Clone returns a deep copy of the ledger, including its per-item counters.
+// Clone returns a deep copy of the ledger, including its per-item counters,
+// cash statement and the monthly summaries derived from it.
 func (l *Ledger) Clone() Ledger {
 	out := *l
 	out.DeliveriesByItem = make(map[string]int, len(l.DeliveriesByItem))
 	for k, v := range l.DeliveriesByItem {
 		out.DeliveriesByItem[k] = v
 	}
-	return out
-}
-
-func cloneBoolMap(m map[string]bool) map[string]bool {
-	out := make(map[string]bool, len(m))
-	for k, v := range m {
-		out[k] = v
+	out.Cash = append([]CashEntry(nil), l.Cash...)
+	out.Months = make([]MonthSummary, len(l.Months))
+	for i := range l.Months {
+		out.Months[i] = l.Months[i]
+		out.Months[i].Categories = append([]MonthCategory(nil), l.Months[i].Categories...)
 	}
 	return out
-}
-
-func orEmpty(m map[string]bool) map[string]bool {
-	if m == nil {
-		return map[string]bool{}
-	}
-	return m
 }
 
 func orEmptyInt64(m map[string]int64) map[string]int64 {

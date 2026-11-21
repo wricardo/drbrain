@@ -1,8 +1,15 @@
 /**
- * Edit tokens let a browser update or delete the maps it created without any
- * account system: the server returns the token once from createMap, and we keep
- * it locally. Losing it means the map can only be changed by an admin, so we
- * never silently drop an entry for a map that still exists.
+ * Legacy edit tokens.
+ *
+ * Maps created since accounts became required are owned by the signed-in
+ * player and need no token. Only a map created before that change is
+ * ownerless, and the token the server returned once from `createMap` is the
+ * proof `claimMap` accepts to attach it to an account (until then the token
+ * also authorizes updateMap/deleteMap).
+ *
+ * Tokens are never dropped silently: losing one means the map can only be
+ * changed by an admin, so an entry is forgotten only after a successful claim
+ * or a delete.
  */
 const STORAGE_KEY = 'tesla-road-trip.mapEditKeys';
 
@@ -47,12 +54,12 @@ function writeAll(keys: KeyMap) {
 	}
 }
 
-/** Returns the stored edit token for a map, or null. */
+/** Returns the stored legacy edit token for a map, or null. */
 export function getMapEditKey(mapId: string): string | null {
 	return readAll()[mapId] ?? null;
 }
 
-/** Stores the edit token returned by createMap. */
+/** Stores a legacy edit token (only the server's createMap transfer path returns one). */
 export function setMapEditKey(mapId: string, editKey: string) {
 	if (!mapId || !editKey) return;
 	const keys = readAll();
@@ -60,7 +67,10 @@ export function setMapEditKey(mapId: string, editKey: string) {
 	writeAll(keys);
 }
 
-/** Forgets the token for a map (after it is deleted). */
+/**
+ * Forgets the token for a map after it is deleted, or after claimMap attached
+ * the map to an account (ownership replaces the token).
+ */
 export function forgetMapEditKey(mapId: string) {
 	const keys = readAll();
 	if (!(mapId in keys)) return;
@@ -68,17 +78,17 @@ export function forgetMapEditKey(mapId: string) {
 	writeAll(keys);
 }
 
-/** True when this browser holds a token for the map. */
+/** True when this browser holds a legacy token that may claim the map. */
 export function canEditMap(mapId: string): boolean {
 	return Boolean(getMapEditKey(mapId));
 }
 
 /**
- * Turns a GraphQL error into a message that tells the user what to do next.
- * The server's authorization errors are already actionable, so they pass through.
+ * Turns a GraphQL error into a message the user can act on. The server's
+ * authorization and validation errors are already actionable, so they pass
+ * through unchanged; this is the single place to soften wording later.
  */
 export function mapSaveErrorMessage(error: unknown): string {
 	const message = error instanceof Error ? error.message : String(error ?? 'Unknown error');
-	if (/edit token|editKey|already exists|built-in/i.test(message)) return message;
 	return message;
 }

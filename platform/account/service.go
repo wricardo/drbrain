@@ -121,27 +121,45 @@ type Service struct {
 	opts  Options
 	store Repository
 	mu    sync.RWMutex
-	onDel func(string) error
+	onDel []func(string) error
 }
 
 // New returns the account service. A nil store keeps sign-in disabled: every
 // mutating method reports FORBIDDEN and lookups return not-found.
 func New(opts Options) *Service {
-	return &Service{opts: opts, store: opts.Store, onDel: opts.OnDelete}
+	s := &Service{opts: opts, store: opts.Store}
+	if opts.OnDelete != nil {
+		s.onDel = []func(string) error{opts.OnDelete}
+	}
+	return s
 }
 
-// SetOnDelete installs the game hook that detaches data before an account row
-// disappears. Later calls replace it.
+// SetOnDelete replaces every registered delete hook with fn (nil clears them).
 func (s *Service) SetOnDelete(fn func(string) error) {
 	s.mu.Lock()
-	s.onDel = fn
+	if fn == nil {
+		s.onDel = nil
+	} else {
+		s.onDel = []func(string) error{fn}
+	}
 	s.mu.Unlock()
 }
 
-func (s *Service) deleteHook() func(string) error {
+// AddOnDelete appends a hook. Hooks run in registration order before the
+// account row disappears.
+func (s *Service) AddOnDelete(fn func(string) error) {
+	if fn == nil {
+		return
+	}
+	s.mu.Lock()
+	s.onDel = append(s.onDel, fn)
+	s.mu.Unlock()
+}
+
+func (s *Service) deleteHooks() []func(string) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.onDel
+	return append([]func(string) error(nil), s.onDel...)
 }
 
 // Enabled reports whether accounts are configured.
@@ -339,9 +357,11 @@ func (s *Service) UpdateAccount(id string, u AccountUpdate) (*Account, error) {
 	return &a, nil
 }
 
-// DeleteAccount removes the account and its logins. The OnDelete hook runs
-// first so each game can detach its own data (for motor: sessions become guest
-// runs under a fresh random name).
+// DeleteAccount removes the account and its logins. Every OnDelete hook runs
+// first, in registration order, so each game can detach its own data (for
+// motor: sessions become guest runs under a fresh random name). All hooks run
+// even when one fails; their failures are joined and returned, and the account
+// is kept.
 func (s *Service) DeleteAccount(id string) error {
 	if s.store == nil {
 		return errAccountsOff()
@@ -349,10 +369,14 @@ func (s *Service) DeleteAccount(id string) error {
 	if _, ok := s.store.Get(id); !ok {
 		return errs.Errorf(errs.CodeNotFound, "account not found")
 	}
-	if fn := s.deleteHook(); fn != nil {
+	var failures []error
+	for _, fn := range s.deleteHooks() {
 		if err := fn(id); err != nil {
-			return err
+			failures = append(failures, err)
 		}
+	}
+	if len(failures) > 0 {
+		return errors.Join(failures...)
 	}
 	return s.store.Delete(id)
 }

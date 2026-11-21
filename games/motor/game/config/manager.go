@@ -1,216 +1,475 @@
-// Package config loads, lists and saves map files (maps/*.json).
+// Package config loads, lists and saves maps for the Motor game. Shipped maps
+// stay files in Options.Dir; player-created maps live in platform_maps through
+// platform/mapstore, which owns the ownership, draft and quota rules. Without a
+// PostgreSQL pool the manager falls back to mapstore's file mode for builtins
+// and CLI/tests.
 package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/wricardo/drbrain/games/motor/game/engine"
 	"github.com/wricardo/drbrain/games/motor/game/service"
-	"github.com/wricardo/drbrain/games/motor/internal/fsutil"
+	"github.com/wricardo/drbrain/games/motor/validate"
+	"github.com/wricardo/drbrain/platform/mapstore"
 )
+
+// game is the platform_maps partition for Motor.
+const game = "motor"
 
 // Options configures a Manager.
 type Options struct {
-	// Dir holds the shipped maps. When UserDir is set these are read-only
-	// through the API (only an admin may change them).
+	// Dir holds the shipped maps. They are files and are read-only through the
+	// API unless the caller is an admin.
 	Dir string
-	// UserDir holds maps created through the API. Empty means Dir is
-	// writable and nothing is read-only.
+	// UserDir is the legacy file directory for community maps. It is used only
+	// when Pool is nil (CLI and file-only tests). Production must use Pool.
+	//
+	// Deprecated: player maps belong in platform_maps.
 	UserDir string
-	// UserStore keeps the player-created maps in a database instead of UserDir.
-	// When set, UserDir is ignored: shipped maps stay files, everything else is
-	// in the store.
+	// UserStore was the legacy PostgreSQL map store. NewManager rejects it;
+	// pass Pool instead. The type remains for the deprecated
+	// PostgresUserMaps import path and its tests.
+	//
+	// Deprecated: use Pool.
 	UserStore UserStore
-	// MaxUserMaps caps how many player maps may exist (0 = no cap).
+	// MaxUserMaps caps how many custom maps Motor may have (0 = no cap).
 	MaxUserMaps int
+	// Pool enables platform_maps for player maps. Nil keeps the legacy
+	// file-backed mode for builtins-only use and tests.
+	Pool *pgxpool.Pool
 }
 
-// UserStore persists player-created maps. Manager keeps them in memory and
-// writes through, so a store only needs these three calls.
+// UserStore persists player-created maps for the legacy maps table.
+//
+// Deprecated: Manager reads and writes platform_maps through Pool.
 type UserStore interface {
-	// List returns every stored map config. The Manager validates each one and
-	// skips what does not parse.
 	List() ([]engine.MapConfig, error)
-	// Put inserts or replaces the map.
 	Put(cfg engine.MapConfig) error
-	// Delete removes the map; an unknown id is not an error.
 	Delete(id string) error
 }
 
-// Manager is a file-backed service.MapStore. All maps are held in memory and
-// guarded by an RWMutex; callers always receive deep copies.
+// Manager is a service.MapStore backed by platform/mapstore.
 type Manager struct {
 	opts    Options
-	mu      sync.RWMutex
-	maps    map[string]*engine.Map
-	builtin map[string]bool // ids loaded from opts.Dir
+	store   *mapstore.Store[engine.MapConfig]
+	pg      bool
+	builtin map[string]bool // ids shipped at startup; runtime files in Dir are not shipped
 }
 
 var _ service.MapStore = (*Manager)(nil)
 
-// NewManager loads every *.json file in opts.Dir (and opts.UserDir, creating
-// it if missing). An invalid shipped map, or one whose id differs from its
-// file name, is a fatal error naming the file; an invalid user map is logged
-// and skipped, so one bad file cannot take the server down.
+// NewManager opens the map catalogue. Shipped maps are validated eagerly so a
+// bad file fails startup; corrupt player rows are skipped by the store.
 //
-// A user map whose id matches a shipped map shadows it.
+// Without Pool it uses mapstore's file mode (UserDir when set, otherwise Dir
+// itself), which is useful for `go test` and CLI tools but carries no ownership
+// metadata.
 func NewManager(opts Options) (*Manager, error) {
 	if opts.Dir == "" {
 		return nil, fmt.Errorf("create maps manager: Dir is required")
 	}
-	m := &Manager{opts: opts, maps: make(map[string]*engine.Map), builtin: make(map[string]bool)}
-	if err := m.load(opts.Dir, true); err != nil {
+	if opts.Pool == nil && opts.UserStore != nil {
+		return nil, fmt.Errorf("create maps manager: UserStore is deprecated; pass Pool")
+	}
+	if err := os.MkdirAll(opts.Dir, 0o755); err != nil {
+		return nil, fmt.Errorf("create maps dir: %w", err)
+	}
+	builtin, err := loadBuiltins(opts.Dir)
+	if err != nil {
 		return nil, err
 	}
-	switch {
-	case opts.UserStore != nil:
-		if err := m.loadStore(opts.UserStore); err != nil {
-			return nil, err
-		}
-	case opts.UserDir != "":
-		if err := m.load(opts.UserDir, false); err != nil {
-			return nil, err
-		}
-	}
-	return m, nil
-}
 
-// loadStore reads the player maps from the store. A row that does not parse, or
-// whose id is taken by a shipped map, is logged and skipped, like a bad file.
-func (m *Manager) loadStore(us UserStore) error {
-	cfgs, err := us.List()
-	if err != nil {
-		return fmt.Errorf("load player maps: %w", err)
+	storeOpts := mapstore.Options[engine.MapConfig]{
+		BuiltinDir:      opts.Dir,
+		Game:            game,
+		Pool:            opts.Pool,
+		Decode:          decodeMapConfig,
+		Encode:          encodeMapConfig,
+		Validate:        validateStructure,
+		PublishValidate: validatePublish,
+		MaxCustomMaps:   opts.MaxUserMaps,
+		IssueEditTokens: false,
 	}
-	for _, cfg := range cfgs {
-		parsed, err := engine.NewMap(cfg)
-		if err == nil && !engine.ValidID(cfg.ID) {
-			err = fmt.Errorf("invalid map id")
+	if opts.Pool != nil {
+		if opts.UserDir != "" {
+			log.Printf("config: MOTOR user dir %q is ignored; player maps live in platform_maps", opts.UserDir)
 		}
-		if err != nil {
-			log.Printf("config: skipping stored player map %q: %v", cfg.ID, err)
-			continue
+	} else {
+		custom := opts.UserDir
+		if custom == "" {
+			custom = opts.Dir
 		}
-		if _, clash := m.maps[parsed.ID]; clash {
-			log.Printf("config: skipping stored player map %q: id is taken by a shipped map", parsed.ID)
-			continue
+		storeOpts.CustomDir = custom
+		storeOpts.NoEditTokens = true
+		if err := os.MkdirAll(custom, 0o755); err != nil {
+			return nil, fmt.Errorf("create maps dir: %w", err)
 		}
-		m.maps[parsed.ID] = parsed
+		logCorruptUserMaps(custom)
 	}
-	return nil
-}
 
-// usesStore reports whether player maps live in a UserStore.
-func (m *Manager) usesStore() bool { return m.opts.UserStore != nil }
-
-// load reads every *.json in dir into m. strict reports the first bad file as
-// an error and marks the maps read-only (shipped maps); otherwise a bad file is
-// logged and skipped, so one corrupt player file cannot take the server down.
-func (m *Manager) load(dir string, strict bool) error {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return fmt.Errorf("create maps dir: %w", err)
-	}
-	entries, err := os.ReadDir(dir)
+	store, err := mapstore.Open(storeOpts)
 	if err != nil {
-		return fmt.Errorf("read maps dir: %w", err)
+		return nil, fmt.Errorf("open maps: %w", err)
 	}
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
-			continue
-		}
-		path := filepath.Join(dir, e.Name())
-		parsed, err := readMap(path)
-		if err != nil {
-			if strict {
-				return err
-			}
-			log.Printf("config: skipping user map %s: %v", path, err)
-			continue
-		}
-		if _, clash := m.maps[parsed.ID]; clash && !strict {
-			log.Printf("config: skipping user map %s: id %q is taken by a shipped map", path, parsed.ID)
-			continue
-		}
-		m.maps[parsed.ID] = parsed
-		// Shipped maps are read-only through the API (admin key only).
-		if strict {
-			m.builtin[parsed.ID] = true
-		}
-	}
-	return nil
-}
-
-// readMap parses and validates one map file.
-func readMap(path string) (*engine.Map, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
-	}
-	var cfg engine.MapConfig
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
-	}
-	if want := strings.TrimSuffix(filepath.Base(path), ".json"); cfg.ID != want {
-		return nil, fmt.Errorf("%s: map id %q does not match file name %q", path, cfg.ID, want)
-	}
-	parsed, err := engine.NewMap(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", path, err)
-	}
-	return parsed, nil
+	return &Manager{opts: opts, store: store, pg: opts.Pool != nil, builtin: builtin}, nil
 }
 
 // List returns copies of all maps sorted by id.
 func (m *Manager) List() []*engine.Map {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	out := make([]*engine.Map, 0, len(m.maps))
-	for _, mp := range m.maps {
-		out = append(out, mp.Clone())
+	entries := m.ListEntries()
+	out := make([]*engine.Map, len(entries))
+	for i, e := range entries {
+		out[i] = e.Map
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// ListEntries returns every map with its ownership metadata. Visibility is the
+// caller's (service) job: ListEntries includes other players' drafts.
+func (m *Manager) ListEntries() []service.MapEntry {
+	rows, err := m.store.List()
+	if err != nil {
+		log.Printf("config: list maps: %v", err)
+		return nil
+	}
+	out := make([]service.MapEntry, 0, len(rows))
+	for _, row := range rows {
+		e, err := entryOf(row)
+		if err != nil {
+			log.Printf("config: skipping map %q: %v", row.Name, err)
+			continue
+		}
+		out = append(out, e)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Map.ID < out[j].Map.ID })
 	return out
 }
 
 // Get returns a copy of the map or a NOT_FOUND *service.Error.
 func (m *Manager) Get(id string) (*engine.Map, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	mp, ok := m.maps[id]
-	if !ok {
-		return nil, service.Errorf(service.CodeNotFound, "map %q not found", id)
+	e, err := m.Entry(id)
+	if err != nil {
+		return nil, err
 	}
-	return mp.Clone(), nil
+	return e.Map, nil
 }
 
-// Builtin reports whether id is a shipped map. The transport gates writes to
-// these on the admin key; user-created maps are open to everyone.
-func (m *Manager) Builtin(id string) bool {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.builtin[id]
+// Entry returns a copy of the map with its metadata, or NOT_FOUND.
+func (m *Manager) Entry(id string) (service.MapEntry, error) {
+	row, err := m.store.Get(id)
+	if err != nil {
+		return service.MapEntry{}, service.Errorf(service.CodeNotFound, "map %q not found", id)
+	}
+	e, err := entryOf(row)
+	if err != nil {
+		return service.MapEntry{}, service.Errorf(service.CodeNotFound, "map %q not found", id)
+	}
+	return e, nil
 }
 
-// Save validates cfg, writes it atomically and stores it, replacing any
-// existing map with the same id.
-func (m *Manager) Save(cfg engine.MapConfig) (*engine.Map, error) {
-	return m.store(cfg, false)
+// Builtin reports whether id is a shipped map loaded at startup.
+func (m *Manager) Builtin(id string) bool { return m.builtin[id] }
+
+// Save validates cfg, writes it and replaces any existing map with the same id.
+// Editing a community map needs its owner and puts it back into DRAFT; shipped
+// and unowned legacy maps need an admin.
+func (m *Manager) Save(cfg engine.MapConfig, actor service.MapActor) (*engine.Map, error) {
+	parsed, err := parsedMap(cfg)
+	if err != nil {
+		return nil, err
+	}
+	existing, err := m.store.Get(parsed.ID)
+	switch {
+	case err == nil:
+		return m.saveExisting(existing, parsed.Config(), actor)
+	case errors.Is(err, mapstore.ErrNotFound):
+		return m.saveNew(parsed, actor)
+	default:
+		return nil, m.storeError(parsed.ID, err, "save map")
+	}
 }
 
-// Create is Save that fails with INVALID_ARGUMENT if the id already exists.
-// The existence check, the cap check and the write happen under one lock.
-func (m *Manager) Create(cfg engine.MapConfig) (*engine.Map, error) {
-	return m.store(cfg, true)
+// Create stores a new DRAFT map owned by ownerID. In file-only mode the map is
+// a legacy published file, matching mapstore's file semantics.
+func (m *Manager) Create(cfg engine.MapConfig, ownerID string) (*engine.Map, error) {
+	if ownerID == "" {
+		return nil, service.Errorf(service.CodeForbidden, "creating a map needs a signed-in player")
+	}
+	parsed, err := parsedMap(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if m.pg {
+		if _, err := m.store.CreateDraft(parsed.ID, parsed.Config(), ownerID); err != nil {
+			return nil, m.storeError(parsed.ID, err, "create map")
+		}
+	} else {
+		if m.fileCapReached() {
+			return nil, m.limitError()
+		}
+		if _, err := m.store.Create(parsed.ID, parsed.Config()); err != nil {
+			return nil, m.storeError(parsed.ID, err, "create map")
+		}
+	}
+	return parsed.Clone(), nil
 }
 
-func (m *Manager) store(cfg engine.MapConfig, createOnly bool) (*engine.Map, error) {
+// Publish validates a draft and makes it public. Publishing an already
+// published, shipped or ownerless map is a no-op; only the owner (or an admin)
+// may publish a draft.
+func (m *Manager) Publish(id string, actor service.MapActor) (*engine.Map, error) {
+	if !engine.ValidID(id) {
+		return nil, service.Errorf(service.CodeInvalidArgument, "invalid map id %q", id)
+	}
+	existing, err := m.store.Get(id)
+	if err != nil {
+		if errors.Is(err, mapstore.ErrNotFound) {
+			return nil, service.Errorf(service.CodeNotFound, "map %q not found", id)
+		}
+		return nil, m.storeError(id, err, "publish map")
+	}
+	e, err := entryOf(existing)
+	if err != nil {
+		return nil, service.Errorf(service.CodeInvalidArgument, "invalid map: %v", err)
+	}
+	if m.builtin[id] || e.OwnerID == "" {
+		return e.Map, nil
+	}
+	if e.OwnerID != actor.AccountID {
+		return nil, service.Errorf(service.CodeForbidden, "only the map's owner may publish it")
+	}
+	if e.Status == engine.MapStatusPublished {
+		return e.Map, nil
+	}
+	if !m.pg {
+		return e.Map, nil
+	}
+	if res := validate.Check(existing.Config); !res.Valid {
+		return nil, service.Errorf(service.CodeInvalidArgument, "map is not valid: %s", summarizeIssues(res.Issues))
+	}
+	row, err := m.store.Publish(id, mapActor(actor))
+	if err != nil {
+		return nil, m.storeError(id, err, "publish map")
+	}
+	e, err = entryOf(row)
+	if err != nil {
+		return nil, service.Errorf(service.CodeInvalidArgument, "invalid map: %v", err)
+	}
+	return e.Map, nil
+}
+
+// Delete removes the map. Community maps need their owner; shipped and unowned
+// legacy maps need an admin. NOT_FOUND if absent.
+func (m *Manager) Delete(id string, actor service.MapActor) error {
+	if !engine.ValidID(id) {
+		return service.Errorf(service.CodeInvalidArgument, "invalid map id %q", id)
+	}
+	existing, err := m.store.Get(id)
+	if err != nil {
+		if errors.Is(err, mapstore.ErrNotFound) {
+			return service.Errorf(service.CodeNotFound, "map %q not found", id)
+		}
+		return m.storeError(id, err, "delete map")
+	}
+	e, err := entryOf(existing)
+	if err != nil {
+		return service.Errorf(service.CodeInvalidArgument, "invalid map: %v", err)
+	}
+	switch {
+	case m.builtin[id] || (m.pg && e.OwnerID == ""):
+		if !actor.Admin {
+			return service.Errorf(service.CodeForbidden, "deleting this map needs X-Admin-Key")
+		}
+	case m.pg && actor.AccountID != e.OwnerID:
+		return service.Errorf(service.CodeForbidden, "only the map's owner may delete it")
+	}
+	if m.pg {
+		err = m.store.DeleteOwned(id, mapActor(actor))
+	} else {
+		err = m.store.Delete(id, true)
+	}
+	if err != nil {
+		if errors.Is(err, mapstore.ErrForbidden) {
+			return service.Errorf(service.CodeForbidden, "deleting this map needs X-Admin-Key")
+		}
+		return m.storeError(id, err, "delete map")
+	}
+	delete(m.builtin, id)
+	return nil
+}
+
+// fileCapReached reports whether another custom map would exceed MaxUserMaps in
+// file-only mode. PostgreSQL mode enforces the cap atomically in mapstore.
+func (m *Manager) fileCapReached() bool {
+	if m.opts.MaxUserMaps <= 0 {
+		return false
+	}
+	rows, err := m.store.List()
+	if err != nil {
+		return false
+	}
+	n := 0
+	for _, row := range rows {
+		if !m.builtin[row.Name] {
+			n++
+		}
+	}
+	return n >= m.opts.MaxUserMaps
+}
+
+// DetachAccount removes an account's drafts and orphans its published maps.
+// The account service runs it before deleting the account row.
+func (m *Manager) DetachAccount(ownerID string) error {
+	return errors.Join(
+		m.store.DeleteDraftsByOwner(ownerID),
+		m.store.OrphanPublishedByOwner(ownerID),
+	)
+}
+
+// ---- helpers --------------------------------------------------------------
+
+func (m *Manager) saveExisting(existing mapstore.Map[engine.MapConfig], cfg engine.MapConfig, actor service.MapActor) (*engine.Map, error) {
+	parsed, err := engine.NewMap(cfg)
+	if err != nil {
+		return nil, service.Errorf(service.CodeInvalidArgument, "invalid map: %v", err)
+	}
+	switch {
+	case m.builtin[existing.Name]:
+		if !actor.Admin {
+			return nil, service.Errorf(service.CodeForbidden, "changing a shipped map needs X-Admin-Key")
+		}
+	case m.pg && existing.OwnerID == "":
+		if !actor.Admin {
+			return nil, service.Errorf(service.CodeForbidden, "this map has no owner; changing it needs X-Admin-Key")
+		}
+	case m.pg && !actor.Admin && actor.AccountID != existing.OwnerID:
+		return nil, service.Errorf(service.CodeForbidden, "only the map's owner may change it")
+	}
+
+	var row mapstore.Map[engine.MapConfig]
+	if m.pg {
+		row, err = m.store.SaveOwned(parsed.ID, cfg, mapActor(actor))
+	} else {
+		err = m.store.Save(parsed.ID, cfg, true)
+	}
+	if err != nil {
+		return nil, m.storeError(parsed.ID, err, "save map")
+	}
+	if !m.pg {
+		return parsed.Clone(), nil
+	}
+	e, err := entryOf(row)
+	if err != nil {
+		return nil, service.Errorf(service.CodeInvalidArgument, "invalid map: %v", err)
+	}
+	return e.Map, nil
+}
+
+func (m *Manager) saveNew(parsed *engine.Map, actor service.MapActor) (*engine.Map, error) {
+	if actor.AccountID == "" && !actor.Admin {
+		return nil, service.Errorf(service.CodeForbidden, "saving a map needs a signed-in player")
+	}
+	if m.pg && actor.AccountID != "" {
+		if _, err := m.store.CreateDraft(parsed.ID, parsed.Config(), actor.AccountID); err == nil {
+			return parsed.Clone(), nil
+		} else if !errors.Is(err, mapstore.ErrExists) {
+			return nil, m.storeError(parsed.ID, err, "save map")
+		}
+		// Another request created it first: fall through to the update path.
+		if existing, getErr := m.store.Get(parsed.ID); getErr == nil {
+			return m.saveExisting(existing, parsed.Config(), actor)
+		}
+		return nil, service.Errorf(service.CodeInvalidArgument, "map %q already exists", parsed.ID)
+	}
+	if !m.pg && actor.AccountID != "" && m.fileCapReached() {
+		return nil, m.limitError()
+	}
+	if _, err := m.store.Create(parsed.ID, parsed.Config()); err != nil {
+		return nil, m.storeError(parsed.ID, err, "save map")
+	}
+	return parsed.Clone(), nil
+}
+
+func (m *Manager) storeError(id string, err error, op string) error {
+	switch {
+	case errors.Is(err, mapstore.ErrNotFound):
+		return service.Errorf(service.CodeNotFound, "map %q not found", id)
+	case errors.Is(err, mapstore.ErrExists):
+		return service.Errorf(service.CodeInvalidArgument, "map %q already exists", id)
+	case errors.Is(err, mapstore.ErrLimit):
+		return m.limitError()
+	case errors.Is(err, mapstore.ErrForbidden):
+		return service.Errorf(service.CodeForbidden, "only the map's owner may change it")
+	case errors.Is(err, mapstore.ErrReadOnly):
+		return service.Errorf(service.CodeForbidden, "changing a shipped map needs X-Admin-Key")
+	case errors.Is(err, mapstore.ErrInvalid):
+		return service.Errorf(service.CodeInvalidArgument, "invalid map: %v", err)
+	default:
+		return fmt.Errorf("%s: %w", op, err)
+	}
+}
+
+func (m *Manager) limitError() error {
+	return service.Errorf(service.CodeLimit, "%d player maps already exist; delete one before creating another", m.opts.MaxUserMaps)
+}
+
+func mapActor(actor service.MapActor) mapstore.Actor {
+	return mapstore.Actor{AccountID: actor.AccountID, Admin: actor.Admin}
+}
+
+func entryOf(row mapstore.Map[engine.MapConfig]) (service.MapEntry, error) {
+	parsed, err := engine.NewMap(row.Config)
+	if err != nil {
+		return service.MapEntry{}, err
+	}
+	return service.MapEntry{
+		Map:     parsed,
+		OwnerID: row.OwnerID,
+		Status:  engine.MapStatus(row.Status),
+	}, nil
+}
+
+// decodeMapConfig drops the legacy owner/status fields: platform_maps columns
+// are authoritative, and the playable config must never carry them.
+func decodeMapConfig(raw []byte) (engine.MapConfig, error) {
+	var cfg engine.MapConfig
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		return cfg, err
+	}
+	cfg.OwnerID, cfg.Status = "", ""
+	return cfg, nil
+}
+
+func encodeMapConfig(cfg engine.MapConfig) ([]byte, error) {
+	cfg.OwnerID, cfg.Status = "", ""
+	return json.Marshal(cfg)
+}
+
+func validateStructure(cfg engine.MapConfig) error {
+	_, err := engine.NewMap(cfg)
+	return err
+}
+
+func validatePublish(cfg engine.MapConfig) error {
+	if res := validate.Check(cfg); !res.Valid {
+		return errors.New(summarizeIssues(res.Issues))
+	}
+	return nil
+}
+
+// parsedMap validates the id and structure of a map. Reachability is Publish's
+// job, so a draft only needs to be structurally playable.
+func parsedMap(cfg engine.MapConfig) (*engine.Map, error) {
 	if !engine.ValidID(cfg.ID) {
 		return nil, service.Errorf(service.CodeInvalidArgument, "invalid map id %q: must match ^[a-z0-9_-]{1,64}$", cfg.ID)
 	}
@@ -218,112 +477,75 @@ func (m *Manager) store(cfg engine.MapConfig, createOnly bool) (*engine.Map, err
 	if err != nil {
 		return nil, service.Errorf(service.CodeInvalidArgument, "invalid map: %v", err)
 	}
-	data, err := json.MarshalIndent(parsed.Config(), "", "  ")
+	return parsed, nil
+}
+
+// summarizeIssues keeps a validation failure readable in one GraphQL error.
+func summarizeIssues(issues []string) string {
+	const max = 5
+	if len(issues) <= max {
+		return strings.Join(issues, "; ")
+	}
+	return fmt.Sprintf("%s; and %d more", strings.Join(issues[:max], "; "), len(issues)-max)
+}
+
+// loadBuiltins validates every shipped map and returns its ids. A bad file
+// fails startup naming the file.
+func loadBuiltins(dir string) (map[string]bool, error) {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read maps dir: %w", err)
 	}
-	data = append(data, '\n')
-
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if _, exists := m.maps[parsed.ID]; createOnly && exists {
-		return nil, service.Errorf(service.CodeInvalidArgument, "map %q already exists", parsed.ID)
-	}
-	if m.usesStore() && !m.builtin[parsed.ID] {
-		// A player map: the database, never a file.
-		if createOnly && m.opts.MaxUserMaps > 0 && m.userCount() >= m.opts.MaxUserMaps {
-			return nil, service.Errorf(service.CodeLimit, "%d player maps already exist; delete one before creating another", m.opts.MaxUserMaps)
+	out := make(map[string]bool)
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
 		}
-		if err := m.opts.UserStore.Put(parsed.Config()); err != nil {
-			return nil, fmt.Errorf("save map: %w", err)
+		path := filepath.Join(dir, e.Name())
+		cfg, _, err := readMap(path)
+		if err != nil {
+			return nil, err
 		}
-		m.maps[parsed.ID] = parsed
-		return parsed.Clone(), nil
+		out[cfg.ID] = true
 	}
-	// Editing a shipped map keeps it shipped; everything new goes to UserDir.
-	dir := m.opts.UserDir
-	if dir == "" || m.builtin[parsed.ID] {
-		dir = m.opts.Dir
-	}
-	if createOnly && dir == m.opts.UserDir && m.opts.MaxUserMaps > 0 && m.userCount() >= m.opts.MaxUserMaps {
-		return nil, service.Errorf(service.CodeLimit, "%d player maps already exist; delete one before creating another", m.opts.MaxUserMaps)
-	}
-	if err := writeAtomic(dir, parsed.ID+".json", data); err != nil {
-		return nil, fmt.Errorf("save map: %w", err)
-	}
-	m.maps[parsed.ID] = parsed
-	if dir == m.opts.Dir && m.opts.UserDir != "" {
-		m.builtin[parsed.ID] = true
-	}
-	return parsed.Clone(), nil
+	return out, nil
 }
 
-// userCount reports how many maps live in UserDir. The lock must be held.
-func (m *Manager) userCount() int {
-	return len(m.maps) - len(m.builtin)
-}
-
-// Delete removes the map and its file. NOT_FOUND if absent.
-func (m *Manager) Delete(id string) error {
-	if !engine.ValidID(id) {
-		return service.Errorf(service.CodeInvalidArgument, "invalid map id %q", id)
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if _, ok := m.maps[id]; !ok {
-		return service.Errorf(service.CodeNotFound, "map %q not found", id)
-	}
-	if m.usesStore() && !m.builtin[id] {
-		if err := m.opts.UserStore.Delete(id); err != nil {
-			return fmt.Errorf("delete map: %w", err)
-		}
-		delete(m.maps, id)
-		return nil
-	}
-	dir := m.opts.Dir
-	if m.opts.UserDir != "" && !m.builtin[id] {
-		dir = m.opts.UserDir
-	}
-	if err := os.Remove(filepath.Join(dir, id+".json")); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("delete map: %w", err)
-	}
-	if err := fsutil.SyncDir(dir); err != nil {
-		return fmt.Errorf("delete map: %w", err)
-	}
-	delete(m.maps, id)
-	delete(m.builtin, id)
-	return nil
-}
-
-// writeAtomic writes data to dir/name via temp file (fsynced) + rename, then
-// fsyncs dir so the rename is durable.
-func writeAtomic(dir, name string, data []byte) error {
-	tmp, err := os.CreateTemp(dir, ".tmp-*")
+// logCorruptUserMaps reports legacy user files that will be skipped; startup
+// continues, like the old file manager.
+func logCorruptUserMaps(dir string) {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return err
+		return
 	}
-	tmpName := tmp.Name()
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
-		return err
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		if _, _, err := readMap(path); err != nil {
+			log.Printf("config: skipping user map %s: %v", path, err)
+		}
 	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		os.Remove(tmpName)
-		return err
+}
+
+// readMap parses and validates one map file.
+func readMap(path string) (engine.MapConfig, *engine.Map, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return engine.MapConfig{}, nil, fmt.Errorf("%s: %w", path, err)
 	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
-		return err
+	var cfg engine.MapConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return engine.MapConfig{}, nil, fmt.Errorf("%s: %w", path, err)
 	}
-	if err := os.Chmod(tmpName, 0o644); err != nil {
-		os.Remove(tmpName)
-		return err
+	cfg.OwnerID, cfg.Status = "", ""
+	if want := strings.TrimSuffix(filepath.Base(path), ".json"); cfg.ID != want {
+		return engine.MapConfig{}, nil, fmt.Errorf("%s: map id %q does not match file name %q", path, cfg.ID, want)
 	}
-	if err := fsutil.RenameReplace(tmpName, filepath.Join(dir, name)); err != nil {
-		os.Remove(tmpName)
-		return err
+	parsed, err := engine.NewMap(cfg)
+	if err != nil {
+		return engine.MapConfig{}, nil, fmt.Errorf("%s: %w", path, err)
 	}
-	return fsutil.SyncDir(dir)
+	return cfg, parsed, nil
 }

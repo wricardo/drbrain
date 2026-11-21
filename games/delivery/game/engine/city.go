@@ -8,7 +8,7 @@ import (
 
 // City is the terrain and static geography of a session: the grid plus the
 // entities that sit on it. It is derived from a CityConfig and then mutated
-// only by builds (which reveal districts and rewrite tiles).
+// only by scheduled growth (which reveals districts and rewrites tiles).
 type City struct {
 	Name     string
 	GridSize int
@@ -18,19 +18,35 @@ type City struct {
 	Grid [][]CellType
 
 	// Hidden reports, per coordinate, whether the tile is unexplored. A
-	// hidden tile is impassable and renders as unknown; builds clear the flag
-	// to reveal a district.
+	// hidden tile is impassable and renders as unknown; growth stages clear
+	// the flag to reveal a district.
 	Hidden [][]bool
 
-	Items     map[string]string
-	Kitchens  []Kitchen
+	// Items maps item id to its display label. Kitchens, Depots and Chargers
+	// are the authored fixed entities; Districts names the regions growth can
+	// reveal.
+	Items    map[string]string
+	Kitchens []Kitchen
+	// Customers are the AUTHORED dropoff sites, including ones still inside a
+	// hidden district; they exist for the whole session. A site is only drawn
+	// while it has a live order: use World.PresentCustomers for the board, not
+	// this slice.
 	Customers []Customer
 	Depots    []Depot
 	Chargers  []Charger
 	Districts map[string]District
+
+	// Charging is the city's charge-rate and price table. It is copied from
+	// the config so growth-added chargers inherit the same defaults as authored
+	// ones, and so a restored world has the prices it was saved with.
+	Charging ChargingConfig
+
+	// GroundExtraStepCost is the extra battery spent entering a ground tile.
+	// Copied from the config so the mover does not need the CityConfig.
+	GroundExtraStepCost int
 }
 
-// District is a named region used by reveal-style builds.
+// District is a named region used by reveal_district growth effects.
 type District struct {
 	Name        string
 	Description string
@@ -88,6 +104,14 @@ type Charger struct {
 	ID       string
 	Pos      Position
 	Capacity int
+
+	// Rate is battery restored per tick. Normalised at load: never zero, so
+	// the tick loop does not have to re-read the global default.
+	Rate int
+
+	// PricePerTick is the dollars charged for one full tick, normalised at
+	// load from the per-charger override or the city default. Zero is free.
+	PricePerTick int
 }
 
 // At returns the terrain at a coordinate, and false if it is off the grid.
@@ -109,19 +133,16 @@ func (c *City) IsHidden(p Position) bool {
 }
 
 // WalkCost is the battery a car of the given class spends stepping onto p.
-// Ground costs an extra point: that is what makes paving it a real upgrade
-// rather than decoration (IDEA.txt O3).
+// Ground costs GroundExtraStepCost more: that is what makes paving it a real
+// upgrade rather than decoration (IDEA.txt O3).
 func (c *City) WalkCost(p Position, class CarClassConfig) int {
 	base := class.StepCost
-	if base <= 0 {
-		base = 1
-	}
 	t, ok := c.At(p)
 	if !ok {
 		return base
 	}
 	if t == GroundTile {
-		return base + 1
+		return base + c.GroundExtraStepCost
 	}
 	return base
 }
@@ -149,7 +170,10 @@ func (c *City) KitchenAt(p Position) (Kitchen, bool) {
 	return Kitchen{}, false
 }
 
-// CustomerAt returns the customer occupying a coordinate, if any.
+// CustomerAt returns the AUTHORED site at p, whether or not anyone is waiting
+// there, and includes sites inside hidden districts. A client that draws from
+// this advertises every address on the map; use World.PresentCustomers (or
+// RenderRowsAtHome) for the live board.
 func (c *City) CustomerAt(p Position) (Customer, bool) {
 	for _, cu := range c.Customers {
 		if cu.Pos == p {
@@ -159,16 +183,16 @@ func (c *City) CustomerAt(p Position) (Customer, bool) {
 	return Customer{}, false
 }
 
+// UnlimitedCarCapacity is the depot's parking limit. Fleet size is gated by
+// money, not by a yard cap: the depot is the home tile and may hold any number
+// of cars. ChargeSlots still limits how many can recharge per tick.
+const UnlimitedCarCapacity = 1 << 30
+
 // CarCapacity is how many cars may occupy p at once.
 //
-// It is NOT uniformly one. A depot tile is the yard cars park in, and the shipped
-// map authors it as capacity 4 with 4 charge slots; BuyCar already counts the
-// cars standing on depot.Pos against that number. A blanket one-car-per-tile rule
-// would therefore make parking a second car impossible and quietly break both
-// the upkeep mechanic (parking is the free state) and the depot yard build. The
-// same reasoning applies to a standalone charger, which authors its own capacity.
-//
-// Every other tile holds exactly one car. Off-grid positions hold none, so a
+// A depot has unlimited parking: the fleet is limited by purchase money, not by
+// a yard-size gate. Standalone chargers still author their own capacity, and
+// every other tile holds exactly one car. Off-grid positions hold none, so a
 // caller cannot read a capacity for a coordinate that does not exist.
 func (c *City) CarCapacity(p Position) int {
 	t, ok := c.At(p)
@@ -179,10 +203,7 @@ func (c *City) CarCapacity(p Position) int {
 	case DepotTile:
 		for _, d := range c.Depots {
 			if d.Pos == p {
-				if d.Capacity > 0 {
-					return d.Capacity
-				}
-				return 1
+				return UnlimitedCarCapacity
 			}
 		}
 	case ChargerTile:
@@ -224,6 +245,47 @@ func (c *City) ChargeSlotsAt(p Position) int {
 	return 0
 }
 
+// ChargerAt returns the standalone charger occupying p, if any.
+func (c *City) ChargerAt(p Position) (Charger, bool) {
+	for _, ch := range c.Chargers {
+		if ch.Pos == p {
+			return ch, true
+		}
+	}
+	return Charger{}, false
+}
+
+// chargerFromConfig resolves a charger's rate and price against the city's
+// defaults. Authored chargers and growth-added chargers go through the same
+// function so a stage cannot create a charger that behaves differently from
+// the JSON spelling of the same entity.
+func (c *City) chargerFromConfig(ch ChargerConfig) (Charger, error) {
+	if ch.Capacity <= 0 {
+		return Charger{}, fmt.Errorf("charger %q has capacity %d; must be positive", ch.ID, ch.Capacity)
+	}
+	if ch.Rate < 0 {
+		return Charger{}, fmt.Errorf("charger %q has negative rate %d", ch.ID, ch.Rate)
+	}
+	price := c.Charging.ChargerPricePerTick
+	if ch.PricePerTick != nil {
+		if *ch.PricePerTick < 0 {
+			return Charger{}, fmt.Errorf("charger %q has negative price_per_tick %d", ch.ID, *ch.PricePerTick)
+		}
+		price = *ch.PricePerTick
+	}
+	rate := ch.Rate
+	if rate <= 0 {
+		rate = c.Charging.ChargerRate
+	}
+	if rate <= 0 {
+		return Charger{}, fmt.Errorf("charger %q has no rate and charging.charger_rate is %d; set both or use a positive rate", ch.ID, c.Charging.ChargerRate)
+	}
+	return Charger{
+		ID: ch.ID, Pos: ch.Pos, Capacity: ch.Capacity,
+		Rate: rate, PricePerTick: price,
+	}, nil
+}
+
 // NewCity builds a City from a config, validating as it goes. It returns the
 // first structural problem rather than accumulating them, because a map that
 // fails validation is not partially usable.
@@ -255,13 +317,18 @@ func parseCity(cfg *CityConfig) (*City, error) {
 	}
 
 	c := &City{
-		Name:      cfg.Name,
-		GridSize:  cfg.GridSize,
-		TickMS:    cfg.TickMS,
-		Grid:      make([][]CellType, cfg.GridSize),
-		Hidden:    make([][]bool, cfg.GridSize),
-		Items:     map[string]string{},
-		Districts: map[string]District{},
+		Name:                cfg.Name,
+		GridSize:            cfg.GridSize,
+		TickMS:              cfg.TickMS,
+		GroundExtraStepCost: cfg.GroundExtraStepCost,
+		Grid:                make([][]CellType, cfg.GridSize),
+		Hidden:              make([][]bool, cfg.GridSize),
+		Items:               map[string]string{},
+		Districts:           map[string]District{},
+	}
+	c.Charging = cfg.Charging
+	if c.Charging.ChargerPricePerTick < 0 {
+		return nil, fmt.Errorf("charging.charger_price_per_tick is %d; use 0 for free or a positive price", c.Charging.ChargerPricePerTick)
 	}
 	for k, v := range cfg.Items {
 		c.Items[k] = v
@@ -314,7 +381,11 @@ func parseCity(cfg *CityConfig) (*City, error) {
 		})
 	}
 	for _, ch := range cfg.Chargers {
-		c.Chargers = append(c.Chargers, Charger{ID: ch.ID, Pos: ch.Pos, Capacity: ch.Capacity})
+		charger, err := c.chargerFromConfig(ch)
+		if err != nil {
+			return nil, err
+		}
+		c.Chargers = append(c.Chargers, charger)
 	}
 
 	return c, nil
@@ -526,9 +597,9 @@ func (c *City) HideRect(x0, y0, x1, y1 int) int {
 	return n
 }
 
-// SetTerrain overwrites one tile's terrain, used by builds like a bridge.
-// It reports an error for off-grid coordinates so a malformed build fails
-// loudly instead of silently doing nothing.
+// SetTerrain overwrites one tile's terrain, used by growth effects like
+// build_bridge. It reports an error for off-grid coordinates so a malformed
+// tile write fails loudly instead of silently doing nothing.
 func (c *City) SetTerrain(p Position, t CellType) error {
 	if p.Y < 0 || p.Y >= c.GridSize || p.X < 0 || p.X >= c.GridSize {
 		return fmt.Errorf("terrain write at %s is off the %dx%d grid", p, c.GridSize, c.GridSize)
@@ -540,7 +611,9 @@ func (c *City) SetTerrain(p Position, t CellType) error {
 	return nil
 }
 
-// RevealAll clears every hidden flag. Used by survey-style builds and tests.
+// RevealAll clears every hidden flag and reports how many tiles changed. It is
+// for the static city preview, the CLI map and tests; never call it on a live
+// session's city, because it would delete that session's fog.
 func (c *City) RevealAll() int {
 	n := 0
 	for y := range c.Hidden {
@@ -567,8 +640,8 @@ func (c *City) HiddenCount() int {
 	return n
 }
 
-// Clone returns a deep copy, used to test a build's effects on a throwaway
-// grid before committing them.
+// Clone returns a deep copy. Growth uses it to try a stage on a throwaway city
+// before committing, and tests use it to compare a reload against a live world.
 func (c *City) Clone() *City {
 	out := *c
 	out.Grid = make([][]CellType, len(c.Grid))
@@ -612,7 +685,20 @@ func (c *City) RenderASCII(cars []RenderCar) string {
 // RenderRows is RenderASCII without the trailing newlines, which is the shape
 // JSON clients and the web UI want.
 func (c *City) RenderRows(cars []RenderCar) []string {
-	return c.renderRows(cars, nil)
+	return c.renderRows(cars, nil, c.Customers)
+}
+
+// RenderRowsAtHome draws only the customers that are currently present.
+//
+// A house is a permanent address, so its tile always renders; the glyph is 'H'
+// while a customer is waiting there and 'h' when nobody is home. Customers are
+// not authored onto the map for the whole session any more — one appears when it
+// raises an order and leaves when that order is delivered or expires — so a
+// live session must render the client's row view from this list, not from
+// City.Customers. The static city view and ASCII debug output still show every
+// site.
+func (c *City) RenderRowsAtHome(cars []RenderCar, closed map[Position]bool, home []Customer) []string {
+	return c.renderRows(cars, closed, home)
 }
 
 // RenderRowsWithClosures draws street works as 'X' on top of the terrain.
@@ -635,13 +721,13 @@ func (c *City) RenderRows(cars []RenderCar) []string {
 // Neither is a bug in the map view — it is a terminal/ASCII rendering of a grid
 // — but both mean `rows` is a convenience and the car list is the authority.
 func (c *City) RenderRowsWithClosures(cars []RenderCar, closed map[Position]bool) []string {
-	return c.renderRows(cars, closed)
+	return c.renderRows(cars, closed, c.Customers)
 }
 
-func (c *City) renderRows(cars []RenderCar, closed map[Position]bool) []string {
+func (c *City) renderRows(cars []RenderCar, closed map[Position]bool, home []Customer) []string {
 	glyph := map[CellType]byte{
 		WaterTile: '#', BuildingTile: 'B', RoadTile: '.', GroundTile: ',',
-		DepotTile: 'D', ChargerTile: 'C', KitchenTile: 'K', HouseTile: 'H',
+		DepotTile: 'D', ChargerTile: 'C', KitchenTile: 'K', HouseTile: 'h',
 	}
 
 	// Entity positions win over their terrain glyph.
@@ -649,7 +735,7 @@ func (c *City) renderRows(cars []RenderCar, closed map[Position]bool) []string {
 	for _, k := range c.Kitchens {
 		overlay[k.Pos] = 'K'
 	}
-	for _, cu := range c.Customers {
+	for _, cu := range home {
 		overlay[cu.Pos] = 'H'
 	}
 	for _, d := range c.Depots {

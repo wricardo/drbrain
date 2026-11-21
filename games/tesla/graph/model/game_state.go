@@ -59,6 +59,10 @@ type GameMap struct {
 
 	// Builtin marks maps shipped with the server. Only an admin key may change them.
 	Builtin bool `json:"builtin"`
+	// Status is the map's lifecycle state; shipped maps are PUBLISHED.
+	Status MapStatus `json:"status"`
+	// OwnedByMe is true when the signed-in caller created this player map.
+	OwnedByMe bool `json:"ownedByMe"`
 	// EditKey holds the one-time token returned by createMap. It is cleared for
 	// every other response so it never leaks through normal queries.
 	EditKey *string `json:"editKey,omitempty"`

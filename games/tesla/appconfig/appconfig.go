@@ -63,12 +63,21 @@ func (o *Origins) Decode(value string) error {
 	return nil
 }
 
+// DefaultMaxUserMaps caps player-created maps (TESLA_MAX_USER_MAPS).
+const DefaultMaxUserMaps = 200
+
 // Config is the complete environment-driven configuration of the server.
 type Config struct {
-	// Directories.
-	ConfigDir     string `envconfig:"CONFIG_DIR"`
-	SessionsDir   string `envconfig:"SESSIONS_DIR"`
+	// Directories. Sessions and player maps live in PostgreSQL; only the
+	// shipped maps are read from disk.
+	ConfigDir string `envconfig:"CONFIG_DIR"`
+	// CustomMapsDir is deprecated: custom maps live in PostgreSQL. The
+	// variable is still parsed so deployments that set it do not fail, but it
+	// is never used as storage.
 	CustomMapsDir string `envconfig:"CUSTOM_MAPS_DIR"`
+
+	// MaxUserMaps caps how many player-created maps tesla keeps (0 = no cap).
+	MaxUserMaps int `envconfig:"MAX_USER_MAPS"`
 
 	// Feature gates. All default to enabled for backward compatibility.
 	GraphQLIntrospection Flag `envconfig:"GRAPHQL_INTROSPECTION"`
@@ -87,7 +96,7 @@ type Config struct {
 func Default() Config {
 	return Config{
 		ConfigDir:            "maps",
-		SessionsDir:          "sessions",
+		MaxUserMaps:          DefaultMaxUserMaps,
 		GraphQLIntrospection: true,
 		GraphQLPlayground:    true,
 		MCPEnabled:           true,

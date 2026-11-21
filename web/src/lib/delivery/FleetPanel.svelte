@@ -68,7 +68,12 @@
 					</div>
 
 					<div class="flex items-center justify-between text-xs text-faint">
-						<span>at ({car.x},{car.y})</span>
+						<span>
+							at ({car.x},{car.y})
+							{#if car.chargeDue > 0}
+								<span class="text-[var(--color-warn)]">· ${car.chargeDue} due</span>
+							{/if}
+						</span>
 						<span>
 							{#if car.load > 0}
 								carrying {car.load}/{car.capacity} boxes
@@ -98,7 +103,7 @@
 					<div class="px-3 pb-2">
 						<button
 							type="button"
-							class="w-full rounded border border-[var(--color-danger)]/50 px-2 py-1 text-xs text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
+							class="min-h-11 w-full rounded border border-[var(--color-danger)]/50 px-2 py-1 text-xs text-[var(--color-danger)] hover:bg-[var(--color-danger)]/10"
 							onclick={() => onTow(car.id)}
 						>
 							Tow to depot
@@ -114,28 +119,30 @@
 			<h3 class="mb-2 text-[11px] font-semibold tracking-wide text-muted uppercase">Buy a car</h3>
 			<ul class="flex flex-col gap-1.5">
 				{#each buyable as b (b.cls)}
-					<li class="flex items-center justify-between gap-2">
-						<span class="text-xs">
-							<span class="text-body">{b.cls}</span>
-							<span class="ml-1 text-faint">
-								{b.capacity} slot{b.capacity === 1 ? '' : 's'} · {b.maxBattery}⚡
+					{@const reason = b.affordable ? '' : b.unlocked ? `Costs $${b.price} — not enough money yet` : `${b.cls} is not unlocked yet`}
+					<li>
+						<div class="flex items-center justify-between gap-2">
+							<span class="text-xs">
+								<span class="text-body">{b.cls}</span>
+								<span class="ml-1 text-faint">
+									{b.capacity} slot{b.capacity === 1 ? '' : 's'} · {b.maxBattery}⚡
+								</span>
 							</span>
-						</span>
-						<button
-							type="button"
-							class="rounded border px-2 py-1 text-xs transition-colors {b.affordable
-								? 'border-[var(--color-money)]/50 text-[var(--color-money)] hover:bg-[var(--color-money)]/10'
-								: 'cursor-not-allowed border-edge text-faint'}"
-							disabled={!b.affordable}
-							title={b.affordable
-								? `Buy a ${b.cls} for $${b.price}`
-								: b.unlocked
-									? `Costs $${b.price} — not enough money yet`
-									: `${b.cls} is not unlocked yet`}
-							onclick={() => onBuy(b.cls)}
-						>
-							${b.price}
-						</button>
+							<button
+								type="button"
+								class="min-h-11 min-w-11 rounded border px-2 py-1 text-xs transition-colors {b.affordable
+									? 'border-[var(--color-money)]/50 text-[var(--color-money)] hover:bg-[var(--color-money)]/10'
+									: 'cursor-not-allowed border-edge text-faint'}"
+								disabled={!b.affordable}
+								aria-describedby={reason ? `buy-reason-${b.cls}` : undefined}
+								onclick={() => onBuy(b.cls)}
+							>
+								${b.price}
+							</button>
+						</div>
+						{#if reason}
+							<p id="buy-reason-{b.cls}" class="mt-0.5 text-xs text-muted">{reason}</p>
+						{/if}
 					</li>
 				{/each}
 			</ul>

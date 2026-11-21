@@ -23,8 +23,8 @@ import (
 )
 
 // CreateSession is the resolver for the createSession field.
-func (r *delivery_MutationResolver) CreateSession(ctx context.Context, obj *graph.Resolver, id *string, seed *int) (*model.CreateSessionResult, error) {
-	return obj.Mutation().CreateSession(ctx, id, seed)
+func (r *delivery_MutationResolver) CreateSession(ctx context.Context, obj *graph.Resolver, id *string, seed *int, cityID *string) (*model.CreateSessionResult, error) {
+	return obj.Mutation().CreateSession(ctx, id, seed, cityID)
 }
 
 // MoveCar is the resolver for the moveCar field.
@@ -62,11 +62,6 @@ func (r *delivery_MutationResolver) TowCar(ctx context.Context, obj *graph.Resol
 	return obj.Mutation().TowCar(ctx, id, carID, ownerToken)
 }
 
-// Build is the resolver for the build field.
-func (r *delivery_MutationResolver) Build(ctx context.Context, obj *graph.Resolver, id string, buildID string, ownerToken *string) (*model.Snapshot, error) {
-	return obj.Mutation().Build(ctx, id, buildID, ownerToken)
-}
-
 // SaveSession is the resolver for the saveSession field.
 func (r *delivery_MutationResolver) SaveSession(ctx context.Context, obj *graph.Resolver, id string, ownerToken *string) (*model.Snapshot, error) {
 	return obj.Mutation().SaveSession(ctx, id, ownerToken)
@@ -87,14 +82,49 @@ func (r *delivery_MutationResolver) ClaimSessions(ctx context.Context, obj *grap
 	return obj.Mutation().ClaimSessions(ctx, claims)
 }
 
+// CreateCity is the resolver for the createCity field.
+func (r *delivery_MutationResolver) CreateCity(ctx context.Context, obj *graph.Resolver, id string, config string) (*model.CityView, error) {
+	return obj.Mutation().CreateCity(ctx, id, config)
+}
+
+// UpdateCity is the resolver for the updateCity field.
+func (r *delivery_MutationResolver) UpdateCity(ctx context.Context, obj *graph.Resolver, id string, config string) (*model.CityView, error) {
+	return obj.Mutation().UpdateCity(ctx, id, config)
+}
+
+// PublishCity is the resolver for the publishCity field.
+func (r *delivery_MutationResolver) PublishCity(ctx context.Context, obj *graph.Resolver, id string) (*model.CityView, error) {
+	return obj.Mutation().PublishCity(ctx, id)
+}
+
+// DeleteCity is the resolver for the deleteCity field.
+func (r *delivery_MutationResolver) DeleteCity(ctx context.Context, obj *graph.Resolver, id string) (bool, error) {
+	return obj.Mutation().DeleteCity(ctx, id)
+}
+
+// ValidateCity is the resolver for the validateCity field.
+func (r *delivery_MutationResolver) ValidateCity(ctx context.Context, obj *graph.Resolver, config string) (*model.CityValidationResult, error) {
+	return obj.Mutation().ValidateCity(ctx, config)
+}
+
 // Health is the resolver for the health field.
 func (r *delivery_QueryResolver) Health(ctx context.Context, obj *graph.Resolver) (*model.Health, error) {
 	return obj.Query().Health(ctx)
 }
 
+// Cities is the resolver for the cities field.
+func (r *delivery_QueryResolver) Cities(ctx context.Context, obj *graph.Resolver) ([]*model.CityInfo, error) {
+	return obj.Query().Cities(ctx)
+}
+
 // City is the resolver for the city field.
-func (r *delivery_QueryResolver) City(ctx context.Context, obj *graph.Resolver) (*model.CityView, error) {
-	return obj.Query().City(ctx)
+func (r *delivery_QueryResolver) City(ctx context.Context, obj *graph.Resolver, id *string) (*model.CityView, error) {
+	return obj.Query().City(ctx, id)
+}
+
+// CityConfig is the resolver for the cityConfig field.
+func (r *delivery_QueryResolver) CityConfig(ctx context.Context, obj *graph.Resolver, id string) (*string, error) {
+	return obj.Query().CityConfig(ctx, id)
 }
 
 // Sessions is the resolver for the sessions field.
@@ -168,33 +198,33 @@ func (r *global_QueryResolver) Profile(ctx context.Context, obj *graph4.Resolver
 }
 
 // CreateSession is the resolver for the createSession field.
-func (r *mazes_MutationResolver) CreateSession(ctx context.Context, obj *graph1.Resolver, mapID string, displayName *string) (*model1.Session, error) {
+func (r *mazes_MutationResolver) CreateSession(ctx context.Context, obj *graph1.Resolver, mapID string, displayName *string) (*model1.CreateSessionResult, error) {
 	return obj.Mutation().CreateSession(ctx, mapID, displayName)
 }
 
 // DeleteSession is the resolver for the deleteSession field.
-func (r *mazes_MutationResolver) DeleteSession(ctx context.Context, obj *graph1.Resolver, id string) (bool, error) {
-	return obj.Mutation().DeleteSession(ctx, id)
+func (r *mazes_MutationResolver) DeleteSession(ctx context.Context, obj *graph1.Resolver, id string, ownerToken *string) (bool, error) {
+	return obj.Mutation().DeleteSession(ctx, id, ownerToken)
 }
 
 // RenameSession is the resolver for the renameSession field.
-func (r *mazes_MutationResolver) RenameSession(ctx context.Context, obj *graph1.Resolver, id string, displayName string) (*model1.Session, error) {
-	return obj.Mutation().RenameSession(ctx, id, displayName)
+func (r *mazes_MutationResolver) RenameSession(ctx context.Context, obj *graph1.Resolver, id string, displayName string, ownerToken *string) (*model1.Session, error) {
+	return obj.Mutation().RenameSession(ctx, id, displayName, ownerToken)
 }
 
 // Move is the resolver for the move field.
-func (r *mazes_MutationResolver) Move(ctx context.Context, obj *graph1.Resolver, sessionID string, direction model1.Direction) (*model1.Session, error) {
-	return obj.Mutation().Move(ctx, sessionID, direction)
+func (r *mazes_MutationResolver) Move(ctx context.Context, obj *graph1.Resolver, sessionID string, direction model1.Direction, ownerToken *string) (*model1.Session, error) {
+	return obj.Mutation().Move(ctx, sessionID, direction, ownerToken)
 }
 
 // BulkMove is the resolver for the bulkMove field.
-func (r *mazes_MutationResolver) BulkMove(ctx context.Context, obj *graph1.Resolver, sessionID string, directions []model1.Direction, stopOnBlocked *bool) (*model1.Session, error) {
-	return obj.Mutation().BulkMove(ctx, sessionID, directions, stopOnBlocked)
+func (r *mazes_MutationResolver) BulkMove(ctx context.Context, obj *graph1.Resolver, sessionID string, directions []model1.Direction, stopOnBlocked *bool, ownerToken *string) (*model1.Session, error) {
+	return obj.Mutation().BulkMove(ctx, sessionID, directions, stopOnBlocked, ownerToken)
 }
 
 // Reset is the resolver for the reset field.
-func (r *mazes_MutationResolver) Reset(ctx context.Context, obj *graph1.Resolver, sessionID string) (*model1.Session, error) {
-	return obj.Mutation().Reset(ctx, sessionID)
+func (r *mazes_MutationResolver) Reset(ctx context.Context, obj *graph1.Resolver, sessionID string, ownerToken *string) (*model1.Session, error) {
+	return obj.Mutation().Reset(ctx, sessionID, ownerToken)
 }
 
 // CreateMap is the resolver for the createMap field.
@@ -205,6 +235,11 @@ func (r *mazes_MutationResolver) CreateMap(ctx context.Context, obj *graph1.Reso
 // UpdateMap is the resolver for the updateMap field.
 func (r *mazes_MutationResolver) UpdateMap(ctx context.Context, obj *graph1.Resolver, mapArg model1.MapInput) (*model1.AdminMap, error) {
 	return obj.Mutation().UpdateMap(ctx, mapArg)
+}
+
+// PublishMap is the resolver for the publishMap field.
+func (r *mazes_MutationResolver) PublishMap(ctx context.Context, obj *graph1.Resolver, id string) (*model1.AdminMap, error) {
+	return obj.Mutation().PublishMap(ctx, id)
 }
 
 // DeleteMap is the resolver for the deleteMap field.
@@ -242,9 +277,24 @@ func (r *mazes_QueryResolver) Sessions(ctx context.Context, obj *graph1.Resolver
 	return obj.Query().Sessions(ctx, sort, limit, mapID)
 }
 
+// CanPlaySession is the resolver for the canPlaySession field.
+func (r *mazes_QueryResolver) CanPlaySession(ctx context.Context, obj *graph1.Resolver, id string, ownerToken *string) (bool, error) {
+	return obj.Query().CanPlaySession(ctx, id, ownerToken)
+}
+
 // Builtin is the resolver for the builtin field.
 func (r *motor_MapResolver) Builtin(ctx context.Context, obj *model2.Map) (bool, error) {
 	return r.Motor.Map().Builtin(ctx, obj)
+}
+
+// Status is the resolver for the status field.
+func (r *motor_MapResolver) Status(ctx context.Context, obj *model2.Map) (model2.MapStatus, error) {
+	return r.Motor.Map().Status(ctx, obj)
+}
+
+// OwnedByMe is the resolver for the ownedByMe field.
+func (r *motor_MapResolver) OwnedByMe(ctx context.Context, obj *model2.Map) (bool, error) {
+	return r.Motor.Map().OwnedByMe(ctx, obj)
 }
 
 // CreateSession is the resolver for the createSession field.
@@ -300,6 +350,11 @@ func (r *motor_MutationResolver) ValidateMap(ctx context.Context, obj *graph2.Re
 // UpdateMap is the resolver for the updateMap field.
 func (r *motor_MutationResolver) UpdateMap(ctx context.Context, obj *graph2.Resolver, mapArg model2.MapInput) (*model2.Map, error) {
 	return obj.Mutation().UpdateMap(ctx, mapArg)
+}
+
+// PublishMap is the resolver for the publishMap field.
+func (r *motor_MutationResolver) PublishMap(ctx context.Context, obj *graph2.Resolver, id string) (*model2.Map, error) {
+	return obj.Mutation().PublishMap(ctx, id)
 }
 
 // DeleteMap is the resolver for the deleteMap field.
@@ -594,6 +649,16 @@ func (r *tesla_MutationResolver) CreateMap(ctx context.Context, obj *graph3.Reso
 // UpdateMap is the resolver for the updateMap field.
 func (r *tesla_MutationResolver) UpdateMap(ctx context.Context, obj *graph3.Resolver, name string, patch model3.GameMapPatchInput, editKey *string) (*model3.GameMap, error) {
 	return obj.Mutation().UpdateMap(ctx, name, patch, editKey)
+}
+
+// PublishMap is the resolver for the publishMap field.
+func (r *tesla_MutationResolver) PublishMap(ctx context.Context, obj *graph3.Resolver, name string) (*model3.GameMap, error) {
+	return obj.Mutation().PublishMap(ctx, name)
+}
+
+// ClaimMap is the resolver for the claimMap field.
+func (r *tesla_MutationResolver) ClaimMap(ctx context.Context, obj *graph3.Resolver, name string, editKey string) (*model3.GameMap, error) {
+	return obj.Mutation().ClaimMap(ctx, name, editKey)
 }
 
 // DeleteMap is the resolver for the deleteMap field.

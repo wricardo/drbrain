@@ -169,18 +169,6 @@ db-up:
 db-down:
     docker compose down
 
-# Apply the schema migrations (the server also applies them at startup).
-db-migrate:
-    DATABASE_URL='{{database_url}}' go run ./cmd/import-json -migrate-only
-
-# Copy sessions/, accounts/ and maps-user/ into the database. Safe to re-run; add -dry-run to only count.
-db-import *args:
-    DATABASE_URL='{{database_url}}' go run ./cmd/import-json {{args}}
-
-# Write the database out as JSON files (the rollback copy) into fresh directories under dir.
-db-export dir="backup":
-    DATABASE_URL='{{database_url}}' go run ./cmd/import-json -export -sessions-dir {{dir}}/sessions -accounts-dir {{dir}}/accounts -user-maps-dir {{dir}}/maps-user
-
 # Like dev, but with sessions, accounts and player maps in the compose PostgreSQL.
 dev-db: db-up stop
     DATABASE_URL='{{database_url}}' go run . -port {{port}} -host {{host}} -public-url {{public_url}} -debug

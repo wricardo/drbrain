@@ -27,6 +27,11 @@ type Session struct {
 	// BestMoves is the fewest moves in a won game of this session; nil until
 	// the first win.
 	BestMoves *int
+	// OwnerAccountID is the account that created the session ("" = guest).
+	OwnerAccountID string
+	// OwnerTokenHash is the SHA-256 hex of the secret owner token returned by
+	// CreateSession ("" = legacy session, where anyone may play).
+	OwnerTokenHash string
 	// LastEvent is the most recent move attempt; transient (not persisted).
 	LastEvent *engine.MoveEvent
 }
@@ -43,7 +48,7 @@ func (s *Session) Clone() *Session {
 	c := &Session{
 		ID: s.ID, DisplayName: s.DisplayName, MapID: s.MapID, Map: s.Map,
 		State: s.State.Clone(), Seq: s.Seq, CreatedAt: s.CreatedAt, LastActionAt: s.LastActionAt,
-		Attempts: s.Attempts,
+		Attempts: s.Attempts, OwnerAccountID: s.OwnerAccountID, OwnerTokenHash: s.OwnerTokenHash,
 	}
 	if s.BestMoves != nil {
 		b := *s.BestMoves
@@ -65,7 +70,9 @@ type SessionFilter struct {
 
 // GameService is the single facade used by every transport (GraphQL today).
 type GameService interface {
-	CreateSession(mapID, displayName string) (*Session, error)
+	// CreateSession starts a session; accountID ("" = guest) becomes its
+	// owner together with the returned secret owner token.
+	CreateSession(mapID, displayName, accountID string) (*Session, string, error)
 	GetSession(id string) (*Session, error)
 	ListSessions(f SessionFilter) ([]*Session, error)
 	DeleteSession(id string) error
@@ -86,6 +93,25 @@ type GameService interface {
 
 	ListMaps() []*engine.Map
 	GetMap(id string) (*engine.Map, error)
+	// ListMapsFor returns published maps plus viewerID's own drafts.
+	ListMapsFor(viewerID string) []*engine.Map
+	// GetMapFor returns a map only when viewerID may see it: published maps are
+	// public, another player's draft is NOT_FOUND.
+	GetMapFor(id, viewerID string) (*engine.Map, error)
+	// ListMapEntries returns the catalogue for viewerID (published + own drafts).
+	ListMapEntries(viewerID string) ([]*MapEntry, error)
+	// GetMapEntry returns any catalogue entry, drafts included.
+	GetMapEntry(id string) (*MapEntry, error)
+	// CreateMapDraft stores a DRAFT owned by ownerID; it may be invalid until
+	// published.
+	CreateMapDraft(cfg engine.MapConfig, ownerID string) (*MapEntry, error)
+	// UpdateMapOwned overwrites a map on behalf of actor and resets it to DRAFT.
+	UpdateMapOwned(cfg engine.MapConfig, actor MapActor) (*MapEntry, error)
+	// PublishMap promotes actor's draft once the finish is reachable.
+	PublishMap(id string, actor MapActor) (*MapEntry, error)
+	// DeleteMapOwned removes a map on behalf of actor.
+	DeleteMapOwned(id string, actor MapActor) error
+
 	// Admin-gated by the transport; the service itself does not authenticate.
 	SaveMap(cfg engine.MapConfig) (*engine.Map, error)
 	// CreateMap is SaveMap that fails atomically (INVALID_ARGUMENT) if the id exists.
@@ -96,6 +122,34 @@ type GameService interface {
 	Shutdown()
 }
 
+// MapStatus is a catalogue entry's lifecycle state.
+type MapStatus string
+
+const (
+	// MapStatusDraft is visible only to its owner.
+	MapStatusDraft MapStatus = "DRAFT"
+	// MapStatusPublished is visible to everyone.
+	MapStatusPublished MapStatus = "PUBLISHED"
+)
+
+// MapEntry is one catalogue entry: a shipped map, a published player map or
+// (for its owner) a draft.
+type MapEntry struct {
+	ID      string
+	Config  engine.MapConfig
+	Builtin bool
+	// OwnerID is the account that created a player map; empty for shipped maps
+	// and legacy unowned rows.
+	OwnerID string
+	Status  MapStatus
+}
+
+// MapActor is who asks to change a map.
+type MapActor struct {
+	AccountID string
+	Admin     bool
+}
+
 // MapStore provides maps (implemented by game/config.Manager).
 type MapStore interface {
 	List() []*engine.Map
@@ -103,6 +157,14 @@ type MapStore interface {
 	Save(cfg engine.MapConfig) (*engine.Map, error)
 	Create(cfg engine.MapConfig) (*engine.Map, error) // INVALID_ARGUMENT if id exists
 	Delete(id string) error
+
+	// Lifecycle API: drafts, ownership and publication.
+	ListEntries(viewerID string) ([]*MapEntry, error)
+	GetEntry(id string) (*MapEntry, error)
+	CreateDraft(cfg engine.MapConfig, ownerID string) (string, error)
+	SaveOwned(cfg engine.MapConfig, actor MapActor) (*MapEntry, error)
+	Publish(id string, actor MapActor) (*MapEntry, error)
+	DeleteOwned(id string, actor MapActor) error
 }
 
 // SessionStore holds live sessions (implemented by game/session.Manager).

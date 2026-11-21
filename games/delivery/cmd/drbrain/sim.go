@@ -84,40 +84,17 @@ func cmdSim(args []string) int {
 	fmt.Printf("  money earned      $%d (balance $%d)\n", l.MoneyEarned, l.Money)
 	fmt.Printf("  reputation        %.2f\n", l.Reputation)
 	fmt.Printf("  tows              %d\n", l.Tows)
-	fmt.Printf("  builds completed  %d\n", l.BuildsCompleted)
 	fmt.Printf("  cars owned        %d %v\n", len(world.Cars), fleetBreakdown(world))
 	fmt.Println()
-	fmt.Println("  achievements:")
-	for _, a := range world.Achievements() {
+	fmt.Println("  city growth:")
+	for _, g := range world.Growth() {
 		mark := " "
-		if a.Done {
+		if g.Done {
 			mark = "x"
 		}
-		fmt.Printf("    [%s] %-24s %d/%d\n", mark, a.Title, a.Progress, a.Target)
+		fmt.Printf("    [%s] t%-5d %-20s %s\n", mark, g.Tick, g.Title, g.Description)
 	}
-	fmt.Println("  unlocks:")
-	for _, u := range world.Unlocks() {
-		mark := " "
-		if u.Earned {
-			mark = "x"
-		}
-		fmt.Printf("    [%s] %s\n", mark, u.Title)
-	}
-	fmt.Println("  builds:")
-	for _, b := range world.Builds() {
-		state := "locked"
-		switch {
-		case b.Completed:
-			state = "done"
-		case b.Unlocked && b.Affordable && b.Applicable:
-			state = "buildable"
-		case b.Unlocked && b.Affordable && !b.Applicable:
-			state = "blocked: " + b.Problem
-		case b.Unlocked:
-			state = fmt.Sprintf("needs $%d", b.Cost)
-		}
-		fmt.Printf("    %-20s $%-5d %s\n", b.Title, b.Cost, state)
-	}
+	fmt.Printf("  chapter           %d\n", world.Chapter())
 
 	// Sanity: the harness is only useful if it actually moved cars.
 	if world.Cars[0].StepsTaken == 0 {
@@ -149,34 +126,11 @@ func printRow(w *engine.World) {
 		biggest, len(w.ActiveClosures()))
 }
 
-// targetOf exposes the pacing target for the table; it is unexported on the
-// World because it is an implementation detail of spawn pacing.
+// targetOf exposes the pacing target for the table. It calls the engine's own
+// governor rather than re-deriving it, so a change to the ratio or customer
+// count cannot leave the measurement column lying.
 func targetOf(w *engine.World) int {
-	// A re-derivation of the pacing target for the table, NOT the engine's own
-	// number. It hardcodes ratio 1.0 and the cap 8, so on a map whose
-	// `target_orders_per_car` is anything else (city.json ships 0.75) this
-	// column is HIGHER than what the spawner actually aims for: with four cars
-	// it prints 4 where World.targetActive() returns 3.
-	//
-	// Kept deliberately simple so the table stays readable, but that makes the
-	// `tgt` column an approximation of the governor, not a measurement of it.
-	// Deliberately not derived from hold capacity either: capacity is measured
-	// in boxes, and a truck's forty boxes would ask for thirty concurrent
-	// orders.
-	cars := 0
-	for _, c := range w.Cars {
-		if c.State(w.City) != engine.CarStranded {
-			cars++
-		}
-	}
-	t := int(float64(cars)*1.0 + 0.5)
-	if t < 1 {
-		t = 1
-	}
-	if t > 8 {
-		t = 8 // matches city.json max_active_orders
-	}
-	return t
+	return w.TargetActive()
 }
 
 // botStep is the harness driver: one decision per tick.
@@ -486,56 +440,29 @@ func findCustomer(w *engine.World, id string) (engine.Customer, bool) {
 // while holding $7000. That looked like a pacing result but was actually the
 // bot never trying — a measurement bug masquerading as a design finding.
 func botSpend(w *engine.World) {
+	// The city grows on its own schedule; the bot's only spending decision is
+	// the fleet. Keep a cash reserve so a purchase cannot leave the fleet unable
+	// to pay upkeep.
 	const reserve = 100
 
-	// 1. Build anything unlocked, applicable and affordable, cheapest first so
-	//    money gets recycled into progress rather than hoarded.
-	for _, b := range w.Builds() {
-		if !b.Unlocked || b.Completed || !b.Affordable || !b.Applicable {
-			continue
-		}
-		if w.Ledger.Money-b.Cost < reserve {
-			continue
-		}
-		if _, err := w.Build(b.ID); err != nil {
-			continue
-		}
-		return // one purchase per tick keeps the economy visible in the table
-	}
-
-	// 2. Buy a car when the fleet is the bottleneck.
+	// Buy a car when the fleet is the bottleneck.
 	//
 	// The previous test was "open orders >= fleet capacity", which deadlocks:
-	// the spawner caps the queue at ~1 order per car, so a struggling fleet never
+	// the spawner caps the queue at a demand target, so a struggling fleet never
 	// sees a queue big enough to justify growing, and orders expire forever. The
 	// honest signals are different: orders are going unclaimed, or deliveries
 	// that do happen are slow relative to the queue.
-	//
-	// Note there is no "an order exists that nothing can carry" signal by
-	// design: the spawner never rolls a band the fleet cannot service, so that
-	// state cannot arise. Growth is therefore about throughput, and about
-	// unlocking bigger bands by owning a bigger hold.
 	// 2. Grow the fleet.
 	//
 	// Two separate decisions, in priority order:
 	//
 	//   a. CAPABILITY. If a class with a bigger hold is unlocked and the fleet
-	//      does not own it yet, save for it. The depot is finite, so a stopgap
-	//      van bought now can fill the very slot that vehicle needs, and a
-	//      player who fills the yard with vans can never own the vehicle big
-	//      orders require. This is also what makes the quantity bands reachable
-	//      at all: the spawner only rolls sizes the fleet can carry.
+	//      does not own it yet, save for it. Quantity bands may now exceed the
+	//      current fleet on purpose, so oversized pending orders are a real
+	//      signal that a van or truck is needed.
 	//
-	//   b. THROUGHPUT. Otherwise buy the biggest affordable car, while leaving
-	//      one slot free if a bigger class is still locked.
-	//
-	// Note there is no "an order exists that nothing can carry" signal by
-	// design: the spawner never rolls a band the fleet cannot service, so that
-	// state cannot arise.
-	slots := depotSlots(w)
-	if slots > 0 && len(w.Cars) >= slots {
-		return
-	}
+	//   b. THROUGHPUT. Otherwise buy the biggest affordable car. There is no
+	//      yard-size cap: money is the only fleet limit.
 
 	biggestOwned := 0
 	for _, c := range w.Cars {
@@ -544,44 +471,60 @@ func botSpend(w *engine.World) {
 		}
 	}
 
-	// (a) Capability: the largest unlocked class the fleet does not have.
+	// (a) Capability: the smallest unlocked class that can carry the work the
+	// fleet currently cannot. Choosing the largest class instead makes the bot
+	// save for a truck while 8-box jobs expire under a scooter; the smallest
+	// sufficient step (van, then truck) is what a player does.
+	needed := 0
+	for _, o := range w.OpenOrders() {
+		if o.State != engine.OrderPending {
+			continue
+		}
+		carryable := false
+		for _, c := range w.Cars {
+			if c.Class.Capacity >= o.Boxes() {
+				carryable = true
+				break
+			}
+		}
+		if !carryable && o.Boxes() > needed {
+			needed = o.Boxes()
+		}
+	}
 	var growth *engine.CarClassInfo
-	biggerLocked := false
 	catalog := w.CarClassCatalog()
 	for i := range catalog {
 		cc := catalog[i]
-		if cc.Price <= 0 {
-			continue
-		}
-		if !cc.Unlocked {
-			if cc.Capacity > biggestOwned {
-				biggerLocked = true
-			}
+		if cc.Price <= 0 || !cc.Unlocked {
 			continue
 		}
 		if cc.Capacity <= biggestOwned {
 			continue
 		}
-		if growth == nil || cc.Capacity > growth.Capacity {
+		if needed > 0 && cc.Capacity < needed {
+			continue
+		}
+		if growth == nil || cc.Capacity < growth.Capacity ||
+			(cc.Capacity == growth.Capacity && cc.Price < growth.Price) {
 			c := cc
 			growth = &c
 		}
 	}
 	if growth != nil {
 		if !growth.Affordable || w.Ledger.Money-growth.Price < reserve {
-			return // save instead of buying a stopgap
+			return // save for the smallest vehicle that can do the job
 		}
 		_, _ = w.BuyCar(growth.Class, "d_main")
 		return
 	}
 
-	// (b) Throughput: buy the biggest affordable car, keeping a slot free for a
-	// bigger class that is still locked.
-	if biggerLocked && slots > 0 && len(w.Cars) >= slots-1 {
+	// (b) Throughput: buy the biggest affordable car. Money is the only limit,
+	// but there is no point owning more cars than the demand target can use.
+	if len(w.Cars) >= w.TargetActive()+4 {
 		return
 	}
 	// No point growing the fleet while the queue is quiet and nothing expires:
-	// an idle car earns nothing and ties up a slot.
+	// an idle car earns nothing.
 	unclaimed := 0
 	for _, o := range w.OpenOrders() {
 		if o.State == engine.OrderPending {
@@ -611,19 +554,6 @@ func botSpend(w *engine.World) {
 		return
 	}
 	_, _ = w.BuyCar(catalog[best].Class, "d_main")
-}
-
-// depotSlots is how many cars the main depot can hold, or 0 when unknown.
-func depotSlots(w *engine.World) int {
-	for _, d := range w.City.Depots {
-		if d.ID == "d_main" {
-			return d.Capacity
-		}
-	}
-	if len(w.City.Depots) > 0 {
-		return w.City.Depots[0].Capacity
-	}
-	return 0
 }
 
 // fleetBreakdown reports the fleet by class, printed in the summary so a

@@ -14,24 +14,35 @@ import (
 //	   of every gate, so a player never starts in an empty world
 //	1. anti-dead-air — if nothing is live, nobody is carrying anything, and
 //	   MinSpawnGapTicks has elapsed, raise one immediately
-//	2. GATE 3 — the queue is below what the fleet can handle (targetActive)
+//	2. GATE 3 — the queue is below the demand target (visible customers)
 //	3. GATE 2 — the global cap MaxActiveOrders is not reached
-//	4. GATE 1 — per customer, in id order, that customer's cooldown has elapsed
+//	4. GATE 1 — one site is drawn at random from those whose cooldown has
+//	   elapsed and that have no live order
 //
 // Note that GATE 3 is checked BEFORE GATE 2 and GATE 1, not after: once the
-// queue is full by fleet capacity, no customer is even considered. Sizing the
-// queue by customer count would flood it as districts unlock; sizing it by fleet
-// capacity keeps supply one step behind throughput, which is what makes buying a
-// car feel like progress rather than a treadmill.
+// queue is at the demand target, no customer is even considered. Demand is
+// sized by the visible customer population, not by the player's fleet: buying a
+// car must add throughput, not create the work that justifies itself. A growing
+// city adds customers on its own schedule, so the fleet has to catch up or
+// orders expire.
 //
-// At most one order is raised per tick, and the customer loop is sorted by id so
-// a replay of (seed, commands) raises the same order for the same customer.
+// At most one order is raised per tick. The eligible sites are sorted by id and
+// the winner is picked with Roll(seed, tick, "customer", len), so a replay of
+// (seed, commands) raises the same order for the same customer, while a player
+// does not see the alphabetically first customer win every time.
+//
+// Customers are not permanently on the map: a site is "present" only while it
+// has a live order (see customerPresent), so it disappears when that order is
+// delivered or expires. Sites in hidden districts are not eligible, which is
+// what makes a reveal build expose the customers of the new district.
 //
 // Two different questions gate an individual customer, and they are NOT
 // symmetric:
 //
 //	customerIsServable  is ANY demand reachable right now? If not, the
-//	                    customer is skipped silently and its cooldown advanced.
+//	                    customer is skipped silently and reconsidered on the
+//	                    next spawn (dedicated cooldowns track time, not
+//	                    geography).
 //	pickDemand          which demand to roll. For a single-demand customer this
 //	                    returns that demand unconditionally; only a
 //	                    multi-demand customer is filtered to viable items.
@@ -51,32 +62,45 @@ type spawnState struct {
 
 // targetActive is the queue depth the pacing governor aims for.
 //
-// It is deliberately derived from FLEET SIZE, not from cargo capacity in boxes.
-// Sizing it by boxes was the obvious first idea and it is wrong: the moment a
-// truck holds forty boxes, a capacity-based target asks for thirty concurrent
-// orders, and every number in the tuning table becomes meaningless. Fleet size
-// grows in single steps and is the honest measure of how much work the player
-// can physically do at once.
+// Demand is anchored to the visible customer population, not to the player's
+// fleet. Sizing it by the fleet made buying a car raise the target at the same
+// moment it added throughput: the queue treadmill moved with the player and a
+// single scooter could keep up forever. Customers are the world's demand; a
+// growing city adds them on its own schedule, and the player has to buy enough
+// fleet (or a big enough vehicle) to serve them before deadlines expire.
+//
+// The chapter floor keeps a very small map from going quiet after a growth
+// stage; MaxActiveOrders is still the hard ceiling.
 func (w *World) targetActive() int {
-	ratio := w.ordersCfg.TargetOrdersPerCar
+	ratio := w.ordersCfg.TargetOrdersPerCustomer
 	if ratio <= 0 {
-		ratio = 1.0
+		ratio = 0.75
 	}
-	driving := 0
-	for _, c := range w.Cars {
-		if c.State(w.City) != CarStranded {
-			driving++
+	visible := 0
+	for _, cu := range w.City.Customers {
+		if !w.City.IsHidden(cu.Pos) {
+			visible++
 		}
 	}
-	target := int(float64(driving)*ratio + 0.5) // round half up
+	target := int(float64(visible)*ratio + 0.5) // round half up
 	if target < 1 {
 		target = 1
+	}
+	// Growth raises the floor gradually even when a map adds no customers in
+	// a stage; the customer count remains the primary signal.
+	if ch := w.Chapter(); (ch+1)/2 > target {
+		target = (ch + 1) / 2
 	}
 	if w.ordersCfg.MaxActiveOrders > 0 && target > w.ordersCfg.MaxActiveOrders {
 		target = w.ordersCfg.MaxActiveOrders
 	}
 	return target
 }
+
+// TargetActive exposes the governor's current queue target for the simulation
+// harness and tests. Gameplay reads targetActive; this is the same number, not
+// a second derivation.
+func (w *World) TargetActive() int { return w.targetActive() }
 
 // spawnOrders runs step 5 of the tick. It returns nothing; events are emitted.
 func (w *World) spawnOrders() {
@@ -103,57 +127,132 @@ func (w *World) spawnOrders() {
 		return
 	}
 
-	// GATE 1, evaluated per customer in id order for determinism.
-	customers := make([]Customer, len(w.City.Customers))
-	copy(customers, w.City.Customers)
-	sort.Slice(customers, func(i, j int) bool { return customers[i].ID < customers[j].ID })
-
-	for _, cu := range customers {
-		if w.Tick < w.spawn.NextEligibleTick[cu.ID] {
-			continue
-		}
-		if w.spawnOneFor(cu) {
-			return // at most one new order per tick
-		}
-	}
+	// GATE 1: at most one order per tick, from a random eligible site.
+	w.spawnOne()
 }
 
 // spawnForced emits the first order of a session, ignoring gates.
+//
+// Among the eligible sites it still picks the one nearest the depot, so a new
+// player's first delivery is short enough to teach the loop; the randomness of
+// ordinary spawns starts after it.
 func (w *World) spawnForced() {
-	if len(w.City.Customers) == 0 {
+	eligible := w.eligibleCustomers()
+	if len(eligible) == 0 {
+		// Nothing can be served yet: every site is hidden, cut off, or there is
+		// no depot to measure from. Stop retrying the forced branch every tick;
+		// the anti-dead-air branch raises the first order once a reveal makes a
+		// site eligible.
 		w.spawn.HasSpawned = true
 		return
 	}
-	// Bias the very first job toward the customer nearest the depot, so a new
-	// player's first delivery is short enough to teach the loop.
-	depotPos := w.City.Depots[0].Pos
-	best := w.City.Customers[0]
-	bestDist := -1
-	for _, cu := range w.City.Customers {
-		d := w.routeDistance(depotPos, cu.Pos)
-		if d < 0 {
-			continue
-		}
-		if bestDist < 0 || d < bestDist {
-			best, bestDist = cu, d
+
+	best := eligible[0]
+	if len(w.City.Depots) > 0 {
+		depotPos := w.City.Depots[0].Pos
+		bestDist := -1
+		for _, cu := range eligible {
+			d := w.routeDistance(depotPos, cu.Pos)
+			if d < 0 {
+				continue
+			}
+			if bestDist < 0 || d < bestDist || (d == bestDist && cu.ID < best.ID) {
+				best, bestDist = cu, d
+			}
 		}
 	}
-	if w.spawnOneFor(best) {
-		w.spawn.HasSpawned = true
-	}
+	w.spawnOneFor(best)
+	w.spawn.HasSpawned = true
 }
 
-// spawnOne tries every customer in id order until one produces an order.
+// spawnOne raises a single order for a randomly chosen eligible site.
 func (w *World) spawnOne() bool {
-	customers := make([]Customer, len(w.City.Customers))
-	copy(customers, w.City.Customers)
-	sort.Slice(customers, func(i, j int) bool { return customers[i].ID < customers[j].ID })
-	for _, cu := range customers {
-		if w.spawnOneFor(cu) {
+	cu, ok := w.pickSpawnCustomer()
+	if !ok {
+		return false
+	}
+	return w.spawnOneFor(cu)
+}
+
+// pickSpawnCustomer draws the site that raises the next order.
+//
+// Eligibility is decided by eligibleCustomers; the draw is uniform over that
+// id-sorted list. Because the roll derives from (seed, tick, "customer"), the
+// result is reproducible for a replayed save while removing the id-order bias
+// that used to let one customer win every spawn.
+func (w *World) pickSpawnCustomer() (Customer, bool) {
+	eligible := w.eligibleCustomers()
+	if len(eligible) == 0 {
+		return Customer{}, false
+	}
+	return eligible[Roll(w.Seed, w.Tick, "customer", len(eligible))], true
+}
+
+// eligibleCustomers returns the sites that may raise an order right now.
+//
+// A site is eligible when it is not present (no live order — see
+// customerPresent), its cooldown has elapsed, and it is servable: revealed, not
+// inside a closure, and with a reachable kitchen for some demand. The hidden
+// check inside customerIsServable is what keeps customers of a locked district
+// off the board until a growth stage reveals it.
+//
+// The result is sorted by id, not left in city-file order, because growth
+// stages append customers to the city as they apply. The draw indexes this
+// slice, so an unsorted list would make order spawning depend on append order
+// rather than on stable content.
+func (w *World) eligibleCustomers() []Customer {
+	out := make([]Customer, 0, len(w.City.Customers))
+	for _, cu := range w.City.Customers {
+		if w.customerPresent(cu.ID) {
+			continue
+		}
+		if w.Tick < w.spawn.NextEligibleTick[cu.ID] {
+			continue
+		}
+		if !w.customerIsServable(cu) {
+			continue
+		}
+		out = append(out, cu)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+// customerPresent reports whether a site currently has a live order.
+//
+// Presence is derived from the order list rather than stored: a customer is on
+// the map exactly while it is waiting for a delivery, so delivering or expiring
+// its order removes it with no second piece of state to keep in sync (and no
+// extra field in the save format).
+func (w *World) customerPresent(id string) bool {
+	for _, o := range w.Orders {
+		if !o.State.Terminal() && o.CustomerID == id {
 			return true
 		}
 	}
 	return false
+}
+
+// PresentCustomers returns the sites that are waiting for a delivery right now,
+// in city order. This is what the client should draw as customers; the house
+// tiles themselves are permanent map features.
+func (w *World) PresentCustomers() []Customer {
+	out := make([]Customer, 0, len(w.City.Customers))
+	if len(w.City.Customers) == 0 {
+		return out
+	}
+	present := make(map[string]bool)
+	for _, o := range w.Orders {
+		if !o.State.Terminal() {
+			present[o.CustomerID] = true
+		}
+	}
+	for _, cu := range w.City.Customers {
+		if present[cu.ID] {
+			out = append(out, cu)
+		}
+	}
+	return out
 }
 
 // canSpawnAgain enforces the anti-dead-air gap.
@@ -241,19 +340,18 @@ func (w *World) spawnOneFor(cu Customer) bool {
 
 // rollQuantity picks how many boxes this customer asks for.
 //
-// Three filters decide the draw, and the fleet filter is the important one:
-// a band is only eligible when some car in the fleet can actually carry its
-// largest size. Otherwise the spawner would raise a forty-box order for a
-// player with one scooter, which is the same class of bug as the harbour
-// orders that were sold while the bridge was closed -- a promise the player
-// cannot keep. The fallback is always a single box, which every car can take.
+// Chapter is the only filter. Demand is intentionally allowed to exceed the
+// current fleet: a 13-box job in a city where the player owns only a 4-box
+// scooter is the signal that the van is now worth buying. The assignment path
+// still refuses to exceed a car's hold, so an oversized order cannot corrupt
+// cargo; it sits pending (and eventually expires) until a capable vehicle
+// exists. The fallback is always a single box, which every car can take.
 func (w *World) rollQuantity(cu Customer) int {
 	bands := w.ordersCfg.QuantityBands
 	if len(bands) == 0 {
 		return 1
 	}
-	chapter := w.Chapter()
-	biggest := w.largestHold()
+	progress := w.Progress()
 
 	type candidate struct {
 		band   QuantityBandConfig
@@ -265,19 +363,8 @@ func (w *World) rollQuantity(cu Customer) int {
 		if b.MinSize <= 0 || b.MaxSize < b.MinSize {
 			continue
 		}
-		if chapter < b.FromChapter {
+		if progress < b.FromProgress {
 			continue
-		}
-		// Clamp the band to the fleet's largest hold rather than dropping it.
-		// Dropping a 20-40 band on a 24-box van would lose the heavy jobs the
-		// van can actually do; clamping raises a 20-24 box order instead. A
-		// band whose minimum does not fit is dropped outright, because a capped
-		// band below its own minimum is not that band any more.
-		if b.MinSize > biggest {
-			continue
-		}
-		if b.MaxSize > biggest {
-			b.MaxSize = biggest
 		}
 		weight := b.Weight
 		if weight <= 0 {
@@ -301,32 +388,26 @@ func (w *World) rollQuantity(cu Customer) int {
 	return eligible[0].band.MinSize
 }
 
-// largestHold is the biggest hold in the fleet, in boxes. It ignores stranded
-// cars: a car with a flat battery cannot take a job, so including it would let
-// the spawner raise work that nothing on the road can accept.
-func (w *World) largestHold() int {
-	biggest := 0
-	for _, c := range w.Cars {
-		if c.State(w.City) == CarStranded {
-			continue
-		}
-		if c.Class.Capacity > biggest {
-			biggest = c.Class.Capacity
-		}
-	}
-	return biggest
-}
-
 // advanceCooldown pushes a customer's next eligibility forward by its own
-// interval plus jitter, so orders do not arrive with metronomic regularity.
+// interval plus jitter. Both are scaled by ramp progress, so order frequency
+// grows over the session instead of stepping at a chapter boundary.
 func (w *World) advanceCooldown(cu Customer, item string) {
 	interval := cu.OrderIntervalTicks
 	if interval <= 0 {
 		interval = 40
 	}
+	minScale := w.ordersCfg.CustomerCooldownMinScale
+	if minScale <= 0 || minScale > 1 {
+		minScale = 0.5
+	}
+	scale := 1 - (1-minScale)*w.Progress()
+	interval = int(float64(interval)*scale + 0.5)
+	if interval < 1 {
+		interval = 1
+	}
 	jitter := 0
 	if cu.JitterTicks > 0 {
-		jitter = RollRange(w.Seed, w.Tick, "jitter:"+cu.ID+":"+item, 0, cu.JitterTicks)
+		jitter = int(float64(RollRange(w.Seed, w.Tick, "jitter:"+cu.ID+":"+item, 0, cu.JitterTicks))*scale + 0.5)
 	}
 	w.spawn.NextEligibleTick[cu.ID] = w.Tick + int64(interval+jitter)
 }
@@ -412,42 +493,40 @@ func (w *World) estimateTicks(kitchenPos, customerPos Position) int64 {
 //
 // Each leg is routed (closure-aware). A leg of 0 is legitimate -- the car may
 // already be standing on the kitchen -- so it must be added, not skipped. A leg
-// of -1 means no route exists, and both legs answer that with the same flat
-// +20 long-haul assumption.
+// of -1 means no route exists, and both legs answer that with the same
+// unreachable_leg_ticks long-haul assumption.
 //
 // Neither leg can be -1 merely because the car stands on a closed tile: a
 // closure blocks ENTRY, so DistanceAvoiding treats the origin as passable.
 // That is what keeps this window identical either side of a closure closing
 // under the car (measured 16 ticks both ways on the shipped map).
 //
-// The older shape skipped a negative first leg instead of substituting +20,
-// which quoted a SHORTER deadline for exactly that case — the opposite of what
-// a closure should do. Keep the two legs symmetric: any special case applied to
-// one must be applied to the other.
+// The older shape skipped a negative first leg instead of substituting the
+// long-haul value, which quoted a SHORTER deadline for exactly that case — the
+// opposite of what a closure should do. Keep the two legs symmetric: any
+// special case applied to one must be applied to the other.
 //
-// Slack comes from OrderConfig.DeadlineSlack and tightens by chapter. Note the
-// zero-value fallback is 2.0, not the 1.8 the shipped map uses, so a map that
-// omits deadline_slack is more generous than city.json rather than identical.
+// Slack comes from OrderConfig.DeadlineSlack and tightens by chapter.
 func (w *World) estimateFrom(from, kitchenPos, customerPos Position) int64 {
 	slack := w.deadlineSlack()
 
 	total := 0
-	if d := w.routeDistance(from, kitchenPos); d >= 0 {
-		total += d
-	} else {
-		total += 20 // kitchen unreachable from here: assume a long haul
+	for _, leg := range [2]int{
+		w.routeDistance(from, kitchenPos),
+		w.routeDistance(kitchenPos, customerPos),
+	} {
+		if leg >= 0 {
+			total += leg
+		} else {
+			total += int(w.ordersCfg.UnreachableLegTicks)
+		}
 	}
-	if d := w.routeDistance(kitchenPos, customerPos); d >= 0 {
-		total += d
-	} else {
-		total += 20 // unreachable at estimate time: assume a long haul
-	}
-	if total < 5 {
-		total = 5
+	if int64(total) < w.ordersCfg.MinRouteTicks {
+		total = int(w.ordersCfg.MinRouteTicks)
 	}
 	est := float64(total) * slack
-	if est < 10 {
-		est = 10
+	if est < float64(w.ordersCfg.MinDeadlineTicks) {
+		est = float64(w.ordersCfg.MinDeadlineTicks)
 	}
 	return int64(est + 0.5)
 }
@@ -455,9 +534,6 @@ func (w *World) estimateFrom(from, kitchenPos, customerPos Position) int64 {
 // deadlineSlack returns the current slack multiplier, tightening by chapter.
 func (w *World) deadlineSlack() float64 {
 	slack := w.ordersCfg.DeadlineSlack
-	if slack <= 0 {
-		slack = 2.0
-	}
 	byChapter := w.ordersCfg.DeadlineSlackByChapter
 	if len(byChapter) > 0 {
 		ch := w.Chapter()
@@ -474,14 +550,15 @@ func (w *World) deadlineSlack() float64 {
 // rewardFor computes pay: base by item, scaled by chapter, plus a distance
 // bonus so long hauls are worth the battery.
 //
-// Quantity scales pay sublinearly on purpose: 0.6 + 0.4*qty is affine, not
-// linear and not exponential, so the per-box rate falls as the order grows.
-// Linear pay per box would make bulk strictly better -- forty boxes at the
-// single-box rate would out-earn any number of small runs and make order choice
-// a non-decision. The shape is what keeps a full truck a good job while a small
-// van job is still worth taking.
+// Quantity scales pay sublinearly on purpose: RewardBulkBase +
+// RewardBulkPerBox*qty is affine, not linear and not exponential, so the
+// per-box rate falls as the order grows. Linear pay per box would make bulk
+// strictly better -- forty boxes at the single-box rate would out-earn any
+// number of small runs and make order choice a non-decision. The shape is what
+// keeps a full truck a good job while a small van job is still worth taking.
 //
-// Measured on the shipped map for pizza (base 40, 6-tile haul, chapter 0):
+// Measured on the shipped map for pizza (base 40, 6-tile haul, chapter 0,
+// bulk base 0.6, per box 0.4):
 //
 //	qty  1 ->  58   (58.0 per box)
 //	qty 10 -> 202   (20.2 per box)
@@ -491,9 +568,6 @@ func (w *World) deadlineSlack() float64 {
 // the base multiplier; it is only on the long ones that distance shows.
 func (w *World) rewardFor(item string, kitchenPos, customerPos Position, quantity int) int {
 	base := w.ordersCfg.RewardBase[item]
-	if base <= 0 {
-		base = 40
-	}
 	if quantity <= 0 {
 		quantity = 1
 	}
@@ -505,9 +579,7 @@ func (w *World) rewardFor(item string, kitchenPos, customerPos Position, quantit
 		}
 		mult = m[ch]
 	}
-	// Affine, not exponential: 1.0x at one box, 16.6x at forty, so a full truck
-	// pays 682 on the shipped map rather than 40x the single-box rate.
-	bulk := 0.6 + 0.4*float64(quantity)
+	bulk := w.ordersCfg.RewardBulkBase + w.ordersCfg.RewardBulkPerBox*float64(quantity)
 	reward := float64(base) * mult * bulk
 	if dist := w.routeDistance(kitchenPos, customerPos); dist > 0 {
 		reward += float64(dist * w.ordersCfg.DistanceBonusPerTile)
@@ -516,27 +588,38 @@ func (w *World) rewardFor(item string, kitchenPos, customerPos Position, quantit
 }
 
 // penaltyFor is what an expired order costs. Small: expiry should sting, not
-// bankrupt.
+// bankrupt. The divisor is required map config; there is no fallback.
 func (w *World) penaltyFor(item string) int {
-	base := w.ordersCfg.RewardBase[item]
-	if base <= 0 {
-		base = 40
-	}
-	return base / 4
+	return w.ordersCfg.RewardBase[item] / w.ordersCfg.ExpireFineDivisor
 }
 
-// Chapter derives the progression chapter from builds completed, which is the
-// honest measure of how far the city has grown.
+// Progress is how far through the demand ramp the session is, in [0,1].
+// Quantity bands and customer cooldowns scale from this percentage, not from
+// the number of growth stages that happen to have applied.
+func (w *World) Progress() float64 {
+	if w.ordersCfg.RampTicks <= 0 {
+		return 1
+	}
+	p := float64(w.Tick) / float64(w.ordersCfg.RampTicks)
+	if p < 0 {
+		return 0
+	}
+	if p > 1 {
+		return 1
+	}
+	return p
+}
+
+// Chapter derives the progression chapter from how many growth stages have
+// applied. The city's own timeline is the honest measure of how far it has
+// grown; no player action is involved.
 func (w *World) Chapter() int {
-	ch := w.Ledger.BuildsCompleted
-	if ch > MaxChapter {
-		ch = MaxChapter
+	ch := w.growthApplied
+	if ch > w.maxChapter {
+		ch = w.maxChapter
 	}
 	if ch < 0 {
 		ch = 0
 	}
 	return ch
 }
-
-// MaxChapter caps the chapter index used for tuning tables.
-const MaxChapter = 4

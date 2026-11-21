@@ -8,7 +8,17 @@ export function isOfficial(m: { builtin?: boolean }): boolean {
 	return m.builtin !== false;
 }
 
-type Sortable = Pick<GameMap, 'difficulty' | 'name'> & { builtin?: boolean };
+/** True for the signed-in owner's unpublished work in progress. */
+export function isDraft(m: { status?: string }): boolean {
+	return m.status === 'DRAFT';
+}
+
+/** True when this caller may edit the map (their own or an admin's shipped map). */
+export function canEditMap(m: { builtin?: boolean; ownedByMe?: boolean }): boolean {
+	return m.builtin === true || m.ownedByMe === true;
+}
+
+type Sortable = Pick<GameMap, 'difficulty' | 'name'> & { builtin?: boolean; status?: string };
 
 /**
  * The one map order used everywhere (home, maps page, dropdowns, "Next map"):
@@ -24,7 +34,7 @@ export function sortMaps<T extends Sortable>(maps: T[]): T[] {
 	);
 }
 
-export type MapGroupId = 'official' | 'community';
+export type MapGroupId = 'drafts' | 'official' | 'community';
 
 export interface MapGroup<T> {
 	id: MapGroupId;
@@ -35,15 +45,25 @@ export interface MapGroup<T> {
 }
 
 /**
- * Splits maps into the official campaign and community (player-made) maps, each in
- * sortMaps order. Empty groups are left out, so a game with no community maps gets a
- * single group.
+ * Splits maps into the viewer's drafts, the official campaign, and published
+ * community maps, each in sortMaps order. Empty groups are left out.
  */
 export function groupMaps<T extends Sortable>(maps: T[]): MapGroup<T>[] {
 	const sorted = sortMaps(maps);
 	const groups: MapGroup<T>[] = [
-		{ id: 'official', label: 'Official maps', blurb: 'The levels that ship with the game, from easy to hard.', maps: sorted.filter(isOfficial) },
-		{ id: 'community', label: 'Community maps', blurb: 'Made by players in the map editor.', maps: sorted.filter((m) => !isOfficial(m)) }
+		{ id: 'drafts', label: 'Your drafts', blurb: 'Only you can see these until you publish them.', maps: sorted.filter(isDraft) },
+		{
+			id: 'official',
+			label: 'Official maps',
+			blurb: 'The levels that ship with the game, from easy to hard.',
+			maps: sorted.filter((m) => !isDraft(m) && isOfficial(m))
+		},
+		{
+			id: 'community',
+			label: 'Community maps',
+			blurb: 'Made by players in the map editor.',
+			maps: sorted.filter((m) => !isDraft(m) && !isOfficial(m))
+		}
 	];
 	return groups.filter((g) => g.maps.length > 0);
 }
@@ -55,7 +75,8 @@ export function groupMaps<T extends Sortable>(maps: T[]): MapGroup<T>[] {
 export function nextMap<T extends Sortable & Pick<GameMap, 'id'>>(maps: T[], currentId: string): T | null {
 	const current = maps.find((m) => m.id === currentId);
 	if (!current) return null;
-	const sorted = sortMaps(maps).filter((m) => isOfficial(m) === isOfficial(current));
+	const group = (m: Sortable) => (isDraft(m) ? 'drafts' : isOfficial(m) ? 'official' : 'community');
+	const sorted = sortMaps(maps).filter((m) => group(m) === group(current));
 	const i = sorted.findIndex((m) => m.id === currentId);
 	return i >= 0 && i + 1 < sorted.length ? sorted[i + 1] : null;
 }

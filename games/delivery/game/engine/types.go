@@ -41,7 +41,9 @@ func (t CellType) Passable() bool {
 	return true
 }
 
-// Charges reports whether standing here recharges a car.
+// Charges reports whether standing here can recharge a car in the tick loop:
+// only depot and standalone charger tiles do. Road, ground, kitchen and house
+// tiles never charge, even when an entity sits on them.
 func (t CellType) Charges() bool {
 	return t == DepotTile || t == ChargerTile
 }

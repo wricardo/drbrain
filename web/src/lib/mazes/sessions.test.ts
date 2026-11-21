@@ -1,13 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-	LAST_SESSION_KEY,
 	countByStatus,
 	filterSessions,
-	forgetSession,
 	isFinished,
-	recalledSession,
-	recentStarted,
-	rememberSession,
 	sortSessions,
 	statusText
 } from './sessions';
@@ -84,30 +79,3 @@ describe('sortSessions', () => {
 	});
 });
 
-describe('recentStarted', () => {
-	it('hides sessions without moves and caps the list', () => {
-		const list = Array.from({ length: 12 }, (_, i) => sess(String(i), { moves: i % 3 === 0 ? 0 : i }));
-		const out = recentStarted(list);
-		expect(out).toHaveLength(8);
-		expect(out.every((s) => s.state.moves > 0)).toBe(true);
-		expect(recentStarted(list, 2).map((s) => s.id)).toEqual(['1', '2']);
-	});
-});
-
-describe('last session memory', () => {
-	it('remembers, recalls and forgets the id under the repo-prefixed key', () => {
-		const data = new Map<string, string>();
-		const store = {
-			getItem: (k: string) => data.get(k) ?? null,
-			setItem: (k: string, v: string) => void data.set(k, v),
-			removeItem: (k: string) => void data.delete(k)
-		};
-		expect(LAST_SESSION_KEY.startsWith('drbrain-mazes.')).toBe(true);
-		expect(recalledSession(store)).toBeNull();
-		rememberSession('s1', store);
-		expect(recalledSession(store)).toBe('s1');
-		forgetSession(store);
-		expect(recalledSession(store)).toBeNull();
-		expect(recalledSession(null)).toBeNull();
-	});
-});

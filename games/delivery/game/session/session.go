@@ -1,11 +1,11 @@
 // Package session owns everything between a World and the network: the runtime
-// clock, save files, and the view types the API serialises.
+// clock, durable saves, and the view types the API serialises.
 //
 // The layering matters when you are deciding where a change belongs:
 //
 //	engine   pure simulation. No I/O, no wall clock, no knowledge of HTTP.
 //	session  owns time and storage. Mutex-protected, one goroutine per live
-//	         session, and the only place that reads or writes save files.
+//	         session, and the only place that reads or writes durable saves.
 //	graph    transport. Resolvers translate GraphQL into session calls and
 //	         view structs into generated model types. No game rules here.
 //
@@ -16,7 +16,7 @@
 // resolver — a client must never observe a half-advanced world.
 //
 // A session is either loaded or not. Manager keeps only the loaded ones in
-// memory and lists everything else straight off disk, which is what makes
+// memory and lists everything else straight from the store, which is what makes
 // `loaded` meaningful in the API.
 package session
 
@@ -25,11 +25,17 @@ import (
 	"fmt"
 	"regexp"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/wricardo/drbrain/games/delivery/game/engine"
 	"github.com/wricardo/drbrain/platform/sessionstore"
 )
+
+// A session is otherwise only persisted on an explicit saveSession mutation and
+// on graceful shutdown, so a crash or a kill -9 lost every tick since the last
+// one. The interval is the map's autosave_ticks: sixty ticks is 18s at 1x and
+// 4.5s at 4x on the shipped map.
 
 // Session is one playthrough with its own clock.
 //
@@ -40,6 +46,10 @@ import (
 type Session struct {
 	ID        string
 	CreatedAt time.Time
+	// cityID is the catalogue id this session snapshotted at creation. The
+	// city itself lives in world.City; saving records the id so a reload can
+	// re-read current map content instead of freezing geography in the save.
+	cityID string
 
 	mu    sync.Mutex
 	world *engine.World
@@ -68,6 +78,18 @@ type Session struct {
 	// is ever part of Snapshot: writes are gated on them, reads are not.
 	accountID string
 	ownerHash string
+
+	// lastSavedTick is the world tick of the newest autosave. Storing it before
+	// the write means a failing store costs one interval per attempt instead of
+	// retrying on every tick.
+	lastSavedTick atomic.Int64
+	// saveMu keeps autosaves from overlapping. TryLock means a store slower
+	// than the interval skips a save instead of building a backlog behind the
+	// tick loop.
+	saveMu sync.Mutex
+	// saveRequested asks the loop to persist once on its next pass. The paused
+	// branch needs it because a paused world produces no ticks to count.
+	saveRequested atomic.Bool
 }
 
 // Speed values accepted by SetSpeed.
@@ -78,10 +100,12 @@ const (
 	Speed4x     = 4
 )
 
-// validID rejects anything that could escape the sessions directory.
+// validID rejects anything that could not be a store key.
 var validID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
-// ValidID reports whether an id is safe to use as a filename.
+// ValidID reports whether id can name a session and be used as a store key:
+// 1-64 characters from [A-Za-z0-9_-]. Unlike city ids it allows uppercase; it
+// is a shape check, not proof of ownership.
 func ValidID(id string) bool { return validID.MatchString(id) }
 
 // Do runs fn with exclusive access to the world.
@@ -94,10 +118,17 @@ func (s *Session) Do(fn func(w *engine.World)) {
 	// forever; the notify runs after the lock is released by unwrapping into a
 	// closure rather than returning early.
 	s.mu.Lock()
-	func() {
+	before := s.world.Tick
+	changed := func() bool {
 		defer s.mu.Unlock()
 		fn(s.world)
+		return s.world.Tick != before
 	}()
+	if changed {
+		// A paused clock never reaches the loop's autosave interval, so record
+		// that there is unsaved progress for the loop to pick up.
+		s.saveRequested.Store(true)
+	}
 	// Every mutating entry point goes through here (the resolvers all do), so
 	// this is the one place that guarantees a subscriber hears about a manual
 	// step, a queued move or a purchase. It is outside the lock so a reader
@@ -105,24 +136,20 @@ func (s *Session) Do(fn func(w *engine.World)) {
 	s.notify()
 }
 
-// New creates a session from a city config. The ticker is not started; call
-// Start. It has no owner credentials, so it is a legacy/open session; production
-// creation goes through Manager.Create, which mints a token.
-func New(id string, city *engine.City, cfg *engine.CityConfig, seed uint64, dir string) (*Session, error) {
-	var st sessionstore.Store
-	if dir != "" {
-		var err error
-		st, err = sessionstore.Open(sessionstore.Options{Dir: dir, Summary: summarizePayload})
-		if err != nil {
-			return nil, err
-		}
-	}
-	return newWithStore(id, city, cfg, seed, st, "", "")
+// New builds an unpersisted, ownerless session from an already-validated city
+// and the config that produced it. The city must already include its initial
+// fog; city and cfg must belong together. The ticker is not started; call
+// Start. Production creation goes through Manager.Create, which adds a store
+// and mints an owner token.
+func New(id string, city *engine.City, cfg *engine.CityConfig, seed uint64) (*Session, error) {
+	return newWithStore(id, city, cfg, "", seed, nil, "", "")
 }
 
 // newWithStore builds a session sharing the manager's store. accountID and
 // ownerHash may be empty (guest session, or one created before owner tokens).
-func newWithStore(id string, city *engine.City, cfg *engine.CityConfig, seed uint64, st sessionstore.Store, accountID, ownerHash string) (*Session, error) {
+// cityID is the catalogue id persisted with the save ("" for the legacy New
+// constructor, which never persists).
+func newWithStore(id string, city *engine.City, cfg *engine.CityConfig, cityID string, seed uint64, st sessionstore.Store, accountID, ownerHash string) (*Session, error) {
 	if !ValidID(id) {
 		return nil, fmt.Errorf("invalid session id %q", id)
 	}
@@ -134,6 +161,7 @@ func newWithStore(id string, city *engine.City, cfg *engine.CityConfig, seed uin
 	return &Session{
 		ID:        id,
 		CreatedAt: time.Now().UTC(),
+		cityID:    cityID,
 		world:     w,
 		accountID: accountID,
 		ownerHash: ownerHash,
@@ -150,13 +178,15 @@ func newWithStore(id string, city *engine.City, cfg *engine.CityConfig, seed uin
 	}, nil
 }
 
-// TickInterval is the wall-clock gap between ticks at 1x.
+// CityID returns the catalogue id this session snapshotted at creation. It is
+// immutable after construction, so readers do not need the world lock.
+func (s *Session) CityID() string { return s.cityID }
+
+// TickInterval is the wall-clock gap between ticks at 1x, derived from the
+// city's tick_ms. At 2x or 4x the ticker fires proportionally faster; at paused
+// it does not tick at all.
 func (s *Session) TickInterval() time.Duration {
-	ms := s.world.City.TickMS
-	if ms <= 0 {
-		ms = engine.DefaultTickMS
-	}
-	return time.Duration(ms) * time.Millisecond
+	return time.Duration(s.world.City.TickMS) * time.Millisecond
 }
 
 // Start launches the ticker goroutine. It is safe to call once; further calls
@@ -187,6 +217,17 @@ func (s *Session) loop() {
 		s.mu.Unlock()
 
 		if speed == SpeedPaused {
+			// Manual play advances the world through Do, which marks the session
+			// dirty; a paused clock produces no tick cadence, so this is where a
+			// hand-played session gets its periodic save.
+			if s.saveRequested.Load() {
+				tick := s.currentTick()
+				if tick-s.lastSavedTick.Load() >= s.world.AutosaveTicks() {
+					s.lastSavedTick.Store(tick)
+					s.saveRequested.Store(false)
+					s.autosave()
+				}
+			}
 			select {
 			case <-s.stop:
 				return
@@ -202,15 +243,21 @@ func (s *Session) loop() {
 		case <-time.After(interval):
 			s.mu.Lock()
 			advanced := false
+			var tick int64
 			if s.speed != SpeedPaused {
 				s.world.Advance()
 				advanced = true
+				tick = s.world.Tick
 			}
 			s.mu.Unlock()
 			// Publish outside the lock: a subscriber that reads the snapshot
 			// immediately must not deadlock against the world lock.
 			if advanced {
 				s.notify()
+				if tick-s.lastSavedTick.Load() >= s.world.AutosaveTicks() {
+					s.lastSavedTick.Store(tick)
+					s.autosave()
+				}
 			}
 		}
 	}
@@ -257,21 +304,40 @@ func (s *Session) SetSpeed(speed int) error {
 	// A speed change is a state change: subscribers must see `paused` flip even
 	// though no tick occurred.
 	s.notify()
+	if speed == SpeedPaused {
+		// Pausing is the natural end of a session, and a paused world produces
+		// no ticks for the autosave interval to count: flush here instead.
+		s.lastSavedTick.Store(s.currentTick())
+		s.autosave()
+	}
 	return nil
 }
 
-// Paused reports whether the clock is stopped.
+// currentTick is the world tick under the session lock.
+func (s *Session) currentTick() int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.world.Tick
+}
+
+// Paused reports whether the clock is stopped; it is exactly Speed() ==
+// SpeedPaused. Commands are still accepted while paused.
 func (s *Session) Paused() bool { return s.Speed() == SpeedPaused }
 
-// persisted is the on-disk shape of a session.
+// persisted is the stored shape of a session.
 //
-// It stores the city file name rather than the whole city, so fixing map
-// content applies to existing saves instead of freezing old geography into
-// them: the save keeps only what the session changed, and completed builds are
+// It stores the city id rather than the whole city, so fixing map content
+// applies to existing saves instead of freezing old geography into them: the
+// save keeps only what the session changed, and completed growth stages are
 // replayed from the (current) city config on load.
+//
+// CityFile is the pre-catalogue field. It is still read on load (its base is
+// tried as a city id, then the default applies) but no longer written. A new
+// save has an empty city_file, which keeps old and new payloads unambiguous.
 type persisted struct {
 	ID        string            `json:"id"`
-	CityFile  string            `json:"city_file"`
+	CityID    string            `json:"city_id,omitempty"`
+	CityFile  string            `json:"city_file,omitempty"`
 	CreatedAt time.Time         `json:"created_at"`
 	Speed     int               `json:"speed"`
 	World     engine.SavedState `json:"world"`
@@ -283,15 +349,30 @@ type persisted struct {
 	OwnerHash string `json:"owner_hash,omitempty"`
 }
 
-// Save writes the session to disk atomically.
+// autosave persists the session without ever queueing behind another save.
 //
-// The state is deep-copied under the session lock and marshalled and written
-// outside it. Marshalling in place was a data race: the ticker goroutine keeps
-// mutating cars and the event log while the filesystem write is in progress.
+// It runs from the tick loop, so a store slower than the autosave interval
+// skips a save (the next interval retries) rather than building a backlog that
+// stalls the clock. Errors are ignored here on purpose: the only thing a player
+// could do about a failed background write is nothing, and Close/SaveAll still
+// reports the real error.
+func (s *Session) autosave() {
+	if s.store == nil {
+		return
+	}
+	if !s.saveMu.TryLock() {
+		return
+	}
+	defer s.saveMu.Unlock()
+	_ = s.Save()
+}
+
+// Save persists the session through the manager's store.
 //
-// The write goes to a temp file and is renamed into place, so a crash mid-write
-// cannot leave a half-serialised save that fails to load later.
-func (s *Session) Save(cityFile string) error {
+// The state is deep-copied under the session lock and marshalled outside it.
+// Marshalling in place was a data race: the ticker goroutine keeps mutating cars
+// and the event log while the encode is in progress.
+func (s *Session) Save() error {
 	if s.store == nil {
 		return nil
 	}
@@ -299,7 +380,7 @@ func (s *Session) Save(cityFile string) error {
 	s.mu.Lock()
 	data := persisted{
 		ID:        s.ID,
-		CityFile:  cityFile,
+		CityID:    s.cityID,
 		CreatedAt: s.CreatedAt,
 		Speed:     s.speed,
 		World:     s.world.ExportState(),
@@ -313,19 +394,7 @@ func (s *Session) Save(cityFile string) error {
 		return fmt.Errorf("marshal session: %w", err)
 	}
 	return s.store.Persist(sessionstore.Meta{
-		ID: s.ID, MapID: cityFile, CreatedAt: s.CreatedAt, LastActionAt: s.CreatedAt,
+		ID: s.ID, MapID: s.cityID, CreatedAt: s.CreatedAt, LastActionAt: s.CreatedAt,
 		Seq: uint64(data.World.Tick),
 	}, blob)
-}
-
-// summarizePayload derives the platform Meta from a delivery save.
-func summarizePayload(raw []byte) (sessionstore.Meta, error) {
-	var p persisted
-	if err := json.Unmarshal(raw, &p); err != nil {
-		return sessionstore.Meta{}, err
-	}
-	return sessionstore.Meta{
-		ID: p.ID, MapID: p.CityFile, CreatedAt: p.CreatedAt, LastActionAt: p.CreatedAt,
-		Seq: uint64(p.World.Tick),
-	}, nil
 }

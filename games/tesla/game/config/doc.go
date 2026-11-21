@@ -25,7 +25,7 @@
 //
 // Usage:
 //
-//	manager := config.NewManager("maps", "")
+//	manager, err := config.NewManager(config.Options{ConfigDir: "maps"})
 //
 //	// Load specific configuration
 //	gameConfig, err := manager.LoadConfig("easy")

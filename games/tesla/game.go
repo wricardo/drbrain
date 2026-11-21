@@ -6,6 +6,7 @@ package tesla
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -33,6 +34,9 @@ type Game struct {
 	publicURL string
 	cancel    context.CancelFunc
 	resolver  *graph.Resolver
+	// hooksRegistered guards the account-deletion hook: Mount runs once, but a
+	// second Mount must not double-register it.
+	hooksRegistered bool
 }
 
 // New returns the game for the compiled-in registry.
@@ -64,11 +68,28 @@ func (g *Game) Mount(mux *http.ServeMux, deps platform.Deps) error {
 	}
 	g.publicURL = deps.Config.PublicURL
 
-	configManager, err := config.NewManager(cfg.ConfigDir, cfg.CustomMapsDir)
+	if deps.DB == nil {
+		return fmt.Errorf("create session persistence: PostgreSQL is required")
+	}
+	configManager, err := config.NewManager(config.Options{
+		ConfigDir:   cfg.ConfigDir,
+		Pool:        deps.DB,
+		MaxUserMaps: cfg.MaxUserMaps,
+	})
 	if err != nil {
 		return fmt.Errorf("create config manager: %w", err)
 	}
-	persistence, err := session.NewStorePersistence(cfg.SessionsDir, configManager, 0)
+	if deps.Accounts != nil && !g.hooksRegistered {
+		g.hooksRegistered = true
+		// Delete the account's drafts, keep its published maps playable.
+		deps.Accounts.AddOnDelete(func(accountID string) error {
+			return errors.Join(
+				configManager.DeleteDraftsByOwner(accountID),
+				configManager.OrphanPublishedByOwner(accountID),
+			)
+		})
+	}
+	persistence, err := session.NewPostgresPersistence(deps.DB, configManager, 0)
 	if err != nil {
 		return fmt.Errorf("create session persistence: %w", err)
 	}
@@ -95,7 +116,6 @@ func (g *Game) Mount(mux *http.ServeMux, deps platform.Deps) error {
 	}
 	deps.Logger.Info("tesla mounted",
 		"config_dir", cfg.ConfigDir,
-		"sessions_dir", cfg.SessionsDir,
 		"introspection", bool(cfg.GraphQLIntrospection),
 		"playground", bool(cfg.GraphQLPlayground),
 		"mcp", bool(cfg.MCPEnabled))

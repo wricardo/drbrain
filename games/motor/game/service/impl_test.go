@@ -79,10 +79,10 @@ func TestMapSnapshotIsolation(t *testing.T) {
 	// then delete it entirely.
 	edited := corridorCfg
 	edited.Layout = []string{".....", ">....", "...*."}
-	if _, err := e.svc.SaveMap(edited); err != nil {
+	if _, err := e.svc.SaveMap(edited, service.MapActor{AccountID: "tester"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.svc.DeleteMap("corridor"); err != nil {
+	if err := e.svc.DeleteMap("corridor", service.MapActor{AccountID: "tester"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := e.svc.GetMap("corridor"); err == nil {

@@ -224,7 +224,7 @@
 	});
 </script>
 
-<div class="overflow-auto rounded-lg border border-edge-strong bg-[var(--color-map)] p-3">
+<div class="rounded-lg border border-edge-strong bg-[var(--color-map)] p-3">
 	<div
 		class="relative mx-auto"
 		style="width: {city.gridSize * TILE}px; height: {city.gridSize * TILE}px;"
@@ -242,7 +242,7 @@
 					Buildings, water and fog keep the gap, which is what makes the
 					blocks read as solid masses.
 				-->
-				{@const flush = ch === '.' || ch === ',' || ch === 'X' || ch === 'D' || ch === 'C' || ch === 'K' || ch === 'H'}
+				{@const flush = ch === '.' || ch === ',' || ch === 'X' || ch === 'D' || ch === 'C' || ch === 'K' || ch === 'H' || ch === 'h'}
 				<button
 					type="button"
 					class="absolute flex items-center justify-center text-[12px] leading-none transition-[filter] hover:brightness-150 {flush
@@ -254,10 +254,11 @@
 					title="{style.label} [{x},{y}]"
 					aria-label="{style.label} at {x},{y}"
 					disabled={here.length === 0}
+					tabindex={-1}
 					onclick={() => handleTile(x, y)}
 				>
-					{#if ch === 'K' || ch === 'H' || ch === 'D' || ch === 'C'}
-						<span class="font-semibold text-white">{ch}</span>
+					{#if ch === 'K' || ch === 'H' || ch === 'D' || ch === 'C' || ch === 'h'}
+						<span class="font-semibold {ch === 'h' ? 'text-[var(--color-customer)]' : 'text-white'}">{ch}</span>
 					{/if}
 				</button>
 			{/each}
@@ -300,7 +301,7 @@
 					<span class:text-[var(--color-danger)]={car.state === 'STRANDED'}>{d.digit}</span>
 					{#if d.first && d.here.length > 1}
 						<span
-							class="absolute -top-0.5 -right-0.5 rounded-full bg-ink px-1 text-[9px] font-bold text-white"
+							class="absolute -top-0.5 -right-0.5 rounded-full bg-ink px-1 text-[11px] font-bold text-white"
 							>×{d.here.length}</span
 						>
 					{/if}
@@ -311,54 +312,60 @@
 
 	<div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
 		<span class="flex items-center gap-1">
-			<span class="inline-block h-3 w-3 rounded-[2px] bg-[var(--color-road)]"></span>road
+			<span class="inline-block h-3 w-3 rounded-[2px] bg-[var(--color-road)]" aria-hidden="true"></span>road
 		</span>
 		<span class="flex items-center gap-1">
-			<span class="inline-block h-3 w-3 rounded-[2px] bg-[var(--color-ground)]"></span>ground&nbsp;(2⚡)
+			<span class="inline-block h-3 w-3 rounded-[2px] bg-[var(--color-ground)]" aria-hidden="true"></span>ground&nbsp;(2⚡)
 		</span>
 		<span class="flex items-center gap-1">
-			<span class="inline-block h-3 w-3 rounded-[2px] bg-[var(--color-water)]"></span>water
+			<span class="inline-block h-3 w-3 rounded-[2px] bg-[var(--color-water)]" aria-hidden="true"></span>water
 		</span>
 		<span class="flex items-center gap-1">
 			<span
-				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-depot)] text-[9px] font-bold text-white"
-				>D</span
+				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-depot)] text-[11px] font-bold text-white"
+				aria-hidden="true">D</span
 			>depot
 		</span>
 		<span class="flex items-center gap-1">
 			<span
-				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-charger)] text-[9px] font-bold text-white"
-				>C</span
+				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-charger)] text-[11px] font-bold text-white"
+				aria-hidden="true">C</span
 			>charger
 		</span>
 		<span class="flex items-center gap-1">
 			<span
-				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-kitchen)] text-[9px] font-bold text-white"
-				>K</span
+				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-kitchen)] text-[11px] font-bold text-white"
+				aria-hidden="true">K</span
 			>kitchen
 		</span>
 		<span class="flex items-center gap-1">
 			<span
-				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-customer)] text-[9px] font-bold text-white"
-				>H</span
-			>customer
+				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-customer)] text-[11px] font-bold text-white"
+				aria-hidden="true">H</span
+			>customer waiting
 		</span>
 		<span class="flex items-center gap-1">
-			<span class="inline-block h-3 w-3 rounded-[2px] bg-[var(--color-building)]"></span>building
+			<span
+				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-customer)]/20 text-[11px] font-bold text-[var(--color-customer)]"
+				aria-hidden="true">h</span
+			>house, nobody home
 		</span>
 		<span class="flex items-center gap-1">
-			<span class="inline-block h-3 w-3 rounded-[2px] border border-dashed border-edge-faint bg-surface-muted"
+			<span class="inline-block h-3 w-3 rounded-[2px] bg-[var(--color-building)]" aria-hidden="true"></span>building
+		</span>
+		<span class="flex items-center gap-1">
+			<span class="inline-block h-3 w-3 rounded-[2px] border border-dashed border-edge-faint bg-surface-muted" aria-hidden="true"
 			></span>unexplored
 		</span>
 		<span class="flex items-center gap-1">
 			<span
-				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-ink text-[9px] font-bold text-white"
-				>1</span
+				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-ink text-[11px] font-bold text-white"
+				aria-hidden="true">1</span
 			>car
 		</span>
 		{#if closures.length > 0}
 			<span class="flex items-center gap-1 text-[var(--color-warn)]">
-				<span class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-warn)]/40 text-[9px] font-bold text-ink"
+				<span class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-warn)]/40 text-[11px] font-bold text-ink" aria-hidden="true"
 					>X</span
 				>works
 			</span>

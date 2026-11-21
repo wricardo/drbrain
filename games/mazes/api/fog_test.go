@@ -58,6 +58,31 @@ func (s mapStore) Save(engine.MapConfig) (*engine.Map, error)   { panic("unused"
 func (s mapStore) Create(engine.MapConfig) (*engine.Map, error) { panic("unused") }
 func (s mapStore) Delete(string) error                          { panic("unused") }
 
+func (s mapStore) ListEntries(string) ([]*service.MapEntry, error) {
+	out := make([]*service.MapEntry, 0, len(s.maps))
+	for _, m := range s.maps {
+		out = append(out, &service.MapEntry{ID: m.ID, Config: m.Config(), Builtin: true, Status: service.MapStatusPublished})
+	}
+	return out, nil
+}
+
+func (s mapStore) GetEntry(id string) (*service.MapEntry, error) {
+	m, ok := s.maps[id]
+	if !ok {
+		return nil, service.Errorf(service.CodeNotFound, "map %q not found", id)
+	}
+	return &service.MapEntry{ID: m.ID, Config: m.Config(), Builtin: true, Status: service.MapStatusPublished}, nil
+}
+
+func (s mapStore) CreateDraft(engine.MapConfig, string) (string, error) { panic("unused") }
+
+func (s mapStore) SaveOwned(engine.MapConfig, service.MapActor) (*service.MapEntry, error) {
+	panic("unused")
+}
+
+func (s mapStore) Publish(string, service.MapActor) (*service.MapEntry, error) { panic("unused") }
+func (s mapStore) DeleteOwned(string, service.MapActor) error                  { panic("unused") }
+
 // newFogServer wires the real service, session manager and hub.
 func newFogServer(t *testing.T) *httptest.Server {
 	t.Helper()
@@ -116,12 +141,14 @@ func TestSessionsNeverLeakOtherLevels(t *testing.T) {
 	}
 	send(map[string]any{"type": "connection_init"})
 
-	_, out := gql(t, ts.URL, `mutation { createSession(mapID: "fog") { `+fogSession+` } }`, nil)
+	_, out := gql(t, ts.URL, `mutation { createSession(mapID: "fog") { session { `+fogSession+` } ownerToken } }`, nil)
 	created := dataOf(t, out, "createSession").(map[string]any)
-	sid := created["id"].(string)
+	sid := created["session"].(map[string]any)["id"].(string)
+	token := created["ownerToken"].(string)
+	owner := `, ownerToken: "` + token + `"`
 	raw, _ := json.Marshal(out)
 	assertNoHiddenRows(t, "createSession", raw)
-	view := created["view"].(map[string]any)
+	view := created["session"].(map[string]any)["view"].(map[string]any)
 	if view["level"] != float64(0) || view["levelCount"] != float64(3) || len(view["rows"].([]any)) != 3 || view["rows"].([]any)[0] != "SoU." {
 		t.Fatalf("view at start = %v", view)
 	}
@@ -184,11 +211,11 @@ func TestSessionsNeverLeakOtherLevels(t *testing.T) {
 	q(`query { session(id: "` + sid + `") { ` + fogSession + ` } }`)
 	q(`query { sessions { ` + fogSession + ` } }`)
 	q(`query { maps { id levelCount preview parMoves } map(id: "fog") { id levelCount preview } }`)
-	q(`mutation { move(sessionID: "` + sid + `", direction: UP) { ` + fogSession + ` } }`)    // blocked
-	q(`mutation { move(sessionID: "` + sid + `", direction: RIGHT) { ` + fogSession + ` } }`) // walk
-	q(`mutation { renameSession(id: "` + sid + `", displayName: "x") { ` + fogSession + ` } }`)
-	q(`mutation { reset(sessionID: "` + sid + `") { ` + fogSession + ` } }`)
-	q(`mutation { bulkMove(sessionID: "` + sid + `", directions: [RIGHT]) { ` + fogSession + ` } }`)
+	q(`mutation { move(sessionID: "` + sid + `", direction: UP` + owner + `) { ` + fogSession + ` } }`)    // blocked
+	q(`mutation { move(sessionID: "` + sid + `", direction: RIGHT` + owner + `) { ` + fogSession + ` } }`) // walk
+	q(`mutation { renameSession(id: "` + sid + `", displayName: "x"` + owner + `) { ` + fogSession + ` } }`)
+	q(`mutation { reset(sessionID: "` + sid + `"` + owner + `) { ` + fogSession + ` } }`)
+	q(`mutation { bulkMove(sessionID: "` + sid + `", directions: [RIGHT]` + owner + `) { ` + fogSession + ` } }`)
 	waitFrames(6) // initial + blocked + walk + rename + reset + bulk
 	_ = c.Close()
 	<-done
@@ -200,7 +227,7 @@ func TestSessionsNeverLeakOtherLevels(t *testing.T) {
 
 	// Standing on level 1 (after the stairs) the view switches to level 1's
 	// rows, and then level 0's rows are only visible through the public preview.
-	_, o := gql(t, ts.URL, `mutation { bulkMove(sessionID: "`+sid+`", directions: [RIGHT]) { view { level rows } } }`, nil)
+	_, o := gql(t, ts.URL, `mutation { bulkMove(sessionID: "`+sid+`", directions: [RIGHT]`+owner+`) { view { level rows } } }`, nil)
 	view = dataOf(t, o, "bulkMove").(map[string]any)["view"].(map[string]any)
 	if view["level"] != float64(1) || view["rows"].([]any)[1] != hiddenLevel1Row {
 		t.Fatalf("view after the stairs = %v", view)

@@ -23,7 +23,7 @@ func cfg(id string) engine.MapConfig {
 
 func TestSaveReloadRoundtrip(t *testing.T) {
 	dir := t.TempDir()
-	m, err := NewManager(dir)
+	m, err := NewManager(Options{Dir: dir})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func TestSaveReloadRoundtrip(t *testing.T) {
 	if _, err := m.Save(cfg("a_map")); err != nil {
 		t.Fatal(err)
 	}
-	m2, err := NewManager(dir)
+	m2, err := NewManager(Options{Dir: dir})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +56,7 @@ func TestSaveReloadRoundtrip(t *testing.T) {
 
 func TestGetNotFoundAndDelete(t *testing.T) {
 	dir := t.TempDir()
-	m, _ := NewManager(dir)
+	m, _ := NewManager(Options{Dir: dir})
 	var se *service.Error
 	if _, err := m.Get("nope"); !errors.As(err, &se) || se.Code != service.CodeNotFound {
 		t.Fatalf("want NOT_FOUND, got %v", err)
@@ -78,7 +78,7 @@ func TestGetNotFoundAndDelete(t *testing.T) {
 func TestPathTraversalRejected(t *testing.T) {
 	parent := t.TempDir()
 	dir := filepath.Join(parent, "maps")
-	m, err := NewManager(dir)
+	m, err := NewManager(Options{Dir: dir})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestPathTraversalRejected(t *testing.T) {
 }
 
 func TestSaveInvalidMapRejected(t *testing.T) {
-	m, _ := NewManager(t.TempDir())
+	m, _ := NewManager(Options{Dir: t.TempDir()})
 	bad := cfg("bad")
 	bad.Levels = [][]string{{"...", "...", "..."}} // no start, no finish
 	var se *service.Error
@@ -113,7 +113,7 @@ func TestInvalidFileFailsFast(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "broken.json"), []byte(`{"id":"broken","name":"x","levels":[["...","...","..."]]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := NewManager(dir)
+	_, err := NewManager(Options{Dir: dir})
 	if err == nil || !strings.Contains(err.Error(), "broken.json") {
 		t.Fatalf("want error naming broken.json, got %v", err)
 	}
@@ -121,7 +121,7 @@ func TestInvalidFileFailsFast(t *testing.T) {
 
 func TestIDFilenameMismatchFailsFast(t *testing.T) {
 	dir := t.TempDir()
-	src, err := NewManager(t.TempDir())
+	src, err := NewManager(Options{Dir: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,13 +135,13 @@ func TestIDFilenameMismatchFailsFast(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "other.json"), data, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := NewManager(dir); err == nil || !strings.Contains(err.Error(), "other.json") {
+	if _, err := NewManager(Options{Dir: dir}); err == nil || !strings.Contains(err.Error(), "other.json") {
 		t.Fatalf("want mismatch error, got %v", err)
 	}
 }
 
 func TestReturnedMapsAreCopies(t *testing.T) {
-	m, _ := NewManager(t.TempDir())
+	m, _ := NewManager(Options{Dir: t.TempDir()})
 	if _, err := m.Save(cfg("c")); err != nil {
 		t.Fatal(err)
 	}
@@ -157,13 +157,13 @@ func TestReturnedMapsAreCopies(t *testing.T) {
 
 // Every shipped map loads and can be won (finish reachable from the start).
 func TestRepoMapsLoad(t *testing.T) {
-	m, err := NewManager("../../maps")
+	m, err := NewManager(Options{Dir: "../../maps"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	list := m.List()
-	if len(list) == 0 {
-		t.Fatal("no maps shipped")
+	if len(list) != 16 {
+		t.Fatalf("%d maps shipped, want the golden 16", len(list))
 	}
 	for _, mp := range list {
 		if mp.Par < 0 {
@@ -174,7 +174,7 @@ func TestRepoMapsLoad(t *testing.T) {
 
 func TestCreateFailsIfExistsAndIsAtomic(t *testing.T) {
 	dir := t.TempDir()
-	m, _ := NewManager(dir)
+	m, _ := NewManager(Options{Dir: dir})
 
 	const n = 16
 	errs := make(chan error, n)
@@ -207,7 +207,7 @@ func TestCreateFailsIfExistsAndIsAtomic(t *testing.T) {
 	}
 	// Winner's content is what is stored and on disk.
 	got, _ := m.Get("race")
-	m2, err := NewManager(dir)
+	m2, err := NewManager(Options{Dir: dir})
 	if err != nil {
 		t.Fatal(err)
 	}
