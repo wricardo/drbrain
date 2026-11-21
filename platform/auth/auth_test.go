@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/json"
@@ -32,6 +33,17 @@ type fakeAccounts struct {
 
 func newFakeAccounts() *fakeAccounts {
 	return &fakeAccounts{users: map[string]*account.Account{}, logins: map[string]string{}}
+}
+
+func (f *fakeAccounts) Lookup(id string) (account.Account, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, a := range f.users {
+		if a.ID == id {
+			return *a, true
+		}
+	}
+	return account.Account{}, false
 }
 
 func (f *fakeAccounts) SignIn(provider, user string) (*account.Account, bool, error) {
@@ -225,6 +237,38 @@ func (h *harness) cookie(name string) *http.Cookie {
 	return h.client.Jar.(*simpleJar).cookies[name]
 }
 
+// signinCode is the one-time code a successful callback redirect carries.
+func signinCode(resp *http.Response) string {
+	u, err := url.Parse(resp.Header.Get("Location"))
+	if err != nil {
+		return ""
+	}
+	return u.Query().Get(SigninCodeParam)
+}
+
+func mustExchange(t *testing.T, h *harness, code string) string {
+	t.Helper()
+	status, tok := h.exchange(code)
+	if status != http.StatusOK || tok.Token == "" {
+		t.Fatalf("exchange(%q) = %d %+v", code, status, tok)
+	}
+	return tok.Token
+}
+
+// exchange trades a callback code for an access token over the real route.
+func (h *harness) exchange(code string) (int, tokenResponse) {
+	h.t.Helper()
+	body, _ := json.Marshal(map[string]string{"code": code})
+	resp, err := h.client.Post(h.ts.URL+"/auth/token", "application/json", bytes.NewReader(body))
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out tokenResponse
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	return resp.StatusCode, out
+}
+
 func (h *harness) get(path string, hdr ...string) *http.Response {
 	h.t.Helper()
 	req, _ := http.NewRequest(http.MethodGet, h.ts.URL+path, nil)
@@ -289,21 +333,29 @@ func TestGoogleFlowSucceeds(t *testing.T) {
 	g.nonce = q.Get("nonce")
 
 	resp := h.get("/auth/google/callback?code=good-code&state=" + url.QueryEscape(q.Get("state")))
-	if resp.StatusCode != http.StatusFound || resp.Header.Get("Location") != "/play/abc" {
+	if resp.StatusCode != http.StatusFound || !strings.HasPrefix(resp.Header.Get("Location"), "/play/abc?signin_code=") {
 		t.Fatalf("callback = %d -> %q", resp.StatusCode, resp.Header.Get("Location"))
 	}
 	if g.seen.Get("code_verifier") == "" || g.seen.Get("redirect_uri") != h.ts.URL+"/auth/google/callback" {
 		t.Fatalf("token request = %v", g.seen)
 	}
-	tok := h.cookie(SessionCookie)
-	if tok == nil || tok.Value == "" {
-		t.Fatal("no session cookie")
-	}
-	if acct, ok := h.accounts.Authenticate(tok.Value); !ok || acct.ProviderUserID != "google-user-1" || acct.Provider != "google" {
-		t.Fatalf("login not tied to the provider subject: %+v", acct)
-	}
 	if h.cookie(flowCookie) != nil {
 		t.Fatal("flow cookie not cleared")
+	}
+	code := signinCode(resp)
+	if code == "" {
+		t.Fatal("callback did not carry a handoff code")
+	}
+	status, tok := h.exchange(code)
+	if status != http.StatusOK || tok.Token == "" || tok.ExpiresAt.IsZero() {
+		t.Fatalf("token exchange = %d %+v", status, tok)
+	}
+	acct, err := h.a.ParseToken(tok.Token)
+	if err != nil || acct.ProviderUserID != "google-user-1" || acct.Provider != "google" {
+		t.Fatalf("token not tied to the provider subject: %+v, %v", acct, err)
+	}
+	if status, _ := h.exchange(code); status != http.StatusUnauthorized {
+		t.Fatalf("a handoff code was accepted twice: %d", status)
 	}
 }
 
@@ -359,8 +411,8 @@ func TestCallbackRejections(t *testing.T) {
 			if resp.StatusCode != http.StatusFound || !strings.Contains(resp.Header.Get("Location"), "signin=") {
 				t.Fatalf("callback = %d -> %q, want a redirect with signin=...", resp.StatusCode, resp.Header.Get("Location"))
 			}
-			if h.cookie(SessionCookie) != nil || h.accounts.started != 0 {
-				t.Fatal("a login was created for a rejected sign-in")
+			if signinCode(resp) != "" {
+				t.Fatal("a rejected sign-in produced a handoff code")
 			}
 		})
 	}
@@ -375,12 +427,11 @@ func TestStateIsSingleUse(t *testing.T) {
 	if resp := h.get(cb); strings.Contains(resp.Header.Get("Location"), "signin=") {
 		t.Fatalf("first use failed: %s", resp.Header.Get("Location"))
 	}
-	n := h.accounts.started
 	// Replaying the very same callback (with the flow cookie restored) must fail.
 	h.client.Jar.(*simpleJar).cookies[flowCookie] = &http.Cookie{Name: flowCookie, Value: "x", Path: "/auth"}
 	resp := h.get(cb)
-	if !strings.Contains(resp.Header.Get("Location"), "signin=failed") || h.accounts.started != n {
-		t.Fatalf("replay = %q (logins %d -> %d)", resp.Header.Get("Location"), n, h.accounts.started)
+	if !strings.Contains(resp.Header.Get("Location"), "signin=failed") {
+		t.Fatalf("replay = %q", resp.Header.Get("Location"))
 	}
 }
 
@@ -393,7 +444,7 @@ func TestCallbackFromAnotherBrowserIsRejected(t *testing.T) {
 	g.nonce = q.Get("nonce")
 	delete(h.client.Jar.(*simpleJar).cookies, flowCookie) // the victim never started this flow
 	resp := h.get("/auth/google/callback?code=good-code&state=" + url.QueryEscape(q.Get("state")))
-	if !strings.Contains(resp.Header.Get("Location"), "signin=failed") || h.cookie(SessionCookie) != nil {
+	if !strings.Contains(resp.Header.Get("Location"), "signin=failed") || signinCode(resp) != "" {
 		t.Fatalf("foreign callback accepted: %q", resp.Header.Get("Location"))
 	}
 	// And with a wrong (but present) cookie.
@@ -401,7 +452,7 @@ func TestCallbackFromAnotherBrowserIsRejected(t *testing.T) {
 	g.nonce = q.Get("nonce")
 	h.client.Jar.(*simpleJar).cookies[flowCookie].Value = "somebody-elses-binding"
 	resp = h.get("/auth/google/callback?code=good-code&state=" + url.QueryEscape(q.Get("state")))
-	if !strings.Contains(resp.Header.Get("Location"), "signin=failed") || h.cookie(SessionCookie) != nil {
+	if !strings.Contains(resp.Header.Get("Location"), "signin=failed") || signinCode(resp) != "" {
 		t.Fatalf("wrong binding accepted: %q", resp.Header.Get("Location"))
 	}
 }
@@ -423,67 +474,34 @@ func TestStateCannotCrossProviders(t *testing.T) {
 	h := newHarness(t, func(base string) []Provider { return []Provider{g.provider(), NewDev(base)} }, nil)
 	q := h.startLogin("google", "").Query()
 	resp := h.get("/auth/dev/callback?code=alice&state=" + url.QueryEscape(q.Get("state")))
-	if !strings.Contains(resp.Header.Get("Location"), "signin=failed") || h.cookie(SessionCookie) != nil {
+	if !strings.Contains(resp.Header.Get("Location"), "signin=failed") || signinCode(resp) != "" {
 		t.Fatalf("a google state completed a dev sign-in: %q", resp.Header.Get("Location"))
 	}
 }
 
-func TestSignInRotatesExistingSession(t *testing.T) {
+func TestHandoffCodesAreSingleUse(t *testing.T) {
 	g := newFakeGoogle(t)
 	h := newHarness(t, func(string) []Provider { return []Provider{g.provider()} }, nil)
-	old := "planted-token-planted-token-planted"
-	h.client.Jar.(*simpleJar).cookies[SessionCookie] = &http.Cookie{Name: SessionCookie, Value: old, Path: "/"}
-	h.accounts.logins[old] = "someone"
-
 	q := h.startLogin("google", "").Query()
 	g.nonce = q.Get("nonce")
-	h.get("/auth/google/callback?code=good-code&state=" + url.QueryEscape(q.Get("state")))
-	fresh := h.cookie(SessionCookie)
-	if fresh == nil || fresh.Value == old {
-		t.Fatal("the pre-existing session token was kept (session fixation)")
+	resp := h.get("/auth/google/callback?code=good-code&state=" + url.QueryEscape(q.Get("state")))
+	code := signinCode(resp)
+	if code == "" {
+		t.Fatal("no handoff code")
 	}
-	if _, ok := h.accounts.logins[old]; ok {
-		t.Fatal("the old login was not ended")
+	if status, tok := h.exchange(code); status != http.StatusOK || tok.Token == "" {
+		t.Fatalf("first exchange = %d %+v", status, tok)
+	}
+	if status, _ := h.exchange(code); status != http.StatusUnauthorized {
+		t.Fatalf("code accepted twice: %d", status)
+	}
+	if status, _ := h.exchange("made-up"); status != http.StatusUnauthorized {
+		t.Fatalf("made-up code accepted: %d", status)
 	}
 }
 
 func TestCookieFlags(t *testing.T) {
 	g := newFakeGoogle(t)
-	signedIn := func(t *testing.T, h *harness, hdr ...string) *http.Response {
-		q := h.startLogin("google", "").Query()
-		g.nonce = q.Get("nonce")
-		return h.get("/auth/google/callback?code=good-code&state="+url.QueryEscape(q.Get("state")), hdr...)
-	}
-	t.Run("plain http localhost: not Secure", func(t *testing.T) {
-		h := newHarness(t, func(string) []Provider { return []Provider{g.provider()} }, nil)
-		c := setCookieHeader(signedIn(t, h), SessionCookie)
-		for _, want := range []string{"HttpOnly", "SameSite=Lax", "Path=/", "Max-Age="} {
-			if !strings.Contains(c, want) {
-				t.Errorf("cookie %q lacks %s", c, want)
-			}
-		}
-		if strings.Contains(c, "Secure") {
-			t.Errorf("cookie %q is Secure on plain http", c)
-		}
-	})
-	t.Run("behind a TLS proxy: Secure", func(t *testing.T) {
-		h := newHarness(t, func(string) []Provider { return []Provider{g.provider()} }, nil)
-		c := setCookieHeader(signedIn(t, h, "X-Forwarded-Proto", "https"), SessionCookie)
-		if !strings.Contains(c, "Secure") || !strings.Contains(c, "HttpOnly") || !strings.Contains(c, "SameSite=Lax") {
-			t.Errorf("cookie = %q", c)
-		}
-	})
-	t.Run("https public URL: always Secure", func(t *testing.T) {
-		a, err := New(Config{Providers: []Provider{g.provider()}, Accounts: newFakeAccounts(), PublicURL: "https://example.com"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		rec := httptest.NewRecorder()
-		a.SetSession(rec, httptest.NewRequest("GET", "http://example.com/", nil), "tok", time.Now().Add(time.Hour))
-		if c := rec.Header().Get("Set-Cookie"); !strings.Contains(c, "Secure") {
-			t.Errorf("cookie = %q", c)
-		}
-	})
 	t.Run("flow cookie", func(t *testing.T) {
 		h := newHarness(t, func(string) []Provider { return []Provider{g.provider()} }, nil)
 		resp := h.get("/auth/google/login")
@@ -492,6 +510,18 @@ func TestCookieFlags(t *testing.T) {
 			if !strings.Contains(c, want) {
 				t.Errorf("flow cookie %q lacks %s", c, want)
 			}
+		}
+	})
+	t.Run("no session cookie is set", func(t *testing.T) {
+		h := newHarness(t, func(string) []Provider { return []Provider{g.provider()} }, nil)
+		q := h.startLogin("google", "").Query()
+		g.nonce = q.Get("nonce")
+		resp := h.get("/auth/google/callback?code=good-code&state=" + url.QueryEscape(q.Get("state")))
+		if c := setCookieHeader(resp, "drbrain_session"); c != "" {
+			t.Fatalf("a session cookie was set: %q", c)
+		}
+		if signinCode(resp) == "" {
+			t.Fatal("no handoff code in the redirect")
 		}
 	})
 }
@@ -617,13 +647,16 @@ func TestSameOriginAndViewer(t *testing.T) {
 		})
 	}
 
-	t.Run("viewer ignores the cookie unless same-origin JSON", func(t *testing.T) {
+	t.Run("viewer reads the bearer token only", func(t *testing.T) {
 		accts := newFakeAccounts()
 		a, _ := New(Config{Providers: []Provider{g.provider()}, Accounts: accts, PublicURL: "https://motor.example.com"})
 		acct, _, _ := accts.SignIn("google", "u")
-		tok, _, _ := accts.StartLogin(acct.ID)
+		tok, _, err := a.IssueToken(acct.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
 		with := func(r *http.Request) *http.Request {
-			r.AddCookie(&http.Cookie{Name: SessionCookie, Value: tok})
+			r.Header.Set("Authorization", "Bearer "+tok)
 			return r
 		}
 		cases := []struct {
@@ -631,13 +664,19 @@ func TestSameOriginAndViewer(t *testing.T) {
 			r    *http.Request
 			want bool
 		}{
-			{"same-origin json", with(req("POST", "https://motor.example.com", "same-origin", "application/json")), true},
-			{"same-origin json with charset", with(req("POST", "https://motor.example.com", "", "application/json; charset=utf-8")), true},
-			{"cross-site", with(req("POST", "https://evil.example", "cross-site", "application/json")), false},
-			{"form post (simple request)", with(req("POST", "https://motor.example.com", "same-origin", "application/x-www-form-urlencoded")), false},
-			{"text/plain post", with(req("POST", "https://motor.example.com", "same-origin", "text/plain")), false},
-			{"no content type", with(req("POST", "https://motor.example.com", "same-origin", "")), false},
-			{"no cookie", req("POST", "https://motor.example.com", "same-origin", "application/json"), false},
+			{"bearer token", with(req("POST", "https://evil.example", "cross-site", "text/plain")), true},
+			{"lower-case scheme", with(req("GET", "https://motor.example.com/graphql", "", "")), true},
+			{"no header", req("POST", "https://motor.example.com", "same-origin", "application/json"), false},
+			{"garbage token", func() *http.Request {
+				r := req("POST", "https://motor.example.com", "", "application/json")
+				r.Header.Set("Authorization", "Bearer not-a-real-token")
+				return r
+			}(), false},
+			{"wrong scheme", func() *http.Request {
+				r := req("POST", "https://motor.example.com", "", "application/json")
+				r.Header.Set("Authorization", "Basic "+tok)
+				return r
+			}(), false},
 		}
 		for _, tc := range cases {
 			got, _ := a.Viewer(tc.r)
@@ -645,10 +684,10 @@ func TestSameOriginAndViewer(t *testing.T) {
 				t.Errorf("%s: viewer = %v, want signed in = %v", tc.name, got, tc.want)
 			}
 		}
-		bad := with(req("POST", "https://motor.example.com", "same-origin", "application/json"))
-		bad.Header.Set("Cookie", SessionCookie+"=not-a-real-token-not-a-real-token")
-		if got, _ := a.Viewer(bad); got != nil {
-			t.Error("an unknown token authenticated")
+		// A token for a deleted account stops working immediately.
+		delete(accts.users, "google/u")
+		if got, _ := a.Viewer(with(req("POST", "https://motor.example.com", "", "application/json"))); got != nil {
+			t.Error("a token for a deleted account authenticated")
 		}
 	})
 }
@@ -778,12 +817,13 @@ func TestGitHubFlow(t *testing.T) {
 		t.Fatalf("github auth URL = %v", u)
 	}
 	resp := h.get("/auth/github/callback?code=gh-code&state=" + url.QueryEscape(q.Get("state")))
-	if resp.Header.Get("Location") != "/maps" {
+	if !strings.HasPrefix(resp.Header.Get("Location"), "/maps?signin_code=") {
 		t.Fatalf("callback -> %q", resp.Header.Get("Location"))
 	}
-	acct, ok := h.accounts.Authenticate(h.cookie(SessionCookie).Value)
-	if !ok || acct.Provider != "github" || acct.ProviderUserID != "4242" {
-		t.Fatalf("account = %+v", acct)
+	status, tok := h.exchange(signinCode(resp))
+	acct, err := h.a.ParseToken(tok.Token)
+	if status != http.StatusOK || err != nil || acct.Provider != "github" || acct.ProviderUserID != "4242" {
+		t.Fatalf("account = %+v (%d, %v)", acct, status, err)
 	}
 	if gotAuth != "Bearer gho_token" {
 		t.Fatalf("user request auth = %q", gotAuth)
@@ -811,11 +851,12 @@ func TestDevProvider(t *testing.T) {
 	}
 	page.Body.Close()
 	resp := h.get("/auth/dev/callback?code=alice&state=" + url.QueryEscape(state))
-	if resp.Header.Get("Location") != "/runs" {
+	if !strings.HasPrefix(resp.Header.Get("Location"), "/runs?signin_code=") {
 		t.Fatalf("callback -> %q", resp.Header.Get("Location"))
 	}
-	if a, ok := h.accounts.Authenticate(h.cookie(SessionCookie).Value); !ok || a.ProviderUserID != "alice" {
-		t.Fatalf("account = %+v", a)
+	acct, err := h.a.ParseToken(mustExchange(t, h, signinCode(resp)))
+	if err != nil || acct.ProviderUserID != "alice" {
+		t.Fatalf("account = %+v, %v", acct, err)
 	}
 	// Odd user names are refused.
 	q := h.startLogin("dev", "").Query()

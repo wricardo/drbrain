@@ -15,6 +15,7 @@ import (
 	deliverygraph "github.com/wricardo/drbrain/games/delivery/graph"
 	mazesgraph "github.com/wricardo/drbrain/games/mazes/graph"
 	motorgraph "github.com/wricardo/drbrain/games/motor/graph"
+	musicgraph "github.com/wricardo/drbrain/games/music/graph"
 	teslagraph "github.com/wricardo/drbrain/games/tesla/graph"
 	accountgraph "github.com/wricardo/drbrain/platform/account/graph"
 )
@@ -31,10 +32,11 @@ type Resolver struct {
 	Mazes    *mazesgraph.Resolver
 	Motor    *motorgraph.Resolver
 	Tesla    *teslagraph.Resolver
+	Music    *musicgraph.Resolver
 }
 
 // New returns the root resolver for the enabled games. A nil game resolver is
 // a programming error: the host only serves the games it mounted.
-func New(account *accountgraph.Resolver, delivery *deliverygraph.Resolver, mazes *mazesgraph.Resolver, motor *motorgraph.Resolver, tesla *teslagraph.Resolver) *Resolver {
-	return &Resolver{Account: account, Delivery: delivery, Mazes: mazes, Motor: motor, Tesla: tesla}
+func New(account *accountgraph.Resolver, delivery *deliverygraph.Resolver, mazes *mazesgraph.Resolver, motor *motorgraph.Resolver, tesla *teslagraph.Resolver, music *musicgraph.Resolver) *Resolver {
+	return &Resolver{Account: account, Delivery: delivery, Mazes: mazes, Motor: motor, Tesla: tesla, Music: music}
 }

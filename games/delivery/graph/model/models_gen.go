@@ -115,6 +115,16 @@ type ClosureView struct {
 	MaxY int `json:"maxY"`
 }
 
+// The result of createSession. The ownerToken is returned only here and never by a
+// query, a list or a subscription: it is the credential that lets this browser
+// change the session (and attach it to an account later), while the session id
+// alone stays enough to read it.
+type CreateSessionResult struct {
+	Session *Snapshot `json:"session"`
+	// Secret that proves you created this session; keep it private.
+	OwnerToken string `json:"ownerToken"`
+}
+
 type EventView struct {
 	Tick int `json:"tick"`
 	// One of the car_* / order_* / build_* / unlock_* / closure_* names the engine emits.
@@ -206,6 +216,16 @@ type PointView struct {
 type Query struct {
 }
 
+type SessionClaimInput struct {
+	SessionID  string `json:"sessionID"`
+	OwnerToken string `json:"ownerToken"`
+}
+
+type SessionClaimResult struct {
+	SessionID string      `json:"sessionID"`
+	Status    ClaimStatus `json:"status"`
+}
+
 type SessionSummary struct {
 	ID         string    `json:"id"`
 	CreatedAt  time.Time `json:"createdAt"`
@@ -215,6 +235,14 @@ type SessionSummary struct {
 	Reputation float64   `json:"reputation"`
 	Deliveries int       `json:"deliveries"`
 	Loaded     bool      `json:"loaded"`
+	// The owning player's public name: an account's display name, "Private player"
+	// when its profile is private, or "Guest" for a session with no account.
+	OwnerDisplayName string `json:"ownerDisplayName"`
+	// Handle of the signed-in player who owns this session (profile at /u/<handle>);
+	// null for guests and private profiles.
+	OwnerHandle *string `json:"ownerHandle,omitempty"`
+	// True when the session belongs to the signed-in viewer's account.
+	Mine bool `json:"mine"`
 }
 
 // The full client view of a session at one tick.
@@ -313,6 +341,67 @@ func (e *CarState) UnmarshalJSON(b []byte) error {
 }
 
 func (e CarState) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+type ClaimStatus string
+
+const (
+	// The session now belongs to your account.
+	ClaimStatusAttached ClaimStatus = "ATTACHED"
+	// It already belonged to your account.
+	ClaimStatusAlreadyYours ClaimStatus = "ALREADY_YOURS"
+	// Unknown session, no or wrong owner token, a session created before owner
+	// tokens, or one that belongs to another account.
+	ClaimStatusRejected ClaimStatus = "REJECTED"
+)
+
+var AllClaimStatus = []ClaimStatus{
+	ClaimStatusAttached,
+	ClaimStatusAlreadyYours,
+	ClaimStatusRejected,
+}
+
+func (e ClaimStatus) IsValid() bool {
+	switch e {
+	case ClaimStatusAttached, ClaimStatusAlreadyYours, ClaimStatusRejected:
+		return true
+	}
+	return false
+}
+
+func (e ClaimStatus) String() string {
+	return string(e)
+}
+
+func (e *ClaimStatus) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = ClaimStatus(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid ClaimStatus", str)
+	}
+	return nil
+}
+
+func (e ClaimStatus) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *ClaimStatus) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e ClaimStatus) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

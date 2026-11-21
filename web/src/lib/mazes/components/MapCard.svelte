@@ -17,7 +17,7 @@
 	const levels = $derived(`${map.levelCount} ${map.levelCount === 1 ? 'level' : 'levels'}`);
 </script>
 
-<article class="flex h-full flex-col gap-3 rounded-xl border border-indigo-200 bg-white p-4 shadow-sm" data-testid="map-card">
+<article class="db-panel flex h-full flex-col gap-3 p-4" data-testid="map-card">
 	<div class="flex h-48 items-center justify-center rounded-lg bg-indigo-50/60" data-testid="map-thumb">
 		<div class="flex aspect-square h-full items-center justify-center p-4">
 			<MiniGrid fit rows={map.preview} levelCount={map.levelCount} label="Preview of {map.name}, {levels}" />
@@ -39,7 +39,7 @@
 		{#if onplay}
 			<button
 				type="button"
-				class="w-full rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+				class="db-button w-full"
 				disabled={busy}
 				onclick={() => onplay?.(map)}>Play</button
 			>

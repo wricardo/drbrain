@@ -264,13 +264,13 @@
     "max_active_orders": 8,
     "target_orders_per_car": 0.75,
     "min_spawn_gap_ticks": 12,
-    "deadline_slack": 1.8,
+    "deadline_slack": 3.0,
     "deadline_slack_by_chapter": [
-      1.8,
-      1.7,
-      1.6,
-      1.5,
-      1.4
+      3.0,
+      2.9,
+      2.8,
+      2.7,
+      2.6
     ],
     "reward_base": {
       "pizza": 40,

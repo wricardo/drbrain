@@ -1,6 +1,12 @@
 // Global account documents. Every field selects under the `account` namespace.
 const ACCOUNT_FIELDS = `handle displayName profilePublic createdAt handleChangeableAt hasPassword`;
 
+// Account calls need an ordinary HTTP response (not SSE).
+export const accountRequestContext = { fetchOptions: { headers: { Accept: 'application/json' } } };
+
+/** A sign-in result: the bearer token, when it expires, and the player. */
+const AUTH_SESSION_FIELDS = `token expiresAt user { ${ACCOUNT_FIELDS} }`;
+
 export const ACCOUNT_QUERY = `
   query Account {
     account {
@@ -30,19 +36,19 @@ export const LOGOUT_MUTATION = `
 `;
 
 /**
- * Username/password sign-up and sign-in. Both are ordinary mutations: the
- * server sets the login cookie on the response. They are separate documents
+ * Username/password sign-up and sign-in. Both return a bearer token, which the
+ * client stores and sends as Authorization: Bearer. They are separate documents
  * because every root field of one document runs.
  */
 export const REGISTER_WITH_PASSWORD_MUTATION = `
   mutation RegisterWithPassword($handle: String!, $password: String!) {
-    account { registerWithPassword(handle: $handle, password: $password) { ${ACCOUNT_FIELDS} } }
+    account { registerWithPassword(handle: $handle, password: $password) { ${AUTH_SESSION_FIELDS} } }
   }
 `;
 
 export const LOG_IN_WITH_PASSWORD_MUTATION = `
   mutation LogInWithPassword($handle: String!, $password: String!) {
-    account { logInWithPassword(handle: $handle, password: $password) { ${ACCOUNT_FIELDS} } }
+    account { logInWithPassword(handle: $handle, password: $password) { ${AUTH_SESSION_FIELDS} } }
   }
 `;
 

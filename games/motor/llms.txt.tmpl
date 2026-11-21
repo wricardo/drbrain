@@ -108,7 +108,7 @@ what lets you store (and read back) the program.
 ```graphql
 mutation {
   motorProgramming {
-  createSession(mapID: "straight_line", displayName: "my bot") { id ownerToken map { mainTapeLength subTapeLengths } }
+  createSession(mapID: "straight_line") { id ownerToken map { mainTapeLength subTapeLengths } }
   }
 }
 ```
@@ -168,9 +168,9 @@ session id is public and a program is a solution. Read your own program back wit
 The subscription emits the current snapshot immediately, then every change. Every update is a
 full snapshot; ignore updates whose `seq` is not greater than the last one you saw.
 
-`displayName` is optional (max 40 characters). Without one the session gets a random guest name
-like `BraveOtter`, which is what the leaderboard shows; a signed-in browser that passes none gets
-its account's display name instead. `renameSession(id, displayName)` changes it later.
+A session has no name of its own. On the leaderboard an account's entry shows the account's
+display name (or "Private player" when its profile is private), and a session that belongs to no
+account is shown as "Guest".
 
 You play as a guest: no sign-in, no key. The one thing you must keep is the `ownerToken` that
 `createSession` returns (`createSession(...) { id ownerToken }`). It is the credential for the
@@ -187,19 +187,18 @@ to work on someone else's run. You can check first with
 `query { canPlaySession(id: "SESSION_ID", ownerToken: "OWNER_TOKEN") }` (true means you may change
 and read the program).
 
-Other session mutations: `renameSession(id, displayName)`, `deleteSession(id)`. Anyone who knows the
-id can rename or delete a guest session, and `deleteSession`/`renameSession` on a session belonging
-to a signed-in human need their login or the `ownerToken` argument (`deleteSession(id, ownerToken:
-"...")`, `renameSession(id, displayName, ownerToken: "...")`), otherwise `FORBIDDEN`. Query
+Other session mutations: `deleteSession(id)`. Anyone who knows the id can delete a guest session,
+and `deleteSession` on a session belonging to a signed-in human needs their login or the
+`ownerToken` argument (`deleteSession(id, ownerToken: "...")`), otherwise `FORBIDDEN`. Query
 `sessions(sort: RECENT, limit: 50, mapId: "...")` lists sessions.
 
 ---
 
 ## Creating maps
 
-`validateMap` is open to everyone — check a draft first. `createMap` needs a signed-in player: send
-`registerWithPassword` or `logInWithPassword` once over HTTP, keep the login cookie and send it with
-the mutation (or use `/editor` in a signed-in browser):
+`validateMap` is open to everyone — check a draft first. `createMap` needs a signed-in player: call
+`registerWithPassword` or `logInWithPassword` once, keep the returned `token` and send it as
+`Authorization: Bearer <token>` on the mutation (or use `/editor` in a signed-in browser):
 
 ```graphql
 mutation {
@@ -257,9 +256,8 @@ query {
   account per map, plus one per winning guest session), not the number of winning sessions. `yours` is the
   signed-in viewer's account entry when there is one, otherwise the entry of `sessionId`, even
   when it is outside the returned rows; null if neither has won.
-- Names are cleaned for display (control characters removed, whitespace collapsed); sessions
-  from before guest names existed and have no name show as "Anonymous". The query returns null for
-  an unknown map.
+- Names are cleaned for display (control characters removed, whitespace collapsed); a session
+  that belongs to no account shows as "Guest". The query returns null for an unknown map.
 - Only sessions that played the map's current rules count: changing a map's layout, tape
   lengths, limits or recursion rule starts a fresh board (renaming it does not).
 
@@ -273,37 +271,28 @@ query {
 }
 ```
 
-```graphql
-query {
-  motorProgramming {
-  playerRuns(name: "BraveOtter") { mapId total entry { rank slots steps } }
-  }
-}
-```
-
-- Give exactly one of `sessionIds` (up to 200, exact) or `name` (case-insensitive; matches every
-  guest session with that display name, so it can mix different people who picked the same name;
-  sessions that belong to an account never match, because the board shows the account's name). A
-  signed-in browser may give neither and get its own account's runs.
+- Give `sessionIds` (up to 200, exact). A signed-in browser may give neither and get its own
+  account's runs.
 - You get one row per map the player has won (maps never won are absent), ordered by map id: their
   best session on the SLOTS board, with its current `rank` and the board's `total`.
-- Without a sign-in a player is just the sessions you name (`name` matches guest sessions only).
-  Keep your session ids to find your own runs again.
+- Without a sign-in a player is just the sessions you name. Keep your session ids to find your
+  own runs again.
 
 ---
 
 ## Accounts (for humans)
 
 People can sign in with a username and password (on unless the server turned it off) or with Google or GitHub
-(when the server has those configured) to keep a profile at `/u/<handle>`. Agents do not need it and nothing in the API above changes for you, except creating a map: that needs a signed-in player, so `registerWithPassword` (or `logInWithPassword`) once over HTTP and keep the cookie. The
+(when the server has those configured) to keep a profile at `/u/<handle>`. Agents do not need it and nothing in the API above changes for you, except creating a map: that needs a signed-in player, so call `registerWithPassword` (or `logInWithPassword`) once and send the returned token as `Authorization: Bearer <token>`. The
 extra schema is: `me`, `authProviders` and `profile(handle)` queries, the `handle` and `mine`
 fields of a leaderboard entry, and `ownerToken` on the `createSession` response. The account mutations
 (`updateAccount`, `changePassword`, `deleteAccount`, `claimSessions`, `logout`) work only from a
 signed-in browser. Signing in with a username and password is itself two mutations,
-`registerWithPassword(handle, password)` and `logInWithPassword(handle, password)`; they answer by
-setting the browser's login cookie, so they only work over an HTTP request with a response — a
-subscription connection is refused with `FORBIDDEN`. Google and GitHub sign-in stay browser
-navigations under `/auth/`, not GraphQL calls. An unknown username and a wrong password both answer
+`registerWithPassword(handle, password)` and `logInWithPassword(handle, password)`; both return
+`{ token, expiresAt, user }`. Send the token as `Authorization: Bearer <token>` on HTTP requests and
+in the `connection_init` payload of a graphql-ws connection. Tokens last 24 hours and there is no
+refresh token, so sign in again when one expires. Google and GitHub sign-in stay browser navigations
+under `/auth/`, not GraphQL calls. An unknown username and a wrong password both answer
 `UNAUTHENTICATED`, and repeated failures answer `LIMIT_REACHED` with the wait in the message.
 
 ---

@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"net/http"
-	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -14,7 +13,6 @@ import (
 const (
 	sessionProgramQ   = `query($id: ID!, $t: String) { session(id: $id, ownerToken: $t) { id program { main subs } } }`
 	sessionsProgramQ  = `{ sessions(limit: 50) { id program { main subs } } }`
-	renameProgramQ    = `mutation($id: ID!, $n: String!) { renameSession(id: $id, displayName: $n) { id program { main subs } } }`
 	sessionUpdatedSub = `subscription($id: ID!, $t: String) { sessionUpdated(sessionID: $id, ownerToken: $t) { seq session { id program { main subs } } } }`
 )
 
@@ -61,12 +59,6 @@ func TestTheProgramIsVisibleOnlyToPlayers(t *testing.T) {
 		if got := programOf(t, anon.gql(sessionProgramQ, vars), "data", "session"); got != nil {
 			t.Fatalf("session query (%s) leaked the program: %v", name, got)
 		}
-	}
-
-	// A guest session may be renamed by anyone with its id, so the response of
-	// that open mutation must not carry the program either.
-	if got := programOf(t, anon.gql(renameProgramQ, map[string]any{"id": id, "n": "Renamed by a spectator"}), "data", "renameSession"); got != nil {
-		t.Fatalf("renameSession leaked the program: %v", got)
 	}
 
 	// The session lists never carry programs, not even for the player.
@@ -172,8 +164,9 @@ func TestSubscriptionHidesTheProgramFromSpectators(t *testing.T) {
 
 // The subscription is the live view, and its program gate is the caller's
 // login too: a signed-in owner must receive their own program over the
-// websocket upgrade, where the cookie (not an ownerToken) proves it. The
-// schema documents "ownerToken or the owning login" for sessionUpdated.
+// websocket, where the bearer token sent in connection_init (not an ownerToken)
+// proves it. The schema documents "ownerToken or the owning login" for
+// sessionUpdated.
 func TestSubscriptionShowsTheProgramToTheSignedInOwner(t *testing.T) {
 	srv := newAccountsServer(t, "")
 	alice := newBrowser(t, srv.URL)
@@ -184,19 +177,7 @@ func TestSubscriptionShowsTheProgramToTheSignedInOwner(t *testing.T) {
 		t.Fatalf("setProgram as the owner: %v", out)
 	}
 
-	u, err := url.Parse(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var cookies []string
-	for _, c := range alice.client.Jar.Cookies(u) {
-		cookies = append(cookies, c.Name+"="+c.Value)
-	}
-	if len(cookies) == 0 {
-		t.Fatal("sign-in left no cookie in the jar")
-	}
 	h := http.Header{}
-	h.Set("Cookie", strings.Join(cookies, "; "))
 	h.Set("Origin", srv.URL)
 	d := gorillaws.Dialer{Subprotocols: []string{"graphql-transport-ws"}, HandshakeTimeout: 5 * time.Second}
 	c, _, err := d.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/graphql", h)
@@ -205,7 +186,10 @@ func TestSubscriptionShowsTheProgramToTheSignedInOwner(t *testing.T) {
 	}
 	t.Cleanup(func() { c.Close() })
 	_ = c.SetReadDeadline(time.Now().Add(10 * time.Second))
-	if err := c.WriteJSON(map[string]any{"type": "connection_init"}); err != nil {
+	if err := c.WriteJSON(map[string]any{
+		"type":    "connection_init",
+		"payload": map[string]any{"Authorization": alice.headers["Authorization"]},
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := c.ReadMessage(); err != nil {

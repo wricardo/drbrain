@@ -16,22 +16,18 @@ import (
 
 // Logout is the resolver for the logout field.
 func (r *mutationResolver) Logout(ctx context.Context) (bool, error) {
-	if v := auth.ViewerFrom(ctx); v != nil {
-		r.Service.EndLogin(v.Token)
-		if v.ClearSession != nil {
-			v.ClearSession()
-		}
-	}
+	// Tokens are stateless; the client forgets its token. The mutation stays so
+	// existing clients have a sign-out call that cannot fail.
 	return true, nil
 }
 
 // RegisterWithPassword is the resolver for the registerWithPassword field.
-func (r *mutationResolver) RegisterWithPassword(ctx context.Context, handle string, password string) (*model.User, error) {
+func (r *mutationResolver) RegisterWithPassword(ctx context.Context, handle string, password string) (*model.AuthSession, error) {
 	return r.passwordSignIn(ctx, true, handle, password)
 }
 
 // LogInWithPassword is the resolver for the logInWithPassword field.
-func (r *mutationResolver) LogInWithPassword(ctx context.Context, handle string, password string) (*model.User, error) {
+func (r *mutationResolver) LogInWithPassword(ctx context.Context, handle string, password string) (*model.AuthSession, error) {
 	return r.passwordSignIn(ctx, false, handle, password)
 }
 
@@ -56,7 +52,7 @@ func (r *mutationResolver) ChangePassword(ctx context.Context, currentPassword s
 	if err != nil {
 		return false, err
 	}
-	if err := r.Service.ChangePassword(v.Account.ID, currentPassword, newPassword, v.Token); err != nil {
+	if err := r.Service.ChangePassword(v.Account.ID, currentPassword, newPassword); err != nil {
 		return false, toGQLError(err)
 	}
 	return true, nil
@@ -73,10 +69,6 @@ func (r *mutationResolver) DeleteAccount(ctx context.Context, confirmHandle stri
 	}
 	if err := r.Service.DeleteAccount(v.Account.ID); err != nil {
 		return false, toGQLError(err)
-	}
-	r.Service.EndLogin(v.Token)
-	if v.ClearSession != nil {
-		v.ClearSession()
 	}
 	return true, nil
 }

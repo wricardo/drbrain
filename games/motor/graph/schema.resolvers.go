@@ -26,14 +26,10 @@ func (r *mapResolver) Builtin(ctx context.Context, obj *model.Map) (bool, error)
 }
 
 // CreateSession is the resolver for the createSession field.
-func (r *mutationResolver) CreateSession(ctx context.Context, mapID string, displayName *string) (*model.Session, error) {
-	name := ""
-	if displayName != nil {
-		name = *displayName
-	}
+func (r *mutationResolver) CreateSession(ctx context.Context, mapID string) (*model.Session, error) {
 	// A signed-in creator (cookie, same-origin only) owns the session; everyone
 	// gets a secret owner token, shown only in this response.
-	s, token, err := r.Service.CreateOwnedSession(mapID, name, viewerID(ctx))
+	s, token, err := r.Service.CreateOwnedSession(mapID, viewerID(ctx))
 	if err != nil {
 		return nil, toGQLError(err)
 	}
@@ -51,20 +47,6 @@ func (r *mutationResolver) DeleteSession(ctx context.Context, id string, ownerTo
 		return false, toGQLError(err)
 	}
 	return true, nil
-}
-
-// RenameSession is the resolver for the renameSession field.
-func (r *mutationResolver) RenameSession(ctx context.Context, id string, displayName string, ownerToken *string) (*model.Session, error) {
-	if err := r.Service.AuthorizeSessionChange(id, sessionActor(ctx, ownerToken)); err != nil {
-		return nil, toGQLError(err)
-	}
-	s, err := r.Service.RenameSession(id, displayName)
-	if err != nil {
-		return nil, toGQLError(err)
-	}
-	// A guest session may be renamed by anyone with its id, so its program must
-	// not ride along in the response.
-	return toSession(s, r.mayEdit(ctx, id, ownerToken)), nil
 }
 
 // SetProgram is the resolver for the setProgram field.
@@ -298,13 +280,9 @@ func (r *queryResolver) Leaderboard(ctx context.Context, mapID string, order *mo
 }
 
 // PlayerRuns is the resolver for the playerRuns field: one player's best run
-// per won map, selected by session ids or by display name (exactly one).
-func (r *queryResolver) PlayerRuns(ctx context.Context, sessionIds []string, name *string) ([]*model.PlayerRun, error) {
-	q := service.RunsQuery{SessionIDs: sessionIds, AccountID: viewerID(ctx)}
-	if name != nil {
-		q.Name = *name
-	}
-	runs, err := r.Service.GetPlayerRuns(q)
+// per won map, selected by session ids and/or the signed-in account.
+func (r *queryResolver) PlayerRuns(ctx context.Context, sessionIds []string) ([]*model.PlayerRun, error) {
+	runs, err := r.Service.GetPlayerRuns(service.RunsQuery{SessionIDs: sessionIds, AccountID: viewerID(ctx)})
 	if err != nil {
 		return nil, toGQLError(err)
 	}

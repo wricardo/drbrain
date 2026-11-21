@@ -12,6 +12,7 @@ export interface Query {
 	mazes: Mazes_Query;
 	motorProgramming: Motor_Query;
 	tesla: Tesla_Query;
+	music: Music_Query;
 }
 
 export interface Mutation {
@@ -20,6 +21,7 @@ export interface Mutation {
 	mazes: Mazes_Mutation;
 	motorProgramming: Motor_Mutation;
 	tesla: Tesla_Mutation;
+	music: Music_Mutation;
 }
 
 export interface Subscription {
@@ -31,9 +33,12 @@ export interface Subscription {
 	motorProgrammingSessionUpdated: (args: { sessionID: string; ownerToken?: string | null }) => Motor_SessionUpdate;
 	teslaSessionUpdated: (args: { sessionID: string }) => Tesla_GameState;
 	teslaLobbyUpdated: Tesla_GameState;
+	musicSessionUpdated: (args: { sessionID: string }) => Music_SessionUpdate;
 }
 
 export type Delivery_CarState = 'IDLE' | 'CARRYING' | 'CHARGING' | 'STRANDED';
+
+export type Delivery_ClaimStatus = 'ATTACHED' | 'ALREADY_YOURS' | 'REJECTED';
 
 export type Delivery_Direction = 'NORTH' | 'SOUTH' | 'EAST' | 'WEST';
 
@@ -67,6 +72,8 @@ export type Motor_LossReason = 'STEP_LIMIT' | 'CALL_DEPTH' | 'PROGRAM_ENDED';
 export type Motor_SessionSort = 'RECENT' | 'CREATED';
 
 export type Motor_Status = 'READY' | 'RUNNING' | 'WON' | 'LOST';
+
+export type Music_Difficulty = 'NOVICE' | 'EXPERT' | 'GENIUS';
 
 export type Tesla_Direction = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT';
 
@@ -183,6 +190,18 @@ export interface Delivery_ClosureView {
 	maxY: number;
 }
 
+/**
+ * The result of createSession. The ownerToken is returned only here and never by a
+ * query, a list or a subscription: it is the credential that lets this browser
+ * change the session (and attach it to an account later), while the session id
+ * alone stays enough to read it.
+ */
+export interface Delivery_CreateSessionResult {
+	session: Delivery_Snapshot;
+	/** Secret that proves you created this session; keep it private. */
+	ownerToken: string;
+}
+
 export interface Delivery_EventView {
 	tick: number;
 	/** One of the car_* / order_* / build_* / unlock_* / closure_* names the engine emits. */
@@ -233,29 +252,31 @@ export interface Delivery_LedgerView {
 }
 
 export interface Delivery_Mutation {
-	/** Start a new city. Both fields optional; a seed makes it reproducible. */
-	createSession: (args: { id?: string | null; seed?: number | null }) => Delivery_Snapshot;
-	/** Queue one step for one car. Does NOT advance the clock. */
-	moveCar: (args: { id: string; carId: string; direction: Delivery_Direction }) => Delivery_Snapshot;
-	/** Advance the world manually. Useful when paused. */
-	tick: (args: { id: string; count?: number }) => Delivery_Snapshot;
-	/** Set the clock multiplier. 0 pauses. */
-	setSpeed: (args: { id: string; speed: number }) => Delivery_Snapshot;
-	/** Point an order at a car; refreshes its deadline from that car's position. */
-	assignOrder: (args: { id: string; orderId: string; carId: string }) => Delivery_Snapshot;
-	unassignOrder: (args: { id: string; orderId: string }) => Delivery_Snapshot;
-	/** Buy a vehicle at a depot. */
-	buyCar: (args: { id: string; className: string; depotId?: string }) => Delivery_Snapshot;
-	/** Return a stranded car to its nearest depot for a fee. */
-	towCar: (args: { id: string; carId: string }) => Delivery_Snapshot;
-	/** Purchase an unlocked build; mutates the map atomically. */
-	build: (args: { id: string; buildId: string }) => Delivery_Snapshot;
-	/** Write the save to disk. */
-	saveSession: (args: { id: string }) => Delivery_Snapshot;
-	/** Save, then drop from memory. The next read rehydrates. */
-	evictSession: (args: { id: string }) => boolean;
-	/** Delete the save file permanently. */
-	deleteSession: (args: { id: string }) => boolean;
+	/** Start a new city. Both fields optional; a seed makes it reproducible, and an omitted id is generated. A signed-in creator's session belongs to their account. The response carries the secret ownerToken, needed to change the session later, so keep it. */
+	createSession: (args: { id?: string | null; seed?: number | null }) => Delivery_CreateSessionResult;
+	/** Queue one step for one car. Does NOT advance the clock. Only the session's creator may change it: pass the ownerToken from createSession, or be signed in to the account that owns the session (FORBIDDEN otherwise). Sessions created before owner tokens stay open. */
+	moveCar: (args: { id: string; carId: string; direction: Delivery_Direction; ownerToken?: string | null }) => Delivery_Snapshot;
+	/** Advance the world manually. Useful when paused. Creator-only, as moveCar. */
+	tick: (args: { id: string; count?: number; ownerToken?: string | null }) => Delivery_Snapshot;
+	/** Set the clock multiplier. 0 pauses. Creator-only, as moveCar. */
+	setSpeed: (args: { id: string; speed: number; ownerToken?: string | null }) => Delivery_Snapshot;
+	/** Point an order at a car; refreshes its deadline from that car's position. Creator-only, as moveCar. */
+	assignOrder: (args: { id: string; orderId: string; carId: string; ownerToken?: string | null }) => Delivery_Snapshot;
+	unassignOrder: (args: { id: string; orderId: string; ownerToken?: string | null }) => Delivery_Snapshot;
+	/** Buy a vehicle at a depot. Creator-only, as moveCar. */
+	buyCar: (args: { id: string; className: string; depotId?: string; ownerToken?: string | null }) => Delivery_Snapshot;
+	/** Return a stranded car to its nearest depot for a fee. Creator-only, as moveCar. */
+	towCar: (args: { id: string; carId: string; ownerToken?: string | null }) => Delivery_Snapshot;
+	/** Purchase an unlocked build; mutates the map atomically. Creator-only, as moveCar. */
+	build: (args: { id: string; buildId: string; ownerToken?: string | null }) => Delivery_Snapshot;
+	/** Write the save to disk. Creator-only, as moveCar. */
+	saveSession: (args: { id: string; ownerToken?: string | null }) => Delivery_Snapshot;
+	/** Save, then drop from memory. The next read rehydrates. Creator-only: evicting someone else's session would stop their clock. */
+	evictSession: (args: { id: string; ownerToken?: string | null }) => boolean;
+	/** Delete the save file permanently. Needs the ownerToken (or the owning account) even for a guest session; only a save created before owner tokens is open. */
+	deleteSession: (args: { id: string; ownerToken?: string | null }) => boolean;
+	/** Attaches guest sessions of this browser to the signed-in account; each needs its owner token (up to 100 per call). UNAUTHENTICATED when not signed in. */
+	claimSessions: (args: { claims: Delivery_SessionClaimInput[] }) => Delivery_SessionClaimResult[];
 }
 
 export interface Delivery_OrderView {
@@ -303,6 +324,13 @@ export interface Delivery_Query {
 	carView: (args: { id: string; carId: string; radius?: number }) => Delivery_CarWindow;
 	/** Events newer than a tick, so a client can poll for deltas. */
 	events: (args: { id: string; sinceTick?: number }) => Delivery_EventView[];
+	/** Whether this caller may change the session: true for the session's creator (by owner token or signed-in owning account) and for a session created before owner tokens, false for everyone else. Never an error: an unknown session is false. Reads stay public, so this decides between playing and spectating. */
+	canPlaySession: (args: { id: string; ownerToken?: string | null }) => boolean;
+}
+
+export interface Delivery_SessionClaimResult {
+	sessionID: string;
+	status: Delivery_ClaimStatus;
 }
 
 export interface Delivery_SessionSummary {
@@ -314,6 +342,12 @@ export interface Delivery_SessionSummary {
 	reputation: number;
 	deliveries: number;
 	loaded: boolean;
+	/** The owning player's public name: an account's display name, "Private player" when its profile is private, or "Guest" for a session with no account. */
+	ownerDisplayName: string;
+	/** Handle of the signed-in player who owns this session (profile at /u/<handle>); null for guests and private profiles. */
+	ownerHandle: string | null;
+	/** True when the session belongs to the signed-in viewer's account. */
+	mine: boolean;
 }
 
 /**
@@ -365,18 +399,30 @@ export interface Global_AuthProvider {
 	name: string;
 }
 
+/**
+ * A signed-in session: the bearer token to send as `Authorization: Bearer <token>`
+ * on every request (HTTP and the graphql-ws `connection_init` message) plus the
+ * player it belongs to. Tokens last 24 hours; there is no refresh token, so a
+ * client stores it and signs in again when it expires.
+ */
+export interface Global_AuthSession {
+	token: string;
+	expiresAt: string;
+	user: Global_User;
+}
+
 export interface Global_Mutation {
-	/** Signs the player out (clears the login cookie). Always true. */
+	/** Sign-out counterpart for clients: tokens are stateless, so the server has nothing to revoke and the client must discard its token. Always true. */
 	logout: boolean;
-	/** Creates a username/password account and signs the browser in with it. The username is the public handle. Refused cross-site, so another site cannot create accounts through a victim's browser. Errors: INVALID_ARGUMENT (bad handle, weak or taken password), LIMIT_REACHED, FORBIDDEN (password sign-in is off, or no cookie can be set: a subscription connection). */
-	registerWithPassword: (args: { handle: string; password: string }) => Global_User;
-	/** Signs in with a username and password, rotating the browser's previous login. Refused cross-site. An unknown username and a wrong password are answered identically (UNAUTHENTICATED). Repeated failures lock the (address, username) pair and then the username: LIMIT_REACHED, refused before any hashing. FORBIDDEN when password sign-in is off or no cookie can be set. */
-	logInWithPassword: (args: { handle: string; password: string }) => Global_User;
+	/** Creates a username/password account and returns a bearer token for it. The username is the public handle. Refused cross-site, so another site cannot create accounts through a victim's browser. Errors: INVALID_ARGUMENT (bad handle, weak or taken password), LIMIT_REACHED, FORBIDDEN (password sign-in is off, or the call is not an HTTP request). */
+	registerWithPassword: (args: { handle: string; password: string }) => Global_AuthSession;
+	/** Signs in with a username and password and returns a bearer token. Refused cross-site. An unknown username and a wrong password are answered identically (UNAUTHENTICATED). Repeated failures lock the (address, username) pair and then the username: LIMIT_REACHED, refused before any hashing. FORBIDDEN when password sign-in is off or the call is not an HTTP request. */
+	logInWithPassword: (args: { handle: string; password: string }) => Global_AuthSession;
 	/** Changes the signed-in player's handle, display name or profile visibility. */
 	updateAccount: (args: { input: Global_AccountInput }) => Global_User;
-	/** Changes the password of a username/password account and signs out its other browsers. There is no email, so there is no password reset. */
+	/** Changes the password of a username/password account. Access tokens already issued stay valid until they expire (they are stateless). There is no email, so there is no password reset. */
 	changePassword: (args: { currentPassword: string; newPassword: string }) => boolean;
-	/** Permanently deletes the account and signs out. confirmHandle must equal the current handle. Its runs stay on the boards as guest entries. */
+	/** Permanently deletes the account. confirmHandle must equal the current handle. Its runs stay on the boards as guest entries, and its tokens stop resolving immediately. */
 	deleteAccount: (args: { confirmHandle: string }) => boolean;
 }
 
@@ -635,7 +681,7 @@ export interface Motor_LeaderboardEntry {
 	rank: number;
 	/** The winning session; spectate it at /watch/<sessionId>. */
 	sessionId: string;
-	/** Empty names are shown as Anonymous. An account's entry shows its display name, or "Private player" when its profile is private. */
+	/** The entry's player name. Account rows show the account's display name, or "Private player" when its profile is private; a session with no account is shown as "Guest". */
 	displayName: string;
 	/** Handle of the signed-in player who owns this entry (profile at /u/<handle>); null for guests and private profiles. */
 	handle: string | null;
@@ -698,12 +744,10 @@ export interface Motor_Mirror {
 }
 
 export interface Motor_Mutation {
-	/** Starts a session. The response carries the secret `ownerToken`: it is needed to play the session (setProgram, run, step, pause, reset) and to rename, delete or claim it, so keep it. */
-	createSession: (args: { mapID: string; displayName?: string | null }) => Motor_Session;
+	/** Starts a session. The response carries the secret `ownerToken`: it is needed to play the session (setProgram, run, step, pause, reset) and to delete or claim it, so keep it. */
+	createSession: (args: { mapID: string }) => Motor_Session;
 	/** Deletes a session. A guest session can be deleted by anyone who knows its id. A session that belongs to a signed-in player can only be deleted by that player's signed-in browser, or by passing the ownerToken that createSession returned (FORBIDDEN otherwise). */
 	deleteSession: (args: { id: string; ownerToken?: string | null }) => boolean;
-	/** Renames a session; the same rule as deleteSession applies. Its program is included only for a caller who may change it. */
-	renameSession: (args: { id: string; displayName: string; ownerToken?: string | null }) => Motor_Session;
 	/** Stores the program and resets the robot. Only the session's creator may do it: pass the ownerToken that createSession returned, or be signed in to the account that owns the session (FORBIDDEN otherwise). Sessions created before owner tokens stay open. The program is private, so watching a run never grants this. */
 	setProgram: (args: { sessionID: string; program: Motor_ProgramInput; ownerToken?: string | null }) => Motor_Session;
 	/** Starts the program. Anyone who knows the session id may drive playback — that is what a /watch link is for — and the response carries the program only for a caller who may change it. */
@@ -762,15 +806,14 @@ export interface Motor_Query {
 	sessions: (args: { sort?: Motor_SessionSort | null; limit?: number | null; mapId?: string | null }) => Motor_Session[];
 	/** Ranks the winning sessions of a map (limit defaults to 20, at most 100). Null when the map does not exist. */
 	leaderboard: (args: { mapId: string; order?: Motor_LeaderboardOrder | null; limit?: number | null; sessionId?: string | null }) => Motor_Leaderboard | null;
-	/** A player's best run per map they have won (maps never won are absent), ordered by map id. Give exactly one of sessionIds (up to 200; exact) or name (case-insensitive; matches every session with that display name, so it can mix people who picked the same name; guest sessions only). When signed in, the account's own runs are included with sessionIds, and sessionIds may be left out. */
-	playerRuns: (args: { sessionIds?: string[] | null; name?: string | null }) => Motor_PlayerRun[];
+	/** A player's best run per map they have won (maps never won are absent), ordered by map id. Session ids select exact guest sessions (up to 200); when signed in, the account's own runs are included too, and sessionIds may be left out for just the account's runs. */
+	playerRuns: (args: { sessionIds?: string[] | null }) => Motor_PlayerRun[];
 	/** A player's best run per map they have won, looked up by account handle. Empty when the handle is unknown; game-specific statistics stay with the game. */
 	playerRunsFor: (args: { handle: string }) => Motor_PlayerRun[];
 }
 
 export interface Motor_Session {
 	id: string;
-	displayName: string;
 	mapId: string;
 	/** Snapshot of the map taken when the session was created. */
 	map: Motor_Map;
@@ -786,7 +829,7 @@ export interface Motor_Session {
 	attempts: number;
 	bestSteps: number | null;
 	lastEvent: Motor_StepEvent | null;
-	/** Secret that proves the caller created this session; keep it private. Returned only by the createSession response that made the session and null everywhere else (queries, lists, subscriptions). It is the credential for playing the session (pass it to setProgram, run, step, pause and reset) and for changing or attaching it (deleteSession, renameSession, claimSessions). Sharing it is how a session is handed to a second person or an AI agent. Optional: clients that never select it are unaffected. */
+	/** Secret that proves the caller created this session; keep it private. Returned only by the createSession response that made the session and null everywhere else (queries, lists, subscriptions). It is the credential for playing the session (pass it to setProgram, run, step, pause and reset) and for changing or attaching it (deleteSession, claimSessions). Sharing it is how a session is handed to a second person or an AI agent. Optional: clients that never select it are unaffected. */
 	ownerToken: string | null;
 }
 
@@ -841,6 +884,82 @@ export interface Motor_VMState {
 	visited: Motor_Position[];
 	/** Lower-case letters of the doors this run has opened. */
 	openDoors: string[];
+}
+
+export interface Music_Excerpt {
+	id: string;
+	title: string;
+	composer: string;
+	tempoBPM: number;
+	timeSig: string;
+	key: string;
+	clef: string;
+	axis: number;
+	/** The piece's bars in performance order. Every Music Region piece is at most 6 bars, and every difficulty challenges the whole piece, so this is also the number of slots in a session. */
+	measures: Music_Measure[];
+	notes: Music_Note[];
+}
+
+export interface Music_LastChange {
+	kind: string;
+	a: number;
+	b: number;
+}
+
+export interface Music_Measure {
+	id: string;
+	len: number;
+	notes: Music_Note[];
+}
+
+export interface Music_Mutation {
+	createSession: (args: { excerptID: string; difficulty: Music_Difficulty; displayName?: string | null; seed?: number | null }) => Music_Session;
+	switchMeasures: (args: { sessionID: string; a: number; b: number }) => Music_Session;
+	transformMeasure: (args: { sessionID: string; position: number; flipH: boolean; flipV: boolean }) => Music_Session;
+	setArrangement: (args: { sessionID: string; slots: Music_PlacementInput[] }) => Music_Session;
+	resetArrangement: (args: { sessionID: string }) => Music_Session;
+	deleteSession: (args: { id: string }) => boolean;
+	renameSession: (args: { id: string; displayName: string }) => Music_Session;
+}
+
+export interface Music_Note {
+	at: number;
+	dur: number;
+	pitch: number;
+}
+
+export interface Music_Query {
+	excerpts: Music_Excerpt[];
+	excerpt: (args: { id: string }) => Music_Excerpt | null;
+	session: (args: { id: string }) => Music_Session | null;
+	sessions: (args: { limit?: number | null }) => Music_Session[];
+}
+
+export interface Music_Session {
+	id: string;
+	displayName: string | null;
+	difficulty: Music_Difficulty;
+	excerpt: Music_Excerpt;
+	slots: Music_Slot[];
+	solved: boolean;
+	seq: number;
+	wins: number;
+	percentPerWin: number;
+	createdAt: string;
+	lastActionAt: string;
+	lastChange: Music_LastChange | null;
+}
+
+export interface Music_SessionUpdate {
+	session: Music_Session;
+	lastChange: Music_LastChange | null;
+}
+
+export interface Music_Slot {
+	position: number;
+	measureID: string;
+	flipH: boolean;
+	flipV: boolean;
 }
 
 export interface Tesla_AttemptInfo {
@@ -1078,6 +1197,11 @@ export interface Tesla_VisitedPark {
 	visited: boolean;
 }
 
+export interface Delivery_SessionClaimInput {
+	sessionID: string;
+	ownerToken: string;
+}
+
 export interface Global_AccountInput {
 	/** New handle (3-20 of a-z 0-9 _, case-insensitive, unique); limited to one change per day. */
 	handle: string | null;
@@ -1116,6 +1240,12 @@ export interface Motor_ProgramInput {
 export interface Motor_SessionClaimInput {
 	sessionID: string;
 	ownerToken: string;
+}
+
+export interface Music_PlacementInput {
+	measureID: string;
+	flipH: boolean;
+	flipV: boolean;
 }
 
 export interface Tesla_CellConfigEntryInput {

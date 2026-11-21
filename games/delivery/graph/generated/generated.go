@@ -133,6 +133,11 @@ type ComplexityRoot struct {
 		Tiles     func(childComplexity int) int
 	}
 
+	CreateSessionResult struct {
+		OwnerToken func(childComplexity int) int
+		Session    func(childComplexity int) int
+	}
+
 	EventView struct {
 		CarID   func(childComplexity int) int
 		Message func(childComplexity int) int
@@ -169,18 +174,19 @@ type ComplexityRoot struct {
 	}
 
 	Mutation struct {
-		AssignOrder   func(childComplexity int, id string, orderID string, carID string) int
-		Build         func(childComplexity int, id string, buildID string) int
-		BuyCar        func(childComplexity int, id string, className string, depotID string) int
+		AssignOrder   func(childComplexity int, id string, orderID string, carID string, ownerToken *string) int
+		Build         func(childComplexity int, id string, buildID string, ownerToken *string) int
+		BuyCar        func(childComplexity int, id string, className string, depotID string, ownerToken *string) int
+		ClaimSessions func(childComplexity int, claims []*model.SessionClaimInput) int
 		CreateSession func(childComplexity int, id *string, seed *int) int
-		DeleteSession func(childComplexity int, id string) int
-		EvictSession  func(childComplexity int, id string) int
-		MoveCar       func(childComplexity int, id string, carID string, direction model.Direction) int
-		SaveSession   func(childComplexity int, id string) int
-		SetSpeed      func(childComplexity int, id string, speed int) int
-		Tick          func(childComplexity int, id string, count int) int
-		TowCar        func(childComplexity int, id string, carID string) int
-		UnassignOrder func(childComplexity int, id string, orderID string) int
+		DeleteSession func(childComplexity int, id string, ownerToken *string) int
+		EvictSession  func(childComplexity int, id string, ownerToken *string) int
+		MoveCar       func(childComplexity int, id string, carID string, direction model.Direction, ownerToken *string) int
+		SaveSession   func(childComplexity int, id string, ownerToken *string) int
+		SetSpeed      func(childComplexity int, id string, speed int, ownerToken *string) int
+		Tick          func(childComplexity int, id string, count int, ownerToken *string) int
+		TowCar        func(childComplexity int, id string, carID string, ownerToken *string) int
+		UnassignOrder func(childComplexity int, id string, orderID string, ownerToken *string) int
 	}
 
 	OrderView struct {
@@ -210,23 +216,32 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
-		CarView  func(childComplexity int, id string, carID string, radius int) int
-		City     func(childComplexity int) int
-		Events   func(childComplexity int, id string, sinceTick int) int
-		Health   func(childComplexity int) int
-		Session  func(childComplexity int, id string) int
-		Sessions func(childComplexity int) int
+		CanPlaySession func(childComplexity int, id string, ownerToken *string) int
+		CarView        func(childComplexity int, id string, carID string, radius int) int
+		City           func(childComplexity int) int
+		Events         func(childComplexity int, id string, sinceTick int) int
+		Health         func(childComplexity int) int
+		Session        func(childComplexity int, id string) int
+		Sessions       func(childComplexity int) int
+	}
+
+	SessionClaimResult struct {
+		SessionID func(childComplexity int) int
+		Status    func(childComplexity int) int
 	}
 
 	SessionSummary struct {
-		CreatedAt  func(childComplexity int) int
-		Deliveries func(childComplexity int) int
-		ID         func(childComplexity int) int
-		Loaded     func(childComplexity int) int
-		Money      func(childComplexity int) int
-		Reputation func(childComplexity int) int
-		Speed      func(childComplexity int) int
-		Tick       func(childComplexity int) int
+		CreatedAt        func(childComplexity int) int
+		Deliveries       func(childComplexity int) int
+		ID               func(childComplexity int) int
+		Loaded           func(childComplexity int) int
+		Mine             func(childComplexity int) int
+		Money            func(childComplexity int) int
+		OwnerDisplayName func(childComplexity int) int
+		OwnerHandle      func(childComplexity int) int
+		Reputation       func(childComplexity int) int
+		Speed            func(childComplexity int) int
+		Tick             func(childComplexity int) int
 	}
 
 	Snapshot struct {
@@ -265,18 +280,19 @@ type ComplexityRoot struct {
 }
 
 type MutationResolver interface {
-	CreateSession(ctx context.Context, id *string, seed *int) (*model.Snapshot, error)
-	MoveCar(ctx context.Context, id string, carID string, direction model.Direction) (*model.Snapshot, error)
-	Tick(ctx context.Context, id string, count int) (*model.Snapshot, error)
-	SetSpeed(ctx context.Context, id string, speed int) (*model.Snapshot, error)
-	AssignOrder(ctx context.Context, id string, orderID string, carID string) (*model.Snapshot, error)
-	UnassignOrder(ctx context.Context, id string, orderID string) (*model.Snapshot, error)
-	BuyCar(ctx context.Context, id string, className string, depotID string) (*model.Snapshot, error)
-	TowCar(ctx context.Context, id string, carID string) (*model.Snapshot, error)
-	Build(ctx context.Context, id string, buildID string) (*model.Snapshot, error)
-	SaveSession(ctx context.Context, id string) (*model.Snapshot, error)
-	EvictSession(ctx context.Context, id string) (bool, error)
-	DeleteSession(ctx context.Context, id string) (bool, error)
+	CreateSession(ctx context.Context, id *string, seed *int) (*model.CreateSessionResult, error)
+	MoveCar(ctx context.Context, id string, carID string, direction model.Direction, ownerToken *string) (*model.Snapshot, error)
+	Tick(ctx context.Context, id string, count int, ownerToken *string) (*model.Snapshot, error)
+	SetSpeed(ctx context.Context, id string, speed int, ownerToken *string) (*model.Snapshot, error)
+	AssignOrder(ctx context.Context, id string, orderID string, carID string, ownerToken *string) (*model.Snapshot, error)
+	UnassignOrder(ctx context.Context, id string, orderID string, ownerToken *string) (*model.Snapshot, error)
+	BuyCar(ctx context.Context, id string, className string, depotID string, ownerToken *string) (*model.Snapshot, error)
+	TowCar(ctx context.Context, id string, carID string, ownerToken *string) (*model.Snapshot, error)
+	Build(ctx context.Context, id string, buildID string, ownerToken *string) (*model.Snapshot, error)
+	SaveSession(ctx context.Context, id string, ownerToken *string) (*model.Snapshot, error)
+	EvictSession(ctx context.Context, id string, ownerToken *string) (bool, error)
+	DeleteSession(ctx context.Context, id string, ownerToken *string) (bool, error)
+	ClaimSessions(ctx context.Context, claims []*model.SessionClaimInput) ([]*model.SessionClaimResult, error)
 }
 type QueryResolver interface {
 	Health(ctx context.Context) (*model.Health, error)
@@ -285,6 +301,7 @@ type QueryResolver interface {
 	Session(ctx context.Context, id string) (*model.Snapshot, error)
 	CarView(ctx context.Context, id string, carID string, radius int) (*model.CarWindow, error)
 	Events(ctx context.Context, id string, sinceTick int) ([]*model.EventView, error)
+	CanPlaySession(ctx context.Context, id string, ownerToken *string) (bool, error)
 }
 type SubscriptionResolver interface {
 	Session(ctx context.Context, id string) (<-chan *model.Snapshot, error)
@@ -750,6 +767,20 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.ClosureView.Tiles(childComplexity), true
 
+	case "CreateSessionResult.ownerToken":
+		if e.complexity.CreateSessionResult.OwnerToken == nil {
+			break
+		}
+
+		return e.complexity.CreateSessionResult.OwnerToken(childComplexity), true
+
+	case "CreateSessionResult.session":
+		if e.complexity.CreateSessionResult.Session == nil {
+			break
+		}
+
+		return e.complexity.CreateSessionResult.Session(childComplexity), true
+
 	case "EventView.carId":
 		if e.complexity.EventView.CarID == nil {
 			break
@@ -921,7 +952,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.AssignOrder(childComplexity, args["id"].(string), args["orderId"].(string), args["carId"].(string)), true
+		return e.complexity.Mutation.AssignOrder(childComplexity, args["id"].(string), args["orderId"].(string), args["carId"].(string), args["ownerToken"].(*string)), true
 
 	case "Mutation.build":
 		if e.complexity.Mutation.Build == nil {
@@ -933,7 +964,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.Build(childComplexity, args["id"].(string), args["buildId"].(string)), true
+		return e.complexity.Mutation.Build(childComplexity, args["id"].(string), args["buildId"].(string), args["ownerToken"].(*string)), true
 
 	case "Mutation.buyCar":
 		if e.complexity.Mutation.BuyCar == nil {
@@ -945,7 +976,19 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.BuyCar(childComplexity, args["id"].(string), args["className"].(string), args["depotId"].(string)), true
+		return e.complexity.Mutation.BuyCar(childComplexity, args["id"].(string), args["className"].(string), args["depotId"].(string), args["ownerToken"].(*string)), true
+
+	case "Mutation.claimSessions":
+		if e.complexity.Mutation.ClaimSessions == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_claimSessions_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.ClaimSessions(childComplexity, args["claims"].([]*model.SessionClaimInput)), true
 
 	case "Mutation.createSession":
 		if e.complexity.Mutation.CreateSession == nil {
@@ -969,7 +1012,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.DeleteSession(childComplexity, args["id"].(string)), true
+		return e.complexity.Mutation.DeleteSession(childComplexity, args["id"].(string), args["ownerToken"].(*string)), true
 
 	case "Mutation.evictSession":
 		if e.complexity.Mutation.EvictSession == nil {
@@ -981,7 +1024,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.EvictSession(childComplexity, args["id"].(string)), true
+		return e.complexity.Mutation.EvictSession(childComplexity, args["id"].(string), args["ownerToken"].(*string)), true
 
 	case "Mutation.moveCar":
 		if e.complexity.Mutation.MoveCar == nil {
@@ -993,7 +1036,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.MoveCar(childComplexity, args["id"].(string), args["carId"].(string), args["direction"].(model.Direction)), true
+		return e.complexity.Mutation.MoveCar(childComplexity, args["id"].(string), args["carId"].(string), args["direction"].(model.Direction), args["ownerToken"].(*string)), true
 
 	case "Mutation.saveSession":
 		if e.complexity.Mutation.SaveSession == nil {
@@ -1005,7 +1048,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.SaveSession(childComplexity, args["id"].(string)), true
+		return e.complexity.Mutation.SaveSession(childComplexity, args["id"].(string), args["ownerToken"].(*string)), true
 
 	case "Mutation.setSpeed":
 		if e.complexity.Mutation.SetSpeed == nil {
@@ -1017,7 +1060,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.SetSpeed(childComplexity, args["id"].(string), args["speed"].(int)), true
+		return e.complexity.Mutation.SetSpeed(childComplexity, args["id"].(string), args["speed"].(int), args["ownerToken"].(*string)), true
 
 	case "Mutation.tick":
 		if e.complexity.Mutation.Tick == nil {
@@ -1029,7 +1072,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.Tick(childComplexity, args["id"].(string), args["count"].(int)), true
+		return e.complexity.Mutation.Tick(childComplexity, args["id"].(string), args["count"].(int), args["ownerToken"].(*string)), true
 
 	case "Mutation.towCar":
 		if e.complexity.Mutation.TowCar == nil {
@@ -1041,7 +1084,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.TowCar(childComplexity, args["id"].(string), args["carId"].(string)), true
+		return e.complexity.Mutation.TowCar(childComplexity, args["id"].(string), args["carId"].(string), args["ownerToken"].(*string)), true
 
 	case "Mutation.unassignOrder":
 		if e.complexity.Mutation.UnassignOrder == nil {
@@ -1053,7 +1096,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Mutation.UnassignOrder(childComplexity, args["id"].(string), args["orderId"].(string)), true
+		return e.complexity.Mutation.UnassignOrder(childComplexity, args["id"].(string), args["orderId"].(string), args["ownerToken"].(*string)), true
 
 	case "OrderView.assignedCar":
 		if e.complexity.OrderView.AssignedCar == nil {
@@ -1195,6 +1238,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.PointView.Y(childComplexity), true
 
+	case "Query.canPlaySession":
+		if e.complexity.Query.CanPlaySession == nil {
+			break
+		}
+
+		args, err := ec.field_Query_canPlaySession_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.CanPlaySession(childComplexity, args["id"].(string), args["ownerToken"].(*string)), true
+
 	case "Query.carView":
 		if e.complexity.Query.CarView == nil {
 			break
@@ -1252,6 +1307,20 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Query.Sessions(childComplexity), true
 
+	case "SessionClaimResult.sessionID":
+		if e.complexity.SessionClaimResult.SessionID == nil {
+			break
+		}
+
+		return e.complexity.SessionClaimResult.SessionID(childComplexity), true
+
+	case "SessionClaimResult.status":
+		if e.complexity.SessionClaimResult.Status == nil {
+			break
+		}
+
+		return e.complexity.SessionClaimResult.Status(childComplexity), true
+
 	case "SessionSummary.createdAt":
 		if e.complexity.SessionSummary.CreatedAt == nil {
 			break
@@ -1280,12 +1349,33 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.SessionSummary.Loaded(childComplexity), true
 
+	case "SessionSummary.mine":
+		if e.complexity.SessionSummary.Mine == nil {
+			break
+		}
+
+		return e.complexity.SessionSummary.Mine(childComplexity), true
+
 	case "SessionSummary.money":
 		if e.complexity.SessionSummary.Money == nil {
 			break
 		}
 
 		return e.complexity.SessionSummary.Money(childComplexity), true
+
+	case "SessionSummary.ownerDisplayName":
+		if e.complexity.SessionSummary.OwnerDisplayName == nil {
+			break
+		}
+
+		return e.complexity.SessionSummary.OwnerDisplayName(childComplexity), true
+
+	case "SessionSummary.ownerHandle":
+		if e.complexity.SessionSummary.OwnerHandle == nil {
+			break
+		}
+
+		return e.complexity.SessionSummary.OwnerHandle(childComplexity), true
 
 	case "SessionSummary.reputation":
 		if e.complexity.SessionSummary.Reputation == nil {
@@ -1495,7 +1585,9 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 func (e *executableSchema) Exec(ctx context.Context) graphql.ResponseHandler {
 	opCtx := graphql.GetOperationContext(ctx)
 	ec := executionContext{opCtx, e, 0, 0, make(chan graphql.DeferredResult)}
-	inputUnmarshalMap := graphql.BuildUnmarshalerMap()
+	inputUnmarshalMap := graphql.BuildUnmarshalerMap(
+		ec.unmarshalInputSessionClaimInput,
+	)
 	first := true
 
 	switch opCtx.Operation.Operation {
@@ -1629,6 +1721,56 @@ type SessionSummary {
 	reputation: Float!
 	deliveries: Int!
 	loaded: Boolean!
+	"""
+	The owning player's public name: an account's display name, "Private player"
+	when its profile is private, or "Guest" for a session with no account.
+	"""
+	ownerDisplayName: String!
+	"""
+	Handle of the signed-in player who owns this session (profile at /u/<handle>);
+	null for guests and private profiles.
+	"""
+	ownerHandle: String
+	"""
+	True when the session belongs to the signed-in viewer's account.
+	"""
+	mine: Boolean!
+}
+"""
+The result of createSession. The ownerToken is returned only here and never by a
+query, a list or a subscription: it is the credential that lets this browser
+change the session (and attach it to an account later), while the session id
+alone stays enough to read it.
+"""
+type CreateSessionResult {
+	session: Snapshot!
+	"""
+	Secret that proves you created this session; keep it private.
+	"""
+	ownerToken: String!
+}
+enum ClaimStatus {
+	"""
+	The session now belongs to your account.
+	"""
+	ATTACHED
+	"""
+	It already belonged to your account.
+	"""
+	ALREADY_YOURS
+	"""
+	Unknown session, no or wrong owner token, a session created before owner
+	tokens, or one that belongs to another account.
+	"""
+	REJECTED
+}
+input SessionClaimInput {
+	sessionID: ID!
+	ownerToken: String!
+}
+type SessionClaimResult {
+	sessionID: ID!
+	status: ClaimStatus!
 }
 """
 The full client view of a session at one tick.
@@ -1994,53 +2136,74 @@ type Query {
 	Events newer than a tick, so a client can poll for deltas.
 	"""
 	events(id: ID!, sinceTick: Int! = 0): [EventView!]!
+	"""
+	Whether this caller may change the session: true for the session's creator
+	(by owner token or signed-in owning account) and for a session created before
+	owner tokens, false for everyone else. Never an error: an unknown session is
+	false. Reads stay public, so this decides between playing and spectating.
+	"""
+	canPlaySession(id: ID!, ownerToken: String): Boolean!
 }
 type Mutation {
 	"""
-	Start a new city. Both fields optional; a seed makes it reproducible.
+	Start a new city. Both fields optional; a seed makes it reproducible, and an
+	omitted id is generated. A signed-in creator's session belongs to their
+	account. The response carries the secret ownerToken, needed to change the
+	session later, so keep it.
 	"""
-	createSession(id: ID, seed: Int): Snapshot!
+	createSession(id: ID, seed: Int): CreateSessionResult!
 	"""
-	Queue one step for one car. Does NOT advance the clock.
+	Queue one step for one car. Does NOT advance the clock. Only the session's
+	creator may change it: pass the ownerToken from createSession, or be signed in
+	to the account that owns the session (FORBIDDEN otherwise). Sessions created
+	before owner tokens stay open.
 	"""
-	moveCar(id: ID!, carId: ID!, direction: Direction!): Snapshot!
+	moveCar(id: ID!, carId: ID!, direction: Direction!, ownerToken: String): Snapshot!
 	"""
-	Advance the world manually. Useful when paused.
+	Advance the world manually. Useful when paused. Creator-only, as moveCar.
 	"""
-	tick(id: ID!, count: Int! = 1): Snapshot!
+	tick(id: ID!, count: Int! = 1, ownerToken: String): Snapshot!
 	"""
-	Set the clock multiplier. 0 pauses.
+	Set the clock multiplier. 0 pauses. Creator-only, as moveCar.
 	"""
-	setSpeed(id: ID!, speed: Int!): Snapshot!
+	setSpeed(id: ID!, speed: Int!, ownerToken: String): Snapshot!
 	"""
 	Point an order at a car; refreshes its deadline from that car's position.
+	Creator-only, as moveCar.
 	"""
-	assignOrder(id: ID!, orderId: ID!, carId: ID!): Snapshot!
-	unassignOrder(id: ID!, orderId: ID!): Snapshot!
+	assignOrder(id: ID!, orderId: ID!, carId: ID!, ownerToken: String): Snapshot!
+	unassignOrder(id: ID!, orderId: ID!, ownerToken: String): Snapshot!
 	"""
-	Buy a vehicle at a depot.
+	Buy a vehicle at a depot. Creator-only, as moveCar.
 	"""
-	buyCar(id: ID!, className: String!, depotId: String! = "d_main"): Snapshot!
+	buyCar(id: ID!, className: String!, depotId: String! = "d_main", ownerToken: String): Snapshot!
 	"""
-	Return a stranded car to its nearest depot for a fee.
+	Return a stranded car to its nearest depot for a fee. Creator-only, as moveCar.
 	"""
-	towCar(id: ID!, carId: ID!): Snapshot!
+	towCar(id: ID!, carId: ID!, ownerToken: String): Snapshot!
 	"""
-	Purchase an unlocked build; mutates the map atomically.
+	Purchase an unlocked build; mutates the map atomically. Creator-only, as moveCar.
 	"""
-	build(id: ID!, buildId: ID!): Snapshot!
+	build(id: ID!, buildId: ID!, ownerToken: String): Snapshot!
 	"""
-	Write the save to disk.
+	Write the save to disk. Creator-only, as moveCar.
 	"""
-	saveSession(id: ID!): Snapshot!
+	saveSession(id: ID!, ownerToken: String): Snapshot!
 	"""
-	Save, then drop from memory. The next read rehydrates.
+	Save, then drop from memory. The next read rehydrates. Creator-only: evicting
+	someone else's session would stop their clock.
 	"""
-	evictSession(id: ID!): Boolean!
+	evictSession(id: ID!, ownerToken: String): Boolean!
 	"""
-	Delete the save file permanently.
+	Delete the save file permanently. Needs the ownerToken (or the owning account)
+	even for a guest session; only a save created before owner tokens is open.
 	"""
-	deleteSession(id: ID!): Boolean!
+	deleteSession(id: ID!, ownerToken: String): Boolean!
+	"""
+	Attaches guest sessions of this browser to the signed-in account; each needs
+	its owner token (up to 100 per call). UNAUTHENTICATED when not signed in.
+	"""
+	claimSessions(claims: [SessionClaimInput!]!): [SessionClaimResult!]!
 }
 type Subscription {
 	"""
@@ -2087,6 +2250,11 @@ func (ec *executionContext) field_Mutation_assignOrder_args(ctx context.Context,
 		return nil, err
 	}
 	args["carId"] = arg2
+	arg3, err := ec.field_Mutation_assignOrder_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg3
 	return args, nil
 }
 func (ec *executionContext) field_Mutation_assignOrder_argsID(
@@ -2143,6 +2311,24 @@ func (ec *executionContext) field_Mutation_assignOrder_argsCarID(
 	return zeroVal, nil
 }
 
+func (ec *executionContext) field_Mutation_assignOrder_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
 func (ec *executionContext) field_Mutation_build_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -2156,6 +2342,11 @@ func (ec *executionContext) field_Mutation_build_args(ctx context.Context, rawAr
 		return nil, err
 	}
 	args["buildId"] = arg1
+	arg2, err := ec.field_Mutation_build_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg2
 	return args, nil
 }
 func (ec *executionContext) field_Mutation_build_argsID(
@@ -2194,6 +2385,24 @@ func (ec *executionContext) field_Mutation_build_argsBuildID(
 	return zeroVal, nil
 }
 
+func (ec *executionContext) field_Mutation_build_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
 func (ec *executionContext) field_Mutation_buyCar_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -2212,6 +2421,11 @@ func (ec *executionContext) field_Mutation_buyCar_args(ctx context.Context, rawA
 		return nil, err
 	}
 	args["depotId"] = arg2
+	arg3, err := ec.field_Mutation_buyCar_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg3
 	return args, nil
 }
 func (ec *executionContext) field_Mutation_buyCar_argsID(
@@ -2265,6 +2479,52 @@ func (ec *executionContext) field_Mutation_buyCar_argsDepotID(
 	}
 
 	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Mutation_buyCar_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Mutation_claimSessions_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Mutation_claimSessions_argsClaims(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["claims"] = arg0
+	return args, nil
+}
+func (ec *executionContext) field_Mutation_claimSessions_argsClaims(
+	ctx context.Context,
+	rawArgs map[string]any,
+) ([]*model.SessionClaimInput, error) {
+	if _, ok := rawArgs["claims"]; !ok {
+		var zeroVal []*model.SessionClaimInput
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("claims"))
+	if tmp, ok := rawArgs["claims"]; ok {
+		return ec.unmarshalNSessionClaimInput2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐSessionClaimInputᚄ(ctx, tmp)
+	}
+
+	var zeroVal []*model.SessionClaimInput
 	return zeroVal, nil
 }
 
@@ -2327,6 +2587,11 @@ func (ec *executionContext) field_Mutation_deleteSession_args(ctx context.Contex
 		return nil, err
 	}
 	args["id"] = arg0
+	arg1, err := ec.field_Mutation_deleteSession_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg1
 	return args, nil
 }
 func (ec *executionContext) field_Mutation_deleteSession_argsID(
@@ -2347,6 +2612,24 @@ func (ec *executionContext) field_Mutation_deleteSession_argsID(
 	return zeroVal, nil
 }
 
+func (ec *executionContext) field_Mutation_deleteSession_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
 func (ec *executionContext) field_Mutation_evictSession_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -2355,6 +2638,11 @@ func (ec *executionContext) field_Mutation_evictSession_args(ctx context.Context
 		return nil, err
 	}
 	args["id"] = arg0
+	arg1, err := ec.field_Mutation_evictSession_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg1
 	return args, nil
 }
 func (ec *executionContext) field_Mutation_evictSession_argsID(
@@ -2372,6 +2660,24 @@ func (ec *executionContext) field_Mutation_evictSession_argsID(
 	}
 
 	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Mutation_evictSession_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
 	return zeroVal, nil
 }
 
@@ -2393,6 +2699,11 @@ func (ec *executionContext) field_Mutation_moveCar_args(ctx context.Context, raw
 		return nil, err
 	}
 	args["direction"] = arg2
+	arg3, err := ec.field_Mutation_moveCar_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg3
 	return args, nil
 }
 func (ec *executionContext) field_Mutation_moveCar_argsID(
@@ -2449,6 +2760,24 @@ func (ec *executionContext) field_Mutation_moveCar_argsDirection(
 	return zeroVal, nil
 }
 
+func (ec *executionContext) field_Mutation_moveCar_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
 func (ec *executionContext) field_Mutation_saveSession_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -2457,6 +2786,11 @@ func (ec *executionContext) field_Mutation_saveSession_args(ctx context.Context,
 		return nil, err
 	}
 	args["id"] = arg0
+	arg1, err := ec.field_Mutation_saveSession_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg1
 	return args, nil
 }
 func (ec *executionContext) field_Mutation_saveSession_argsID(
@@ -2477,6 +2811,24 @@ func (ec *executionContext) field_Mutation_saveSession_argsID(
 	return zeroVal, nil
 }
 
+func (ec *executionContext) field_Mutation_saveSession_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
 func (ec *executionContext) field_Mutation_setSpeed_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -2490,6 +2842,11 @@ func (ec *executionContext) field_Mutation_setSpeed_args(ctx context.Context, ra
 		return nil, err
 	}
 	args["speed"] = arg1
+	arg2, err := ec.field_Mutation_setSpeed_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg2
 	return args, nil
 }
 func (ec *executionContext) field_Mutation_setSpeed_argsID(
@@ -2528,6 +2885,24 @@ func (ec *executionContext) field_Mutation_setSpeed_argsSpeed(
 	return zeroVal, nil
 }
 
+func (ec *executionContext) field_Mutation_setSpeed_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
 func (ec *executionContext) field_Mutation_tick_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -2541,6 +2916,11 @@ func (ec *executionContext) field_Mutation_tick_args(ctx context.Context, rawArg
 		return nil, err
 	}
 	args["count"] = arg1
+	arg2, err := ec.field_Mutation_tick_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg2
 	return args, nil
 }
 func (ec *executionContext) field_Mutation_tick_argsID(
@@ -2579,6 +2959,24 @@ func (ec *executionContext) field_Mutation_tick_argsCount(
 	return zeroVal, nil
 }
 
+func (ec *executionContext) field_Mutation_tick_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
 func (ec *executionContext) field_Mutation_towCar_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -2592,6 +2990,11 @@ func (ec *executionContext) field_Mutation_towCar_args(ctx context.Context, rawA
 		return nil, err
 	}
 	args["carId"] = arg1
+	arg2, err := ec.field_Mutation_towCar_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg2
 	return args, nil
 }
 func (ec *executionContext) field_Mutation_towCar_argsID(
@@ -2630,6 +3033,24 @@ func (ec *executionContext) field_Mutation_towCar_argsCarID(
 	return zeroVal, nil
 }
 
+func (ec *executionContext) field_Mutation_towCar_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
 func (ec *executionContext) field_Mutation_unassignOrder_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -2643,6 +3064,11 @@ func (ec *executionContext) field_Mutation_unassignOrder_args(ctx context.Contex
 		return nil, err
 	}
 	args["orderId"] = arg1
+	arg2, err := ec.field_Mutation_unassignOrder_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg2
 	return args, nil
 }
 func (ec *executionContext) field_Mutation_unassignOrder_argsID(
@@ -2681,6 +3107,24 @@ func (ec *executionContext) field_Mutation_unassignOrder_argsOrderID(
 	return zeroVal, nil
 }
 
+func (ec *executionContext) field_Mutation_unassignOrder_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
 func (ec *executionContext) field_Query___type_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -2706,6 +3150,57 @@ func (ec *executionContext) field_Query___type_argsName(
 	}
 
 	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_canPlaySession_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Query_canPlaySession_argsID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	arg1, err := ec.field_Query_canPlaySession_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg1
+	return args, nil
+}
+func (ec *executionContext) field_Query_canPlaySession_argsID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["id"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
+	if tmp, ok := rawArgs["id"]; ok {
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Query_canPlaySession_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
 	return zeroVal, nil
 }
 
@@ -5921,6 +6416,128 @@ func (ec *executionContext) fieldContext_ClosureView_maxY(_ context.Context, fie
 	return fc, nil
 }
 
+func (ec *executionContext) _CreateSessionResult_session(ctx context.Context, field graphql.CollectedField, obj *model.CreateSessionResult) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_CreateSessionResult_session(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Session, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.Snapshot)
+	fc.Result = res
+	return ec.marshalNSnapshot2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐSnapshot(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_CreateSessionResult_session(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "CreateSessionResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Snapshot_id(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Snapshot_createdAt(ctx, field)
+			case "tick":
+				return ec.fieldContext_Snapshot_tick(ctx, field)
+			case "speed":
+				return ec.fieldContext_Snapshot_speed(ctx, field)
+			case "paused":
+				return ec.fieldContext_Snapshot_paused(ctx, field)
+			case "tickMs":
+				return ec.fieldContext_Snapshot_tickMs(ctx, field)
+			case "city":
+				return ec.fieldContext_Snapshot_city(ctx, field)
+			case "cars":
+				return ec.fieldContext_Snapshot_cars(ctx, field)
+			case "orders":
+				return ec.fieldContext_Snapshot_orders(ctx, field)
+			case "ledger":
+				return ec.fieldContext_Snapshot_ledger(ctx, field)
+			case "carClasses":
+				return ec.fieldContext_Snapshot_carClasses(ctx, field)
+			case "achievements":
+				return ec.fieldContext_Snapshot_achievements(ctx, field)
+			case "unlocks":
+				return ec.fieldContext_Snapshot_unlocks(ctx, field)
+			case "builds":
+				return ec.fieldContext_Snapshot_builds(ctx, field)
+			case "events":
+				return ec.fieldContext_Snapshot_events(ctx, field)
+			case "closures":
+				return ec.fieldContext_Snapshot_closures(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Snapshot", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _CreateSessionResult_ownerToken(ctx context.Context, field graphql.CollectedField, obj *model.CreateSessionResult) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_CreateSessionResult_ownerToken(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.OwnerToken, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_CreateSessionResult_ownerToken(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "CreateSessionResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _EventView_tick(ctx context.Context, field graphql.CollectedField, obj *model.EventView) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_EventView_tick(ctx, field)
 	if err != nil {
@@ -6962,9 +7579,9 @@ func (ec *executionContext) _Mutation_createSession(ctx context.Context, field g
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model.Snapshot)
+	res := resTmp.(*model.CreateSessionResult)
 	fc.Result = res
-	return ec.marshalNSnapshot2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐSnapshot(ctx, field.Selections, res)
+	return ec.marshalNCreateSessionResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐCreateSessionResult(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Mutation_createSession(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -6975,40 +7592,12 @@ func (ec *executionContext) fieldContext_Mutation_createSession(ctx context.Cont
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
-			case "id":
-				return ec.fieldContext_Snapshot_id(ctx, field)
-			case "createdAt":
-				return ec.fieldContext_Snapshot_createdAt(ctx, field)
-			case "tick":
-				return ec.fieldContext_Snapshot_tick(ctx, field)
-			case "speed":
-				return ec.fieldContext_Snapshot_speed(ctx, field)
-			case "paused":
-				return ec.fieldContext_Snapshot_paused(ctx, field)
-			case "tickMs":
-				return ec.fieldContext_Snapshot_tickMs(ctx, field)
-			case "city":
-				return ec.fieldContext_Snapshot_city(ctx, field)
-			case "cars":
-				return ec.fieldContext_Snapshot_cars(ctx, field)
-			case "orders":
-				return ec.fieldContext_Snapshot_orders(ctx, field)
-			case "ledger":
-				return ec.fieldContext_Snapshot_ledger(ctx, field)
-			case "carClasses":
-				return ec.fieldContext_Snapshot_carClasses(ctx, field)
-			case "achievements":
-				return ec.fieldContext_Snapshot_achievements(ctx, field)
-			case "unlocks":
-				return ec.fieldContext_Snapshot_unlocks(ctx, field)
-			case "builds":
-				return ec.fieldContext_Snapshot_builds(ctx, field)
-			case "events":
-				return ec.fieldContext_Snapshot_events(ctx, field)
-			case "closures":
-				return ec.fieldContext_Snapshot_closures(ctx, field)
+			case "session":
+				return ec.fieldContext_CreateSessionResult_session(ctx, field)
+			case "ownerToken":
+				return ec.fieldContext_CreateSessionResult_ownerToken(ctx, field)
 			}
-			return nil, fmt.Errorf("no field named %q was found under type Snapshot", field.Name)
+			return nil, fmt.Errorf("no field named %q was found under type CreateSessionResult", field.Name)
 		},
 	}
 	defer func() {
@@ -7039,7 +7628,7 @@ func (ec *executionContext) _Mutation_moveCar(ctx context.Context, field graphql
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().MoveCar(rctx, fc.Args["id"].(string), fc.Args["carId"].(string), fc.Args["direction"].(model.Direction))
+		return ec.resolvers.Mutation().MoveCar(rctx, fc.Args["id"].(string), fc.Args["carId"].(string), fc.Args["direction"].(model.Direction), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -7128,7 +7717,7 @@ func (ec *executionContext) _Mutation_tick(ctx context.Context, field graphql.Co
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().Tick(rctx, fc.Args["id"].(string), fc.Args["count"].(int))
+		return ec.resolvers.Mutation().Tick(rctx, fc.Args["id"].(string), fc.Args["count"].(int), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -7217,7 +7806,7 @@ func (ec *executionContext) _Mutation_setSpeed(ctx context.Context, field graphq
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().SetSpeed(rctx, fc.Args["id"].(string), fc.Args["speed"].(int))
+		return ec.resolvers.Mutation().SetSpeed(rctx, fc.Args["id"].(string), fc.Args["speed"].(int), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -7306,7 +7895,7 @@ func (ec *executionContext) _Mutation_assignOrder(ctx context.Context, field gra
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().AssignOrder(rctx, fc.Args["id"].(string), fc.Args["orderId"].(string), fc.Args["carId"].(string))
+		return ec.resolvers.Mutation().AssignOrder(rctx, fc.Args["id"].(string), fc.Args["orderId"].(string), fc.Args["carId"].(string), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -7395,7 +7984,7 @@ func (ec *executionContext) _Mutation_unassignOrder(ctx context.Context, field g
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().UnassignOrder(rctx, fc.Args["id"].(string), fc.Args["orderId"].(string))
+		return ec.resolvers.Mutation().UnassignOrder(rctx, fc.Args["id"].(string), fc.Args["orderId"].(string), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -7484,7 +8073,7 @@ func (ec *executionContext) _Mutation_buyCar(ctx context.Context, field graphql.
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().BuyCar(rctx, fc.Args["id"].(string), fc.Args["className"].(string), fc.Args["depotId"].(string))
+		return ec.resolvers.Mutation().BuyCar(rctx, fc.Args["id"].(string), fc.Args["className"].(string), fc.Args["depotId"].(string), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -7573,7 +8162,7 @@ func (ec *executionContext) _Mutation_towCar(ctx context.Context, field graphql.
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().TowCar(rctx, fc.Args["id"].(string), fc.Args["carId"].(string))
+		return ec.resolvers.Mutation().TowCar(rctx, fc.Args["id"].(string), fc.Args["carId"].(string), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -7662,7 +8251,7 @@ func (ec *executionContext) _Mutation_build(ctx context.Context, field graphql.C
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().Build(rctx, fc.Args["id"].(string), fc.Args["buildId"].(string))
+		return ec.resolvers.Mutation().Build(rctx, fc.Args["id"].(string), fc.Args["buildId"].(string), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -7751,7 +8340,7 @@ func (ec *executionContext) _Mutation_saveSession(ctx context.Context, field gra
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().SaveSession(rctx, fc.Args["id"].(string))
+		return ec.resolvers.Mutation().SaveSession(rctx, fc.Args["id"].(string), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -7840,7 +8429,7 @@ func (ec *executionContext) _Mutation_evictSession(ctx context.Context, field gr
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().EvictSession(rctx, fc.Args["id"].(string))
+		return ec.resolvers.Mutation().EvictSession(rctx, fc.Args["id"].(string), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -7895,7 +8484,7 @@ func (ec *executionContext) _Mutation_deleteSession(ctx context.Context, field g
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().DeleteSession(rctx, fc.Args["id"].(string))
+		return ec.resolvers.Mutation().DeleteSession(rctx, fc.Args["id"].(string), fc.Args["ownerToken"].(*string))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -7930,6 +8519,67 @@ func (ec *executionContext) fieldContext_Mutation_deleteSession(ctx context.Cont
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_deleteSession_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_claimSessions(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_claimSessions(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().ClaimSessions(rctx, fc.Args["claims"].([]*model.SessionClaimInput))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model.SessionClaimResult)
+	fc.Result = res
+	return ec.marshalNSessionClaimResult2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐSessionClaimResultᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mutation_claimSessions(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "sessionID":
+				return ec.fieldContext_SessionClaimResult_sessionID(ctx, field)
+			case "status":
+				return ec.fieldContext_SessionClaimResult_status(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type SessionClaimResult", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_claimSessions_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -8978,6 +9628,12 @@ func (ec *executionContext) fieldContext_Query_sessions(_ context.Context, field
 				return ec.fieldContext_SessionSummary_deliveries(ctx, field)
 			case "loaded":
 				return ec.fieldContext_SessionSummary_loaded(ctx, field)
+			case "ownerDisplayName":
+				return ec.fieldContext_SessionSummary_ownerDisplayName(ctx, field)
+			case "ownerHandle":
+				return ec.fieldContext_SessionSummary_ownerHandle(ctx, field)
+			case "mine":
+				return ec.fieldContext_SessionSummary_mine(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type SessionSummary", field.Name)
 		},
@@ -9216,6 +9872,61 @@ func (ec *executionContext) fieldContext_Query_events(ctx context.Context, field
 	return fc, nil
 }
 
+func (ec *executionContext) _Query_canPlaySession(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Query_canPlaySession(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Query().CanPlaySession(rctx, fc.Args["id"].(string), fc.Args["ownerToken"].(*string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Query_canPlaySession(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_canPlaySession_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query___type(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Query___type(ctx, field)
 	if err != nil {
@@ -9342,6 +10053,94 @@ func (ec *executionContext) fieldContext_Query___schema(_ context.Context, field
 				return ec.fieldContext___Schema_directives(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type __Schema", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SessionClaimResult_sessionID(ctx context.Context, field graphql.CollectedField, obj *model.SessionClaimResult) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_SessionClaimResult_sessionID(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.SessionID, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNID2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_SessionClaimResult_sessionID(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SessionClaimResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SessionClaimResult_status(ctx context.Context, field graphql.CollectedField, obj *model.SessionClaimResult) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_SessionClaimResult_status(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Status, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(model.ClaimStatus)
+	fc.Result = res
+	return ec.marshalNClaimStatus2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐClaimStatus(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_SessionClaimResult_status(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SessionClaimResult",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ClaimStatus does not have child fields")
 		},
 	}
 	return fc, nil
@@ -9687,6 +10486,135 @@ func (ec *executionContext) _SessionSummary_loaded(ctx context.Context, field gr
 }
 
 func (ec *executionContext) fieldContext_SessionSummary_loaded(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SessionSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SessionSummary_ownerDisplayName(ctx context.Context, field graphql.CollectedField, obj *model.SessionSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_SessionSummary_ownerDisplayName(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.OwnerDisplayName, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_SessionSummary_ownerDisplayName(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SessionSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SessionSummary_ownerHandle(ctx context.Context, field graphql.CollectedField, obj *model.SessionSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_SessionSummary_ownerHandle(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.OwnerHandle, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		return graphql.Null
+	}
+	res := resTmp.(*string)
+	fc.Result = res
+	return ec.marshalOString2ᚖstring(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_SessionSummary_ownerHandle(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "SessionSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _SessionSummary_mine(ctx context.Context, field graphql.CollectedField, obj *model.SessionSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_SessionSummary_mine(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Mine, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_SessionSummary_mine(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "SessionSummary",
 		Field:      field,
@@ -13027,6 +13955,40 @@ func (ec *executionContext) fieldContext___Type_isOneOf(_ context.Context, field
 
 // region    **************************** input.gotpl *****************************
 
+func (ec *executionContext) unmarshalInputSessionClaimInput(ctx context.Context, obj any) (model.SessionClaimInput, error) {
+	var it model.SessionClaimInput
+	asMap := map[string]any{}
+	for k, v := range obj.(map[string]any) {
+		asMap[k] = v
+	}
+
+	fieldsInOrder := [...]string{"sessionID", "ownerToken"}
+	for _, k := range fieldsInOrder {
+		v, ok := asMap[k]
+		if !ok {
+			continue
+		}
+		switch k {
+		case "sessionID":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("sessionID"))
+			data, err := ec.unmarshalNID2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.SessionID = data
+		case "ownerToken":
+			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+			data, err := ec.unmarshalNString2string(ctx, v)
+			if err != nil {
+				return it, err
+			}
+			it.OwnerToken = data
+		}
+	}
+
+	return it, nil
+}
+
 // endregion **************************** input.gotpl *****************************
 
 // region    ************************** interface.gotpl ***************************
@@ -13579,6 +14541,50 @@ func (ec *executionContext) _ClosureView(ctx context.Context, sel ast.SelectionS
 	return out
 }
 
+var createSessionResultImplementors = []string{"CreateSessionResult"}
+
+func (ec *executionContext) _CreateSessionResult(ctx context.Context, sel ast.SelectionSet, obj *model.CreateSessionResult) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, createSessionResultImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("CreateSessionResult")
+		case "session":
+			out.Values[i] = ec._CreateSessionResult_session(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "ownerToken":
+			out.Values[i] = ec._CreateSessionResult_ownerToken(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var eventViewImplementors = []string{"EventView"}
 
 func (ec *executionContext) _EventView(ctx context.Context, sel ast.SelectionSet, obj *model.EventView) graphql.Marshaler {
@@ -13930,6 +14936,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "claimSessions":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_claimSessions(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -14269,6 +15282,28 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "canPlaySession":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_canPlaySession(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "__type":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Query___type(ctx, field)
@@ -14277,6 +15312,50 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Query___schema(ctx, field)
 			})
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var sessionClaimResultImplementors = []string{"SessionClaimResult"}
+
+func (ec *executionContext) _SessionClaimResult(ctx context.Context, sel ast.SelectionSet, obj *model.SessionClaimResult) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, sessionClaimResultImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("SessionClaimResult")
+		case "sessionID":
+			out.Values[i] = ec._SessionClaimResult_sessionID(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "status":
+			out.Values[i] = ec._SessionClaimResult_status(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -14348,6 +15427,18 @@ func (ec *executionContext) _SessionSummary(ctx context.Context, sel ast.Selecti
 			}
 		case "loaded":
 			out.Values[i] = ec._SessionSummary_loaded(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "ownerDisplayName":
+			out.Values[i] = ec._SessionSummary_ownerDisplayName(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "ownerHandle":
+			out.Values[i] = ec._SessionSummary_ownerHandle(ctx, field, obj)
+		case "mine":
+			out.Values[i] = ec._SessionSummary_mine(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -15187,6 +16278,16 @@ func (ec *executionContext) marshalNCityView2ᚖgithubᚗcomᚋwricardoᚋdrbrai
 	return ec._CityView(ctx, sel, v)
 }
 
+func (ec *executionContext) unmarshalNClaimStatus2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐClaimStatus(ctx context.Context, v any) (model.ClaimStatus, error) {
+	var res model.ClaimStatus
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNClaimStatus2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐClaimStatus(ctx context.Context, sel ast.SelectionSet, v model.ClaimStatus) graphql.Marshaler {
+	return v
+}
+
 func (ec *executionContext) marshalNClosureView2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐClosureViewᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.ClosureView) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
@@ -15239,6 +16340,20 @@ func (ec *executionContext) marshalNClosureView2ᚖgithubᚗcomᚋwricardoᚋdrb
 		return graphql.Null
 	}
 	return ec._ClosureView(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNCreateSessionResult2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐCreateSessionResult(ctx context.Context, sel ast.SelectionSet, v model.CreateSessionResult) graphql.Marshaler {
+	return ec._CreateSessionResult(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNCreateSessionResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐCreateSessionResult(ctx context.Context, sel ast.SelectionSet, v *model.CreateSessionResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._CreateSessionResult(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNDirection2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐDirection(ctx context.Context, v any) (model.Direction, error) {
@@ -15577,6 +16692,80 @@ func (ec *executionContext) marshalNPointView2ᚖgithubᚗcomᚋwricardoᚋdrbra
 		return graphql.Null
 	}
 	return ec._PointView(ctx, sel, v)
+}
+
+func (ec *executionContext) unmarshalNSessionClaimInput2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐSessionClaimInputᚄ(ctx context.Context, v any) ([]*model.SessionClaimInput, error) {
+	var vSlice []any
+	vSlice = graphql.CoerceList(v)
+	var err error
+	res := make([]*model.SessionClaimInput, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNSessionClaimInput2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐSessionClaimInput(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) unmarshalNSessionClaimInput2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐSessionClaimInput(ctx context.Context, v any) (*model.SessionClaimInput, error) {
+	res, err := ec.unmarshalInputSessionClaimInput(ctx, v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNSessionClaimResult2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐSessionClaimResultᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.SessionClaimResult) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNSessionClaimResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐSessionClaimResult(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNSessionClaimResult2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐSessionClaimResult(ctx context.Context, sel ast.SelectionSet, v *model.SessionClaimResult) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._SessionClaimResult(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNSessionSummary2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐSessionSummaryᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.SessionSummary) graphql.Marshaler {

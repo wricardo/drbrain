@@ -241,7 +241,6 @@
 						<th scope="col" class="w-8 px-3 py-2">
 							<input type="checkbox" class="h-4 w-4 accent-indigo-600" checked={allVisibleSelected} onchange={toggleVisible} aria-label="Select all shown sessions" />
 						</th>
-						<th scope="col" class="px-4 py-2">Player</th>
 						<th scope="col" class="px-4 py-2">Map</th>
 						<th scope="col" class="px-4 py-2">Status</th>
 						<th scope="col" class="px-4 py-2">Progress</th>
@@ -260,10 +259,9 @@
 									class="h-4 w-4 accent-indigo-600"
 									checked={selected.includes(s.id)}
 									onchange={() => toggle(s.id)}
-									aria-label="Select {s.displayName || 'Anonymous'} on {s.map.name}"
+									aria-label="Select session {s.id} on {s.map.name}"
 								/>
 							</td>
-							<td class="px-4 py-2 font-medium">{s.displayName || 'Anonymous'}</td>
 							<td class="px-4 py-2">{s.map.name}</td>
 							<td class="px-4 py-2">
 								<span class="rounded-full px-2 py-0.5 text-xs {badge[st] ?? 'bg-indigo-50 text-indigo-800'}">{st}</span>

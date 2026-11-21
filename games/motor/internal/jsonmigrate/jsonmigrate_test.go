@@ -55,7 +55,7 @@ func newSession(t *testing.T, id, accountID string) *service.Session {
 		}
 	}
 	return &service.Session{
-		ID: id, DisplayName: "player " + id, MapID: m.ID, Map: m, Program: prog, VM: vm, SpeedMs: 200, Seq: 7,
+		ID: id, MapID: m.ID, Map: m, Program: prog, VM: vm, SpeedMs: 200, Seq: 7,
 		CreatedAt:    time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 		LastActionAt: time.Date(2026, 1, 2, 4, 4, 5, 0, time.UTC),
 		Attempts:     2, BestSteps: 5, AccountID: accountID, OwnerHash: strings.Repeat("c", 64),
@@ -101,10 +101,6 @@ func writeFiles(t *testing.T) Dirs {
 		if err := store.Create(a); err != nil {
 			t.Fatal(err)
 		}
-		now := time.Now().UTC().Truncate(time.Second)
-		if err := store.PutLogin(account.Login{TokenHash: strings.Repeat(string(rune('a'+i)), 64), AccountID: id, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}); err != nil {
-			t.Fatal(err)
-		}
 	}
 
 	fp, err := session.NewFilePersistence(d.Sessions)
@@ -129,7 +125,7 @@ func TestImportMovesEverythingAndIsSafeToRerun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if dry.Maps != 1 || dry.Accounts != 2 || dry.Logins != 2 || dry.Sessions != 2 {
+	if dry.Maps != 1 || dry.Accounts != 2 || dry.Sessions != 2 {
 		t.Fatalf("dry run counted %v", dry)
 	}
 	var rows int
@@ -141,7 +137,7 @@ func TestImportMovesEverythingAndIsSafeToRerun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Maps != 1 || got.Accounts != 2 || got.Logins != 2 || got.Sessions != 2 || got.Guests != 1 {
+	if got.Maps != 1 || got.Accounts != 2 || got.Sessions != 2 || got.Guests != 1 {
 		t.Fatalf("first import = %v", got)
 	}
 
@@ -149,9 +145,6 @@ func TestImportMovesEverythingAndIsSafeToRerun(t *testing.T) {
 	pga := account.NewPostgresStore(pool)
 	if a, ok := pga.ByHandle("otter"); !ok || a.ID != acctOne || a.PasswordHash != "$argon2id$hash01" {
 		t.Fatalf("account not imported intact: %+v %v", a, ok)
-	}
-	if _, ok := pga.GetLogin(strings.Repeat("a", 64)); !ok {
-		t.Fatal("login not imported")
 	}
 	pgs := session.NewPostgresPersistence(pool)
 	a, err := pgs.Load(sessA)
@@ -180,7 +173,7 @@ func TestImportMovesEverythingAndIsSafeToRerun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again.Maps+again.Accounts+again.Logins+again.Sessions != 0 || again.Skipped == 0 {
+	if again.Maps+again.Accounts+again.Sessions != 0 || again.Skipped == 0 {
 		t.Fatalf("re-run = %v, want nothing inserted", again)
 	}
 	if a, _ := pgs.Load(sessA); a.Attempts != 99 {
@@ -219,7 +212,7 @@ func TestExportRoundTripsAndRefusesToOverwrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Maps != 1 || got.Accounts != 2 || got.Logins != 2 || got.Sessions != 2 {
+	if got.Maps != 1 || got.Accounts != 2 || got.Sessions != 2 {
 		t.Fatalf("export = %v", got)
 	}
 

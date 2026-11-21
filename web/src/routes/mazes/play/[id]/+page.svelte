@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Skeleton from '@drbrain/ui/components/Skeleton.svelte';
 	import { pageTitle } from '$lib/mazes/brand';
 	import { onDestroy, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -166,7 +167,7 @@
 
 <div class="mx-auto max-w-7xl px-4 sm:px-6 py-6">
 	{#if $store.loading}
-		<p role="status" class="text-sm text-slate-600">Loading session…</p>
+		<Skeleton label="Loading session…" height="14rem" />
 	{:else if !session}
 		<div role="alert" class="rounded-lg border border-rose-300 bg-rose-50 p-4 text-sm text-rose-900">
 			<strong>{$store.error?.title ?? 'Session unavailable'}.</strong>
@@ -174,7 +175,7 @@
 			<a href="/mazes" class="ml-2 underline">Back to maps</a>
 		</div>
 	{:else}
-		<div class="flex flex-wrap items-center justify-between gap-2">
+		<div class="game-run-title db-panel">
 			<div>
 				<h1 class="text-2xl font-semibold text-indigo-950" title={session.map.description}>{session.map.name}</h1>
 				<p class="text-sm text-slate-600">

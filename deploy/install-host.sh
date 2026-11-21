@@ -20,7 +20,7 @@ set -eu
 : "${DELIVERY_HOST:?set DELIVERY_HOST}"
 TLS_DIR="${TLS_DIR:-/etc/letsencrypt/live}"
 
-STATE_GAMES="mazes motor tesla delivery"
+STATE_GAMES="mazes motor tesla delivery music"
 
 id drbrain >/dev/null 2>&1 || useradd --system --home /opt/drbrain --shell /usr/sbin/nologin drbrain
 install -d -o drbrain -g drbrain /opt/drbrain /opt/drbrain/releases
@@ -29,6 +29,7 @@ for game in $STATE_GAMES; do
 done
 install -d -o drbrain -g drbrain /var/lib/drbrain/motor/maps-user /var/lib/drbrain/motor/accounts
 install -d -o drbrain -g drbrain /var/lib/drbrain/tesla/maps-custom
+install -d -o drbrain -g drbrain /var/lib/drbrain/music/scores-custom
 install -d -o root -g root /etc/drbrain
 
 if [ ! -f /etc/drbrain/drbrain.env ]; then

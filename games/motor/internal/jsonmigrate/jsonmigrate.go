@@ -14,7 +14,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -29,12 +28,12 @@ type Dirs struct {
 	Maps     string // shipped maps (read only; tells shipped ids apart from player maps)
 	UserMaps string // player maps
 	Sessions string
-	Accounts string // holds accounts/ and logins/
+	Accounts string // holds accounts/
 }
 
 // Counts reports what a run did, per kind.
 type Counts struct {
-	Maps, Accounts, Logins, Sessions int
+	Maps, Accounts, Sessions int
 	// Skipped counts records left alone: already in the target, or unreadable
 	// (those are also logged).
 	Skipped int
@@ -44,8 +43,8 @@ type Counts struct {
 }
 
 func (c Counts) String() string {
-	return fmt.Sprintf("maps=%d accounts=%d logins=%d sessions=%d (guest-linked %d) skipped=%d",
-		c.Maps, c.Accounts, c.Logins, c.Sessions, c.Guests, c.Skipped)
+	return fmt.Sprintf("maps=%d accounts=%d sessions=%d (guest-linked %d) skipped=%d",
+		c.Maps, c.Accounts, c.Sessions, c.Guests, c.Skipped)
 }
 
 func dirExists(path string) bool {
@@ -116,24 +115,6 @@ func Import(ctx context.Context, pool *pgxpool.Pool, d Dirs, dryRun bool) (Count
 			default:
 				return c, fmt.Errorf("import account %s: %w", a.ID, err)
 			}
-		}
-		for _, l := range files.Logins() {
-			if _, ok := pg.GetLogin(l.TokenHash); ok {
-				c.Skipped++
-				continue
-			}
-			if _, ok := pg.Get(l.AccountID); !ok && !(dryRun && inFiles[l.AccountID]) {
-				c.Skipped++ // its account was not imported
-				continue
-			}
-			if dryRun {
-				c.Logins++
-				continue
-			}
-			if err := pg.PutLogin(l); err != nil {
-				return c, fmt.Errorf("import login: %w", err)
-			}
-			c.Logins++
 		}
 	}
 
@@ -239,17 +220,6 @@ func Export(ctx context.Context, pool *pgxpool.Pool, d Dirs) (Counts, error) {
 		}
 		c.Accounts++
 	}
-	logins, err := pga.Logins(time.Now())
-	if err != nil {
-		return c, err
-	}
-	for _, l := range logins {
-		if err := files.PutLogin(l); err != nil {
-			return c, fmt.Errorf("export login: %w", err)
-		}
-		c.Logins++
-	}
-
 	// Sessions.
 	pgs := session.NewPostgresPersistence(pool)
 	fp, err := session.NewFilePersistence(d.Sessions)

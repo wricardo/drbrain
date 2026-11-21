@@ -218,138 +218,15 @@ func TestPostgresConcurrentUpdatesDoNotLoseWrites(t *testing.T) {
 	}
 }
 
-func TestPostgresLogins(t *testing.T) {
-	s := newPG(t)
-	if err := s.Create(acct(id1, "otter", "google", "u1")); err != nil {
-		t.Fatal(err)
-	}
-	now := time.Now().UTC().Truncate(time.Microsecond)
-	l := Login{TokenHash: hash('a'), AccountID: id1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}
-	if err := s.PutLogin(l); err != nil {
-		t.Fatal(err)
-	}
-	if got, ok := s.GetLogin(hash('a')); !ok || got != l {
-		t.Fatalf("GetLogin = %+v, %v", got, ok)
-	}
-	if _, ok := s.GetLogin(hash('b')); ok {
-		t.Fatal("unknown login found")
-	}
-	if _, ok := s.GetLogin("short"); ok {
-		t.Fatal("malformed hash accepted")
-	}
-	if err := s.PutLogin(Login{TokenHash: hash('c'), AccountID: id2, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}); err == nil {
-		t.Fatal("login for a missing account stored")
-	}
-	if err := s.DeleteLogin(hash('a')); err != nil {
-		t.Fatal(err)
-	}
-	if err := s.DeleteLogin(hash('a')); err != nil {
-		t.Fatalf("deleting an unknown login must be a no-op: %v", err)
-	}
-	if _, ok := s.GetLogin(hash('a')); ok {
-		t.Fatal("deleted login still found")
-	}
-}
-
-func TestPostgresPutLoginEvictsOldest(t *testing.T) {
-	s := newPG(t)
-	if err := s.Create(acct(id1, "otter", "google", "u1")); err != nil {
-		t.Fatal(err)
-	}
-	base := time.Now().UTC().Truncate(time.Microsecond)
-	total := MaxLoginsPerAccount + 3
-	for i := range total {
-		h := fmt.Sprintf("%064x", i+1)
-		if err := s.PutLogin(Login{TokenHash: h, AccountID: id1, CreatedAt: base.Add(time.Duration(i) * time.Second), ExpiresAt: base.Add(time.Hour)}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for i := range total {
-		_, ok := s.GetLogin(fmt.Sprintf("%064x", i+1))
-		if want := i >= 3; ok != want {
-			t.Errorf("login %d present = %v, want %v", i, ok, want)
-		}
-	}
-}
-
-// Many browsers signing in at once must never leave more than the cap.
-func TestPostgresConcurrentPutLoginRespectsCap(t *testing.T) {
-	s := newPG(t)
-	if err := s.Create(acct(id1, "otter", "google", "u1")); err != nil {
-		t.Fatal(err)
-	}
-	base := time.Now().UTC()
-	var wg sync.WaitGroup
-	for i := range 40 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			l := Login{TokenHash: fmt.Sprintf("%064x", i+1), AccountID: id1, CreatedAt: base.Add(time.Duration(i) * time.Millisecond), ExpiresAt: base.Add(time.Hour)}
-			if err := s.PutLogin(l); err != nil {
-				t.Error(err)
-			}
-		}()
-	}
-	wg.Wait()
-	logins, err := s.Logins(base)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(logins) != MaxLoginsPerAccount {
-		t.Fatalf("%d logins stored, want exactly %d", len(logins), MaxLoginsPerAccount)
-	}
-}
-
-func TestPostgresDeleteOtherLoginsAndSweep(t *testing.T) {
-	s := newPG(t)
-	if err := s.Create(acct(id1, "otter", "google", "u1")); err != nil {
-		t.Fatal(err)
-	}
-	now := time.Now().UTC()
-	for _, c := range []byte("abc") {
-		if err := s.PutLogin(Login{TokenHash: hash(c), AccountID: id1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := s.PutLogin(Login{TokenHash: hash('d'), AccountID: id1, CreatedAt: now.Add(-2 * time.Hour), ExpiresAt: now.Add(-time.Hour)}); err != nil {
-		t.Fatal(err)
-	}
-	if n, err := s.SweepLogins(now); err != nil || n != 1 {
-		t.Fatalf("SweepLogins = %d, %v; want 1 expired removed", n, err)
-	}
-	if err := s.DeleteOtherLogins(id1, hash('b')); err != nil {
-		t.Fatal(err)
-	}
-	for _, c := range []byte("abc") {
-		_, ok := s.GetLogin(hash(c))
-		if want := c == 'b'; ok != want {
-			t.Errorf("login %c present = %v, want %v", c, ok, want)
-		}
-	}
-	if err := s.DeleteOtherLogins(id1, ""); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := s.GetLogin(hash('b')); ok {
-		t.Error("an empty keep hash must remove every login")
-	}
-	if err := s.DeleteOtherLogins("bad", ""); !errors.Is(err, ErrInvalidID) {
-		t.Errorf("malformed account id: %v", err)
-	}
-}
-
-func TestPostgresDeleteRemovesLoginsAndKeepsSessionsAsGuests(t *testing.T) {
+func TestPostgresDeleteKeepsSessionsAsGuests(t *testing.T) {
 	pool := pgtest.Pool(t)
 	s := NewPostgresStore(pool)
 	if err := s.Create(acct(id1, "otter", "google", "u1")); err != nil {
 		t.Fatal(err)
 	}
-	now := time.Now().UTC()
-	if err := s.PutLogin(Login{TokenHash: hash('a'), AccountID: id1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := pool.Exec(context.Background(), `
-INSERT INTO sessions (id, display_name, map_id, map, program, vm, speed_ms, seq, created_at, last_action_at, attempts, best_steps, account_id)
-VALUES ('00112233445566aa', 'x', 'm', '{}', '{}', '{}', 500, 1, now(), now(), 0, 0, $1)`, id1); err != nil {
+INSERT INTO sessions (id, map_id, map, program, vm, speed_ms, seq, created_at, last_action_at, attempts, best_steps, account_id)
+VALUES ('00112233445566aa', 'm', '{}', '{}', '{}', 500, 1, now(), now(), 0, 0, $1)`, id1); err != nil {
 		t.Fatal(err)
 	}
 
@@ -361,9 +238,6 @@ VALUES ('00112233445566aa', 'x', 'm', '{}', '{}', '{}', 500, 1, now(), now(), 0,
 	}
 	if _, ok := s.ByHandle("otter"); ok {
 		t.Error("handle still resolves")
-	}
-	if _, ok := s.GetLogin(hash('a')); ok {
-		t.Error("login of a deleted account still valid")
 	}
 	var link *string
 	if err := pool.QueryRow(context.Background(), `SELECT account_id FROM sessions WHERE id = '00112233445566aa'`).Scan(&link); err != nil {

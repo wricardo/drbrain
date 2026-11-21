@@ -20,12 +20,12 @@ export function createSessionSource(client: Client, ownerToken?: string | null):
 			return res.data?.session ?? null;
 		},
 		subscribe(id, sink) {
-			return getWsClient().subscribe<{ sessionUpdated: SessionUpdate }>(
+			return getWsClient().subscribe<{ motorProgrammingSessionUpdated: SessionUpdate }>(
 				{ query: SESSION_UPDATED_SUBSCRIPTION, variables: { sessionID: id, ownerToken: token } },
 				{
 					next(result) {
 						if (result.errors?.length) sink.error(result.errors);
-						else if (result.data?.sessionUpdated) sink.next(result.data.sessionUpdated);
+						else if (result.data?.motorProgrammingSessionUpdated) sink.next(result.data.motorProgrammingSessionUpdated);
 					},
 					error: (err) => sink.error(err),
 					complete: () => sink.complete()

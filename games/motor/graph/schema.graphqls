@@ -194,7 +194,6 @@ type StepEvent {
 }
 type Session {
 	id: ID!
-	displayName: String!
 	mapId: ID!
 	"""
 	Snapshot of the map taken when the session was created.
@@ -222,7 +221,7 @@ type Session {
 	Secret that proves the caller created this session; keep it private. Returned only by the
 	createSession response that made the session and null everywhere else (queries, lists,
 	subscriptions). It is the credential for playing the session (pass it to setProgram, run, step,
-	pause and reset) and for changing or attaching it (deleteSession, renameSession, claimSessions).
+	pause and reset) and for changing or attaching it (deleteSession, claimSessions).
 	Sharing it is how a session is handed to a second person or an AI agent. Optional: clients that
 	never select it are unaffected.
 	"""
@@ -279,7 +278,8 @@ type LeaderboardEntry {
 	"""
 	sessionId: ID!
 	"""
-	Empty names are shown as Anonymous. An account's entry shows its display name, or "Private player" when its profile is private.
+	The entry's player name. Account rows show the account's display name, or "Private player"
+	when its profile is private; a session with no account is shown as "Guest".
 	"""
 	displayName: String!
 	"""
@@ -381,11 +381,10 @@ type Query {
 	leaderboard(mapId: ID!, order: LeaderboardOrder = SLOTS, limit: Int = 20, sessionId: ID): Leaderboard
 	"""
 	A player's best run per map they have won (maps never won are absent), ordered by map id.
-	Give exactly one of sessionIds (up to 200; exact) or name (case-insensitive; matches every
-	session with that display name, so it can mix people who picked the same name; guest sessions only).
-	When signed in, the account's own runs are included with sessionIds, and sessionIds may be left out.
+	Session ids select exact guest sessions (up to 200); when signed in, the account's own runs are
+	included too, and sessionIds may be left out for just the account's runs.
 	"""
-	playerRuns(sessionIds: [ID!], name: String): [PlayerRun!]!
+	playerRuns(sessionIds: [ID!]): [PlayerRun!]!
 	"""
 	A player's best run per map they have won, looked up by account handle. Empty when the
 	handle is unknown; game-specific statistics stay with the game.
@@ -395,19 +394,15 @@ type Query {
 type Mutation {
 	"""
 	Starts a session. The response carries the secret `ownerToken`: it is needed to play the session
-	(setProgram, run, step, pause, reset) and to rename, delete or claim it, so keep it.
+	(setProgram, run, step, pause, reset) and to delete or claim it, so keep it.
 	"""
-	createSession(mapID: ID!, displayName: String): Session!
+	createSession(mapID: ID!): Session!
 	"""
 	Deletes a session. A guest session can be deleted by anyone who knows its id. A session that belongs to a
 	signed-in player can only be deleted by that player's signed-in browser, or by passing the ownerToken
 	that createSession returned (FORBIDDEN otherwise).
 	"""
 	deleteSession(id: ID!, ownerToken: String): Boolean!
-	"""
-	Renames a session; the same rule as deleteSession applies. Its program is included only for a caller who may change it.
-	"""
-	renameSession(id: ID!, displayName: String!, ownerToken: String): Session!
 	"""
 	Stores the program and resets the robot. Only the session's creator may do it: pass the
 	ownerToken that createSession returned, or be signed in to the account that owns the session

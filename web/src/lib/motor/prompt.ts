@@ -154,7 +154,7 @@ query { motorProgramming { session(id: "${s.id}") { playing attempts bestSteps v
 5. Winners are ranked per map by slots used (non-EMPTY slots across all tapes; fewer is better), then by steps. Once you have won, you may try to win again with fewer slots or steps (setProgram, then run) and read your rank:
 query { motorProgramming { leaderboard(mapId: "${s.map.id}", sessionId: "${s.id}") { total yours { rank slots steps } entries { rank displayName slots steps } } } }
 
-Other mutations: pause, reset, renameSession, deleteSession. Do not try to guess other sessions' ids and do not delete this one.`;
+Other mutations: pause, reset, deleteSession. Do not try to guess other sessions' ids and do not delete this one.`;
 }
 
 /**
@@ -169,7 +169,7 @@ You write the robot a program (a main tape plus up to 10 subroutine tapes); the 
    Layout glyphs: ${GLYPH_LEGEND} Conveyors carry the robot one extra cell, mirrors turn it, portals teleport it to their twin, keys open matching doors — all inside the same step, so they are never a bug.
 2. GraphQL endpoint: ${origin}/graphql (Playground: ${origin}/graphql/playground).
 3. List the maps: query { motorProgramming { maps { id name difficulty layout mainTapeLength subTapeLengths maxSteps maxCallDepth allowRecursion } } } and pick one (start with an easy one).
-4. Create your own session: mutation { motorProgramming { createSession(mapID: "MAP_ID", displayName: "my agent") { id ownerToken } } } (displayName is optional: without it you get a random guest name like BraveOtter).
+4. Create your own session: mutation { motorProgramming { createSession(mapID: "MAP_ID") { id ownerToken } } }. A session that belongs to no account is shown on the leaderboard as "Guest".
 5. KEEP the ownerToken that createSession returned. Changing a session's program is creator-only: setProgram needs it (ownerToken: "..."), otherwise it answers FORBIDDEN. run, step, pause and reset work without it but never return the program, so the token is what lets you read back the program you are writing. Plan the route from the layout, then setProgram, run, and read the session until vm.status is WON. If it is LOST, read lossReason, fix the program and try again.
 6. Tell me the session id so I can watch it live at ${origin}/motor/watch/SESSION_ID, and report the winning program and its step count. Winners are ranked per map by fewest slots used (non-EMPTY slots across all tapes), then fewest steps: query { motorProgramming { leaderboard(mapId: "MAP_ID") { entries { rank displayName slots steps } } } }.`;
 }

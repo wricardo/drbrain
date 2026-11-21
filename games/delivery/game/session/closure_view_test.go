@@ -14,7 +14,7 @@ import (
 // feed all agree.
 func TestSnapshotCarriesClosures(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, err := mgr.Create("closures", 1)
+	sess, _, err := mgr.Create("closures", 1, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestSnapshotCarriesClosures(t *testing.T) {
 // lying about how full the van is.
 func TestSnapshotCarriesBoxLoads(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, err := mgr.Create("boxes", 2)
+	sess, _, err := mgr.Create("boxes", 2, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +175,7 @@ func TestSnapshotCarriesBoxLoads(t *testing.T) {
 // missing refill would reach the player as "the street quietly reopened".
 func TestSaveReloadKeepsActiveClosure(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, err := mgr.Create("closure-reload", 1)
+	sess, _, err := mgr.Create("closure-reload", 1, "")
 	if err != nil {
 		t.Fatal(err)
 	}

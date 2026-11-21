@@ -67,8 +67,8 @@ const (
 	posSel     = `x y`
 	mapSel     = `id name description difficulty builtin width height layout start { x y } startFacing rocks { x y } treats { x y } conveyors { pos { x y } dir } mirrors { pos { x y } slash } keys { pos { x y } letter } doors { pos { x y } letter } portals { pos { x y } pair } mainTapeLength subTapeLengths maxSteps maxCallDepth allowRecursion`
 	eventSel   = `step instruction tapeIndex slotIndex from { x y } to { x y } facingBefore facingAfter blocked callBlocked pushed pushBlocked mirrored collectedKey teleported { x y } collected { x y } callStack { tape pc } status lossReason`
-	sessionSel = `id displayName mapId map { ` + mapSel + ` } program { main subs } vm { pos { x y } facing treatsRemaining { x y } callStack { tape pc } steps status lossReason visited { x y } openDoors } playing speedMs seq createdAt lastActionAt attempts bestSteps lastEvent { ` + eventSel + ` }`
-	sessionsQ  = `query Sessions($limit: Int, $sort: SessionSort, $mapId: ID) { sessions(sort: $sort, limit: $limit, mapId: $mapId) { id displayName mapId playing createdAt lastActionAt map { name } vm { status steps treatsRemaining { x y } } } }`
+	sessionSel = `id mapId map { ` + mapSel + ` } program { main subs } vm { pos { x y } facing treatsRemaining { x y } callStack { tape pc } steps status lossReason visited { x y } openDoors } playing speedMs seq createdAt lastActionAt attempts bestSteps lastEvent { ` + eventSel + ` }`
+	sessionsQ  = `query Sessions($limit: Int, $sort: SessionSort, $mapId: ID) { sessions(sort: $sort, limit: $limit, mapId: $mapId) { id mapId playing createdAt lastActionAt map { name } vm { status steps treatsRemaining { x y } } } }`
 )
 
 func queryComplexity(t *testing.T, query string, vars map[string]any) int {
@@ -94,7 +94,7 @@ func TestFrontendQueriesStayUnderComplexityLimit(t *testing.T) {
 		{"sessions default limit", sessionsQ, nil},
 		{"leaderboard (limit 100)", leaderboardQ, map[string]any{"mapId": "x", "limit": json.Number("100"), "sessionId": "y"}},
 		{"leaderboard default limit", leaderboardQ, map[string]any{"mapId": "x"}},
-		{"player runs", playerRunsQ, map[string]any{"name": "x"}},
+		{"player runs", playerRunsQ, map[string]any{"sessionIds": []string{"x"}}},
 		{"create session with owner token", `mutation($m: ID!) { createSession(mapID: $m) { ` + sessionSel + ` ownerToken } }`, map[string]any{"m": "x"}},
 		{"mutation with full session", `mutation($sessionID: ID!) { run(sessionID: $sessionID) { ` + sessionSel + ` } }`, map[string]any{"sessionID": "x"}},
 		{"can play session", `query($id: ID!) { canPlaySession(id: $id) }`, map[string]any{"id": "x"}},

@@ -22,9 +22,6 @@ import (
 )
 
 const (
-	// SessionCookie holds the login token for every game on the origin
-	// (HttpOnly; only its SHA-256 is stored server-side).
-	SessionCookie = "drbrain_session"
 	// flowCookie binds an in-progress sign-in to the browser that started it.
 	flowCookie = "drbrain_oauth"
 	// flowTTL is how long a sign-in attempt may take; its state is single use.
@@ -38,9 +35,8 @@ const (
 // Accounts is the part of the game service sign-in needs.
 type Accounts interface {
 	SignIn(provider, providerUserID string) (acct *account.Account, created bool, err error)
-	StartLogin(accountID string) (token string, expires time.Time, err error)
-	Authenticate(token string) (*account.Account, bool)
-	EndLogin(token string)
+	// Lookup resolves the account named by an access token's subject.
+	Lookup(id string) (account.Account, bool)
 	RegisterPassword(handle, password string) (*account.Account, error)
 	VerifyPassword(handle, password string) (*account.Account, error)
 }
@@ -70,6 +66,11 @@ type Config struct {
 	// callback URLs include it; route registration stays relative. Empty means
 	// the game owns the site root.
 	BasePath string
+	// JWTSecret signs access tokens (HS256). Empty means a random per-process
+	// key: fine for development, wrong for production and multiple instances.
+	JWTSecret string
+	// TokenTTL overrides DefaultTokenTTL.
+	TokenTTL time.Duration
 }
 
 // Auth owns the sign-in routes and the login cookie.
@@ -86,8 +87,21 @@ type Auth struct {
 	failIP   *FailTracker
 	failUser *FailTracker
 
+	// Signing key for access tokens and the TTL they carry.
+	jwtKey   []byte
+	tokenTTL time.Duration
+
 	mu      sync.Mutex
 	pending map[string]pendingFlow
+	// codes are one-time OAuth callback handoffs, keyed by their random value.
+	codes map[string]pendingCode
+}
+
+// pendingCode is an OAuth sign-in that completed but whose tokens the browser
+// has not fetched yet. Single use, short lived.
+type pendingCode struct {
+	accountID string
+	expires   time.Time
 }
 
 type pendingFlow struct {
@@ -119,7 +133,11 @@ func New(cfg Config) (*Auth, error) {
 	}
 	a := &Auth{
 		cfg: cfg, base: base, basePath: basePath, providers: make(map[string]Provider), allowed: make(map[string]bool),
-		limiter: cfg.Limiter, now: cfg.Now, pending: make(map[string]pendingFlow),
+		limiter: cfg.Limiter, now: cfg.Now, pending: make(map[string]pendingFlow), codes: make(map[string]pendingCode),
+		jwtKey: newJWTKey(cfg.JWTSecret), tokenTTL: cfg.TokenTTL,
+	}
+	if a.tokenTTL <= 0 {
+		a.tokenTTL = DefaultTokenTTL
 	}
 	if a.now == nil {
 		a.now = time.Now
@@ -161,15 +179,16 @@ func (a *Auth) Providers() []ProviderInfo {
 	return out
 }
 
-// Routes mounts the sign-in routes on r. Only the redirect providers need one:
-// password sign-in is served by the GraphQL mutations (see PasswordSignIn), and
-// signing out by the logout mutation.
+// Routes mounts the sign-in routes on r. The redirect providers and the
+// callback-code exchange need routes; password sign-in is served by the GraphQL
+// mutations (see PasswordSignIn).
 func (a *Auth) Routes(r *mux.Router) {
 	if p, ok := a.providers["dev"].(*DevProvider); ok {
 		r.HandleFunc("/auth/dev/authorize", a.guard(p.authorize)).Methods(http.MethodGet)
 	}
 	r.HandleFunc("/auth/{provider}/login", a.guard(a.handleLogin)).Methods(http.MethodGet)
 	r.HandleFunc("/auth/{provider}/callback", a.guard(a.handleCallback)).Methods(http.MethodGet)
+	r.HandleFunc("/auth/token", a.guard(a.handleToken)).Methods(http.MethodPost)
 }
 
 // Handler returns the sign-in routes as one handler mounted at the site root.
@@ -206,32 +225,6 @@ func randomString(n int) (string, error) {
 // public URL, otherwise when the request itself came in over https.
 func (a *Auth) secure(r *http.Request) bool {
 	return (a.base != nil && a.base.Scheme == "https") || (r != nil && (r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"))
-}
-
-// SetSession stores the login token in an HttpOnly, SameSite=Lax cookie that
-// expires with the login (Secure unless the site is plain-http localhost).
-// The cookie is origin-wide because GraphQL lives at /graphql; its name keeps
-// it distinct from other games' cookies. Flow cookies remain under the auth
-// prefix.
-func (a *Auth) SetSession(w http.ResponseWriter, r *http.Request, token string, expires time.Time) {
-	http.SetCookie(w, &http.Cookie{
-		Name: SessionCookie, Value: token, Path: a.cookiePath(), Expires: expires, MaxAge: int(expires.Sub(a.now()).Seconds()),
-		HttpOnly: true, Secure: a.secure(r), SameSite: http.SameSiteLaxMode,
-	})
-}
-
-// ClearSession removes the login cookie.
-func (a *Auth) ClearSession(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{
-		Name: SessionCookie, Value: "", Path: a.cookiePath(), MaxAge: -1, Expires: time.Unix(0, 0),
-		HttpOnly: true, Secure: a.secure(r), SameSite: http.SameSiteLaxMode,
-	})
-}
-
-// cookiePath is the login cookie's Path attribute. The unified GraphQL API is
-// served at the site root, so the login cookie must be sent to /graphql.
-func (a *Auth) cookiePath() string {
-	return "/"
 }
 
 // flowPath scopes the in-progress sign-in cookie to the callback routes.
@@ -303,26 +296,20 @@ func (a *Auth) SameOrigin(r *http.Request) bool {
 	return site == "" || site == "same-origin" || site == "none"
 }
 
-// Viewer resolves the signed-in account of a request from its login cookie. It
-// returns nil for anonymous requests, bad or expired tokens, and any request that
-// fails SameOrigin or (for POST) is not JSON, so a cross-site page can never act
-// as the player. token is the cookie value, for logout.
-func (a *Auth) Viewer(r *http.Request) (acct *account.Account, token string) {
-	c, err := r.Cookie(SessionCookie)
-	if err != nil || c.Value == "" {
+// Viewer resolves the signed-in account of a request from its Authorization
+// header ("Bearer <JWT>"). It returns nil for anonymous requests and for bad or
+// expired tokens. A browser never adds this header by itself, so there is no
+// cross-site request to reject here.
+func (a *Auth) Viewer(r *http.Request) (*account.Account, string) {
+	raw := BearerToken(r.Header.Get("Authorization"))
+	if raw == "" {
 		return nil, ""
 	}
-	if !a.SameOrigin(r) {
+	acct, err := a.ParseToken(raw)
+	if err != nil {
 		return nil, ""
 	}
-	if r.Method == http.MethodPost && !strings.HasPrefix(strings.ToLower(r.Header.Get("Content-Type")), "application/json") {
-		return nil, ""
-	}
-	acct, ok := a.cfg.Accounts.Authenticate(c.Value)
-	if !ok {
-		return nil, ""
-	}
-	return acct, c.Value
+	return acct, raw
 }
 
 // ---- routes ------------------------------------------------------------------
@@ -444,27 +431,23 @@ func (a *Auth) handleCallback(w http.ResponseWriter, r *http.Request) {
 		failRedirect(w, r, flow.next, "failed")
 		return
 	}
-	// Rotate: a token that existed before signing in is dropped, and the new
-	// login always gets a fresh random one (no session fixation).
-	if old, err := r.Cookie(SessionCookie); err == nil {
-		a.cfg.Accounts.EndLogin(old.Value)
-	}
-	token, expires, err := a.cfg.Accounts.StartLogin(acct.ID)
+	// The browser cannot see a redirect's headers, so hand it a single-use code
+	// and let the SPA exchange it for a token (POST /auth/token).
+	code, err := a.newCode(acct.ID)
 	if err != nil {
-		log.Printf("auth: start login: %v", err)
+		log.Printf("auth: handoff code: %v", err)
 		failRedirect(w, r, flow.next, "failed")
 		return
 	}
-	a.SetSession(w, r, token, expires)
-	http.Redirect(w, r, flow.next, http.StatusFound)
+	http.Redirect(w, r, withQuery(flow.next, "signin_code", code), http.StatusFound)
 }
 
 // ---- username / password -------------------------------------------------
 
 // PasswordSignIn performs a username/password sign-up (register=true) or
-// sign-in for the browser that made r, and returns the account now signed in.
-// On success it sets the login cookie through setSession, which the caller
-// supplies because only it knows the response (the GraphQL HTTP transport).
+// sign-in for the browser that made r, and returns the account plus a signed
+// access token. The caller puts the token in the GraphQL response; nothing is
+// stored server-side.
 //
 // This was an HTTP handler pair (/auth/password/register and /login) and is now
 // called from the registerWithPassword and logInWithPassword mutations. The
@@ -473,15 +456,15 @@ func (a *Auth) handleCallback(w http.ResponseWriter, r *http.Request) {
 // failures are counted per (address, username) and per username, with a locked
 // key refused before any hashing. The answer is the same for an unknown
 // username and a wrong password.
-func (a *Auth) PasswordSignIn(register bool, r *http.Request, handle, password string, setSession func(token string, expires time.Time)) (*account.Account, error) {
+func (a *Auth) PasswordSignIn(register bool, r *http.Request, handle, password string) (*account.Account, string, time.Time, error) {
 	if !a.cfg.Password {
-		return nil, errs.Errorf(errs.CodeForbidden, "password sign-in is off")
+		return nil, "", time.Time{}, errs.Errorf(errs.CodeForbidden, "password sign-in is off")
 	}
 	if !a.SameOrigin(r) {
-		return nil, errs.Errorf(errs.CodeForbidden, "cross-site request refused")
+		return nil, "", time.Time{}, errs.Errorf(errs.CodeForbidden, "cross-site request refused")
 	}
 	if ok, retry := a.limiter.Allow(ClientIP(r)); !ok {
-		return nil, errs.Errorf(errs.CodeLimit, "too many sign-in requests; try again in %d seconds", int(retry.Seconds())+1)
+		return nil, "", time.Time{}, errs.Errorf(errs.CodeLimit, "too many sign-in requests; try again in %d seconds", int(retry.Seconds())+1)
 	}
 	normalized := account.NormalizeHandle(handle)
 	ipKey := ClientIP(r) + "|" + normalized
@@ -491,7 +474,7 @@ func (a *Auth) PasswordSignIn(register bool, r *http.Request, handle, password s
 			key string
 		}{{a.failIP, ipKey}, {a.failUser, normalized}} {
 			if blocked, wait := t.f.Blocked(t.key); blocked {
-				return nil, errs.Errorf(errs.CodeLimit,
+				return nil, "", time.Time{}, errs.Errorf(errs.CodeLimit,
 					"too many failed attempts; try again in %d minutes", int(wait.Minutes())+1)
 			}
 		}
@@ -510,22 +493,18 @@ func (a *Auth) PasswordSignIn(register bool, r *http.Request, handle, password s
 				a.failIP.Fail(ipKey)
 				a.failUser.Fail(normalized)
 			}
-			return nil, err
+			return nil, "", time.Time{}, err
 		}
 		log.Printf("auth: password %s: %v", map[bool]string{true: "register", false: "login"}[register], err)
-		return nil, errs.Errorf(errs.CodeInternal, "internal error")
+		return nil, "", time.Time{}, errs.Errorf(errs.CodeInternal, "internal error")
 	}
 	a.failIP.Clear(ipKey)
-	if old, cerr := r.Cookie(SessionCookie); cerr == nil {
-		a.cfg.Accounts.EndLogin(old.Value)
-	}
-	token, expires, err := a.cfg.Accounts.StartLogin(acct.ID)
+	token, expires, err := a.IssueToken(acct.ID)
 	if err != nil {
-		log.Printf("auth: start login: %v", err)
-		return nil, errs.Errorf(errs.CodeInternal, "internal error")
+		log.Printf("auth: issue token: %v", err)
+		return nil, "", time.Time{}, errs.Errorf(errs.CodeInternal, "internal error")
 	}
-	setSession(token, expires)
-	return acct, nil
+	return acct, token, expires, nil
 }
 
 // ---- redirect validation -----------------------------------------------------

@@ -32,6 +32,17 @@ type AuthProvider {
 	name: String!
 }
 """
+A signed-in session: the bearer token to send as `Authorization: Bearer <token>`
+on every request (HTTP and the graphql-ws `connection_init` message) plus the
+player it belongs to. Tokens last 24 hours; there is no refresh token, so a
+client stores it and signs in again when it expires.
+"""
+type AuthSession {
+	token: String!
+	expiresAt: Time!
+	user: User!
+}
+"""
 A player's public identity page. Game-specific statistics live under that game.
 """
 type Profile {
@@ -71,33 +82,35 @@ type Query {
 }
 type Mutation {
 	"""
-	Signs the player out (clears the login cookie). Always true.
+	Sign-out counterpart for clients: tokens are stateless, so the server has
+	nothing to revoke and the client must discard its token. Always true.
 	"""
 	logout: Boolean!
 	"""
-	Creates a username/password account and signs the browser in with it. The username is the public
+	Creates a username/password account and returns a bearer token for it. The username is the public
 	handle. Refused cross-site, so another site cannot create accounts through a victim's browser.
 	Errors: INVALID_ARGUMENT (bad handle, weak or taken password), LIMIT_REACHED, FORBIDDEN (password
-	sign-in is off, or no cookie can be set: a subscription connection).
+	sign-in is off, or the call is not an HTTP request).
 	"""
-	registerWithPassword(handle: String!, password: String!): User!
+	registerWithPassword(handle: String!, password: String!): AuthSession!
 	"""
-	Signs in with a username and password, rotating the browser's previous login. Refused cross-site.
+	Signs in with a username and password and returns a bearer token. Refused cross-site.
 	An unknown username and a wrong password are answered identically (UNAUTHENTICATED). Repeated
 	failures lock the (address, username) pair and then the username: LIMIT_REACHED, refused before
-	any hashing. FORBIDDEN when password sign-in is off or no cookie can be set.
+	any hashing. FORBIDDEN when password sign-in is off or the call is not an HTTP request.
 	"""
-	logInWithPassword(handle: String!, password: String!): User!
+	logInWithPassword(handle: String!, password: String!): AuthSession!
 	"""
 	Changes the signed-in player's handle, display name or profile visibility.
 	"""
 	updateAccount(input: AccountInput!): User!
 	"""
-	Changes the password of a username/password account and signs out its other browsers. There is no email, so there is no password reset.
+	Changes the password of a username/password account. Access tokens already issued stay valid until
+	they expire (they are stateless). There is no email, so there is no password reset.
 	"""
 	changePassword(currentPassword: String!, newPassword: String!): Boolean!
 	"""
-	Permanently deletes the account and signs out. confirmHandle must equal the current handle. Its runs stay on the boards as guest entries.
+	Permanently deletes the account. confirmHandle must equal the current handle. Its runs stay on the boards as guest entries, and its tokens stop resolving immediately.
 	"""
 	deleteAccount(confirmHandle: String!): Boolean!
 }

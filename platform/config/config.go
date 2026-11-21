@@ -38,6 +38,10 @@ type Config struct {
 	AccountsDir string `envconfig:"DRBRAIN_ACCOUNTS_DIR" default:"accounts"`
 	// AuthPassword enables username/password sign-up and sign-in.
 	AuthPassword bool `envconfig:"DRBRAIN_AUTH_PASSWORD" default:"true"`
+	// AuthJWTSecret signs access tokens (HS256). Empty means a random
+	// per-process key: fine for development, wrong for production (tokens stop
+	// working on restart and differ between instances).
+	AuthJWTSecret string `envconfig:"DRBRAIN_AUTH_JWT_SECRET"`
 	// OAuth providers are enabled when both their id and secret are set.
 	GoogleClientID     string `envconfig:"DRBRAIN_AUTH_GOOGLE_CLIENT_ID"`
 	GoogleClientSecret string `envconfig:"DRBRAIN_AUTH_GOOGLE_CLIENT_SECRET"`

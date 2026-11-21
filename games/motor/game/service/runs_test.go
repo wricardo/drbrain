@@ -2,7 +2,6 @@ package service_test
 
 import (
 	"regexp"
-	"strings"
 	"testing"
 	"unicode/utf8"
 
@@ -32,48 +31,6 @@ func TestGuestName(t *testing.T) {
 	}
 }
 
-func TestSessionsWithoutANameGetAGuestName(t *testing.T) {
-	e := newEnv(t, envOpts{}, corridorCfg)
-
-	t.Run("create", func(t *testing.T) {
-		for _, in := range []string{"", "   ", "\t\n"} {
-			s, err := e.svc.CreateSession("corridor", in)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !guestShape.MatchString(s.DisplayName) {
-				t.Fatalf("name for %q = %q, want a guest name", in, s.DisplayName)
-			}
-		}
-	})
-	t.Run("a typed name is kept", func(t *testing.T) {
-		s, _ := e.svc.CreateSession("corridor", "  Ada  ")
-		if s.DisplayName != "Ada" {
-			t.Fatalf("name = %q, want Ada", s.DisplayName)
-		}
-	})
-	t.Run("renaming to nothing gives a new guest name", func(t *testing.T) {
-		s := e.create(t, "corridor")
-		r, err := e.svc.RenameSession(s.ID, " ")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !guestShape.MatchString(r.DisplayName) {
-			t.Fatalf("name = %q, want a guest name", r.DisplayName)
-		}
-	})
-	t.Run("a tiny limit shortens the guest name", func(t *testing.T) {
-		small := newEnv(t, envOpts{svcOpts: service.Options{MaxDisplayName: 4}}, corridorCfg)
-		s, err := small.svc.CreateSession("corridor", "")
-		if err != nil {
-			t.Fatal(err)
-		}
-		if utf8.RuneCountInString(s.DisplayName) > 4 || s.DisplayName == "" {
-			t.Fatalf("name = %q, want 1..4 characters", s.DisplayName)
-		}
-	})
-}
-
 func runsByMap(t *testing.T, e *env, q service.RunsQuery) map[string]service.PlayerRun {
 	t.Helper()
 	runs, err := e.svc.GetPlayerRuns(q)
@@ -89,12 +46,12 @@ func runsByMap(t *testing.T, e *env, q service.RunsQuery) map[string]service.Pla
 
 func TestPlayerRuns(t *testing.T) {
 	e := newEnv(t, envOpts{}, corridorCfg, wideCfg)
-	// Ada on wide: two sessions, the better one (6/9) counts.
-	adaWide1 := e.wonBy(t, "wide", "Ada", wideDirect())      // 7/7
-	adaWide2 := e.wonBy(t, "wide", "ada", wideViaSub())      // 6/9
-	adaCorr := e.wonBy(t, "corridor", "Ada", corridorFast()) // 4/4
-	bob := e.wonBy(t, "wide", "Bob", wideWasteful())         // 8/11
-	e.create(t, "wide")                                      // a session that never won
+	// Two sessions on wide, the better one (6/9) counts.
+	adaWide1 := e.wonBy(t, "wide", wideDirect())      // 7/7
+	adaWide2 := e.wonBy(t, "wide", wideViaSub())      // 6/9
+	adaCorr := e.wonBy(t, "corridor", corridorFast()) // 4/4
+	bob := e.wonBy(t, "wide", wideWasteful())         // 8/11
+	e.create(t, "wide")                               // a session that never won
 
 	t.Run("by session ids: best session per map with its rank", func(t *testing.T) {
 		runs := runsByMap(t, e, service.RunsQuery{SessionIDs: []string{adaWide1, adaWide2, adaCorr}})
@@ -120,18 +77,8 @@ func TestPlayerRuns(t *testing.T) {
 		}
 	})
 
-	t.Run("by name: case-insensitive, every session with that name", func(t *testing.T) {
-		runs := runsByMap(t, e, service.RunsQuery{Name: "  ADA "})
-		if len(runs) != 2 || runs["wide"].Entry.SessionID != adaWide2 || runs["corridor"].Entry.SessionID != adaCorr {
-			t.Fatalf("runs = %+v", runs)
-		}
-		if runs := runsByMap(t, e, service.RunsQuery{Name: "Nobody"}); len(runs) != 0 {
-			t.Fatalf("runs = %+v, want none", runs)
-		}
-	})
-
 	t.Run("runs come back ordered by map id", func(t *testing.T) {
-		list, err := e.svc.GetPlayerRuns(service.RunsQuery{Name: "Ada"})
+		list, err := e.svc.GetPlayerRuns(service.RunsQuery{SessionIDs: []string{adaWide2, adaCorr}})
 		if err != nil || len(list) != 2 || list[0].MapID != "corridor" || list[1].MapID != "wide" {
 			t.Fatalf("list = %+v, %v", list, err)
 		}
@@ -143,7 +90,7 @@ func TestPlayerRuns(t *testing.T) {
 		if _, err := e.svc.SaveMap(cfg); err != nil {
 			t.Fatal(err)
 		}
-		runs := runsByMap(t, e, service.RunsQuery{Name: "Ada"})
+		runs := runsByMap(t, e, service.RunsQuery{SessionIDs: []string{adaWide1, adaWide2, adaCorr}})
 		if _, ok := runs["wide"]; ok || len(runs) != 1 {
 			t.Fatalf("runs = %+v, want only corridor", runs)
 		}
@@ -160,11 +107,8 @@ func TestPlayerRunsArguments(t *testing.T) {
 		code string // "" = ok
 	}{
 		{"neither", service.RunsQuery{}, service.CodeInvalidArgument},
-		{"blank name", service.RunsQuery{Name: "  "}, service.CodeInvalidArgument},
-		{"both", service.RunsQuery{SessionIDs: []string{"a"}, Name: "Ada"}, service.CodeInvalidArgument},
 		{"too many ids", service.RunsQuery{SessionIDs: tooMany}, service.CodeInvalidArgument},
 		{"the maximum number of ids", service.RunsQuery{SessionIDs: exactly}, ""},
-		{"one name", service.RunsQuery{Name: strings.Repeat("x", 100)}, ""},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -177,16 +121,5 @@ func TestPlayerRunsArguments(t *testing.T) {
 			}
 			wantCode(t, err, tc.code)
 		})
-	}
-}
-
-// A session created without a name is a guest: it ranks under its guest name.
-func TestGuestNameAppearsOnTheBoard(t *testing.T) {
-	e := newEnv(t, envOpts{}, corridorCfg)
-	id := e.wonBy(t, "corridor", "", corridorFast())
-	name := e.get(t, id).DisplayName
-	lb := board(t, e, service.LeaderboardQuery{MapID: "corridor"})
-	if len(lb.Entries) != 1 || lb.Entries[0].DisplayName != name || !guestShape.MatchString(name) {
-		t.Fatalf("entries = %+v, want one row named %q", lb.Entries, name)
 	}
 }

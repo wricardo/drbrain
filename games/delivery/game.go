@@ -75,7 +75,7 @@ func (g *Game) Mount(mux *http.ServeMux, deps platform.Deps) error {
 		return fmt.Errorf("session manager: %w", err)
 	}
 	g.mgr = mgr
-	g.resolver = &graph.Resolver{Mgr: mgr}
+	g.resolver = &graph.Resolver{Mgr: mgr, Accounts: deps.Accounts}
 
 	deps.Logger.Info("delivery mounted", "city", env.City, "sessions_dir", env.SessionsDir)
 	return nil

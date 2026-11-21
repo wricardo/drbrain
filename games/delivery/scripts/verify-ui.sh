@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
-# Start a throwaway server on a free port, run the headless UI smoke test
-# against it, then shut it down. The session save directory is temporary so a
-# verification run never touches real saves.
+# Build the monorepo server, start it with only Delivery on a free port, run the
+# headless UI smoke test against it, then shut it down. The session save
+# directory is temporary so a verification run never touches real saves.
+# Needs web/build (cd web && npm run build) for the pages to be served.
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../../.."
+ROOT="$PWD"
 
 PORT="${PORT:-8091}"
-BIN="./bin/drbrain-server"
+BIN="tmp/drbrain-ui"
 OUT="${OUT:-/tmp/drbrain-ui.png}"
+SPECTATOR_OUT="${SPECTATOR_OUT:-${OUT%.png}-spectator.png}"
 
-if [ ! -x "$BIN" ]; then
-	echo "error: $BIN not built; run make build or make verify-ui" >&2
-	exit 1
-fi
+mkdir -p tmp
+go build -o "$BIN" ./cmd/drbrain
 
 TMP_SESSIONS="$(mktemp -d)"
 cleanup() {
@@ -25,21 +26,29 @@ cleanup() {
 }
 trap cleanup EXIT
 
-"$BIN" -addr "localhost:$PORT" -sessions-dir "$TMP_SESSIONS" >/tmp/drbrain-verify.log 2>&1 &
+DRBRAIN_ADDR="localhost:$PORT" \
+	DRBRAIN_GAMES=delivery \
+	DRBRAIN_STATIC_DIR=web/build \
+	DELIVERY_SESSIONS_DIR="$TMP_SESSIONS" \
+	DELIVERY_CITY=games/delivery/maps/city.json \
+	"$BIN" serve >/tmp/drbrain-verify.log 2>&1 &
 SRV_PID=$!
 
-for _ in $(seq 1 60); do
-	if curl -sf -X POST "localhost:$PORT/graphql" \
+health() {
+	curl -sf -X POST "localhost:$PORT/graphql" \
 		-H "Content-Type: application/json" \
-		-d '{"query":"{ health { status } }"}' >/dev/null 2>&1; then break; fi
+		-d '{"query":"{ delivery { health { status } } }"}' >/dev/null 2>&1
+}
+
+for _ in $(seq 1 60); do
+	if health; then break; fi
 	sleep 0.1
 done
 
-if ! curl -sf -X POST "localhost:$PORT/graphql" \
-	-H "Content-Type: application/json" \
-	-d '{"query":"{ health { status } }"}' >/dev/null 2>&1; then
+if ! health; then
 	echo "error: server did not start; see /tmp/drbrain-verify.log" >&2
 	exit 1
 fi
 
-node scripts/ui-smoke.mjs "http://localhost:$PORT" "$OUT"
+cd "$ROOT/games/delivery"
+node scripts/ui-smoke.mjs "http://localhost:$PORT" "$OUT" "$SPECTATOR_OUT"

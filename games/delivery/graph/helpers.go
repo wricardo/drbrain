@@ -28,6 +28,10 @@ func errBadInput(msg string) error { return gqlErr("bad_request", msg) }
 // done, not unlocked.
 func errConflict(msg string) error { return gqlErr("conflict", msg) }
 
+// errForbidden reports a state-changing request from a caller that cannot prove
+// it created the session (wrong or missing owner token, another account).
+func errForbidden(msg string) error { return gqlErr("forbidden", msg) }
+
 // load resolves a session, mapping a missing save to not_found.
 func (r *Resolver) load(id string) (*session.Session, error) {
 	sess, err := r.Mgr.GetOrLoad(id)

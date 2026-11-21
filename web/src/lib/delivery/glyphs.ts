@@ -22,12 +22,12 @@ const STYLES: Record<string, GlyphStyle> = {
 	C: { cls: 'bg-[var(--color-charger)]', label: 'Charger', passable: true },
 	K: { cls: 'bg-[var(--color-kitchen)]', label: 'Kitchen — pickup', passable: true },
 	H: { cls: 'bg-[var(--color-customer)]', label: 'Customer — dropoff', passable: true },
-	'?': { cls: 'bg-ink-950 border border-ink-700', label: 'Unexplored — impassable', passable: false }
+	'?': { cls: 'bg-surface-muted border border-dashed border-edge-faint', label: 'Unexplored — impassable', passable: false }
 };
 
 /** Unknown glyphs are treated as impassable scenery rather than guessed at. */
 export function glyphStyle(ch: string): GlyphStyle {
-	return STYLES[ch] ?? { cls: 'bg-ink-700', label: 'Unknown', passable: false };
+	return STYLES[ch] ?? { cls: 'bg-surface-muted', label: 'Unknown', passable: false };
 }
 
 /** Cars are drawn as the digits 1-9, matching their index in the cars array. */
@@ -64,5 +64,5 @@ export function deadlineTone(ticksLeft: number): string {
 	if (ticksLeft < 0) return 'text-[var(--color-danger)]';
 	if (ticksLeft <= 8) return 'text-[var(--color-danger)]';
 	if (ticksLeft <= 20) return 'text-[var(--color-warn)]';
-	return 'text-fog-400';
+	return 'text-muted';
 }

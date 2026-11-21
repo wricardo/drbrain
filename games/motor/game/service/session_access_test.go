@@ -10,10 +10,10 @@ func TestAuthorizeSessionChange(t *testing.T) {
 	e := newAcctEnv(t, service.Options{})
 	alice, bob := e.signIn(t, "alice"), e.signIn(t, "bob")
 
-	guest, guestTok, _ := e.svc.CreateOwnedSession("wide", "G", "")
-	legacy, _ := e.svc.CreateSession("wide", "Old") // no owner token at all
-	owned, ownedTok, _ := e.svc.CreateOwnedSession("wide", "A", alice.ID)
-	claimed, claimedTok, _ := e.svc.CreateOwnedSession("wide", "C", "")
+	guest, guestTok, _ := e.svc.CreateOwnedSession("wide", "")
+	legacy, _ := e.svc.CreateSession("wide") // no owner token at all
+	owned, ownedTok, _ := e.svc.CreateOwnedSession("wide", alice.ID)
+	claimed, claimedTok, _ := e.svc.CreateOwnedSession("wide", "")
 	res, err := e.svc.ClaimSessions(alice.ID, []service.SessionClaim{{SessionID: claimed.ID, OwnerToken: claimedTok}})
 	if err != nil {
 		t.Fatalf("claim: %v", err)
@@ -74,7 +74,7 @@ func TestAuthorizeSessionChange(t *testing.T) {
 func TestOnlyTheCreatorCanEditASession(t *testing.T) {
 	e := newAcctEnv(t, service.Options{})
 	alice := e.signIn(t, "alice")
-	s, token, _ := e.svc.CreateOwnedSession("wide", "A", alice.ID)
+	s, token, _ := e.svc.CreateOwnedSession("wide", alice.ID)
 
 	// The owner's login is enough, and so is the token (that is how the run is
 	// handed to an agent or a second player).
@@ -103,7 +103,7 @@ func TestOnlyTheCreatorCanEditASession(t *testing.T) {
 	}
 
 	// A guest's session behaves the same way: the token is the only proof.
-	guest, guestToken, _ := e.svc.CreateOwnedSession("wide", "G", "")
+	guest, guestToken, _ := e.svc.CreateOwnedSession("wide", "")
 	if err := e.svc.AuthorizeSessionEdit(guest.ID, service.SessionActor{OwnerToken: guestToken}); err != nil {
 		t.Fatalf("guest creator refused: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestOnlyTheCreatorCanEditASession(t *testing.T) {
 // rather than becoming uneditable for everyone.
 func TestSessionsWithoutAnOwnerHashStayOpen(t *testing.T) {
 	e := newAcctEnv(t, service.Options{})
-	legacy, err := e.svc.CreateSession("wide", "Old")
+	legacy, err := e.svc.CreateSession("wide")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestSessionsWithoutAnOwnerHashStayOpen(t *testing.T) {
 func TestAuthorizeSessionChangeIgnoresDeadAccountLinks(t *testing.T) {
 	e := newAcctEnv(t, service.Options{})
 	alice := e.signIn(t, "alice")
-	s, _, _ := e.svc.CreateOwnedSession("wide", "A", alice.ID)
+	s, _, _ := e.svc.CreateOwnedSession("wide", alice.ID)
 	if err := e.store.Delete(alice.ID); err != nil { // bypass the service: the session keeps the stale link
 		t.Fatal(err)
 	}
@@ -142,7 +142,7 @@ func TestAuthorizeSessionChangeIgnoresDeadAccountLinks(t *testing.T) {
 	}
 
 	off := newEnv(t, envOpts{}, wideCfg)
-	g, _ := off.svc.CreateSession("wide", "G")
+	g, _ := off.svc.CreateSession("wide")
 	if err := off.svc.AuthorizeSessionChange(g.ID, service.SessionActor{}); err != nil {
 		t.Fatalf("accounts off: %v", err)
 	}

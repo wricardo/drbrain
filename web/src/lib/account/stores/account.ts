@@ -1,7 +1,8 @@
 import { writable, type Readable } from 'svelte/store';
 import type { Client } from '@urql/svelte';
 import { unwrap } from '@drbrain/ui/graphql'
-import { ACCOUNT_QUERY, LOGOUT_MUTATION } from '$lib/account/queries';
+import { accountRequestContext, ACCOUNT_QUERY, LOGOUT_MUTATION } from '$lib/account/queries';
+import { clearAuthToken } from '$lib/account/token';
 import type { Account, AuthProvider } from '$lib/account/types';
 
 export interface AccountState {
@@ -35,10 +36,12 @@ export function setMe(me: Account | null): void {
 	state.update((s) => ({ ...s, me }));
 }
 
-/** Signs out on the server and locally. The local state is cleared even if the call fails. */
+/** Signs out locally and tells the server (which has nothing to revoke). The
+ * token is cleared even when the call fails. */
 export async function signOut(client: Pick<Client, 'mutation'>): Promise<void> {
+	clearAuthToken();
 	try {
-		await unwrap(client.mutation(LOGOUT_MUTATION, {}));
+		await unwrap(client.mutation(LOGOUT_MUTATION, {}, accountRequestContext));
 	} finally {
 		setMe(null);
 	}

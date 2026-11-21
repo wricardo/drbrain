@@ -1,0 +1,112 @@
+{
+  "version": 1,
+  "id": "fur-elise",
+  "title": "Für Elise",
+  "composer": "Ludwig van Beethoven",
+  "tempoBPM": 76,
+  "timeSig": "3/4",
+  "key": "Am",
+  "clef": "treble",
+  "measures": [
+    {
+      "len": 1440,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 120,
+          "pitch": 76
+        },
+        {
+          "start": 120,
+          "dur": 120,
+          "pitch": 75
+        }
+      ]
+    },
+    {
+      "len": 1440,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 120,
+          "pitch": 76
+        },
+        {
+          "start": 120,
+          "dur": 120,
+          "pitch": 75
+        },
+        {
+          "start": 240,
+          "dur": 120,
+          "pitch": 76
+        },
+        {
+          "start": 360,
+          "dur": 120,
+          "pitch": 71
+        },
+        {
+          "start": 480,
+          "dur": 120,
+          "pitch": 74
+        },
+        {
+          "start": 600,
+          "dur": 120,
+          "pitch": 72
+        }
+      ]
+    },
+    {
+      "len": 1440,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 120,
+          "pitch": 69
+        },
+        {
+          "start": 120,
+          "dur": 120,
+          "pitch": 72
+        },
+        {
+          "start": 240,
+          "dur": 120,
+          "pitch": 76
+        },
+        {
+          "start": 360,
+          "dur": 120,
+          "pitch": 81
+        }
+      ]
+    },
+    {
+      "len": 1440,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 120,
+          "pitch": 71
+        },
+        {
+          "start": 120,
+          "dur": 120,
+          "pitch": 76
+        },
+        {
+          "start": 240,
+          "dur": 120,
+          "pitch": 80
+        },
+        {
+          "start": 360,
+          "dur": 120,
+          "pitch": 83
+        }
+      ]
+    }
+  ]
+}

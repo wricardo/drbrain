@@ -1,0 +1,147 @@
+{
+  "version": 1,
+  "id": "greensleeves",
+  "title": "Greensleeves",
+  "composer": "Traditional",
+  "tempoBPM": 92,
+  "timeSig": "6/8",
+  "key": "Am",
+  "clef": "treble",
+  "measures": [
+    {
+      "len": 2880,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 960,
+          "pitch": 69
+        }
+      ]
+    },
+    {
+      "len": 2880,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 480,
+          "pitch": 72
+        },
+        {
+          "start": 480,
+          "dur": 480,
+          "pitch": 74
+        },
+        {
+          "start": 960,
+          "dur": 480,
+          "pitch": 76
+        },
+        {
+          "start": 1440,
+          "dur": 1440,
+          "pitch": 77
+        }
+      ]
+    },
+    {
+      "len": 2880,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 480,
+          "pitch": 76
+        },
+        {
+          "start": 480,
+          "dur": 480,
+          "pitch": 74
+        },
+        {
+          "start": 960,
+          "dur": 480,
+          "pitch": 71
+        },
+        {
+          "start": 1440,
+          "dur": 1440,
+          "pitch": 67
+        }
+      ]
+    },
+    {
+      "len": 2880,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 480,
+          "pitch": 69
+        },
+        {
+          "start": 480,
+          "dur": 480,
+          "pitch": 71
+        },
+        {
+          "start": 960,
+          "dur": 480,
+          "pitch": 72
+        },
+        {
+          "start": 1440,
+          "dur": 1440,
+          "pitch": 69
+        }
+      ]
+    },
+    {
+      "len": 2880,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 480,
+          "pitch": 69
+        },
+        {
+          "start": 480,
+          "dur": 480,
+          "pitch": 68
+        },
+        {
+          "start": 960,
+          "dur": 480,
+          "pitch": 69
+        },
+        {
+          "start": 1440,
+          "dur": 1440,
+          "pitch": 71
+        }
+      ]
+    },
+    {
+      "len": 2880,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 480,
+          "pitch": 68
+        },
+        {
+          "start": 480,
+          "dur": 480,
+          "pitch": 64
+        },
+        {
+          "start": 960,
+          "dur": 480,
+          "pitch": 64
+        },
+        {
+          "start": 1440,
+          "dur": 1440,
+          "pitch": 69
+        }
+      ]
+    }
+  ]
+}

@@ -1,4 +1,8 @@
 <script lang="ts">
+	import Hero from '@drbrain/ui/components/Hero.svelte';
+	import Button from '@drbrain/ui/components/Button.svelte';
+	import EmptyState from '@drbrain/ui/components/EmptyState.svelte';
+	import Skeleton from '@drbrain/ui/components/Skeleton.svelte';
 	import { getContextClient, queryStore, gql } from '@urql/svelte';
 	import { goto } from '$app/navigation';
 	import { MAPS_QUERY, SESSIONS_QUERY } from '$lib/tesla/queries';
@@ -99,27 +103,28 @@
 </script>
 
 <svelte:head>
-	<title>Tesla Road Trip Game</title>
+	<title>Tesla Road Trip · drbrain</title>
 </svelte:head>
 
-<!-- Hero -->
-<div class="bg-white border-b border-[#e8e8e8]">
-	<div class="max-w-7xl mx-auto px-6 py-6 lg:py-8">
-		<p class="text-xs font-bold uppercase tracking-widest text-red-600 mb-2">🚗 Educational AI project</p>
-		<h1 class="text-2xl lg:text-3xl font-light text-[#171a20] leading-tight tracking-tight mb-2">
-			Reach every park before the battery runs dry.
-		</h1>
-		<p class="text-base text-gray-500 font-light leading-relaxed max-w-2xl">
-			Plan a route around chargers, water and buildings with the arrow keys, or hand the wheel to an AI agent and watch it drive live. <a href="/tesla/learn" class="text-red-600 font-medium hover:underline">How it works</a>
-		</p>
-	</div>
+<div class="db-container game-landing">
+	<Hero
+		label="Tesla Road Trip"
+		title="Visit every park."
+		accent="Make the charge last."
+		description="Plan a route around chargers, water and buildings. Drive yourself or hand the wheel to an AI agent and watch it live."
+		image="/art/tesla.webp"
+		wideArt
+	>
+		<Button href="#pick-a-map">Choose a map <span aria-hidden="true">↓</span></Button>
+		<Button href="/tesla/learn" variant="secondary">How it works</Button>
+	</Hero>
 </div>
 
 <!-- Pick a map -->
-<section id="pick-a-map" class="max-w-7xl mx-auto px-6 py-10 scroll-mt-6">
+<section id="pick-a-map" class="db-container py-8 sm:py-10 scroll-mt-6">
 	<div class="flex flex-wrap items-end justify-between gap-4 mb-4">
 		<div>
-			<h2 class="text-xl font-light text-[#393c41]">Pick a map</h2>
+			<h2 class="text-2xl font-bold tracking-tight">Pick a map</h2>
 			<p class="text-sm text-gray-500 mt-0.5">Smallest maps first. Press Play to choose fog and move-delay settings.</p>
 		</div>
 		<div class="w-full sm:w-72">
@@ -129,18 +134,20 @@
 				type="text"
 				bind:value={sessionName}
 				placeholder="e.g. Claude's first run"
-				class="w-full border border-gray-200 rounded-full px-4 py-2 text-sm bg-white focus:outline-none focus:border-gray-400"
+				class="db-input"
 			/>
 		</div>
 	</div>
 
 
 	{#if $mapsResult.fetching && maps.length === 0}
-		<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-			{#each Array(3) as _}<div class="h-96 rounded-2xl bg-white border border-[#e8e8e8] animate-pulse"></div>{/each}
-		</div>
+		<Skeleton label="Loading maps…" height="12rem" />
 	{:else if $mapsResult.error}
-		<p class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">Could not load maps: {$mapsResult.error.message}</p>
+		<p role="alert" class="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">Could not load maps. {$mapsResult.error.message}</p>
+	{:else if maps.length === 0}
+		<EmptyState title="No routes available" description="Create a map to plan your own road trip.">
+			<Button variant="secondary" href="/tesla/editor">Open the map editor</Button>
+		</EmptyState>
 	{:else}
 		<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
 			{#each pickMaps as map (map.mapId)}
@@ -160,9 +167,9 @@
 </section>
 
 <!-- Recent sessions -->
-<section class="max-w-7xl mx-auto px-6 pb-12">
+<section class="db-container pb-12">
 	<div class="flex items-end justify-between gap-4 mb-4">
-		<h2 class="text-xl font-light text-[#393c41]">Recent sessions</h2>
+		<h2 class="text-2xl font-bold tracking-tight">Recent sessions</h2>
 		<a href="/tesla/lobby" class="text-sm text-gray-600 hover:text-gray-900">All sessions →</a>
 	</div>
 	{#if recent.length === 0}
@@ -170,7 +177,7 @@
 			No one is driving yet. <button type="button" onclick={() => firstMap && play(firstMap)} class="font-medium text-[#393c41] underline">Start a session</button>
 		</div>
 	{:else}
-		<ul class="divide-y divide-gray-100 rounded-2xl border border-[#e8e8e8] bg-white">
+		<ul class="db-panel divide-y divide-gray-100">
 			{#each recent as s (s.id)}
 				{@const st = sessionStatus(s)}
 				<li>

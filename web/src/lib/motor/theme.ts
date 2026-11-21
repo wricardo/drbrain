@@ -18,7 +18,7 @@ export const DEFAULT_THEME: ThemeChoice = 'system';
 export const DARK_QUERY = '(prefers-color-scheme: dark)';
 
 /** Page background per theme, used for the browser's `theme-color` (address bar tint on phones). */
-export const THEME_COLORS: Record<ResolvedTheme, string> = { light: '#ffffff', dark: '#171936' };
+export const THEME_COLORS: Record<ResolvedTheme, string> = { light: '#f7f7fc', dark: '#171936' };
 
 /** Narrows a stored value to a valid choice; anything unknown falls back to the default. */
 export function parseChoice(value: unknown): ThemeChoice {

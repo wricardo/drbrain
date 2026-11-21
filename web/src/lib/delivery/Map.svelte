@@ -47,14 +47,10 @@
 	let viewportW = $state(1440);
 
 	const TILE = $derived.by(() => {
-		// Budget measured in headless Chrome at 1440x950: header (~44), page
-		// padding, the D-pad + keyboard panel (~166), the activity panel (~63)
-		// and legend/padding around the grid (~54). 390 leaves a small margin
-		// so nothing clips; verified by scripts/ui-smoke.mjs.
-		const CHROME_V = 410;
-		const CHROME_H = 420;
-		const byHeight = Math.floor((viewportH - CHROME_V) / Math.max(city.gridSize, 1));
-		const byWidth = Math.floor((viewportW - CHROME_H) / Math.max(city.gridSize, 1));
+		const hudSpace = 415;
+		const sidePanelSpace = viewportW >= 1024 ? 465 : 68;
+		const byHeight = Math.floor((viewportH - hudSpace) / Math.max(city.gridSize, 1));
+		const byWidth = Math.floor((viewportW - sidePanelSpace) / Math.max(city.gridSize, 1));
 		return Math.max(14, Math.min(32, byHeight, byWidth));
 	});
 
@@ -228,7 +224,7 @@
 	});
 </script>
 
-<div class="overflow-auto rounded-lg border border-ink-600 bg-ink-900 p-3">
+<div class="overflow-auto rounded-lg border border-edge-strong bg-[var(--color-map)] p-3">
 	<div
 		class="relative mx-auto"
 		style="width: {city.gridSize * TILE}px; height: {city.gridSize * TILE}px;"
@@ -251,7 +247,7 @@
 					type="button"
 					class="absolute flex items-center justify-center text-[12px] leading-none transition-[filter] hover:brightness-150 {flush
 						? 'rounded-none'
-						: 'rounded-[3px]'} {style.cls} {highlighted ? 'ring-2 ring-white z-10' : ''}"
+						: 'rounded-[3px]'} {style.cls} {highlighted ? 'ring-2 ring-[var(--color-body)] z-10' : ''}"
 					style="left: {x * TILE}px; top: {y * TILE}px; width: {flush ? TILE : TILE - 1}px; height: {flush
 						? TILE
 						: TILE - 1}px;"
@@ -261,7 +257,7 @@
 					onclick={() => handleTile(x, y)}
 				>
 					{#if ch === 'K' || ch === 'H' || ch === 'D' || ch === 'C'}
-						<span class="font-semibold text-ink-950">{ch}</span>
+						<span class="font-semibold text-white">{ch}</span>
 					{/if}
 				</button>
 			{/each}
@@ -284,10 +280,10 @@
 				-->
 				<button
 					type="button"
-					class="absolute flex items-center justify-center rounded-none bg-white text-[12px] leading-none font-bold text-ink-950 {d.first
+					class="absolute flex items-center justify-center rounded-none bg-ink text-[12px] leading-none font-bold text-white {d.first
 						? 'pointer-events-auto'
 						: 'invisible'} {selected
-						? 'z-20 ring-2 ring-[var(--color-charger)] ring-offset-1 ring-offset-ink-900'
+						? 'z-20 ring-2 ring-[var(--color-charger)] ring-offset-1 ring-offset-[var(--color-map)]'
 						: 'z-10'}"
 					style="left: {car.x * TILE}px; top: {car.y * TILE}px; width: {TILE}px; height: {TILE}px; transition: left {d.glideMs}ms linear, top {d.glideMs}ms linear;"
 					title="{car.name} ({car.state}){d.here.length > 1
@@ -304,7 +300,7 @@
 					<span class:text-[var(--color-danger)]={car.state === 'STRANDED'}>{d.digit}</span>
 					{#if d.first && d.here.length > 1}
 						<span
-							class="absolute -top-0.5 -right-0.5 rounded-full bg-ink-950 px-1 text-[9px] font-bold text-fog-300"
+							class="absolute -top-0.5 -right-0.5 rounded-full bg-ink px-1 text-[9px] font-bold text-white"
 							>×{d.here.length}</span
 						>
 					{/if}
@@ -313,7 +309,7 @@
 		</div>
 	</div>
 
-	<div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-fog-400">
+	<div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
 		<span class="flex items-center gap-1">
 			<span class="inline-block h-3 w-3 rounded-[2px] bg-[var(--color-road)]"></span>road
 		</span>
@@ -325,25 +321,25 @@
 		</span>
 		<span class="flex items-center gap-1">
 			<span
-				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-depot)] text-[9px] font-bold text-ink-950"
+				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-depot)] text-[9px] font-bold text-white"
 				>D</span
 			>depot
 		</span>
 		<span class="flex items-center gap-1">
 			<span
-				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-charger)] text-[9px] font-bold text-ink-950"
+				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-charger)] text-[9px] font-bold text-white"
 				>C</span
 			>charger
 		</span>
 		<span class="flex items-center gap-1">
 			<span
-				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-kitchen)] text-[9px] font-bold text-ink-950"
+				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-kitchen)] text-[9px] font-bold text-white"
 				>K</span
 			>kitchen
 		</span>
 		<span class="flex items-center gap-1">
 			<span
-				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-customer)] text-[9px] font-bold text-ink-950"
+				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-customer)] text-[9px] font-bold text-white"
 				>H</span
 			>customer
 		</span>
@@ -351,18 +347,18 @@
 			<span class="inline-block h-3 w-3 rounded-[2px] bg-[var(--color-building)]"></span>building
 		</span>
 		<span class="flex items-center gap-1">
-			<span class="inline-block h-3 w-3 rounded-[2px] border border-dashed border-ink-500 bg-ink-950"
+			<span class="inline-block h-3 w-3 rounded-[2px] border border-dashed border-edge-faint bg-surface-muted"
 			></span>unexplored
 		</span>
 		<span class="flex items-center gap-1">
 			<span
-				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-white text-[9px] font-bold text-ink-950"
+				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-ink text-[9px] font-bold text-white"
 				>1</span
 			>car
 		</span>
 		{#if closures.length > 0}
 			<span class="flex items-center gap-1 text-[var(--color-warn)]">
-				<span class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-warn)]/40 text-[9px] font-bold text-ink-950"
+				<span class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-warn)]/40 text-[9px] font-bold text-ink"
 					>X</span
 				>works
 			</span>
@@ -371,11 +367,11 @@
 	</div>
 
 	{#if closures.length > 0}
-		<ul class="mt-2 space-y-1 border-t border-ink-800 pt-2 text-xs">
+		<ul class="mt-2 space-y-1 border-t border-edge pt-2 text-xs">
 			{#each closures as c (c.id)}
-				<li class="flex items-center justify-between gap-2 text-fog-400">
+				<li class="flex items-center justify-between gap-2 text-muted">
 					<span class="text-[var(--color-warn)]">{c.reason}</span>
-					<span class="text-fog-500">
+					<span class="text-faint">
 						at ({c.minX},{c.minY}) · reopens in {Math.max(0, c.ticksLeft)} tick{Math.max(0, c.ticksLeft) === 1
 							? ''
 							: 's'}

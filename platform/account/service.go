@@ -6,11 +6,9 @@ package account
 import (
 	"crypto/rand"
 	"crypto/sha256"
-	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -19,17 +17,11 @@ import (
 
 // Account limits and defaults.
 const (
-	// DefaultLoginTTL is how long a login lasts. It is fixed, not sliding: the
-	// player signs in again after 30 days.
-	DefaultLoginTTL = 30 * 24 * time.Hour
 	// DefaultHandleCooldown is the minimum time between two handle changes. The
 	// first change after sign-up (the handle was generated) is free.
 	DefaultHandleCooldown = 24 * time.Hour
 	// DefaultMaxAccounts caps how many accounts exist.
 	DefaultMaxAccounts = 10000
-	// MaxLoginsPerAccount is how many browsers may be signed in at once; the
-	// oldest login is dropped beyond it.
-	MaxLoginsPerAccount = 10
 	// PrivatePlayerName is shown on boards for an account whose profile is private.
 	PrivatePlayerName = "Private player"
 
@@ -80,15 +72,6 @@ func publicAccount(a Account) Account {
 	return a
 }
 
-// Login is one signed-in browser. Only the SHA-256 of the cookie token is
-// stored, so a copy of the data directory cannot be used to sign in.
-type Login struct {
-	TokenHash string // hex SHA-256 of the token
-	AccountID string
-	CreatedAt time.Time
-	ExpiresAt time.Time
-}
-
 // Store persists accounts and logins. Create enforces unique handles
 // (case-insensitive) and unique provider identities atomically; Update does the
 // same when the handle changes.
@@ -100,16 +83,9 @@ type Repository interface {
 	// Update applies fn to a copy of the account and stores the result if fn
 	// returns nil. Changing the handle to one held by another account is ErrHandleTaken.
 	Update(id string, fn func(*Account) error) (Account, error)
-	// Delete removes the account and every login it owns.
+	// Delete removes the account.
 	Delete(id string) error
-	// DeleteOtherLogins removes every login of the account except keepHash ("" keeps none).
-	DeleteOtherLogins(accountID, keepHash string) error
 	Count() int
-
-	// PutLogin stores a login, dropping the account's oldest ones beyond MaxLoginsPerAccount.
-	PutLogin(l Login) error
-	GetLogin(tokenHash string) (Login, bool)
-	DeleteLogin(tokenHash string) error
 }
 
 // AccountUpdate is the set of changes a player may make; nil fields are kept.
@@ -131,7 +107,6 @@ type Profile struct {
 type Options struct {
 	Store          Repository
 	PasswordSignIn bool
-	LoginTTL       time.Duration
 	HandleCooldown time.Duration
 	MaxAccounts    int
 	MaxDisplayName int
@@ -172,6 +147,12 @@ func (s *Service) deleteHook() func(string) error {
 // Enabled reports whether accounts are configured.
 func (s *Service) Enabled() bool { return s.store != nil }
 
+// HashToken is the storage form of a secret token: lower-case hex SHA-256.
+func HashToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
 // Store exposes the underlying store for game-specific lookups.
 
 func (s *Service) now() time.Time {
@@ -179,22 +160,6 @@ func (s *Service) now() time.Time {
 		return s.opts.Now()
 	}
 	return time.Now()
-}
-
-// newToken returns a random URL-safe token and its storage hash.
-func newToken() (token, hash string, err error) {
-	var b [tokenBytes]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", "", fmt.Errorf("generate token: %w", err)
-	}
-	token = base64.RawURLEncoding.EncodeToString(b[:])
-	return token, HashToken(token), nil
-}
-
-// HashToken is the storage form of a token: lower-case hex SHA-256.
-func HashToken(token string) string {
-	sum := sha256.Sum256([]byte(token))
-	return hex.EncodeToString(sum[:])
 }
 
 func newAccountID() (string, error) {
@@ -265,70 +230,6 @@ func (s *Service) maxAccounts() int {
 		return s.opts.MaxAccounts
 	}
 	return DefaultMaxAccounts
-}
-
-func (s *Service) loginTTL() time.Duration {
-	if s.opts.LoginTTL > 0 {
-		return s.opts.LoginTTL
-	}
-	return DefaultLoginTTL
-}
-
-// StartLogin creates a login for the account and returns the secret token for
-// the cookie. Every call makes a new token, so a token that existed before
-// signing in is never reused (no session fixation).
-func (s *Service) StartLogin(accountID string) (token string, expires time.Time, err error) {
-	if s.store == nil {
-		return "", time.Time{}, errAccountsOff()
-	}
-	if _, ok := s.store.Get(accountID); !ok {
-		return "", time.Time{}, errs.Errorf(errs.CodeNotFound, "account not found")
-	}
-	token, hash, err := newToken()
-	if err != nil {
-		return "", time.Time{}, err
-	}
-	now := s.now().UTC()
-	expires = now.Add(s.loginTTL())
-	if err := s.store.PutLogin(Login{TokenHash: hash, AccountID: accountID, CreatedAt: now, ExpiresAt: expires}); err != nil {
-		return "", time.Time{}, err
-	}
-	return token, expires, nil
-}
-
-// Authenticate resolves a cookie token to its account. Unknown, expired and
-// malformed tokens give ok=false; an expired login is removed.
-func (s *Service) Authenticate(token string) (*Account, bool) {
-	if s.store == nil || len(token) < 20 || len(token) > 128 {
-		return nil, false
-	}
-	hash := HashToken(token)
-	l, ok := s.store.GetLogin(hash)
-	if !ok {
-		return nil, false
-	}
-	if !s.now().Before(l.ExpiresAt) {
-		if err := s.store.DeleteLogin(hash); err != nil {
-			log.Printf("account: delete expired login: %v", err)
-		}
-		return nil, false
-	}
-	a, ok := s.store.Get(l.AccountID)
-	if !ok {
-		return nil, false
-	}
-	a = publicAccount(a)
-	return &a, true
-}
-
-// EndLogin signs a token out. Unknown tokens are ignored.
-func (s *Service) EndLogin(token string) {
-	if s.store == nil || token == "" {
-		return
-	}
-	if err := s.store.DeleteLogin(HashToken(token)); err != nil {
-		log.Printf("account: delete login: %v", err)
-	}
 }
 
 // ---- account management ----------------------------------------------------

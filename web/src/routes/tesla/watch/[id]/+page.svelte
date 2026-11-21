@@ -850,10 +850,10 @@ ${gameState?.fogEnabled
 
 <div class="max-w-[1900px] mx-auto px-3 sm:px-4 py-4 lg:py-6">
 	<!-- header: map name · player name · live badge -->
-	<header class="mb-4 flex flex-wrap items-end justify-between gap-3">
+	<header class="game-run-title db-panel mb-4">
 		<div class="min-w-0">
 			<div class="flex flex-wrap items-center gap-2">
-				<h1 class="text-2xl lg:text-3xl font-light text-[#171a20] tracking-tight">{mapName || 'Loading…'}</h1>
+				<h1 class="text-2xl lg:text-3xl">{mapName || 'Loading…'}</h1>
 				{#if gameState?.fogEnabled}
 					<span class="inline-flex items-center rounded-full bg-blue-100 text-blue-800 px-2 py-0.5 text-xs">🌫 Fog r{gameState.fogRadius}{fullMapRevealed ? ' · revealed' : ''}</span>
 				{/if}
@@ -1143,7 +1143,6 @@ ${gameState?.fogEnabled
 
 <style>
 	.board-pane {
-		min-height: calc(100vh - 16rem);
 		overflow: auto;
 	}
 
@@ -1241,8 +1240,8 @@ ${gameState?.fogEnabled
 	}
 
 	.dpad-btn {
-		width: 2.5rem;
-		height: 2.5rem;
+		width: 2.75rem;
+		height: 2.75rem;
 		border-radius: 0.6rem;
 		border: 1px solid #d1d5db;
 		background: #f9fafb;

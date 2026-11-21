@@ -359,7 +359,7 @@ func (e *env) get(t testing.TB, id string) *service.Session {
 
 func (e *env) create(t testing.TB, mapID string) *service.Session {
 	t.Helper()
-	s, err := e.svc.CreateSession(mapID, "")
+	s, err := e.svc.CreateSession(mapID)
 	if err != nil {
 		t.Fatalf("CreateSession(%s): %v", mapID, err)
 	}

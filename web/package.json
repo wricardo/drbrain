@@ -14,7 +14,8 @@
     "@drbrain/ui": "*",
     "@urql/svelte": "^5.0.0",
     "graphql": "^16.14.0",
-    "graphql-ws": "^6.0.8"
+    "graphql-ws": "^6.0.8",
+    "vexflow": "^5.6.0"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.10",

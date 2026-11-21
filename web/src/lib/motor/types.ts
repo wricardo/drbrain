@@ -34,7 +34,6 @@ import type { Motor_Position as Position, Motor_Status as Status } from '../grap
 /** Lightweight session row used by the recent-sessions list. */
 export interface SessionSummary {
 	id: string;
-	displayName: string;
 	mapId: string;
 	playing: boolean;
 	createdAt: string;

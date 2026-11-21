@@ -6,7 +6,7 @@ import (
 	"context"
 	"errors"
 	"log"
-	"net/http"
+	"strings"
 
 	"github.com/vektah/gqlparser/v2/gqlerror"
 
@@ -27,19 +27,19 @@ func New(service *account.Service, authn *auth.Auth) *Resolver {
 	return &Resolver{Service: service, Auth: authn}
 }
 
-func (r *Resolver) passwordSignIn(ctx context.Context, register bool, handle, password string) (*model.User, error) {
+func (r *Resolver) passwordSignIn(ctx context.Context, register bool, handle, password string) (*model.AuthSession, error) {
 	if r.Auth == nil {
 		return nil, errs.Errorf(errs.CodeForbidden, "sign-in is off")
 	}
-	signIn, req, err := requireSignIn(ctx)
-	if err != nil {
-		return nil, err
+	req := auth.RequestFrom(ctx)
+	if req == nil || strings.EqualFold(req.Header.Get("Upgrade"), "websocket") {
+		return nil, errs.Errorf(errs.CodeForbidden, "sign-in needs an HTTP request")
 	}
-	acct, err := r.Auth.PasswordSignIn(register, req, handle, password, signIn.SetSession)
+	acct, token, expires, err := r.Auth.PasswordSignIn(register, req, handle, password)
 	if err != nil {
 		return nil, toGQLError(err)
 	}
-	return r.toUser(acct), nil
+	return &model.AuthSession{Token: token, ExpiresAt: expires, User: r.toUser(acct)}, nil
 }
 
 func (r *Resolver) toUser(a *account.Account) *model.User {
@@ -78,18 +78,6 @@ func requireViewer(ctx context.Context) (*auth.Viewer, error) {
 		return nil, errs.Errorf(errs.CodeUnauthenticated, "sign in first")
 	}
 	return v, nil
-}
-
-func requireSignIn(ctx context.Context) (*auth.SignIn, *http.Request, error) {
-	s := auth.SignInFrom(ctx)
-	if s == nil || !s.OverHTTP {
-		return nil, nil, errs.Errorf(errs.CodeForbidden, "sign-in needs an HTTP request")
-	}
-	req := auth.RequestFrom(ctx)
-	if req == nil {
-		return nil, nil, errs.Errorf(errs.CodeForbidden, "sign-in needs an HTTP request")
-	}
-	return s, req, nil
 }
 
 func toGQLError(err error) error {

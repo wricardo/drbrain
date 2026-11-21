@@ -7,8 +7,11 @@
 // Each operation asks for exactly what a screen needs. Mutations return the full
 // snapshot, so the client never needs a follow-up read to know the new state.
 
+import { authHeaders } from '$lib/account/token';
+import { forgetOwnerTokens, ownerTokenFor, rememberSession } from './ownerTokens';
 import type {
 	Delivery_CarWindow as CarWindow,
+	Delivery_ClaimStatus as ClaimStatus,
 	Delivery_Direction as Direction,
 	Delivery_EventView as EventView,
 	Delivery_Query as Query,
@@ -63,7 +66,7 @@ interface GraphQLResponse<T> {
 async function post<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
 	const res = await fetch(ENDPOINT, {
 		method: 'POST',
-		headers: { 'Content-Type': 'application/json' },
+		headers: { 'Content-Type': 'application/json', ...authHeaders() },
 		body: JSON.stringify({ query, variables })
 	});
 
@@ -168,7 +171,7 @@ export const api = {
 
 	sessions: async (): Promise<SessionSummary[]> => {
 		const d = await post<{ sessions: SessionSummary[] }>(`query {
-			delivery { sessions { id createdAt tick speed money reputation deliveries loaded } }
+			delivery { sessions { id createdAt tick speed money reputation deliveries loaded ownerDisplayName ownerHandle mine } }
 		}`);
 		return d.sessions ?? [];
 	},
@@ -212,110 +215,132 @@ export const api = {
 
 	// --- mutations ---------------------------------------------------------
 
+	/** Creates a session and keeps the owner token the server returns: it is what authorises later changes from this browser. */
 	createSession: async (id?: string, seed?: number): Promise<Snapshot> => {
-		const d = await post<{ createSession: Snapshot }>(
+		const d = await post<{ createSession: { session: Snapshot; ownerToken: string } }>(
 			`mutation ($id: ID, $seed: Int) {
-				delivery { createSession(id: $id, seed: $seed) { ${SNAPSHOT_FIELDS} } }
+				delivery { createSession(id: $id, seed: $seed) { session { ${SNAPSHOT_FIELDS} } ownerToken } }
 			}`,
 			{ id: id ?? null, seed: seed ?? null }
 		);
-		return d.createSession;
+		const { session, ownerToken } = d.createSession;
+		rememberSession(session.id, ownerToken);
+		return session;
 	},
 
 	/** Queue one step for one car. Does not advance the clock. */
 	moveCar: async (id: string, carId: string, direction: Direction): Promise<Snapshot> => {
 		const d = await post<{ moveCar: Snapshot }>(
-			`mutation ($id: ID!, $carId: ID!, $direction: Delivery_Direction!) {
-				delivery { moveCar(id: $id, carId: $carId, direction: $direction) { ${SNAPSHOT_FIELDS} } }
+			`mutation ($id: ID!, $ownerToken: String, $carId: ID!, $direction: Delivery_Direction!) {
+				delivery { moveCar(id: $id, ownerToken: $ownerToken, carId: $carId, direction: $direction) { ${SNAPSHOT_FIELDS} } }
 			}`,
-			{ id, carId, direction }
+			{ id, ownerToken: ownerTokenFor(id), carId, direction }
 		);
 		return d.moveCar;
 	},
 
 	tick: async (id: string, count = 1): Promise<Snapshot> => {
 		const d = await post<{ tick: Snapshot }>(
-			`mutation ($id: ID!, $count: Int!) {
-				delivery { tick(id: $id, count: $count) { ${SNAPSHOT_FIELDS} } }
+			`mutation ($id: ID!, $ownerToken: String, $count: Int!) {
+				delivery { tick(id: $id, ownerToken: $ownerToken, count: $count) { ${SNAPSHOT_FIELDS} } }
 			}`,
-			{ id, count }
+			{ id, ownerToken: ownerTokenFor(id), count }
 		);
 		return d.tick;
 	},
 
 	setSpeed: async (id: string, speed: number): Promise<Snapshot> => {
 		const d = await post<{ setSpeed: Snapshot }>(
-			`mutation ($id: ID!, $speed: Int!) {
-				delivery { setSpeed(id: $id, speed: $speed) { ${SNAPSHOT_FIELDS} } }
+			`mutation ($id: ID!, $ownerToken: String, $speed: Int!) {
+				delivery { setSpeed(id: $id, ownerToken: $ownerToken, speed: $speed) { ${SNAPSHOT_FIELDS} } }
 			}`,
-			{ id, speed }
+			{ id, ownerToken: ownerTokenFor(id), speed }
 		);
 		return d.setSpeed;
 	},
 
 	assignOrder: async (id: string, orderId: string, carId: string): Promise<Snapshot> => {
 		const d = await post<{ assignOrder: Snapshot }>(
-			`mutation ($id: ID!, $orderId: ID!, $carId: ID!) {
-				delivery { assignOrder(id: $id, orderId: $orderId, carId: $carId) { ${SNAPSHOT_FIELDS} } }
+			`mutation ($id: ID!, $ownerToken: String, $orderId: ID!, $carId: ID!) {
+				delivery { assignOrder(id: $id, ownerToken: $ownerToken, orderId: $orderId, carId: $carId) { ${SNAPSHOT_FIELDS} } }
 			}`,
-			{ id, orderId, carId }
+			{ id, ownerToken: ownerTokenFor(id), orderId, carId }
 		);
 		return d.assignOrder;
 	},
 
 	unassignOrder: async (id: string, orderId: string): Promise<Snapshot> => {
 		const d = await post<{ unassignOrder: Snapshot }>(
-			`mutation ($id: ID!, $orderId: ID!) {
-				delivery { unassignOrder(id: $id, orderId: $orderId) { ${SNAPSHOT_FIELDS} } }
+			`mutation ($id: ID!, $ownerToken: String, $orderId: ID!) {
+				delivery { unassignOrder(id: $id, ownerToken: $ownerToken, orderId: $orderId) { ${SNAPSHOT_FIELDS} } }
 			}`,
-			{ id, orderId }
+			{ id, ownerToken: ownerTokenFor(id), orderId }
 		);
 		return d.unassignOrder;
 	},
 
 	buyCar: async (id: string, className: string, depotId = 'd_main'): Promise<Snapshot> => {
 		const d = await post<{ buyCar: Snapshot }>(
-			`mutation ($id: ID!, $className: String!, $depotId: String!) {
-				delivery { buyCar(id: $id, className: $className, depotId: $depotId) { ${SNAPSHOT_FIELDS} } }
+			`mutation ($id: ID!, $ownerToken: String, $className: String!, $depotId: String!) {
+				delivery { buyCar(id: $id, ownerToken: $ownerToken, className: $className, depotId: $depotId) { ${SNAPSHOT_FIELDS} } }
 			}`,
-			{ id, className, depotId }
+			{ id, ownerToken: ownerTokenFor(id), className, depotId }
 		);
 		return d.buyCar;
 	},
 
 	towCar: async (id: string, carId: string): Promise<Snapshot> => {
 		const d = await post<{ towCar: Snapshot }>(
-			`mutation ($id: ID!, $carId: ID!) {
-				delivery { towCar(id: $id, carId: $carId) { ${SNAPSHOT_FIELDS} } }
+			`mutation ($id: ID!, $ownerToken: String, $carId: ID!) {
+				delivery { towCar(id: $id, ownerToken: $ownerToken, carId: $carId) { ${SNAPSHOT_FIELDS} } }
 			}`,
-			{ id, carId }
+			{ id, ownerToken: ownerTokenFor(id), carId }
 		);
 		return d.towCar;
 	},
 
 	build: async (id: string, buildId: string): Promise<Snapshot> => {
 		const d = await post<{ build: Snapshot }>(
-			`mutation ($id: ID!, $buildId: ID!) {
-				delivery { build(id: $id, buildId: $buildId) { ${SNAPSHOT_FIELDS} } }
+			`mutation ($id: ID!, $ownerToken: String, $buildId: ID!) {
+				delivery { build(id: $id, ownerToken: $ownerToken, buildId: $buildId) { ${SNAPSHOT_FIELDS} } }
 			}`,
-			{ id, buildId }
+			{ id, ownerToken: ownerTokenFor(id), buildId }
 		);
 		return d.build;
 	},
 
 	saveSession: async (id: string): Promise<Snapshot> => {
 		const d = await post<{ saveSession: Snapshot }>(
-			`mutation ($id: ID!) { delivery { saveSession(id: $id) { ${SNAPSHOT_FIELDS} } } }`,
-			{ id }
+			`mutation ($id: ID!, $ownerToken: String) { delivery { saveSession(id: $id, ownerToken: $ownerToken) { ${SNAPSHOT_FIELDS} } } }`,
+			{ id, ownerToken: ownerTokenFor(id) }
 		);
 		return d.saveSession;
 	},
 
 	deleteSession: async (id: string): Promise<boolean> => {
 		const d = await post<{ deleteSession: boolean }>(
-			`mutation ($id: ID!) { delivery { deleteSession(id: $id) } }`,
-			{ id }
+			`mutation ($id: ID!, $ownerToken: String) { delivery { deleteSession(id: $id, ownerToken: $ownerToken) } }`,
+			{ id, ownerToken: ownerTokenFor(id) }
 		);
+		if (d.deleteSession) forgetOwnerTokens([id]);
 		return d.deleteSession;
+	},
+
+	/** Whether this browser may change the session; false means spectate. Never an error. */
+	canPlay: async (id: string): Promise<boolean> => {
+		const d = await post<{ canPlaySession: boolean }>(
+			`query ($id: ID!, $ownerToken: String) { delivery { canPlaySession(id: $id, ownerToken: $ownerToken) } }`,
+			{ id, ownerToken: ownerTokenFor(id) }
+		);
+		return d.canPlaySession;
+	},
+
+	/** Attaches this browser's guest sessions to the signed-in account. */
+	claimSessions: async (claims: { sessionID: string; ownerToken: string }[]): Promise<{ sessionID: string; status: ClaimStatus }[]> => {
+		const d = await post<{ claimSessions: { sessionID: string; status: ClaimStatus }[] }>(
+			`mutation ($claims: [Delivery_SessionClaimInput!]!) { delivery { claimSessions(claims: $claims) { sessionID status } } }`,
+			{ claims }
+		);
+		return d.claimSessions ?? [];
 	}
 };

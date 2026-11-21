@@ -1,0 +1,172 @@
+{
+  "version": 1,
+  "id": "minuet-in-g",
+  "title": "Minuet in G",
+  "composer": "Christian Petzold",
+  "tempoBPM": 116,
+  "timeSig": "3/4",
+  "key": "G",
+  "clef": "treble",
+  "measures": [
+    {
+      "len": 1440,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 480,
+          "pitch": 74
+        },
+        {
+          "start": 480,
+          "dur": 240,
+          "pitch": 67
+        },
+        {
+          "start": 720,
+          "dur": 240,
+          "pitch": 69
+        },
+        {
+          "start": 960,
+          "dur": 240,
+          "pitch": 71
+        },
+        {
+          "start": 1200,
+          "dur": 240,
+          "pitch": 72
+        }
+      ]
+    },
+    {
+      "len": 1440,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 480,
+          "pitch": 74
+        },
+        {
+          "start": 480,
+          "dur": 480,
+          "pitch": 67
+        },
+        {
+          "start": 960,
+          "dur": 480,
+          "pitch": 67
+        }
+      ]
+    },
+    {
+      "len": 1440,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 480,
+          "pitch": 76
+        },
+        {
+          "start": 480,
+          "dur": 240,
+          "pitch": 72
+        },
+        {
+          "start": 720,
+          "dur": 240,
+          "pitch": 74
+        },
+        {
+          "start": 960,
+          "dur": 240,
+          "pitch": 76
+        },
+        {
+          "start": 1200,
+          "dur": 240,
+          "pitch": 78
+        }
+      ]
+    },
+    {
+      "len": 1440,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 480,
+          "pitch": 79
+        },
+        {
+          "start": 480,
+          "dur": 480,
+          "pitch": 67
+        },
+        {
+          "start": 960,
+          "dur": 480,
+          "pitch": 67
+        }
+      ]
+    },
+    {
+      "len": 1440,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 480,
+          "pitch": 72
+        },
+        {
+          "start": 480,
+          "dur": 240,
+          "pitch": 74
+        },
+        {
+          "start": 720,
+          "dur": 240,
+          "pitch": 72
+        },
+        {
+          "start": 960,
+          "dur": 240,
+          "pitch": 71
+        },
+        {
+          "start": 1200,
+          "dur": 240,
+          "pitch": 69
+        }
+      ]
+    },
+    {
+      "len": 1440,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 480,
+          "pitch": 71
+        },
+        {
+          "start": 480,
+          "dur": 240,
+          "pitch": 72
+        },
+        {
+          "start": 720,
+          "dur": 240,
+          "pitch": 71
+        },
+        {
+          "start": 960,
+          "dur": 240,
+          "pitch": 69
+        },
+        {
+          "start": 1200,
+          "dur": 240,
+          "pitch": 67
+        }
+      ]
+    }
+  ]
+}

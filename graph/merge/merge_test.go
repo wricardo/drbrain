@@ -66,10 +66,10 @@ func TestMergedSchemaShape(t *testing.T) {
 		}
 		return out
 	}
-	if got, want := names(schema.Query), []string{"account", "delivery", "mazes", "motorProgramming", "tesla"}; !slices.Equal(got, want) {
+	if got, want := names(schema.Query), []string{"account", "delivery", "mazes", "motorProgramming", "tesla", "music"}; !slices.Equal(got, want) {
 		t.Fatalf("Query fields = %v, want %v", got, want)
 	}
-	if got, want := names(schema.Mutation), []string{"account", "delivery", "mazes", "motorProgramming", "tesla"}; !slices.Equal(got, want) {
+	if got, want := names(schema.Mutation), []string{"account", "delivery", "mazes", "motorProgramming", "tesla", "music"}; !slices.Equal(got, want) {
 		t.Fatalf("Mutation fields = %v, want %v", got, want)
 	}
 	wantSubs := []string{
@@ -78,6 +78,7 @@ func TestMergedSchemaShape(t *testing.T) {
 		"motorProgrammingSessionUpdated",
 		"teslaSessionUpdated",
 		"teslaLobbyUpdated",
+		"musicSessionUpdated",
 	}
 	if got := names(schema.Subscription); !slices.Equal(got, wantSubs) {
 		t.Fatalf("Subscription fields = %v, want %v", got, wantSubs)
@@ -92,7 +93,7 @@ func TestMergedSchemaShape(t *testing.T) {
 		}
 	}
 
-	// Prefixing must keep the four dialects apart. A bare Session type would
+	// Prefixing must keep the game dialects apart. A bare Session type would
 	// mean the merge silently collapsed two games.
 	for _, bare := range []string{"Session", "Map", "Position", "Direction", "Status"} {
 		if schema.Types[bare] != nil {

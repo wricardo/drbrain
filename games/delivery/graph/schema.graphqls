@@ -18,6 +18,56 @@ type SessionSummary {
 	reputation: Float!
 	deliveries: Int!
 	loaded: Boolean!
+	"""
+	The owning player's public name: an account's display name, "Private player"
+	when its profile is private, or "Guest" for a session with no account.
+	"""
+	ownerDisplayName: String!
+	"""
+	Handle of the signed-in player who owns this session (profile at /u/<handle>);
+	null for guests and private profiles.
+	"""
+	ownerHandle: String
+	"""
+	True when the session belongs to the signed-in viewer's account.
+	"""
+	mine: Boolean!
+}
+"""
+The result of createSession. The ownerToken is returned only here and never by a
+query, a list or a subscription: it is the credential that lets this browser
+change the session (and attach it to an account later), while the session id
+alone stays enough to read it.
+"""
+type CreateSessionResult {
+	session: Snapshot!
+	"""
+	Secret that proves you created this session; keep it private.
+	"""
+	ownerToken: String!
+}
+enum ClaimStatus {
+	"""
+	The session now belongs to your account.
+	"""
+	ATTACHED
+	"""
+	It already belonged to your account.
+	"""
+	ALREADY_YOURS
+	"""
+	Unknown session, no or wrong owner token, a session created before owner
+	tokens, or one that belongs to another account.
+	"""
+	REJECTED
+}
+input SessionClaimInput {
+	sessionID: ID!
+	ownerToken: String!
+}
+type SessionClaimResult {
+	sessionID: ID!
+	status: ClaimStatus!
 }
 """
 The full client view of a session at one tick.
@@ -383,53 +433,74 @@ type Query {
 	Events newer than a tick, so a client can poll for deltas.
 	"""
 	events(id: ID!, sinceTick: Int! = 0): [EventView!]!
+	"""
+	Whether this caller may change the session: true for the session's creator
+	(by owner token or signed-in owning account) and for a session created before
+	owner tokens, false for everyone else. Never an error: an unknown session is
+	false. Reads stay public, so this decides between playing and spectating.
+	"""
+	canPlaySession(id: ID!, ownerToken: String): Boolean!
 }
 type Mutation {
 	"""
-	Start a new city. Both fields optional; a seed makes it reproducible.
+	Start a new city. Both fields optional; a seed makes it reproducible, and an
+	omitted id is generated. A signed-in creator's session belongs to their
+	account. The response carries the secret ownerToken, needed to change the
+	session later, so keep it.
 	"""
-	createSession(id: ID, seed: Int): Snapshot!
+	createSession(id: ID, seed: Int): CreateSessionResult!
 	"""
-	Queue one step for one car. Does NOT advance the clock.
+	Queue one step for one car. Does NOT advance the clock. Only the session's
+	creator may change it: pass the ownerToken from createSession, or be signed in
+	to the account that owns the session (FORBIDDEN otherwise). Sessions created
+	before owner tokens stay open.
 	"""
-	moveCar(id: ID!, carId: ID!, direction: Direction!): Snapshot!
+	moveCar(id: ID!, carId: ID!, direction: Direction!, ownerToken: String): Snapshot!
 	"""
-	Advance the world manually. Useful when paused.
+	Advance the world manually. Useful when paused. Creator-only, as moveCar.
 	"""
-	tick(id: ID!, count: Int! = 1): Snapshot!
+	tick(id: ID!, count: Int! = 1, ownerToken: String): Snapshot!
 	"""
-	Set the clock multiplier. 0 pauses.
+	Set the clock multiplier. 0 pauses. Creator-only, as moveCar.
 	"""
-	setSpeed(id: ID!, speed: Int!): Snapshot!
+	setSpeed(id: ID!, speed: Int!, ownerToken: String): Snapshot!
 	"""
 	Point an order at a car; refreshes its deadline from that car's position.
+	Creator-only, as moveCar.
 	"""
-	assignOrder(id: ID!, orderId: ID!, carId: ID!): Snapshot!
-	unassignOrder(id: ID!, orderId: ID!): Snapshot!
+	assignOrder(id: ID!, orderId: ID!, carId: ID!, ownerToken: String): Snapshot!
+	unassignOrder(id: ID!, orderId: ID!, ownerToken: String): Snapshot!
 	"""
-	Buy a vehicle at a depot.
+	Buy a vehicle at a depot. Creator-only, as moveCar.
 	"""
-	buyCar(id: ID!, className: String!, depotId: String! = "d_main"): Snapshot!
+	buyCar(id: ID!, className: String!, depotId: String! = "d_main", ownerToken: String): Snapshot!
 	"""
-	Return a stranded car to its nearest depot for a fee.
+	Return a stranded car to its nearest depot for a fee. Creator-only, as moveCar.
 	"""
-	towCar(id: ID!, carId: ID!): Snapshot!
+	towCar(id: ID!, carId: ID!, ownerToken: String): Snapshot!
 	"""
-	Purchase an unlocked build; mutates the map atomically.
+	Purchase an unlocked build; mutates the map atomically. Creator-only, as moveCar.
 	"""
-	build(id: ID!, buildId: ID!): Snapshot!
+	build(id: ID!, buildId: ID!, ownerToken: String): Snapshot!
 	"""
-	Write the save to disk.
+	Write the save to disk. Creator-only, as moveCar.
 	"""
-	saveSession(id: ID!): Snapshot!
+	saveSession(id: ID!, ownerToken: String): Snapshot!
 	"""
-	Save, then drop from memory. The next read rehydrates.
+	Save, then drop from memory. The next read rehydrates. Creator-only: evicting
+	someone else's session would stop their clock.
 	"""
-	evictSession(id: ID!): Boolean!
+	evictSession(id: ID!, ownerToken: String): Boolean!
 	"""
-	Delete the save file permanently.
+	Delete the save file permanently. Needs the ownerToken (or the owning account)
+	even for a guest session; only a save created before owner tokens is open.
 	"""
-	deleteSession(id: ID!): Boolean!
+	deleteSession(id: ID!, ownerToken: String): Boolean!
+	"""
+	Attaches guest sessions of this browser to the signed-in account; each needs
+	its owner token (up to 100 per call). UNAUTHENTICATED when not signed in.
+	"""
+	claimSessions(claims: [SessionClaimInput!]!): [SessionClaimResult!]!
 }
 type Subscription {
 	"""

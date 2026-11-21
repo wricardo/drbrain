@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildRunRows, countRows, filterRows, runText, runsHref, shareUrl, solvedSummary } from './runs';
+import { buildRunRows, countRows, filterRows, runText, solvedSummary } from './runs';
 import type { GameMap, PlayerRun } from './types';
 
 const map = (id: string, name: string, difficulty: string) => ({ id, name, difficulty }) as GameMap;
@@ -49,16 +49,7 @@ describe('filters and counts', () => {
 	});
 });
 
-describe('links and text', () => {
-	it('builds a runs link from a name', () => {
-		expect(runsHref('BraveOtter')).toBe('/motor/runs?name=BraveOtter');
-		expect(runsHref('  Ada Lovelace & co ')).toBe('/motor/runs?name=Ada%20Lovelace%20%26%20co');
-		expect(runsHref('   ')).toBeNull();
-	});
-	it('builds a shareable absolute URL', () => {
-		expect(shareUrl('https://x.test', 'BraveOtter')).toBe('https://x.test/motor/runs?name=BraveOtter');
-		expect(shareUrl('https://x.test', '')).toBeNull();
-	});
+describe('text', () => {
 	it('describes a run', () => {
 		expect(runText(run('e1', 5, 8))).toBe('5 slots · 8 steps');
 		expect(runText(run('e1', 1, 1))).toBe('1 slot · 1 step');

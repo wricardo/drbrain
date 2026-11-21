@@ -1,0 +1,181 @@
+# Dr Brain - Music Region — LLM Guide
+
+Dr Brain - Music Region is a measure-arrangement puzzle for humans and AI agents.
+You hear a short classical excerpt, but its measures arrive scrambled, and some
+bars are flipped horizontally (retrograde) or vertically (inversion). Reorder the
+bars and undo every flip until the arrangement sounds exactly like the target.
+
+Humans: open {{.BaseURL}}/ and click a bar to select it. Select exactly two bars and
+press Switch to swap them, or select bars and press H Flip / V Flip; Play plays the
+selection in its current order. The target recording plays at the top.
+
+GraphQL endpoint:       POST {{.GraphQLURL}}   (one schema, namespace: music)
+GraphQL subscriptions:  {{.GraphQLWSURL}}  (graphql-ws protocol)
+Playground:             GET  {{.PlaygroundURL}}
+Introspection:          enabled unless the operator disabled it — query __schema/__type
+
+Every example below is valid against the live schema. Replace EXCERPT_ID with an id
+from `excerpts` and SESSION_ID with an id returned by `createSession`.
+
+---
+
+## The score model
+
+- Scores are tick-based at PPQ 480: a quarter note is 480 ticks, an eighth 240, a
+  16th 120, a 32nd 60. There are no tuplets: every start, duration and bar length
+  is a multiple of 60.
+- A measure is `{ id, len, notes }`. Measure ids are positional (`m001`, `m002`,
+  ...) assigned when the piece loads and never stored in a file. Every bar of a
+  piece has the same `len`. A piece is **at most 6 bars** — the Music Region caps
+  every excerpt there, and the loader rejects a longer file.
+- A note is `{ at, dur, pitch }`: `at` is the start tick inside its measure, `dur`
+  is the length in ticks, `pitch` is a MIDI number (C4 = 60, A4 = 69, B4 = 71).
+  Notes with equal `at` sound together (a chord).
+- `Music_Excerpt.measures[].notes` are local to their bar. `Music_Excerpt.notes`
+  is the whole piece flattened onto the absolute timeline: bar offsets are
+  accumulated, so `at` keeps growing past one bar length. `axis` is the fixed
+  inversion axis, 71.
+
+## The two flips
+
+Both are involutions: applying the same flip twice returns the original bar.
+
+- Horizontal (retrograde): `start' = len - start - dur`. A note keeps its pitch and
+  duration; the bar is mirrored in time.
+- Vertical (inversion): `pitch' = 2*axis - pitch` with `axis` = 71 (B4, the middle
+  line of the treble staff). A4 (69) becomes C#5 (73), B4 (71) stays put.
+- The flips touch different dimensions, so they commute; `flipH: true, flipV: true`
+  is both at once.
+
+## Sessions and the arrangement
+
+- A challenge is `(excerpt, difficulty, seed)` and is derived server-side, never
+  stored as a file. Creating a session freezes the excerpt snapshot, so editing a
+  score never changes a live session.
+- `difficulty` selects which flips you must undo. Every difficulty challenges the
+  whole excerpt — the same bars, all of them, every time (at most 6). `NOVICE`
+  only scrambles the order: no bar is flipped (5% per win). `EXPERT` adds
+  retrograde (horizontal) flips on about a third of the bars, at least one, and
+  never an inversion (10% per win). `GENIUS` adds both flips: at least half the
+  bars carry retrograde and inversion together, so at least one of each is
+  present (15% per win).
+- `Music_Session.slots` is your current arrangement, left to right. Each
+  `Music_Slot` is `{ position, measureID, flipH, flipV }`; `position` is its array
+  index, `measureID` names the frozen piece measure in that slot, and the two
+  booleans are the flips applied to it.
+- A session is `solved` when the arrangement sounds exactly like the target and
+  `wins` counts completed solves. `percentPerWin` is the progress each win awards.
+
+### How the arrangement is compared
+
+For slot `i` (0-based) holding measure `m` with transform `t = (flipH, flipV)`:
+
+1. Apply the flips to `m` (vertical first, then horizontal) to get `m'`.
+2. Emit one `(at, dur, pitch)` tuple per note of `m'`, with
+   `at = i*len + note.at`.
+
+The arrangement's stream is every slot's tuples sorted by `(at, pitch, dur)`. The
+**target stream** is every measure of `excerpt.measures`, flattened the same way
+with no flips — exactly `Music_Excerpt.notes`. `solved` is true exactly when the
+two sorted streams are equal. Measure ids are ignored, so two identical bars are
+interchangeable.
+
+### The deterministic solve
+
+The target at slot `i` is `excerpt.measures[i]`. For each slot in order:
+
+1. Take the target measure's local notes.
+2. For every piece measure not used yet and each of the four transforms
+   `(false,false)`, `(true,false)`, `(false,true)`, `(true,true)`, apply the flips
+   and compare the resulting `(at, dur, pitch)` multiset with the target's.
+3. The matching placement is the answer.
+
+Because both flips are involutions the four candidates of a bar are distinct, so a
+non-symmetric bar matches exactly one of them; identical bars are interchangeable,
+which the solver treats as the same answer. Submit the resulting placements in
+order with `setArrangement` and read `solved` / `wins` from the response.
+
+`setArrangement` must carry a permutation of the session's measure ids: same
+length, every id exactly once, no foreign ids. `position` is implied by the array
+order, so each entry only needs `measureID`, `flipH` and `flipV`.
+
+## Operation sequence
+
+1. List excerpts and read the target stream:
+
+```graphql
+query {
+  music {
+    excerpts { id title composer tempoBPM timeSig key clef axis measures { id len notes { at dur pitch } } notes { at dur pitch } }
+  }
+}
+```
+
+2. Create a session. `seed` is optional; the same seed and difficulty reproduce the
+   same scramble, which is what `resetArrangement` relies on:
+
+```graphql
+mutation {
+  music {
+    createSession(excerptID: "EXCERPT_ID", difficulty: EXPERT, displayName: "my agent", seed: 7) {
+      id difficulty solved wins seq percentPerWin
+      slots { position measureID flipH flipV }
+      excerpt { id timeSig axis measures { id len } }
+    }
+  }
+}
+```
+
+3. Inspect the scramble and solve it, then submit the whole arrangement at once:
+
+```graphql
+mutation {
+  music {
+    setArrangement(sessionID: "SESSION_ID", slots: [
+      { measureID: "m001", flipH: false, flipV: false },
+      { measureID: "m003", flipH: true, flipV: false },
+      { measureID: "m002", flipH: false, flipV: true }
+    ]) { id solved wins seq slots { position measureID flipH flipV } lastChange { kind a b } }
+  }
+}
+```
+
+4. Optional incremental calls: `switchMeasures(sessionID, a, b)`,
+   `transformMeasure(sessionID, position, flipH, flipV)`,
+   `resetArrangement(sessionID)`.
+
+5. Read a session, or watch it:
+
+```graphql
+query { music { session(id: "SESSION_ID") { id solved wins seq slots { position measureID flipH flipV } lastChange { kind a b } } } }
+```
+
+```graphql
+subscription {
+  musicSessionUpdated(sessionID: "SESSION_ID") {
+    session { id solved wins seq slots { position measureID flipH flipV } }
+    lastChange { kind a b }
+  }
+}
+```
+
+Every arrangement mutation returns the full session snapshot (`deleteSession`
+returns a boolean instead). `lastChange.kind` is `SWITCH`,
+`TRANSFORM`, `ARRANGE`, `RESET` or `SOLVE`. `SOLVE` marks the false→true solved
+transition, the only time `wins` increments; re-submitting a solved arrangement
+does not add another win. The subscription emits the current snapshot immediately
+and then every change; updates are coalesced (latest wins) and never replayed.
+
+Other calls: `renameSession(id, displayName)`, `deleteSession(id)` and
+`sessions(limit: 50)` list or manage sessions.
+
+## Tips
+
+- Solve from the target, not from the scramble: compare note multisets, never the
+  visual order of the bars.
+- A bar with no notes at all cannot be compared; the shipped library and every
+  valid score have at least one note per measure.
+- Both flips are their own inverse, so a mismatch usually means the wrong bar, not
+  the wrong direction.
+- Every bar is part of the challenge: `slots` always covers the whole excerpt, so
+  every measure must land in target order.

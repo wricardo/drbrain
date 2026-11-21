@@ -144,7 +144,7 @@ func newGraphQLServer(svc service.GameService, hub *websocket.Hub, opts Options)
 	}))
 	srv.AddTransport(transport.POST{})
 	srv.AddTransport(transport.Options{})
-	srv.AddTransport(&transport.Websocket{
+	ws := &transport.Websocket{
 		KeepAlivePingInterval: wsPingInterval,
 		// Clients that miss pongs for this long are dropped so dead peers do
 		// not hold subscriptions open until the kernel TCP timeout.
@@ -152,7 +152,18 @@ func newGraphQLServer(svc service.GameService, hub *websocket.Hub, opts Options)
 		// Sockets that never send connection_init are closed.
 		InitTimeout: initTimeout,
 		Upgrader:    newUpgrader(opts.AllowedOrigins),
-	})
+	}
+	if opts.Auth != nil {
+		ws.InitFunc = func(ctx context.Context, payload transport.InitPayload) (context.Context, *transport.InitPayload, error) {
+			if raw := auth.BearerToken(payload.Authorization()); raw != "" {
+				if acct, err := opts.Auth.ParseToken(raw); err == nil {
+					ctx = auth.WithViewer(ctx, &auth.Viewer{Account: acct, Token: raw})
+				}
+			}
+			return ctx, nil, nil
+		}
+	}
+	srv.AddTransport(ws)
 	srv.Use(extension.FixedComplexityLimit(ComplexityLimit))
 	if opts.Introspection {
 		srv.Use(extension.Introspection{})
@@ -186,7 +197,7 @@ func complexityRoot() generated.ComplexityRoot {
 		return safeMul(child, units) + leaderboardBaseCost
 	}
 	// playerRuns: one scan of every session, then up to one row per map.
-	c.Query.PlayerRuns = func(child int, _ []string, _ *string) int {
+	c.Query.PlayerRuns = func(child int, _ []string) int {
 		return safeMul(child, playerRunsRowCost) + leaderboardBaseCost
 	}
 	// playerRunsFor: the same scan plus one row per map.
@@ -272,28 +283,14 @@ func withHTTPRequest(next http.Handler) http.Handler {
 //
 // It also stores the sign-in hooks the password mutations need. Those are
 // absent on a websocket upgrade, which has no HTTP response to set a cookie on,
-// so signing in over a subscription is refused rather than handing out a login
-// the browser could never send back. With auth nil (sign-in off) the cookie is
-// never looked at.
+// With auth nil (sign-in off) the Authorization header is never looked at.
 func withViewer(a *auth.Auth, next http.Handler) http.Handler {
 	if a == nil {
 		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPost || isWebSocketUpgrade(r) {
-			if acct, token := a.Viewer(r); acct != nil {
-				r = r.WithContext(auth.WithViewer(r.Context(), &auth.Viewer{
-					Account: acct, Token: token, ClearSession: func() { a.ClearSession(w, r) },
-				}))
-			}
-			// The upgrade has no HTTP response to set a cookie on, so the hooks
-			// carry OverHTTP=false: a password mutation over a subscription is
-			// refused instead of minting a login the browser could never send back.
-			signIn := &auth.SignIn{
-				OverHTTP:   !isWebSocketUpgrade(r),
-				SetSession: func(token string, expires time.Time) { a.SetSession(w, r, token, expires) },
-			}
-			r = r.WithContext(auth.WithSignIn(r.Context(), signIn))
+		if acct, token := a.Viewer(r); acct != nil {
+			r = r.WithContext(auth.WithViewer(r.Context(), &auth.Viewer{Account: acct, Token: token}))
 		}
 		next.ServeHTTP(w, r)
 	})

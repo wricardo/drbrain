@@ -20,6 +20,16 @@ type AuthProvider struct {
 	Name string `json:"name"`
 }
 
+// A signed-in session: the bearer token to send as `Authorization: Bearer <token>`
+// on every request (HTTP and the graphql-ws `connection_init` message) plus the
+// player it belongs to. Tokens last 24 hours; there is no refresh token, so a
+// client stores it and signs in again when it expires.
+type AuthSession struct {
+	Token     string    `json:"token"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	User      *User     `json:"user"`
+}
+
 type Mutation struct {
 }
 

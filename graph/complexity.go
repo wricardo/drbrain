@@ -3,6 +3,7 @@ package graph
 import (
 	"math"
 
+	deliverymodel "github.com/wricardo/drbrain/games/delivery/graph/model"
 	mazesservice "github.com/wricardo/drbrain/games/mazes/game/service"
 	mazesmodel "github.com/wricardo/drbrain/games/mazes/graph/model"
 	motorservice "github.com/wricardo/drbrain/games/motor/game/service"
@@ -50,13 +51,16 @@ func Complexity() generated.ComplexityRoot {
 		}
 		return safeMul(child, (n+sessionsPerCostUnit-1)/sessionsPerCostUnit) + leaderboardBaseCost
 	}
-	c.Motor_Query.PlayerRuns = func(child int, _ []string, _ *string) int {
+	c.Motor_Query.PlayerRuns = func(child int, _ []string) int {
 		return safeMul(child, playerRunsRowCost) + leaderboardBaseCost
 	}
 	c.Motor_Query.PlayerRunsFor = func(child int, _ string) int {
 		return safeMul(child, playerRunsRowCost) + leaderboardBaseCost
 	}
 	c.Motor_Mutation.ClaimSessions = func(child int, claims []*motormodel.SessionClaimInput) int {
+		return safeMul(child, len(claims)) + 1
+	}
+	c.Delivery_Mutation.ClaimSessions = func(child int, claims []*deliverymodel.SessionClaimInput) int {
 		return safeMul(child, len(claims)) + 1
 	}
 	return c

@@ -36,6 +36,7 @@ func (s *Session) Summary() Summary {
 		Reputation: s.world.Ledger.Reputation,
 		Deliveries: s.world.Ledger.Deliveries,
 		Loaded:     true,
+		AccountID:  s.accountID,
 	}
 }
 

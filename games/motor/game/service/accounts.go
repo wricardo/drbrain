@@ -5,7 +5,6 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
-	"strings"
 
 	"github.com/wricardo/drbrain/platform/account"
 	"github.com/wricardo/drbrain/platform/errs"
@@ -44,28 +43,21 @@ type Account = account.Account
 // attach the session to an account later (ClaimSessions); a session id alone
 // never can, because ids are public (spectator links).
 //
-// An empty displayName from a signed-in caller defaults to the account's display
-// name, not a random guest name: the player is not a guest, and the name is what
-// the play and watch pages show for the session.
-func (svc *gameService) CreateOwnedSession(mapID, displayName, accountID string) (*Session, string, error) {
-	var owner *account.Account
+// A signed-in caller's session belongs to their account, so the boards show the
+// account's display name; a guest session is shown as "Guest".
+func (svc *gameService) CreateOwnedSession(mapID, accountID string) (*Session, string, error) {
 	if accountID != "" {
 		if svc.opts.Accounts == nil {
 			accountID = ""
-		} else if a, ok := svc.opts.Accounts.Lookup(accountID); ok {
-			owner = &a
-		} else {
+		} else if _, ok := svc.opts.Accounts.Lookup(accountID); !ok {
 			accountID = ""
 		}
-	}
-	if owner != nil && strings.TrimSpace(displayName) == "" {
-		displayName = owner.DisplayName
 	}
 	token, hash, err := newOwnerToken()
 	if err != nil {
 		return nil, "", err
 	}
-	s, err := svc.createSession(mapID, displayName, accountID, hash)
+	s, err := svc.createSession(mapID, accountID, hash)
 	if err != nil {
 		return nil, "", err
 	}
@@ -222,8 +214,8 @@ func publicAccountName(a *account.Account, max int) (name, handle string) {
 	return PublicName(a.DisplayName, max), a.Handle
 }
 
-// DetachAccount turns every session owned by id into a guest session under a
-// fresh random name. It runs from the global account service's delete hook.
+// DetachAccount turns every session owned by id into a guest session. It runs
+// from the global account service's delete hook.
 func (svc *gameService) DetachAccount(id string) error {
 	for _, s := range svc.sessions.List() {
 		s.Lock()
@@ -231,7 +223,6 @@ func (svc *gameService) DetachAccount(id string) error {
 		var snap *Session
 		if owned {
 			s.AccountID = ""
-			s.DisplayName = account.GuestName(svc.opts.MaxDisplayName)
 			touch(s)
 			snap = s.Clone()
 		}

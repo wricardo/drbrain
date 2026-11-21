@@ -19,6 +19,7 @@ export default defineConfig({
 			'/graphql': { target: backend, ws: true },
 			'/auth': { target: backend },
 			'/mazes/llms.txt': { target: backend },
+			'/music/llms.txt': { target: backend },
 			'/motor/llms.txt': { target: backend },
 			'/tesla/mcp': { target: backend },
 			'/tesla/llms.txt': { target: backend },

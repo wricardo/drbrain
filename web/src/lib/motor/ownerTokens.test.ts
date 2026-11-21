@@ -15,9 +15,9 @@ beforeEach(() => localStorage.clear());
 
 describe('owner tokens', () => {
 	it('are remembered with the session and offered for claiming', () => {
-		rememberSession('aaaaaaaaaaaaaaaa', 'BraveOtter', 'tok-a');
-		rememberSession('bbbbbbbbbbbbbbbb', undefined, 'tok-b');
-		rememberSession('cccccccccccccccc', undefined, null); // sessions without a token cannot be claimed
+		rememberSession('aaaaaaaaaaaaaaaa', 'tok-a');
+		rememberSession('bbbbbbbbbbbbbbbb', 'tok-b');
+		rememberSession('cccccccccccccccc', null); // sessions without a token cannot be claimed
 		expect(ownerTokens()).toEqual({ aaaaaaaaaaaaaaaa: 'tok-a', bbbbbbbbbbbbbbbb: 'tok-b' });
 		expect(claimableSessions()).toEqual([
 			{ sessionID: 'aaaaaaaaaaaaaaaa', ownerToken: 'tok-a' },
@@ -78,8 +78,8 @@ describe('leaderboard rows of accounts', () => {
 
 	it('link to the profile, the runs by name, or nowhere', () => {
 		expect(playerHref({ displayName: 'Ada L', handle: 'ada' })).toBe('/u/ada');
-		expect(playerHref({ displayName: 'BraveOtter', handle: null })).toBe('/motor/runs?name=BraveOtter');
+		expect(playerHref({ displayName: 'Guest', handle: null })).toBeNull();
 		expect(playerHref({ displayName: 'Private player', handle: null })).toBeNull();
-		expect(playerHref({ displayName: 'Anonymous', handle: null })).toBeNull();
+		expect(playerHref({ displayName: 'Private player', handle: null })).toBeNull();
 	});
 });

@@ -1,127 +1,126 @@
 <script lang="ts">
 	import { getContextClient } from '@urql/svelte';
-	import { normalizeHandle, handleProblem, passwordProblem, safeNext, submitPassword, type PasswordMode } from '$lib/account/account';
+	import { handleProblem, passwordProblem, safeNext, submitPassword, type PasswordMode } from '$lib/account/account';
+	import Button from '@drbrain/ui/components/Button.svelte';
+	import Input from '@drbrain/ui/components/Input.svelte';
 
-	/**
-	 * Username and password sign-in / sign-up. The username is the public handle. There is no email,
-	 * so there is no password reset, and the form says so before an account is created. On success the
-	 * server has set the login cookie and the page is reloaded at `next` so everything sees the player.
-	 */
 	let {
+		mode = 'login',
 		next,
 		onsuccess = (to: string) => window.location.assign(to)
-	}: { next: string; onsuccess?: (to: string) => void } = $props();
+	}: { mode?: PasswordMode; next: string; onsuccess?: (to: string) => void } = $props();
 
+	const id = $props.id();
 	const client = getContextClient();
-
-	let mode = $state<PasswordMode>('login');
 	let handle = $state('');
 	let password = $state('');
 	let show = $state(false);
 	let busy = $state(false);
+	let attempted = $state(false);
+	let touchedHandle = $state(false);
+	let touchedPassword = $state(false);
 	let error = $state('');
 
 	const registering = $derived(mode === 'register');
-	const handleHint = $derived(registering && handle ? handleProblem(handle) : null);
-	const passwordHint = $derived(registering && password ? passwordProblem(password, handle) : null);
-	const ready = $derived(
-		!busy && handle.trim() !== '' && password !== '' && (!registering || (!handleProblem(handle) && !passwordProblem(password, handle)))
-	);
+	const handleError = $derived(registering ? handleProblem(handle) : handle.trim() ? null : 'Enter your username.');
+	const passwordError = $derived(registering ? passwordProblem(password, handle) : password ? null : 'Enter your password.');
+	const handleHint = $derived(attempted || touchedHandle ? handleError : null);
+	const passwordHint = $derived(attempted || touchedPassword ? passwordError : null);
 
 	async function submit(e: SubmitEvent) {
 		e.preventDefault();
-		if (!ready) return;
-		busy = true;
+		attempted = true;
 		error = '';
+		if (busy) return;
+		if (handleError || passwordError) {
+			const form = e.currentTarget as HTMLFormElement;
+			const invalid = form.elements.namedItem(handleError ? 'username' : 'password');
+			if (invalid instanceof HTMLInputElement) invalid.focus();
+			return;
+		}
+		busy = true;
 		const result = await submitPassword(mode, handle, password, client);
-		busy = false;
 		if (result.ok) {
-			password = '';
 			onsuccess(safeNext(next));
 		} else {
+			busy = false;
 			error = result.message;
 		}
 	}
-
-	function choose(m: PasswordMode) {
-		mode = m;
-		error = '';
-	}
-
-	const field = 'w-full rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-sm';
-	const tab = 'flex-1 rounded-full px-3 py-1 text-sm font-medium';
 </script>
 
-<form onsubmit={submit} class="space-y-3" data-testid="password-form" aria-label="Username and password">
-	<div class="flex gap-1 rounded-full border border-indigo-200 p-0.5" role="group" aria-label="Sign in or create an account">
-		<button
-			type="button"
-			aria-pressed={!registering}
-			class="{tab} {!registering ? 'bg-indigo-600 text-white' : 'text-indigo-900 hover:bg-indigo-100'}"
-			onclick={() => choose('login')}
-			data-testid="pw-tab-login">Sign in</button
-		>
-		<button
-			type="button"
-			aria-pressed={registering}
-			class="{tab} {registering ? 'bg-indigo-600 text-white' : 'text-indigo-900 hover:bg-indigo-100'}"
-			onclick={() => choose('register')}
-			data-testid="pw-tab-register">Create account</button
-		>
-	</div>
-
-	<div>
-		<label for="pw-handle" class="block text-sm font-medium text-indigo-950">Username</label>
-		<input
-			id="pw-handle"
-			class={field}
+<form onsubmit={submit} novalidate class="password-form" data-testid="password-form" aria-label="Username and password" aria-busy={busy}>
+	<div class="field">
+		<label for="{id}-handle">Username</label>
+		<Input
+			id="{id}-handle"
+			name="username"
 			bind:value={handle}
-			maxlength="21"
+			maxlength={21}
 			autocomplete="username"
 			autocapitalize="none"
-			spellcheck="false"
+			spellcheck={false}
+			required
+			readonly={busy}
+			aria-invalid={!!handleHint}
+			aria-describedby={registering || handleHint ? `${id}-handle-help` : undefined}
+			onblur={() => (touchedHandle = true)}
+			oninput={() => (error = '')}
 			data-testid="pw-handle"
 		/>
-		{#if registering}
-			<p class="mt-1 text-xs text-slate-600">
-				This is your public handle, shown on the leaderboard: 3-20 lower-case letters, digits or underscores. Don't use your real name.
-			</p>
-			{#if handleHint}<p class="mt-1 text-xs text-rose-700" role="alert">{handleHint}</p>{/if}
+		{#if handleHint}
+			<p id="{id}-handle-help" class="field-error" role="alert">{handleHint}</p>
+		{:else if registering}
+			<p id="{id}-handle-help" class="hint">Your public handle. Use 3–20 letters, numbers or underscores.</p>
 		{/if}
 	</div>
 
-	<div>
-		<label for="pw-password" class="block text-sm font-medium text-indigo-950">Password</label>
-		<input
-			id="pw-password"
-			class={field}
-			type={show ? 'text' : 'password'}
-			bind:value={password}
-			autocomplete={registering ? 'new-password' : 'current-password'}
-			data-testid="pw-password"
-		/>
-		<label class="mt-1 flex items-center gap-2 text-xs text-slate-600">
-			<input type="checkbox" bind:checked={show} /> Show password
-		</label>
-		{#if registering}
-			<p class="mt-1 text-xs text-slate-600">At least 8 characters; a few random words make a good one.</p>
-			{#if passwordHint}<p class="mt-1 text-xs text-rose-700" role="alert">{passwordHint}</p>{/if}
+	<div class="field">
+		<label for="{id}-password">Password</label>
+		<div class="secret">
+			<Input
+				id="{id}-password"
+				name="password"
+				type={show ? 'text' : 'password'}
+				bind:value={password}
+				autocomplete={registering ? 'new-password' : 'current-password'}
+				required
+				readonly={busy}
+				aria-invalid={!!passwordHint}
+				aria-describedby={registering || passwordHint ? `${id}-password-help` : undefined}
+				onblur={() => (touchedPassword = true)}
+				oninput={() => (error = '')}
+				data-testid="pw-password"
+			/>
+			<button type="button" aria-label={show ? 'Hide password' : 'Show password'} aria-controls="{id}-password" onclick={() => (show = !show)}>
+				{show ? 'Hide' : 'Show'}
+			</button>
+		</div>
+		{#if passwordHint}
+			<p id="{id}-password-help" class="field-error" role="alert">{passwordHint}</p>
+		{:else if registering}
+			<p id="{id}-password-help" class="hint">Use at least 8 characters.</p>
 		{/if}
 	</div>
 
 	{#if registering}
-		<p class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900" data-testid="pw-warning">
-			<strong>No email, no reset.</strong> We don't keep an email address, so if you forget this password nobody can get the account back for
-			you. Pick one you will remember, or write it down.
-		</p>
+		<p class="hint" data-testid="pw-warning">Keep your password somewhere safe. Password accounts have no email for recovery.</p>
 	{/if}
-
-	{#if error}<p class="text-sm text-rose-700" role="alert" data-testid="pw-error">{error}</p>{/if}
-
-	<button
-		type="submit"
-		class="w-full rounded-full bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
-		disabled={!ready}
-		data-testid="pw-submit">{busy ? 'Please wait…' : registering ? 'Create account' : 'Sign in'}</button
-	>
+	{#if error}<p class="request-error" role="alert" data-testid="pw-error">{error}</p>{/if}
+	<Button type="submit" disabled={busy} data-testid="pw-submit" class="w-full">
+		{busy ? registering ? 'Creating your account…' : 'Signing in…' : registering ? 'Create account' : 'Sign in'}
+	</Button>
 </form>
+
+<style>
+	.password-form { display: grid; gap: .95rem; }
+	.field { display: grid; gap: .36rem; }
+	label { font-size: .85rem; font-weight: 680; }
+	.secret { position: relative; }
+	.secret :global(input) { padding-inline-end: 4.2rem; }
+	.secret button { position: absolute; inset: 1px 1px 1px auto; min-width: 60px; border-radius: 9px; color: var(--db-brand); font-size: .82rem; font-weight: 680; cursor: pointer; }
+	.secret button:hover { background: var(--db-tint); }
+	.hint, .field-error, .request-error { color: var(--db-muted); font-size: .8rem; line-height: 1.45; }
+	.field-error, .request-error { color: var(--db-danger); }
+	.request-error { padding: .7rem .85rem; background: var(--db-tint); border-radius: 8px; }
+</style>

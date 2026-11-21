@@ -8,7 +8,7 @@
 	import { describeError, type DescribedError } from '@drbrain/ui/errors';
 	import { DIFFICULTY_FILTERS, countByDifficulty, filterMaps, groupMaps, isOfficial, sortMaps, type DifficultyFilter } from '$lib/motor/maps';
 	import { CREATE_SESSION_MUTATION, MAPS_QUERY } from '$lib/motor/queries';
-	import { newSessionName, rememberSession } from '$lib/motor/sessions';
+	import { rememberSession } from '$lib/motor/sessions';
 	import { account } from '$lib/account/stores/account';
 	import type { GameMap, Session } from '$lib/motor/types';
 
@@ -42,9 +42,9 @@
 		error = null;
 		try {
 			const data = await unwrap<{ createSession: Session }>(
-				client.mutation(CREATE_SESSION_MUTATION, { mapID: map.id, displayName: newSessionName(!!$account.me) })
+				client.mutation(CREATE_SESSION_MUTATION, { mapID: map.id })
 			);
-			rememberSession(data.createSession.id, data.createSession.displayName, data.createSession.ownerToken);
+			rememberSession(data.createSession.id, data.createSession.ownerToken);
 			await goto(`/motor/play/${data.createSession.id}`);
 		} catch (e) {
 			error = describeError(e);

@@ -9,10 +9,9 @@
     "./time": "./src/time.ts",
     "./errors": "./src/errors.ts",
     "./session": "./src/session.ts",
-    "./components/AiPromptCard.svelte": "./src/components/AiPromptCard.svelte",
-    "./components/ConnectionBadge.svelte": "./src/components/ConnectionBadge.svelte",
-    "./components/Cookie.svelte": "./src/components/Cookie.svelte",
-    "./components/ShortcutsDialog.svelte": "./src/components/ShortcutsDialog.svelte"
+    "./catalog": "./src/catalog.ts",
+    "./tokens.css": "./src/tokens.css",
+    "./components/*": "./src/components/*"
   },
   "dependencies": {
     "@urql/svelte": "^5.0.0",

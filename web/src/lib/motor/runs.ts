@@ -33,18 +33,6 @@ export function countRows(rows: RunRow[]): Record<RunFilter, number> {
 	return { all: rows.length, solved, unsolved: rows.length - solved };
 }
 
-/** Link to a player's runs by display name; null for an empty name. */
-export function runsHref(name: string): string | null {
-	const n = name.trim();
-	return n ? `/motor/runs?name=${encodeURIComponent(n)}` : null;
-}
-
-/** Absolute shareable link for a player's runs, or null for an empty name. */
-export function shareUrl(origin: string, name: string): string | null {
-	const href = runsHref(name);
-	return href ? `${origin}${href}` : null;
-}
-
 /** "5 slots · 8 steps" for a run. */
 export function runText(run: PlayerRun): string {
 	const { slots, steps } = run.entry;

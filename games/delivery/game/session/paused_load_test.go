@@ -15,7 +15,7 @@ import (
 // is stopped, and the tick count does not move while it sits open.
 func TestReloadStartsPausedEvenIfSavedRunning(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, err := mgr.Create("paused-on-load", 11)
+	sess, _, err := mgr.Create("paused-on-load", 11, "")
 	if err != nil {
 		t.Fatal(err)
 	}

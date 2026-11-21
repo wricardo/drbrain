@@ -22,7 +22,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -60,47 +59,33 @@ type persistedAccount struct {
 	PasswordHash string `json:"password_hash,omitempty"`
 }
 
-// persistedLogin is the JSON form of a login (the file name is its token hash).
-type persistedLogin struct {
-	SchemaVersion int       `json:"schema_version"`
-	AccountID     string    `json:"account_id"`
-	CreatedAt     time.Time `json:"created_at"`
-	ExpiresAt     time.Time `json:"expires_at"`
-}
-
 // Store implements Repository on the file system.
 type Store struct {
 	accountsDir string
-	loginsDir   string
 	now         func() time.Time
 
 	mu         sync.RWMutex
-	accounts   map[string]Account  // id -> account
-	byHandle   map[string]string   // lower-case handle -> id
-	byIdentity map[string]string   // provider + "\x00" + user id -> id
-	logins     map[string]Login    // token hash -> login
-	byAccount  map[string][]string // account id -> login hashes, oldest first
+	accounts   map[string]Account // id -> account
+	byHandle   map[string]string  // lower-case handle -> id
+	byIdentity map[string]string  // provider + "\x00" + user id -> id
 }
 
 var _ Repository = (*Store)(nil)
 
-// Open creates the directory layout if needed and loads every account and
-// unexpired login. Corrupt files are logged and skipped. now may be nil.
+// Open creates the directory layout if needed and loads every account. Corrupt
+// files are logged and skipped. now may be nil.
 func Open(dir string, now func() time.Time) (*Store, error) {
 	if now == nil {
 		now = time.Now
 	}
 	s := &Store{
 		accountsDir: filepath.Join(dir, "accounts"),
-		loginsDir:   filepath.Join(dir, "logins"),
 		now:         now,
 		accounts:    make(map[string]Account),
 		byHandle:    make(map[string]string),
 		byIdentity:  make(map[string]string),
-		logins:      make(map[string]Login),
-		byAccount:   make(map[string][]string),
 	}
-	for _, d := range []string{s.accountsDir, s.loginsDir} {
+	for _, d := range []string{s.accountsDir} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			return nil, fmt.Errorf("create accounts directory: %w", err)
 		}
@@ -114,7 +99,6 @@ func Open(dir string, now func() time.Time) (*Store, error) {
 func identityKey(provider, userID string) string { return provider + "\x00" + userID }
 
 func (s *Store) accountPath(id string) string { return filepath.Join(s.accountsDir, id+fileExt) }
-func (s *Store) loginPath(h string) string    { return filepath.Join(s.loginsDir, h+fileExt) }
 
 func (s *Store) load() error {
 	entries, err := os.ReadDir(s.accountsDir)
@@ -142,34 +126,6 @@ func (s *Store) load() error {
 		s.index(a)
 	}
 
-	entries, err = os.ReadDir(s.loginsDir)
-	if err != nil {
-		return fmt.Errorf("read logins directory: %w", err)
-	}
-	now := s.now()
-	var logins []Login
-	for _, e := range entries {
-		h := strings.TrimSuffix(e.Name(), fileExt)
-		if e.IsDir() || !strings.HasSuffix(e.Name(), fileExt) || !hashRE.MatchString(h) {
-			continue
-		}
-		raw, err := os.ReadFile(s.loginPath(h))
-		var pl persistedLogin
-		if err == nil {
-			err = json.Unmarshal(raw, &pl)
-		}
-		_, known := s.accounts[pl.AccountID]
-		if err != nil || pl.SchemaVersion != SchemaVersion || !known || !now.Before(pl.ExpiresAt) {
-			_ = os.Remove(s.loginPath(h)) // expired, orphaned or unreadable: nothing to keep
-			continue
-		}
-		logins = append(logins, Login{TokenHash: h, AccountID: pl.AccountID, CreatedAt: pl.CreatedAt, ExpiresAt: pl.ExpiresAt})
-	}
-	sort.Slice(logins, func(i, j int) bool { return logins[i].CreatedAt.Before(logins[j].CreatedAt) })
-	for _, l := range logins {
-		s.logins[l.TokenHash] = l
-		s.byAccount[l.AccountID] = append(s.byAccount[l.AccountID], l.TokenHash)
-	}
 	return nil
 }
 
@@ -315,7 +271,7 @@ func (s *Store) Update(id string, fn func(*Account) error) (Account, error) {
 	return next, nil
 }
 
-// Delete removes the account file, its logins and its index entries.
+// Delete removes the account file and its index entries.
 func (s *Store) Delete(id string) error {
 	if !idRE.MatchString(id) {
 		return ErrInvalidID
@@ -326,15 +282,6 @@ func (s *Store) Delete(id string) error {
 	if !ok {
 		return errs.Errorf(errs.CodeNotFound, "account not found")
 	}
-	// Logins first: with the account file gone they could never match again,
-	// but nothing sensitive should linger after a delete.
-	for _, h := range s.byAccount[id] {
-		if err := os.Remove(s.loginPath(h)); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("remove login: %w", err)
-		}
-		delete(s.logins, h)
-	}
-	delete(s.byAccount, id)
 	if err := os.Remove(s.accountPath(id)); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove account: %w", err)
 	}
@@ -344,94 +291,6 @@ func (s *Store) Delete(id string) error {
 	delete(s.accounts, id)
 	delete(s.byHandle, a.Handle)
 	delete(s.byIdentity, identityKey(a.Provider, a.ProviderUserID))
-	return nil
-}
-
-// PutLogin stores a login and drops the account's oldest ones beyond
-// MaxLoginsPerAccount.
-func (s *Store) PutLogin(l Login) error {
-	if !hashRE.MatchString(l.TokenHash) {
-		return ErrInvalidID
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.accounts[l.AccountID]; !ok {
-		return errs.Errorf(errs.CodeNotFound, "account not found")
-	}
-	if err := writeJSON(s.loginsDir, l.TokenHash, persistedLogin{
-		SchemaVersion: SchemaVersion, AccountID: l.AccountID, CreatedAt: l.CreatedAt, ExpiresAt: l.ExpiresAt,
-	}); err != nil {
-		return err
-	}
-	s.logins[l.TokenHash] = l
-	s.byAccount[l.AccountID] = append(s.byAccount[l.AccountID], l.TokenHash)
-	for hs := s.byAccount[l.AccountID]; len(hs) > MaxLoginsPerAccount; hs = s.byAccount[l.AccountID] {
-		old := hs[0]
-		s.byAccount[l.AccountID] = hs[1:]
-		delete(s.logins, old)
-		_ = os.Remove(s.loginPath(old))
-	}
-	return nil
-}
-
-// GetLogin returns a login by token hash.
-func (s *Store) GetLogin(tokenHash string) (Login, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	l, ok := s.logins[tokenHash]
-	return l, ok
-}
-
-// DeleteOtherLogins removes every login of the account except keepHash (pass ""
-// to remove them all).
-func (s *Store) DeleteOtherLogins(accountID, keepHash string) error {
-	if !idRE.MatchString(accountID) || (keepHash != "" && !hashRE.MatchString(keepHash)) {
-		return ErrInvalidID
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	var kept []string
-	var firstErr error
-	for _, h := range s.byAccount[accountID] {
-		if h == keepHash {
-			kept = append(kept, h)
-			continue
-		}
-		if err := os.Remove(s.loginPath(h)); err != nil && !os.IsNotExist(err) {
-			if firstErr == nil {
-				firstErr = fmt.Errorf("remove login: %w", err)
-			}
-			kept = append(kept, h) // still on disk: keep tracking it
-			continue
-		}
-		delete(s.logins, h)
-	}
-	s.byAccount[accountID] = kept
-	return firstErr
-}
-
-// DeleteLogin removes one login; unknown hashes are ignored.
-func (s *Store) DeleteLogin(tokenHash string) error {
-	if !hashRE.MatchString(tokenHash) {
-		return ErrInvalidID
-	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	l, ok := s.logins[tokenHash]
-	if !ok {
-		return nil
-	}
-	delete(s.logins, tokenHash)
-	hs := s.byAccount[l.AccountID]
-	for i, h := range hs {
-		if h == tokenHash {
-			s.byAccount[l.AccountID] = append(hs[:i:i], hs[i+1:]...)
-			break
-		}
-	}
-	if err := os.Remove(s.loginPath(tokenHash)); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("remove login: %w", err)
-	}
 	return nil
 }
 

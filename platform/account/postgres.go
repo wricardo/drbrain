@@ -14,15 +14,13 @@ import (
 	"github.com/wricardo/drbrain/platform/pgdb"
 )
 
-// PostgresStore implements Repository on the accounts and logins
-// tables. The database enforces what the file store enforces in Go:
+// PostgresStore implements Repository on the accounts table. The database
+// enforces what the file store enforces in Go:
 //
 //   - handles are unique ignoring case (unique index on lower(handle));
 //   - a provider identity belongs to one account (unique index);
-//   - deleting an account removes its logins (ON DELETE CASCADE) and leaves its
-//     sessions as guest rows (ON DELETE SET NULL on sessions.account_id);
-//   - PutLogin takes the account's row lock, so two browsers signing in at once
-//     cannot both slip past MaxLoginsPerAccount.
+//   - deleting an account leaves its sessions as guest rows (ON DELETE SET NULL
+//     on sessions.account_id).
 type PostgresStore struct {
 	pool *pgxpool.Pool
 }
@@ -207,100 +205,6 @@ func (s *PostgresStore) Delete(id string) error {
 	return nil
 }
 
-// PutLogin stores a login and drops the account's oldest ones beyond
-// MaxLoginsPerAccount, in one transaction under the account's row lock.
-func (s *PostgresStore) PutLogin(l Login) error {
-	if !hashRE.MatchString(l.TokenHash) {
-		return ErrInvalidID
-	}
-	c, cancel := queryCtx()
-	defer cancel()
-	tx, err := s.pool.Begin(c)
-	if err != nil {
-		return fmt.Errorf("put login: %w", err)
-	}
-	defer func() { _ = tx.Rollback(context.Background()) }()
-
-	// The lock serialises concurrent sign-ins of one account; it also proves the account exists.
-	var locked string
-	if err := tx.QueryRow(c, `SELECT id FROM accounts WHERE id = $1 FOR UPDATE`, l.AccountID).Scan(&locked); err != nil {
-		if pgdb.IsNoRows(err) {
-			return errs.Errorf(errs.CodeNotFound, "account not found")
-		}
-		return fmt.Errorf("put login: %w", err)
-	}
-	if _, err := tx.Exec(c, `
-INSERT INTO logins (token_hash, account_id, created_at, expires_at) VALUES ($1, $2, $3, $4)
-ON CONFLICT (token_hash) DO UPDATE SET account_id = EXCLUDED.account_id, created_at = EXCLUDED.created_at, expires_at = EXCLUDED.expires_at`,
-		l.TokenHash, l.AccountID, l.CreatedAt, l.ExpiresAt); err != nil {
-		return fmt.Errorf("put login: %w", err)
-	}
-	if _, err := tx.Exec(c, `
-DELETE FROM logins WHERE account_id = $1 AND token_hash NOT IN (
-    SELECT token_hash FROM logins WHERE account_id = $1 ORDER BY created_at DESC, token_hash DESC LIMIT $2)`,
-		l.AccountID, MaxLoginsPerAccount); err != nil {
-		return fmt.Errorf("put login: %w", err)
-	}
-	if err := tx.Commit(c); err != nil {
-		return fmt.Errorf("put login: %w", err)
-	}
-	return nil
-}
-
-// GetLogin returns a login by token hash.
-func (s *PostgresStore) GetLogin(tokenHash string) (Login, bool) {
-	if !hashRE.MatchString(tokenHash) {
-		return Login{}, false
-	}
-	c, cancel := queryCtx()
-	defer cancel()
-	var l Login
-	err := s.pool.QueryRow(c, `SELECT token_hash, account_id, created_at, expires_at FROM logins WHERE token_hash = $1`, tokenHash).
-		Scan(&l.TokenHash, &l.AccountID, &l.CreatedAt, &l.ExpiresAt)
-	if err != nil {
-		return Login{}, false
-	}
-	l.CreatedAt, l.ExpiresAt = l.CreatedAt.UTC(), l.ExpiresAt.UTC()
-	return l, true
-}
-
-// DeleteOtherLogins removes every login of the account except keepHash (pass "" to remove them all).
-func (s *PostgresStore) DeleteOtherLogins(accountID, keepHash string) error {
-	if !idRE.MatchString(accountID) || (keepHash != "" && !hashRE.MatchString(keepHash)) {
-		return ErrInvalidID
-	}
-	c, cancel := queryCtx()
-	defer cancel()
-	if _, err := s.pool.Exec(c, `DELETE FROM logins WHERE account_id = $1 AND token_hash <> $2`, accountID, keepHash); err != nil {
-		return fmt.Errorf("remove logins: %w", err)
-	}
-	return nil
-}
-
-// DeleteLogin removes one login; unknown hashes are ignored.
-func (s *PostgresStore) DeleteLogin(tokenHash string) error {
-	if !hashRE.MatchString(tokenHash) {
-		return ErrInvalidID
-	}
-	c, cancel := queryCtx()
-	defer cancel()
-	if _, err := s.pool.Exec(c, `DELETE FROM logins WHERE token_hash = $1`, tokenHash); err != nil {
-		return fmt.Errorf("remove login: %w", err)
-	}
-	return nil
-}
-
-// SweepLogins deletes every login that has expired and returns how many it removed.
-func (s *PostgresStore) SweepLogins(now time.Time) (int, error) {
-	c, cancel := queryCtx()
-	defer cancel()
-	tag, err := s.pool.Exec(c, `DELETE FROM logins WHERE expires_at <= $1`, now)
-	if err != nil {
-		return 0, fmt.Errorf("sweep logins: %w", err)
-	}
-	return int(tag.RowsAffected()), nil
-}
-
 // Accounts returns every account (with password hashes), oldest first. It is
 // for the JSON export; the service never calls it.
 func (s *PostgresStore) Accounts() ([]Account, error) {
@@ -318,27 +222,6 @@ func (s *PostgresStore) Accounts() ([]Account, error) {
 			return nil, fmt.Errorf("list accounts: %w", err)
 		}
 		out = append(out, a)
-	}
-	return out, rows.Err()
-}
-
-// Logins returns every unexpired login, oldest first (for the JSON export).
-func (s *PostgresStore) Logins(now time.Time) ([]Login, error) {
-	c, cancel := queryCtx()
-	defer cancel()
-	rows, err := s.pool.Query(c, `SELECT token_hash, account_id, created_at, expires_at FROM logins WHERE expires_at > $1 ORDER BY created_at, token_hash`, now)
-	if err != nil {
-		return nil, fmt.Errorf("list logins: %w", err)
-	}
-	defer rows.Close()
-	var out []Login
-	for rows.Next() {
-		var l Login
-		if err := rows.Scan(&l.TokenHash, &l.AccountID, &l.CreatedAt, &l.ExpiresAt); err != nil {
-			return nil, fmt.Errorf("list logins: %w", err)
-		}
-		l.CreatedAt, l.ExpiresAt = l.CreatedAt.UTC(), l.ExpiresAt.UTC()
-		out = append(out, l)
 	}
 	return out, rows.Err()
 }

@@ -16,7 +16,6 @@ type Session struct {
 	mu sync.Mutex
 
 	ID           string
-	DisplayName  string
 	MapID        string
 	Map          *engine.Map
 	Program      engine.Program
@@ -55,7 +54,7 @@ func (s *Session) Unlock() { s.mu.Unlock() }
 // never mutated after creation). Caller must hold the lock if s is live.
 func (s *Session) Clone() *Session {
 	c := &Session{
-		ID: s.ID, DisplayName: s.DisplayName, MapID: s.MapID, Map: s.Map,
+		ID: s.ID, MapID: s.MapID, Map: s.Map,
 		Program: s.Program.Clone(), VM: s.VM.Clone(), Playing: s.Playing, SpeedMs: s.SpeedMs,
 		Seq: s.Seq, CreatedAt: s.CreatedAt, LastActionAt: s.LastActionAt,
 		Attempts: s.Attempts, BestSteps: s.BestSteps,
@@ -86,18 +85,17 @@ type SessionFilter struct {
 
 // GameService is the single facade used by every transport (GraphQL today).
 type GameService interface {
-	CreateSession(mapID, displayName string) (*Session, error)
+	CreateSession(mapID string) (*Session, error)
 	// CreateOwnedSession is CreateSession for a caller that may be signed in:
 	// the session is attached to accountID (when not empty) and a secret owner
 	// token is returned (only its hash is kept).
-	CreateOwnedSession(mapID, displayName, accountID string) (*Session, string, error)
+	CreateOwnedSession(mapID, accountID string) (*Session, string, error)
 	GetSession(id string) (*Session, error)
 	ListSessions(f SessionFilter) ([]*Session, error)
 	DeleteSession(id string) error
-	RenameSession(id, name string) (*Session, error)
-	// AuthorizeSessionChange checks that actor may delete or rename the session:
+	// AuthorizeSessionChange checks that actor may delete the session:
 	// always for guest sessions, only the owning account (or the owner token) for
-	// a signed-in player's. Transports call it before DeleteSession/RenameSession.
+	// a signed-in player's. Transports call it before DeleteSession.
 	AuthorizeSessionChange(id string, actor SessionActor) error
 	// AuthorizeSessionEdit checks that actor may write the session's program
 	// (setProgram) and therefore read it back: the creator proves it with the
@@ -123,8 +121,8 @@ type GameService interface {
 	// GetLeaderboard ranks the winning sessions of a map (see LeaderboardQuery).
 	// Errors: NOT_FOUND (unknown map), INVALID_ARGUMENT (bad order or limit).
 	GetLeaderboard(q LeaderboardQuery) (*Leaderboard, error)
-	// GetPlayerRuns returns the best run per won map for a set of session ids
-	// or a display name (see RunsQuery). Errors: INVALID_ARGUMENT.
+	// GetPlayerRuns returns the best run per won map for a set of session ids or
+	// the viewer's account (see RunsQuery). Errors: INVALID_ARGUMENT.
 	GetPlayerRuns(q RunsQuery) ([]PlayerRun, error)
 
 	// ClaimSessions attaches sessions to an account using their owner tokens.

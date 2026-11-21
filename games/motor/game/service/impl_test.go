@@ -4,7 +4,6 @@ import (
 	"reflect"
 	"regexp"
 	"runtime"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -19,15 +18,15 @@ const tick = 50 * time.Millisecond // fastest allowed speed
 func TestCreateSession(t *testing.T) {
 	e := newEnv(t, envOpts{})
 
-	s, err := e.svc.CreateSession("corridor", "  Ada  ")
+	s, err := e.svc.CreateSession("corridor")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !regexp.MustCompile(`^[0-9a-f]{16}$`).MatchString(s.ID) {
 		t.Fatalf("id %q is not 8 random bytes hex", s.ID)
 	}
-	if s.DisplayName != "Ada" || s.MapID != "corridor" {
-		t.Fatalf("name/map = %q/%q", s.DisplayName, s.MapID)
+	if s.MapID != "corridor" {
+		t.Fatalf("map = %q", s.MapID)
 	}
 	if s.Seq != 1 || s.Playing || s.Attempts != 0 || s.BestSteps != 0 || s.SpeedMs != service.DefaultSpeedMs {
 		t.Fatalf("unexpected initial state: %+v", s)
@@ -47,52 +46,8 @@ func TestCreateSession(t *testing.T) {
 		t.Fatal("duplicate session id")
 	}
 
-	_, err = e.svc.CreateSession("nope", "")
+	_, err = e.svc.CreateSession("nope")
 	wantCode(t, err, service.CodeNotFound)
-	_, err = e.svc.CreateSession("corridor", strings.Repeat("x", 41))
-	wantCode(t, err, service.CodeInvalidArgument)
-	if _, err = e.svc.CreateSession("corridor", strings.Repeat("é", 40)); err != nil {
-		t.Fatalf("40 multibyte characters must fit: %v", err)
-	}
-}
-
-func TestCustomDisplayNameLimit(t *testing.T) {
-	e := newEnv(t, envOpts{svcOpts: service.Options{MaxDisplayName: 5}})
-	if _, err := e.svc.CreateSession("corridor", "abcdef"); err == nil {
-		t.Fatal("6 characters accepted with limit 5")
-	} else {
-		wantCode(t, err, service.CodeInvalidArgument)
-	}
-	if _, err := e.svc.CreateSession("corridor", " abcde "); err != nil {
-		t.Fatalf("name is limited after trimming: %v", err)
-	}
-}
-
-func TestRenameSession(t *testing.T) {
-	e := newEnv(t, envOpts{})
-	s := e.create(t, "corridor")
-
-	r, err := e.svc.RenameSession(s.ID, "  Grace ")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if r.DisplayName != "Grace" || r.Seq != s.Seq+1 {
-		t.Fatalf("rename: name %q seq %d (was %d)", r.DisplayName, r.Seq, s.Seq)
-	}
-	if e.pers.saveCount(s.ID) != 2 {
-		t.Fatalf("saves = %d, want create+rename", e.pers.saveCount(s.ID))
-	}
-	last := e.rec.forSession(s.ID)
-	if got := last[len(last)-1]; got.DisplayName != "Grace" {
-		t.Fatalf("rename not broadcast: %q", got.DisplayName)
-	}
-	_, err = e.svc.RenameSession(s.ID, strings.Repeat("x", 41))
-	wantCode(t, err, service.CodeInvalidArgument)
-	_, err = e.svc.RenameSession("0000000000000000", "x")
-	wantCode(t, err, service.CodeNotFound)
-	if got := e.get(t, s.ID); got.DisplayName != "Grace" {
-		t.Fatalf("failed rename changed name to %q", got.DisplayName)
-	}
 }
 
 func TestSnapshotsAreIsolatedFromLiveSession(t *testing.T) {
@@ -143,7 +98,7 @@ func TestMapSnapshotIsolation(t *testing.T) {
 	if done.VM.Status != engine.StatusWon || done.VM.Steps != 4 {
 		t.Fatalf("after map edit/delete: %s in %d steps, want WON in 4", done.VM.Status, done.VM.Steps)
 	}
-	_, err := e.svc.CreateSession("corridor", "")
+	_, err := e.svc.CreateSession("corridor")
 	wantCode(t, err, service.CodeNotFound)
 }
 
@@ -594,7 +549,7 @@ func TestListSessions(t *testing.T) {
 	c := e.create(t, "corridor")
 	time.Sleep(3 * time.Millisecond)
 	// Touch a so it is the most recently active.
-	if _, err := e.svc.RenameSession(a.ID, "a"); err != nil {
+	if _, err := e.svc.Reset(a.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -653,7 +608,7 @@ func TestMaxSessions(t *testing.T) {
 	e := newEnv(t, envOpts{maxSessions: 2})
 	a := e.create(t, "corridor")
 	e.create(t, "corridor")
-	_, err := e.svc.CreateSession("corridor", "")
+	_, err := e.svc.CreateSession("corridor")
 	wantCode(t, err, service.CodeLimit)
 	if err := e.svc.DeleteSession(a.ID); err != nil {
 		t.Fatal(err)
@@ -842,7 +797,7 @@ func TestConcurrentControls(t *testing.T) {
 				case 4:
 					_, err = e.svc.SetProgram(s.ID, spinProgram())
 				case 5:
-					_, err = e.svc.RenameSession(s.ID, "n")
+					_, err = e.svc.Pause(s.ID)
 				case 6:
 					_, err = e.svc.GetSession(s.ID)
 				case 7:

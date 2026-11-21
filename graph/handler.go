@@ -69,12 +69,29 @@ func NewHandler(opts Options) http.Handler {
 	// SSE first: its Accept header must not be claimed by the plain POST
 	// transport. Delivery's watch UI reads it with fetch + ReadableStream.
 	srv.AddTransport(transport.SSE{KeepAlivePingInterval: ssePingInterval})
-	srv.AddTransport(&transport.Websocket{
+	ws := &transport.Websocket{
 		KeepAlivePingInterval: wsPingInterval,
 		PingPongInterval:      wsPingInterval,
 		InitTimeout:           wsInitTimeout,
 		Upgrader:              httpserve.Upgrader(opts.AllowedOrigins),
-	})
+	}
+	if opts.Auth != nil {
+		// graphql-ws sends its credentials in connection_init, not as HTTP
+		// headers, so the upgrade request's viewer is not enough.
+		ws.InitFunc = func(ctx context.Context, payload transport.InitPayload) (context.Context, *transport.InitPayload, error) {
+			raw := auth.BearerToken(payload.Authorization())
+			if raw == "" {
+				return ctx, nil, nil
+			}
+			// A bad or stale token is treated as anonymous: public subscriptions
+			// (a watch link) must still work.
+			if acct, err := opts.Auth.ParseToken(raw); err == nil {
+				return auth.WithViewer(ctx, &auth.Viewer{Account: acct, Token: raw}), nil, nil
+			}
+			return ctx, nil, nil
+		}
+	}
+	srv.AddTransport(ws)
 	srv.AddTransport(transport.Options{})
 	srv.AddTransport(transport.GET{})
 	srv.AddTransport(transport.POST{})
@@ -107,22 +124,10 @@ func withRequestContext(a *auth.Auth, next http.Handler) http.Handler {
 		ctx = context.WithValue(ctx, motorgraph.HTTPRequestKey{}, r)
 		ctx = context.WithValue(ctx, teslagraph.HTTPRequestKey{}, r)
 
-		if a != nil && (r.Method == http.MethodPost || isWebSocketUpgrade(r)) {
-			upgrade := isWebSocketUpgrade(r)
+		if a != nil {
 			if acct, token := a.Viewer(r); acct != nil {
-				ctx = auth.WithViewer(ctx, &auth.Viewer{
-					Account:      acct,
-					Token:        token,
-					ClearSession: func() { a.ClearSession(w, r) },
-				})
+				ctx = auth.WithViewer(ctx, &auth.Viewer{Account: acct, Token: token})
 			}
-			// A websocket upgrade has no HTTP response to set a cookie on, so a
-			// password mutation there is refused instead of minting a login the
-			// browser could never send back.
-			ctx = auth.WithSignIn(ctx, &auth.SignIn{
-				OverHTTP:   !upgrade,
-				SetSession: func(token string, expires time.Time) { a.SetSession(w, r, token, expires) },
-			})
 		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

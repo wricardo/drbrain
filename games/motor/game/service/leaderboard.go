@@ -23,8 +23,8 @@ const (
 	DefaultLeaderboardLimit = 20
 	MaxLeaderboardLimit     = 100
 
-	// AnonymousName is shown for a session without a display name.
-	AnonymousName = "Anonymous"
+	// GuestName is shown for a session that belongs to no account.
+	GuestName = "Guest"
 )
 
 // Win is a result recorded by the server at the moment a run was won: the
@@ -135,7 +135,7 @@ func parseOrder(s string) (string, error) {
 
 // boardRow is one session's recorded win under an ordering.
 type boardRow struct {
-	id, name string // name is the raw stored display name
+	id       string
 	mapID    string
 	win      Win
 	rank     int
@@ -173,7 +173,7 @@ func (svc *gameService) rankedBoards(order, onlyMap string) map[string][]boardRo
 			}
 			// s.Map is immutable after creation.
 			if w != nil {
-				all = append(all, fpRow{boardRow{id: s.ID, name: s.DisplayName, mapID: s.MapID, win: *w, accountID: s.AccountID}, s.Map.Fingerprint()})
+				all = append(all, fpRow{boardRow{id: s.ID, mapID: s.MapID, win: *w, accountID: s.AccountID}, s.Map.Fingerprint()})
 			}
 		}
 		s.Unlock()
@@ -236,10 +236,11 @@ func (svc *gameService) rankedBoards(order, onlyMap string) map[string][]boardRo
 
 // entryOf converts a row for the API. Account rows show the account's display
 // name and handle, or "Private player" without a handle when the profile is
-// private. viewer is the signed-in account id ("" = none).
+// private; a row owned by no account is shown as "Guest". viewer is the
+// signed-in account id ("" = none).
 func (svc *gameService) entryOf(r boardRow, viewer string) LeaderboardEntry {
 	e := LeaderboardEntry{
-		Rank: r.rank, SessionID: r.id, DisplayName: PublicName(r.name, svc.opts.MaxDisplayName),
+		Rank: r.rank, SessionID: r.id, DisplayName: GuestName,
 		Slots: r.win.Slots, Steps: r.win.Steps, At: r.win.At,
 	}
 	if r.acct != nil {
@@ -303,18 +304,14 @@ func (svc *gameService) GetLeaderboard(q LeaderboardQuery) (*Leaderboard, error)
 const MaxRunSessionIDs = 200
 
 // RunsQuery selects a player's sessions: an explicit set of session ids (the
-// sessions one browser created), a display name, or the viewer's account.
+// sessions one browser created) and/or the viewer's account.
 //
 // With SessionIDs the match is exact; if AccountID (the signed-in viewer) is
 // also set the account's own entries are included, so a signed-in player sees
-// both their profile's runs and the guest sessions of this browser. A display
-// name is a convenience that matches every guest session with that name
-// (case-insensitive) and therefore can mix people who chose the same name;
-// account entries never match by name. Name cannot be combined with
-// SessionIDs. With neither, a signed-in viewer gets just their account's runs.
+// both their profile's runs and the guest sessions of this browser. With
+// neither, a signed-in viewer gets just their account's runs.
 type RunsQuery struct {
 	SessionIDs []string
-	Name       string
 	AccountID  string
 }
 
@@ -330,15 +327,12 @@ type PlayerRun struct {
 
 // GetPlayerRuns returns the best run per map (maps never won are absent) for
 // the selected sessions, ordered by map id. Errors: INVALID_ARGUMENT (no
-// selector, name together with ids, too many ids).
+// selector, too many ids).
 func (svc *gameService) GetPlayerRuns(q RunsQuery) ([]PlayerRun, error) {
-	name := strings.TrimSpace(q.Name)
 	byID := len(q.SessionIDs) > 0
 	switch {
-	case byID && name != "":
-		return nil, Errorf(CodeInvalidArgument, "give either sessionIds or name")
-	case !byID && name == "" && q.AccountID == "":
-		return nil, Errorf(CodeInvalidArgument, "give either sessionIds or name")
+	case !byID && q.AccountID == "":
+		return nil, Errorf(CodeInvalidArgument, "give sessionIds or sign in")
 	case len(q.SessionIDs) > MaxRunSessionIDs:
 		return nil, Errorf(CodeInvalidArgument, "too many sessionIds (%d, max %d)", len(q.SessionIDs), MaxRunSessionIDs)
 	}
@@ -346,16 +340,11 @@ func (svc *gameService) GetPlayerRuns(q RunsQuery) ([]PlayerRun, error) {
 	for _, id := range q.SessionIDs {
 		ids[id] = true
 	}
-	want := PublicName(name, svc.opts.MaxDisplayName)
 	mine := func(r boardRow) bool {
-		switch {
-		case name != "":
-			return r.acct == nil && r.name != "" && strings.EqualFold(PublicName(r.name, svc.opts.MaxDisplayName), want)
-		case q.AccountID != "" && r.acct != nil && r.accountID == q.AccountID:
+		if q.AccountID != "" && r.acct != nil && r.accountID == q.AccountID {
 			return true
-		default:
-			return ids[r.id]
 		}
+		return ids[r.id]
 	}
 	return svc.playerRuns(mine, q.AccountID), nil
 }
@@ -376,10 +365,10 @@ func (svc *gameService) playerRuns(mine func(boardRow) bool, viewer string) []Pl
 	return out
 }
 
-// PublicName turns a stored display name into what a leaderboard shows:
+// PublicName turns a stored account display name into what a leaderboard shows:
 // control and formatting characters become spaces, runs of whitespace
 // collapse, the result is cut to max characters, and nothing left means
-// "Anonymous".
+// "Guest".
 func PublicName(name string, max int) string {
 	var b strings.Builder
 	space := true // swallows leading whitespace
@@ -399,7 +388,7 @@ func PublicName(name string, max int) string {
 		out = strings.TrimSpace(string([]rune(out)[:max]))
 	}
 	if out == "" {
-		return AnonymousName
+		return GuestName
 	}
 	return out
 }

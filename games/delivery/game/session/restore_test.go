@@ -37,7 +37,7 @@ func reload(t *testing.T, mgr *Manager, id string) *Session {
 // reload, because the save replays the build rather than re-listing effects.
 func TestBuildAddedEntitiesSurviveReload(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, err := mgr.Create("ents", 3)
+	sess, _, err := mgr.Create("ents", 3, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestBuildAddedEntitiesSurviveReload(t *testing.T) {
 // again, which silently undid a purchase.
 func TestRevealedDistrictsSurviveReload(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, err := mgr.Create("rev", 3)
+	sess, _, err := mgr.Create("rev", 3, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestRevealedDistrictsSurviveReload(t *testing.T) {
 // for anyone who saves and reloads.
 func TestAchievementsDoNotRefireOnReload(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, err := mgr.Create("ach", 3)
+	sess, _, err := mgr.Create("ach", 3, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestAchievementsDoNotRefireOnReload(t *testing.T) {
 // again, so a save/reload loop inflated the queue past its cap.
 func TestForcedFirstOrderDoesNotRefireOnReload(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, err := mgr.Create("forced", 5)
+	sess, _, err := mgr.Create("forced", 5, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +198,7 @@ func TestForcedFirstOrderDoesNotRefireOnReload(t *testing.T) {
 // the race detector reports and which can emit a corrupt save.
 func TestSaveWhileTickingIsRaceFree(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, err := mgr.Create("racing", 4)
+	sess, _, err := mgr.Create("racing", 4, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,7 +257,7 @@ func TestLegacySaveStillLoads(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = mgr.Close() })
 
-	sess, err := mgr.Create("legacy", 7)
+	sess, _, err := mgr.Create("legacy", 7, "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -27,7 +27,7 @@
 	// Typed by the generated union, so adding an order state on the server
 	// and regenerating makes this map fail to compile until it is handled.
 	const stateBadge: Record<OrderState, { text: string; cls: string }> = {
-		PENDING: { text: 'open', cls: 'bg-ink-700 text-fog-300' },
+		PENDING: { text: 'open', cls: 'bg-track text-body' },
 		ASSIGNED: { text: 'ASSIGNED', cls: 'bg-[var(--color-charger)]/20 text-[var(--color-charger)]' },
 		PICKED_UP: { text: 'CARRYING', cls: 'bg-[var(--color-customer)]/20 text-[var(--color-customer)]' },
 		DONE: { text: 'delivered', cls: 'bg-[var(--color-money)]/20 text-[var(--color-money)]' },
@@ -41,17 +41,17 @@
 	bodyClass="max-h-72 overflow-y-auto"
 >
 	{#if open.length === 0}
-		<p class="p-3 text-xs text-fog-500">
+		<p class="p-3 text-xs text-faint">
 			No open orders. The next customer request arrives on its own schedule.
 		</p>
 	{/if}
 
-		<ul class="divide-y divide-ink-800">
+		<ul class="divide-y divide-edge">
 			{#each open as o (o.id)}
 				<li
 					class="border-l-2 transition-colors {o.id === selectedOrderId
-						? 'border-[var(--color-charger)] bg-ink-800'
-						: 'border-transparent hover:bg-ink-800'}"
+						? 'border-[var(--color-charger)] bg-surface-muted'
+						: 'border-transparent hover:bg-surface-muted'}"
 				>
 					<button
 						type="button"
@@ -60,7 +60,7 @@
 						onclick={() => onSelectOrder?.(o.id)}
 					>
 						<div class="flex items-baseline justify-between gap-2">
-							<span class="text-sm text-fog-300">
+							<span class="text-sm text-body">
 								{#if o.quantity > 1}
 									<span class="text-[var(--color-warn)]">{o.quantity}×</span>
 								{/if}
@@ -71,7 +71,7 @@
 							>
 						</div>
 
-						<div class="mt-1 text-xs text-fog-400">
+						<div class="mt-1 text-xs text-muted">
 							<span class="text-[var(--color-kitchen)]">{o.kitchenName}</span>
 							<span class="mx-1">→</span>
 							<span class="text-[var(--color-customer)]">{o.customerName}</span>
@@ -89,23 +89,23 @@
 						</div>
 					</button>
 
-					{#if o.state === 'PENDING' || o.state === 'ASSIGNED'}
+					{#if (o.state === 'PENDING' || o.state === 'ASSIGNED') && (onAssign || onUnassign)}
 						<div class="px-3 pb-2">
-							{#if o.state === 'PENDING'}
+							{#if o.state === 'PENDING' && onAssign}
 								<button
 									type="button"
-									class="w-full rounded bg-[var(--color-charger)] px-2 py-1.5 text-xs font-semibold text-ink-950 transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:bg-ink-700 disabled:text-fog-500"
+									class="w-full rounded bg-[var(--color-charger)] px-2 py-1.5 text-xs font-semibold text-white transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:bg-track disabled:text-faint"
 									disabled={!selectedCarId}
-									onclick={() => onAssign?.(o.id)}
+									onclick={() => onAssign(o.id)}
 									title={selectedCarId ? 'Assign to the selected car' : 'Select a car first'}
 								>
 									{selectedCarId ? 'Assign' : 'Pick a car first'}
 								</button>
-							{:else}
+							{:else if o.state === 'ASSIGNED' && onUnassign}
 								<button
 									type="button"
-									class="w-full rounded border border-ink-600 px-2 py-1.5 text-xs text-fog-400 hover:text-fog-300"
-									onclick={() => onUnassign?.(o.id)}
+									class="w-full rounded border border-edge-strong px-2 py-1.5 text-xs text-muted hover:text-body"
+									onclick={() => onUnassign(o.id)}
 								>
 									Unassign
 								</button>
@@ -117,14 +117,14 @@
 		</ul>
 
 		{#if finished.length > 0}
-			<details class="border-t border-ink-800">
-				<summary class="cursor-pointer px-3 py-2 text-xs text-fog-500 hover:text-fog-300">
+			<details class="border-t border-edge">
+				<summary class="cursor-pointer px-3 py-2 text-xs text-faint hover:text-body">
 					{finished.length} completed
 				</summary>
-				<ul class="divide-y divide-ink-800">
+				<ul class="divide-y divide-edge">
 					{#each finished as o (o.id)}
 						<li class="flex items-center justify-between px-3 py-1.5 text-xs">
-							<span class="text-fog-500">
+							<span class="text-faint">
 								{#if o.quantity > 1}{o.quantity}× {/if}{o.itemName} → {o.customerName}
 							</span>
 							<span class={stateBadge[o.state].cls + ' rounded px-1.5 py-0.5 text-[11px]'}>

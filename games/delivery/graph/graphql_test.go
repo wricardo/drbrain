@@ -142,6 +142,28 @@ func mustQuery(t *testing.T, ts *httptest.Server, q string, vars map[string]any,
 	}
 }
 
+// createSession starts a session over GraphQL and returns its owner token, the
+// credential every state-changing mutation needs.
+func createSession(t *testing.T, ts *httptest.Server, id string, seed int) string {
+	t.Helper()
+	var out struct {
+		CreateSession struct {
+			Session    struct{ ID string }
+			OwnerToken string `json:"ownerToken"`
+		}
+	}
+	mustQuery(t, ts, `mutation ($id: ID, $seed: Int) {
+		createSession(id: $id, seed: $seed) { session { id } ownerToken }
+	}`, map[string]any{"id": id, "seed": seed}, &out)
+	if out.CreateSession.Session.ID != id {
+		t.Fatalf("created session id = %q, want %q", out.CreateSession.Session.ID, id)
+	}
+	if out.CreateSession.OwnerToken == "" {
+		t.Fatal("createSession returned no owner token")
+	}
+	return out.CreateSession.OwnerToken
+}
+
 func TestHealthQuery(t *testing.T) {
 	ts := newTestServer(t)
 	var out struct {
@@ -157,29 +179,38 @@ func TestCreateSessionReturnsSnapshot(t *testing.T) {
 	ts := newTestServer(t)
 	var out struct {
 		CreateSession struct {
-			ID     string
-			Tick   int
-			Paused bool
-			City   struct {
-				GridSize int
-				Rows     []string
-				Hidden   int `json:"hiddenTiles"`
-			}
-			Cars []struct {
-				ID        string
-				ClassName string `json:"className"`
-				Battery   int
-				State     string
+			OwnerToken string `json:"ownerToken"`
+			Session    struct {
+				ID     string
+				Tick   int
+				Paused bool
+				City   struct {
+					GridSize int
+					Rows     []string
+					Hidden   int `json:"hiddenTiles"`
+				}
+				Cars []struct {
+					ID        string
+					ClassName string `json:"className"`
+					Battery   int
+					State     string
+				}
 			}
 		}
 	}
 	mustQuery(t, ts, `mutation { createSession(id: "t1", seed: 7) {
-		id tick paused
-		city { gridSize rows hiddenTiles }
-		cars { id className battery state }
+		ownerToken
+		session {
+			id tick paused
+			city { gridSize rows hiddenTiles }
+			cars { id className battery state }
+		}
 	} }`, nil, &out)
 
-	s := out.CreateSession
+	if out.CreateSession.OwnerToken == "" {
+		t.Error("createSession returned no owner token")
+	}
+	s := out.CreateSession.Session
 	if s.ID != "t1" {
 		t.Errorf("id = %q", s.ID)
 	}
@@ -211,7 +242,8 @@ func TestCreateSessionReturnsSnapshot(t *testing.T) {
 
 func TestMoveQueuesAndTickApplies(t *testing.T) {
 	ts := newTestServer(t)
-	mustQuery(t, ts, `mutation { createSession(id: "m1", seed: 1) { id } }`, nil, nil)
+	tok := createSession(t, ts, "m1", 1)
+	_ = tok
 
 	var before struct {
 		Session struct {
@@ -230,7 +262,7 @@ func TestMoveQueuesAndTickApplies(t *testing.T) {
 			}
 		}
 	}
-	mustQuery(t, ts, `mutation { moveCar(id: "m1", carId: "car_1", direction: SOUTH) {
+	mustQuery(t, ts, `mutation { moveCar(id: "m1", carId: "car_1", direction: SOUTH`+`, ownerToken: "`+tok+`") {
 		cars { x y queuedMove }
 	} }`, nil, &queued)
 	c := queued.MoveCar.Cars[0]
@@ -248,7 +280,7 @@ func TestMoveQueuesAndTickApplies(t *testing.T) {
 			Cars []struct{ X, Y, Battery int }
 		}
 	}
-	mustQuery(t, ts, `mutation { tick(id: "m1", count: 1) { tick cars { x y battery } } }`, nil, &after)
+	mustQuery(t, ts, `mutation { tick(id: "m1", count: 1`+`, ownerToken: "`+tok+`") { tick cars { x y battery } } }`, nil, &after)
 	if after.Tick.Tick != 1 {
 		t.Errorf("tick = %d, want 1", after.Tick.Tick)
 	}
@@ -259,7 +291,8 @@ func TestMoveQueuesAndTickApplies(t *testing.T) {
 
 func TestFullDeliveryThroughGraphQL(t *testing.T) {
 	ts := newTestServer(t)
-	mustQuery(t, ts, `mutation { createSession(id: "d1", seed: 5) { id } }`, nil, nil)
+	tok := createSession(t, ts, "d1", 5)
+	_ = tok
 
 	// Force the first order.
 	var ticked struct {
@@ -273,7 +306,7 @@ func TestFullDeliveryThroughGraphQL(t *testing.T) {
 			}
 		}
 	}
-	mustQuery(t, ts, `mutation { tick(id: "d1", count: 1) {
+	mustQuery(t, ts, `mutation { tick(id: "d1", count: 1`+`, ownerToken: "`+tok+`") {
 		orders { id state itemName kitchenId customerId }
 	} }`, nil, &ticked)
 	if len(ticked.Tick.Orders) == 0 {
@@ -289,13 +322,13 @@ func TestFullDeliveryThroughGraphQL(t *testing.T) {
 			Orders []struct{ State string }
 		}
 	}
-	mustQuery(t, ts, `mutation { assignOrder(id: "d1", orderId: "`+o.ID+`", carId: "car_1") {
+	mustQuery(t, ts, `mutation { assignOrder(id: "d1", orderId: "`+o.ID+`", carId: "car_1"`+`, ownerToken: "`+tok+`") {
 		orders { state }
 	} }`, nil, &assigned)
 
 	drive := func(dir string) {
-		mustQuery(t, ts, `mutation { moveCar(id: "d1", carId: "car_1", direction: `+dir+`) { tick } }`, nil, nil)
-		mustQuery(t, ts, `mutation { tick(id: "d1", count: 1) { tick } }`, nil, nil)
+		mustQuery(t, ts, `mutation { moveCar(id: "d1", carId: "car_1", direction: `+dir+``+`, ownerToken: "`+tok+`") { tick } }`, nil, nil)
+		mustQuery(t, ts, `mutation { tick(id: "d1", count: 1`+`, ownerToken: "`+tok+`") { tick } }`, nil, nil)
 	}
 
 	// Read the city once: rows let the test plan a real route, and the entity
@@ -408,7 +441,8 @@ func TestFullDeliveryThroughGraphQL(t *testing.T) {
 
 func TestCarViewWindow(t *testing.T) {
 	ts := newTestServer(t)
-	mustQuery(t, ts, `mutation { createSession(id: "w1", seed: 1) { id } }`, nil, nil)
+	tok := createSession(t, ts, "w1", 1)
+	_ = tok
 
 	var out struct {
 		CarView struct {
@@ -447,7 +481,8 @@ func TestCarViewWindow(t *testing.T) {
 
 func TestCarViewRejectsUnknownCar(t *testing.T) {
 	ts := newTestServer(t)
-	mustQuery(t, ts, `mutation { createSession(id: "w2", seed: 1) { id } }`, nil, nil)
+	tok := createSession(t, ts, "w2", 1)
+	_ = tok
 
 	res := query(t, ts, `query { carView(id: "w2", carId: "nope") { rowSpan } }`, nil)
 	if len(res.Errors) == 0 {
@@ -483,9 +518,10 @@ func TestSessionsListIsNeverNull(t *testing.T) {
 
 func TestBuyCarRejectedWhenLocked(t *testing.T) {
 	ts := newTestServer(t)
-	mustQuery(t, ts, `mutation { createSession(id: "b1", seed: 1) { id } }`, nil, nil)
+	tok := createSession(t, ts, "b1", 1)
+	_ = tok
 
-	res := query(t, ts, `mutation { buyCar(id: "b1", className: "van") { id } }`, nil)
+	res := query(t, ts, `mutation { buyCar(id: "b1", className: "van"`+`, ownerToken: "`+tok+`") { id } }`, nil)
 	if len(res.Errors) == 0 {
 		t.Fatal("expected buying a locked class to fail")
 	}
@@ -515,12 +551,13 @@ func TestCityQueryRevealsEverything(t *testing.T) {
 
 func TestSpeedValidation(t *testing.T) {
 	ts := newTestServer(t)
-	mustQuery(t, ts, `mutation { createSession(id: "s1", seed: 1) { id } }`, nil, nil)
+	tok := createSession(t, ts, "s1", 1)
+	_ = tok
 
 	for _, sp := range []int{0, 1, 2, 4} {
-		mustQuery(t, ts, `mutation { setSpeed(id: "s1", speed: `+itoa(sp)+`) { speed } }`, nil, nil)
+		mustQuery(t, ts, `mutation { setSpeed(id: "s1", speed: `+itoa(sp)+``+`, ownerToken: "`+tok+`") { speed } }`, nil, nil)
 	}
-	res := query(t, ts, `mutation { setSpeed(id: "s1", speed: 99) { speed } }`, nil)
+	res := query(t, ts, `mutation { setSpeed(id: "s1", speed: 99`+`, ownerToken: "`+tok+`") { speed } }`, nil)
 	if len(res.Errors) == 0 {
 		t.Fatal("speed 99 should be rejected")
 	}
@@ -528,8 +565,9 @@ func TestSpeedValidation(t *testing.T) {
 
 func TestTickCountIsCapped(t *testing.T) {
 	ts := newTestServer(t)
-	mustQuery(t, ts, `mutation { createSession(id: "c1", seed: 1) { id } }`, nil, nil)
-	res := query(t, ts, `mutation { tick(id: "c1", count: 5000) { tick } }`, nil)
+	tok := createSession(t, ts, "c1", 1)
+	_ = tok
+	res := query(t, ts, `mutation { tick(id: "c1", count: 5000`+`, ownerToken: "`+tok+`") { tick } }`, nil)
 	if len(res.Errors) == 0 {
 		t.Fatal("expected an oversized tick count to be rejected")
 	}
@@ -537,8 +575,9 @@ func TestTickCountIsCapped(t *testing.T) {
 
 func TestEventsSinceTick(t *testing.T) {
 	ts := newTestServer(t)
-	mustQuery(t, ts, `mutation { createSession(id: "e1", seed: 1) { id } }`, nil, nil)
-	mustQuery(t, ts, `mutation { tick(id: "e1", count: 5) { tick } }`, nil, nil)
+	tok := createSession(t, ts, "e1", 1)
+	_ = tok
+	mustQuery(t, ts, `mutation { tick(id: "e1", count: 5`+`, ownerToken: "`+tok+`") { tick } }`, nil, nil)
 
 	var all struct {
 		Events []struct{ Tick int }
@@ -564,10 +603,11 @@ func TestEventsSinceTick(t *testing.T) {
 
 func TestPersistAcrossReload(t *testing.T) {
 	ts := newTestServer(t)
-	mustQuery(t, ts, `mutation { createSession(id: "p1", seed: 11) { id } }`, nil, nil)
-	mustQuery(t, ts, `mutation { tick(id: "p1", count: 10) { tick } }`, nil, nil)
-	mustQuery(t, ts, `mutation { saveSession(id: "p1") { tick } }`, nil, nil)
-	mustQuery(t, ts, `mutation { evictSession(id: "p1") }`, nil, nil)
+	tok := createSession(t, ts, "p1", 11)
+	_ = tok
+	mustQuery(t, ts, `mutation { tick(id: "p1", count: 10`+`, ownerToken: "`+tok+`") { tick } }`, nil, nil)
+	mustQuery(t, ts, `mutation { saveSession(id: "p1"`+`, ownerToken: "`+tok+`") { tick } }`, nil, nil)
+	mustQuery(t, ts, `mutation { evictSession(id: "p1"`+`, ownerToken: "`+tok+`") }`, nil, nil)
 
 	var out struct {
 		Session struct{ Tick int }
@@ -613,7 +653,8 @@ func itoa(i int) string {
 
 func TestCarViewClampsAtMapEdge(t *testing.T) {
 	ts := newTestServer(t)
-	mustQuery(t, ts, `mutation { createSession(id: "edge", seed: 1) { id } }`, nil, nil)
+	tok := createSession(t, ts, "edge", 1)
+	_ = tok
 
 	// The starter car sits at (2,2), so a radius of 5 must be clamped by the
 	// grid rather than producing negative origins or short rows.
@@ -644,7 +685,8 @@ func TestCarViewClampsAtMapEdge(t *testing.T) {
 
 func TestCarViewRadiusIsClamped(t *testing.T) {
 	ts := newTestServer(t)
-	mustQuery(t, ts, `mutation { createSession(id: "r", seed: 1) { id } }`, nil, nil)
+	tok := createSession(t, ts, "r", 1)
+	_ = tok
 
 	var out struct {
 		CarView struct{ RowSpan int }
@@ -658,7 +700,8 @@ func TestCarViewRadiusIsClamped(t *testing.T) {
 
 func TestCarViewRejectsNegativeRadius(t *testing.T) {
 	ts := newTestServer(t)
-	mustQuery(t, ts, `mutation { createSession(id: "neg", seed: 1) { id } }`, nil, nil)
+	tok := createSession(t, ts, "neg", 1)
+	_ = tok
 	res := query(t, ts, `query { carView(id: "neg", carId: "car_1", radius: -1) { rowSpan } }`, nil)
 	if len(res.Errors) == 0 {
 		t.Fatal("expected a negative radius to be rejected")

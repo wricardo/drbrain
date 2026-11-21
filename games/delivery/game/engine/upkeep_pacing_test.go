@@ -40,19 +40,46 @@ func runSim(t *testing.T, w *World, ticks int) {
 				_ = w.Tow(c.ID)
 			}
 		}
-		// Assign pending work to any car with room.
+		// Assign pending work to an idle car with room, one order per car.
+		// Without the "already busy" check the harness hands several orders to
+		// the same car and they expire unclaimed, which is not something a
+		// player can do. cmd/drbrain's nearestFreeCar applies the same rule.
 		for _, o := range w.OpenOrders() {
 			if o.State != OrderPending {
 				continue
 			}
 			for _, c := range w.Cars {
-				if c.State(w.City) == CarStranded {
+				if c.State(w.City) == CarStranded || busy(w, c) {
 					continue
 				}
 				if c.Class.Capacity >= o.Boxes() {
 					_ = w.AssignOrder(o.ID, c.ID)
 					break
 				}
+			}
+		}
+		// Give up work this car can never finish. A full battery that still
+		// cannot cover the next leg means waiting on the charger forever; the
+		// honest move is to release the order so a nearer one can be claimed.
+		// Longer deadlines make this reachable: the order no longer expires out
+		// from under a car parked on a charger 40 tiles from the kitchen.
+		for _, c := range w.Cars {
+			if c.State(w.City) == CarStranded || len(c.Cargo) > 0 {
+				continue
+			}
+			if c.Battery < c.Class.MaxBattery {
+				continue
+			}
+			o, ok := assignedOrder(w, c)
+			if !ok {
+				continue
+			}
+			goal, ok := simGoal(w, c)
+			if !ok {
+				continue
+			}
+			if d := w.RouteDistance(c.Pos, goal); d < 0 || d+1 > c.Battery {
+				_ = w.UnassignOrder(o.ID)
 			}
 		}
 		// Drive each car one step toward its goal, diverting to charge when the
@@ -74,6 +101,31 @@ func runSim(t *testing.T, w *World, ticks int) {
 		}
 		w.AdvanceNoPause()
 	}
+}
+
+// assignedOrder returns the order currently claimed by the car, if any.
+func assignedOrder(w *World, c *Car) (*Order, bool) {
+	for _, o := range w.Orders {
+		if o.AssignedCar == c.ID && o.State == OrderAssigned {
+			return o, true
+		}
+	}
+	return nil, false
+}
+
+// busy reports whether a car already carries cargo or has an order assigned.
+// The harness treats such a car as unavailable, matching a player who finishes
+// one delivery before claiming the next.
+func busy(w *World, c *Car) bool {
+	if len(c.Cargo) > 0 {
+		return true
+	}
+	for _, o := range w.Orders {
+		if o.AssignedCar == c.ID && o.State == OrderAssigned {
+			return true
+		}
+	}
+	return false
 }
 
 // simGoal is the tile a car is trying to reach: its order's customer once it is
@@ -108,10 +160,17 @@ func simGoal(w *World, c *Car) (Position, bool) {
 // tow storm looks like an upkeep problem rather than a harness problem — which
 // is exactly the trap this whole investigation fell into once already.
 func simNeedsCharge(w *World, c *Car, goal Position) (Position, bool) {
-	if w.City.ChargingAt(c.Pos) {
-		return Position{}, false // already recovering
-	}
 	toGoal := w.RouteDistance(c.Pos, goal)
+	// Standing on a charger is only "recovering" once it can actually make the
+	// next leg. Returning early whenever ChargingAt was true made the car drive
+	// off the tile the moment a goal existed, so with a long deadline it
+	// bounced between the charger and its neighbour and never refilled.
+	if w.City.ChargingAt(c.Pos) {
+		if toGoal >= 0 && toGoal+1 > c.Battery {
+			return c.Pos, true // hold still until the battery covers the leg
+		}
+		return Position{}, false
+	}
 	if toGoal < 0 {
 		return Position{}, false
 	}
@@ -153,10 +212,11 @@ func TestShippedUpkeepRateDoesNotCollapseTheCanarySeed(t *testing.T) {
 	// Reputation is the sensitive signal: it falls continuously with expiries
 	// and is the first thing to zero in a collapse.
 	if got := w.Ledger.Reputation; got < 2.0 {
-		t.Fatalf("canary seed reputation %.2f after 3000 ticks: the upkeep rate in maps/city.json "+
+		t.Fatalf("canary seed reputation %.2f after 3000 ticks (deliveries %d, expired %d: unclaimed %d, assigned %d, in transit %d): the upkeep rate in maps/city.json "+
 			"is in the collapse region (see the comment at the top of this file). "+
 			"Lower fleet.upkeep_per_box_per_interval or raise upkeep_interval_ticks.",
-			got)
+			got, w.Ledger.Deliveries, w.Ledger.ExpiredOrders,
+			w.Ledger.ExpiredUnclaimed, w.Ledger.ExpiredAssigned, w.Ledger.ExpiredInTransit)
 	}
 	if got := w.Ledger.Deliveries; got < 150 {
 		t.Fatalf("canary seed made only %d deliveries after 3000 ticks; expected 200+. "+

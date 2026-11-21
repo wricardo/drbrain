@@ -2,7 +2,6 @@
 	import { pageTitle } from '$lib/motor/brand';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { page } from '$app/stores';
 	import { getContextClient } from '@urql/svelte';
 	import { unwrap } from '@drbrain/ui/graphql';
 	import { describeError, type DescribedError } from '@drbrain/ui/errors';
@@ -16,11 +15,10 @@
 		countRows,
 		filterRows,
 		runText,
-		shareUrl,
 		solvedSummary,
 		type RunFilter
 	} from '$lib/motor/runs';
-	import { newSessionName, ownSessionIds, rememberSession, savedDisplayName } from '$lib/motor/sessions';
+	import { ownSessionIds, rememberSession } from '$lib/motor/sessions';
 	import { account } from '$lib/account/stores/account';
 	import { absoluteTime, relativeTime } from '@drbrain/ui/time';
 	import type { GameMap, PlayerRun, Session } from '$lib/motor/types';
@@ -33,31 +31,23 @@
 	let busy = $state('');
 	let error = $state<DescribedError | null>(null);
 	let filter = $state<RunFilter>('all');
-	let copied = $state<'' | 'copied' | 'failed'>('');
-	let myName = $state('');
 	let ownCount = $state(0);
 	const now = new Date();
 
-	// ?name=BraveOtter shows that player's runs (matched by display name); without it, this browser's own.
-	const sharedName = $derived(($page.url.searchParams.get('name') ?? '').trim());
-	const mine = $derived(!sharedName);
 	const signedIn = $derived($account.me !== null);
 	const rows = $derived(buildRunRows(maps, runs));
 	const counts = $derived(countRows(rows));
 	const shown = $derived(filterRows(rows, filter));
-	const link = $derived(mine && typeof location !== 'undefined' ? shareUrl(location.origin, myName) : null);
 
 	let requestId = 0;
-	async function load(name: string, withAccount: boolean) {
+	async function load(withAccount: boolean) {
 		const mineRequest = ++requestId;
 		loading = true;
 		error = null;
 		try {
 			const ids = ownSessionIds();
 			ownCount = ids.length;
-			if (name) {
-				runs = (await unwrap<{ playerRuns: PlayerRun[] }>(client.query(PLAYER_RUNS_QUERY, { name }, { requestPolicy: 'network-only' }))).playerRuns;
-			} else if (ids.length > 0 || withAccount) {
+			if (ids.length > 0 || withAccount) {
 				// Signed in, the server adds the account's own runs to this browser's sessions.
 				runs = (await unwrap<{ playerRuns: PlayerRun[] }>(client.query(PLAYER_RUNS_QUERY, { sessionIds: ids }, { requestPolicy: 'network-only' }))).playerRuns;
 			} else {
@@ -71,7 +61,6 @@
 	}
 
 	onMount(async () => {
-		myName = savedDisplayName().trim();
 		try {
 			maps = (await unwrap<{ maps: GameMap[] }>(client.query(MAPS_QUERY, {}))).maps;
 		} catch (e) {
@@ -81,30 +70,18 @@
 	});
 
 	$effect(() => {
-		const name = sharedName;
 		const withAccount = signedIn;
-		if (ready && $account.loaded) void load(name, withAccount);
+		if (ready && $account.loaded) void load(withAccount);
 	});
-
-	async function copyLink() {
-		if (!link) return;
-		try {
-			await navigator.clipboard.writeText(link);
-			copied = 'copied';
-		} catch {
-			copied = 'failed';
-		}
-		setTimeout(() => (copied = ''), 2500);
-	}
 
 	async function play(map: GameMap) {
 		busy = map.id;
 		error = null;
 		try {
 			const data = await unwrap<{ createSession: Session }>(
-				client.mutation(CREATE_SESSION_MUTATION, { mapID: map.id, displayName: newSessionName(!!$account.me) })
+				client.mutation(CREATE_SESSION_MUTATION, { mapID: map.id })
 			);
-			rememberSession(data.createSession.id, data.createSession.displayName, data.createSession.ownerToken);
+			rememberSession(data.createSession.id, data.createSession.ownerToken);
 			await goto(`/motor/play/${data.createSession.id}`);
 		} catch (e) {
 			error = describeError(e);
@@ -120,42 +97,13 @@
 	};
 </script>
 
-<svelte:head><title>{pageTitle(mine ? 'My runs' : `${sharedName}’s runs`)}</title></svelte:head>
+<svelte:head><title>{pageTitle('My runs')}</title></svelte:head>
 
 <div class="mx-auto max-w-6xl px-4 sm:px-6 py-8 space-y-5">
 	<header class="flex flex-wrap items-end justify-between gap-3">
 		<div>
-			<h1 class="text-2xl font-semibold text-indigo-950" data-testid="runs-title">{mine ? 'My runs' : `${sharedName}’s runs`}</h1>
-			{#if mine}
-				<p class="mt-1 text-sm text-slate-700">
-					Your best run on every map you have won, and how it ranks.
-					{#if myName}
-						You play as <strong class="text-indigo-950" data-testid="runs-name">{myName}</strong>.
-					{/if}
-				</p>
-			{:else}
-				<p class="mt-1 text-sm text-slate-700">
-					Best runs of the guests who chose the name <strong class="text-indigo-950">{sharedName}</strong>. Guests can pick any name, so
-					this page can mix people. Signed-in players have profile pages instead.
-				</p>
-			{/if}
-		</div>
-		<div class="flex flex-wrap items-center gap-2">
-			{#if mine}
-				{#if link}
-					<button
-						type="button"
-						onclick={copyLink}
-						class="rounded-full border border-indigo-300 bg-white px-4 py-1.5 text-sm font-medium text-indigo-900 hover:bg-indigo-50"
-						data-testid="runs-share">Copy link to share</button
-					>
-					<span class="text-xs text-slate-600" role="status" aria-live="polite">
-						{copied === 'copied' ? 'Link copied.' : copied === 'failed' ? 'Could not copy; select it from the address bar instead.' : ''}
-					</span>
-				{/if}
-			{:else}
-				<a href="/motor/runs" class="rounded-full bg-indigo-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700">My runs</a>
-			{/if}
+			<h1 class="text-2xl font-semibold text-indigo-950" data-testid="runs-title">My runs</h1>
+			<p class="mt-1 text-sm text-slate-700">Your best run on every map you have won, and how it ranks.</p>
 		</div>
 	</header>
 
@@ -165,7 +113,7 @@
 		</p>
 	{/if}
 
-	{#if mine && !loading && ownCount === 0 && !signedIn}
+	{#if !loading && ownCount === 0 && !signedIn}
 		<p class="rounded-xl border border-indigo-200 bg-white px-4 py-4 text-sm text-slate-700" data-testid="runs-empty">
 			This browser has not played yet. Pick a map below and your runs will show up here. They are remembered in this browser, so a different
 			browser starts empty.
@@ -193,7 +141,7 @@
 	{#if shown.length > 0}
 		<div class="relative overflow-x-auto rounded-xl border border-indigo-200 bg-white">
 			<table class="w-full text-left text-sm" data-testid="runs-table">
-				<caption class="sr-only">{mine ? 'My' : `${sharedName}’s`} best run on each map</caption>
+				<caption class="sr-only">My best run on each map</caption>
 				<thead class="bg-indigo-50 text-xs uppercase tracking-wide text-indigo-900">
 					<tr>
 						<th scope="col" class="px-4 py-2">Map</th>

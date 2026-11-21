@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Skeleton from '@drbrain/ui/components/Skeleton.svelte';
 	import { pageTitle } from '$lib/motor/brand';
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { page } from '$app/stores';
@@ -29,9 +30,8 @@
 		SET_PROGRAM_MUTATION,
 		STEP_MUTATION
 	} from '$lib/motor/queries';
-	import { newSessionName, ownerTokenFor, rememberSession, runTitle, statusLine } from '$lib/motor/sessions';
+	import { ownerTokenFor, ownsSession, rememberSession, runTitle, statusLine } from '$lib/motor/sessions';
 	import { serialRunner } from '$lib/motor/serialRunner';
-	import { account } from '$lib/account/stores/account';
 	import { replayTo, stepBackTarget } from '$lib/motor/stepBack';
 	import { initialSpeed, saveSpeed, savedSpeed } from '$lib/motor/speed';
 	import { blockedCallNotice } from '$lib/motor/recursion';
@@ -258,17 +258,16 @@
 		});
 
 	/**
-	 * Starts a session on the next map. The name is not inherited from this run: a guest keeps the
-	 * name they typed (the saved one), and a signed-in player sends none so the server uses the
-	 * account instead of an earlier guest alias.
+	 * Starts a session on the next map. Identity comes from the account (or the guest is shown as
+	 * "Guest"), so nothing is inherited from this run.
 	 */
 	const playNext = () =>
 		act(async () => {
 			if (!next || !session) return;
 			const data = await unwrap<{ createSession: Session }>(
-				client.mutation(CREATE_SESSION_MUTATION, { mapID: next.id, displayName: newSessionName(!!$account.me) })
+				client.mutation(CREATE_SESSION_MUTATION, { mapID: next.id })
 			);
-			rememberSession(data.createSession.id, data.createSession.displayName, data.createSession.ownerToken);
+			rememberSession(data.createSession.id, data.createSession.ownerToken);
 			// Full navigation: this page keeps one session store for its lifetime.
 			window.location.assign(`/motor/play/${data.createSession.id}`);
 		});
@@ -352,7 +351,7 @@
 
 <div class="mx-auto max-w-6xl px-4 sm:px-6 py-6">
 	{#if $store.loading}
-		<p role="status" class="text-sm text-slate-600">Loading session…</p>
+		<Skeleton label="Loading session…" height="14rem" />
 	{:else if !session}
 		<div role="alert" class="rounded-lg border border-rose-300 bg-rose-50 p-4 text-sm text-rose-900">
 			<strong>{$store.error?.title ?? 'Session unavailable'}.</strong>
@@ -360,11 +359,11 @@
 			<a href="/motor" class="ml-2 underline">Back to maps</a>
 		</div>
 	{:else}
-		<div class="flex flex-wrap items-center justify-between gap-2">
+		<div class="game-run-title db-panel">
 			<div>
 				<h1 class="text-2xl font-semibold text-indigo-950">{session.map.name}</h1>
 				<p class="text-sm text-slate-600">
-					{session.displayName || 'Anonymous'} ·
+					{ownsSession(session.id) ? 'your session' : 'spectator view'} ·
 					<a class="underline" href="/motor/watch/{session.id}">spectator link</a>
 				</p>
 			</div>

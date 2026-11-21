@@ -27,7 +27,7 @@ func newTestManager(t *testing.T) *Manager {
 func TestSaveLoadRoundTripPreservesState(t *testing.T) {
 	mgr := newTestManager(t)
 
-	sess, err := mgr.Create("rt", 7)
+	sess, _, err := mgr.Create("rt", 7, "")
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -98,7 +98,7 @@ func TestSaveLoadRoundTripPreservesState(t *testing.T) {
 
 func TestClassNameSurvivesPersistence(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, err := mgr.Create("cls", 1)
+	sess, _, err := mgr.Create("cls", 1, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestClassNameSurvivesPersistence(t *testing.T) {
 // completed builds rather than storing either list.
 func TestBuildTerrainSurvivesPersistence(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, err := mgr.Create("deltas", 3)
+	sess, _, err := mgr.Create("deltas", 3, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +238,7 @@ func TestBuildTerrainSurvivesPersistence(t *testing.T) {
 
 func TestSaveIsAtomicAcrossRepeatedWrites(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, err := mgr.Create("atomic", 1)
+	sess, _, err := mgr.Create("atomic", 1, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +266,7 @@ func TestSaveIsAtomicAcrossRepeatedWrites(t *testing.T) {
 func TestSaveAllPersistsEveryLiveSession(t *testing.T) {
 	mgr := newTestManager(t)
 	for _, id := range []string{"s1", "s2", "s3"} {
-		sess, err := mgr.Create(id, 1)
+		sess, _, err := mgr.Create(id, 1, "")
 		if err != nil {
 			t.Fatalf("create %s: %v", id, err)
 		}
@@ -286,7 +286,7 @@ func TestSaveAllPersistsEveryLiveSession(t *testing.T) {
 
 func TestListIncludesDiskOnlySessions(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, err := mgr.Create("ondisk", 5)
+	sess, _, err := mgr.Create("ondisk", 5, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,7 +317,7 @@ func TestListIncludesDiskOnlySessions(t *testing.T) {
 
 func TestDeleteRemovesSaveFile(t *testing.T) {
 	mgr := newTestManager(t)
-	if _, err := mgr.Create("gone", 1); err != nil {
+	if _, _, err := mgr.Create("gone", 1, ""); err != nil {
 		t.Fatal(err)
 	}
 	if err := mgr.Delete("gone"); err != nil {
@@ -333,7 +333,7 @@ func TestDeleteRemovesSaveFile(t *testing.T) {
 
 func TestEvictKeepsSaveFile(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, err := mgr.Create("kept", 1)
+	sess, _, err := mgr.Create("kept", 1, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,7 +383,7 @@ func TestSaveWithoutDirIsNoOp(t *testing.T) {
 
 func TestPersistedFileHasExpectedShape(t *testing.T) {
 	mgr := newTestManager(t)
-	sess, err := mgr.Create("shape", 9)
+	sess, _, err := mgr.Create("shape", 9, "")
 	if err != nil {
 		t.Fatal(err)
 	}

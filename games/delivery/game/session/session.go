@@ -61,6 +61,13 @@ type Session struct {
 	// is never held together with mu, so publishing cannot stall the tick loop
 	// behind a slow reader.
 	hub *watchHub
+
+	// accountID is the signed-in player this session belongs to ("" = guest).
+	// ownerHash is the SHA-256 (hex) of the secret owner token returned once at
+	// creation ("" = a save made before owner tokens, which stays open). Neither
+	// is ever part of Snapshot: writes are gated on them, reads are not.
+	accountID string
+	ownerHash string
 }
 
 // Speed values accepted by SetSpeed.
@@ -99,7 +106,8 @@ func (s *Session) Do(fn func(w *engine.World)) {
 }
 
 // New creates a session from a city config. The ticker is not started; call
-// Start.
+// Start. It has no owner credentials, so it is a legacy/open session; production
+// creation goes through Manager.Create, which mints a token.
 func New(id string, city *engine.City, cfg *engine.CityConfig, seed uint64, dir string) (*Session, error) {
 	var st sessionstore.Store
 	if dir != "" {
@@ -109,11 +117,12 @@ func New(id string, city *engine.City, cfg *engine.CityConfig, seed uint64, dir 
 			return nil, err
 		}
 	}
-	return newWithStore(id, city, cfg, seed, st)
+	return newWithStore(id, city, cfg, seed, st, "", "")
 }
 
-// newWithStore builds a session sharing the manager's store.
-func newWithStore(id string, city *engine.City, cfg *engine.CityConfig, seed uint64, st sessionstore.Store) (*Session, error) {
+// newWithStore builds a session sharing the manager's store. accountID and
+// ownerHash may be empty (guest session, or one created before owner tokens).
+func newWithStore(id string, city *engine.City, cfg *engine.CityConfig, seed uint64, st sessionstore.Store, accountID, ownerHash string) (*Session, error) {
 	if !ValidID(id) {
 		return nil, fmt.Errorf("invalid session id %q", id)
 	}
@@ -126,6 +135,8 @@ func newWithStore(id string, city *engine.City, cfg *engine.CityConfig, seed uin
 		ID:        id,
 		CreatedAt: time.Now().UTC(),
 		world:     w,
+		accountID: accountID,
+		ownerHash: ownerHash,
 		// Sessions start PAUSED. This game is manual driving: the player must
 		// choose every step, so a live clock would expire orders while a human
 		// is still reading the screen. A paused clock makes the loop turn-based,
@@ -264,6 +275,12 @@ type persisted struct {
 	CreatedAt time.Time         `json:"created_at"`
 	Speed     int               `json:"speed"`
 	World     engine.SavedState `json:"world"`
+	// AccountID links the session to a signed-in player; OwnerHash is the
+	// SHA-256 of its secret owner token. Both are absent for guest sessions and
+	// for saves written before owner tokens, so old and new guest files are
+	// byte-identical.
+	AccountID string `json:"account_id,omitempty"`
+	OwnerHash string `json:"owner_hash,omitempty"`
 }
 
 // Save writes the session to disk atomically.
@@ -286,6 +303,8 @@ func (s *Session) Save(cityFile string) error {
 		CreatedAt: s.CreatedAt,
 		Speed:     s.speed,
 		World:     s.world.ExportState(),
+		AccountID: s.accountID,
+		OwnerHash: s.ownerHash,
 	}
 	s.mu.Unlock()
 

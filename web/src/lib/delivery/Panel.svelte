@@ -77,7 +77,7 @@
 	is clipped (measured: the Orders body squeezed to 84px against 114px of
 	content). Each panel takes its natural height and the sidebar scrolls.
 -->
-<section class="shrink-0 rounded-lg border border-ink-600 bg-ink-900 {className}">
+<section class="shrink-0 rounded-lg border border-edge-strong bg-surface {className}">
 	<!--
 		The whole header row is the control, so the hit target is the full width
 		of the panel rather than a small chevron.
@@ -85,8 +85,8 @@
 	<h2 class="m-0">
 		<button
 			type="button"
-			class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors hover:bg-ink-800 {open
-				? 'border-b border-ink-700'
+			class="flex w-full items-center justify-between gap-2 px-3 py-2 text-left transition-colors hover:bg-surface-muted {open
+				? 'border-b border-edge'
 				: ''}"
 			aria-expanded={open}
 			aria-controls={bodyId}
@@ -101,13 +101,13 @@
 			title={open ? `Collapse ${title}` : `Expand ${title}`}
 		>
 			<span class="flex items-baseline gap-2">
-				<span class="text-xs font-semibold tracking-wide text-fog-400 uppercase">{title}</span>
+				<span class="text-xs font-semibold tracking-wide text-muted uppercase">{title}</span>
 				{#if summary}
-					<span class="text-xs font-normal text-fog-500">{summary}</span>
+					<span class="text-xs font-normal text-faint">{summary}</span>
 				{/if}
 			</span>
 			<span
-				class="text-xs text-fog-500 transition-transform duration-150 {open ? 'rotate-90' : ''}"
+				class="text-xs text-faint transition-transform duration-150 {open ? 'rotate-90' : ''}"
 				aria-hidden="true">▸</span
 			>
 		</button>

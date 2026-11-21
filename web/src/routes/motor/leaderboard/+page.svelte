@@ -22,7 +22,7 @@
 	} from '$lib/motor/leaderboard';
 	import { groupMaps, isOfficial, sortMaps } from '$lib/motor/maps';
 	import { CREATE_SESSION_MUTATION, LEADERBOARD_QUERY, MAPS_QUERY } from '$lib/motor/queries';
-	import { newSessionName, ownSessionIds, rememberSession } from '$lib/motor/sessions';
+	import { ownSessionIds, rememberSession } from '$lib/motor/sessions';
 	import { account } from '$lib/account/stores/account';
 	import { absoluteTime, relativeTime } from '@drbrain/ui/time';
 	import type { GameMap, Leaderboard, LeaderboardOrder, Session } from '$lib/motor/types';
@@ -95,9 +95,9 @@
 		error = null;
 		try {
 			const data = await unwrap<{ createSession: Session }>(
-				client.mutation(CREATE_SESSION_MUTATION, { mapID: map.id, displayName: newSessionName(!!$account.me) })
+				client.mutation(CREATE_SESSION_MUTATION, { mapID: map.id })
 			);
-			rememberSession(data.createSession.id, undefined, data.createSession.ownerToken);
+			rememberSession(data.createSession.id, data.createSession.ownerToken);
 			await goto(`/motor/play/${data.createSession.id}`);
 		} catch (e) {
 			error = describeError(e);
@@ -212,7 +212,7 @@
 							</td>
 							<td class="px-4 py-2 font-medium">
 								{#if playerHref(e)}
-									<a href={playerHref(e)} class="hover:underline" title={e.handle ? `${e.displayName}'s profile` : `See ${e.displayName}'s runs`}>{e.displayName}</a>
+									<a href={playerHref(e)} class="hover:underline" title={e.handle ? `${e.displayName}'s profile` : e.displayName}>{e.displayName}</a>
 								{:else}
 									{e.displayName}
 								{/if}

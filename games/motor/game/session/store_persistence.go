@@ -21,7 +21,6 @@ const SchemaVersion = 1
 type PersistedSession struct {
 	SchemaVersion int              `json:"schema_version"`
 	ID            string           `json:"id"`
-	DisplayName   string           `json:"display_name"`
 	Map           engine.MapConfig `json:"map"` // snapshot taken when the session was created
 	Program       engine.Program   `json:"program"`
 	VM            engine.VMState   `json:"vm"`
@@ -80,7 +79,7 @@ func summarize(raw []byte) (sessionstore.Meta, error) {
 		last = ps.CreatedAt
 	}
 	return sessionstore.Meta{
-		ID: ps.ID, DisplayName: ps.DisplayName, MapID: ps.Map.ID,
+		ID: ps.ID, MapID: ps.Map.ID,
 		CreatedAt: ps.CreatedAt, LastActionAt: last, Seq: ps.Seq,
 	}, nil
 }
@@ -101,7 +100,7 @@ func (fp *FilePersistence) Save(s *service.Session) (err error) {
 		return fmt.Errorf("marshal session %s: %w", s.ID, err)
 	}
 	return fp.store.Persist(sessionstore.Meta{
-		ID: s.ID, DisplayName: s.DisplayName, MapID: s.MapID,
+		ID: s.ID, MapID: s.MapID,
 		CreatedAt: s.CreatedAt, LastActionAt: s.LastActionAt, Seq: s.Seq,
 	}, data)
 }
@@ -140,7 +139,6 @@ func persistedFrom(s *service.Session) (PersistedSession, error) {
 	return PersistedSession{
 		SchemaVersion: SchemaVersion,
 		ID:            s.ID,
-		DisplayName:   s.DisplayName,
 		Map:           s.Map.Config(),
 		Program:       s.Program,
 		VM:            s.VM,
@@ -186,7 +184,7 @@ func restoreSession(id string, ps PersistedSession) (*service.Session, error) {
 		last = ps.CreatedAt
 	}
 	s := &service.Session{
-		ID: ps.ID, DisplayName: ps.DisplayName, MapID: m.ID, Map: m,
+		ID: ps.ID, MapID: m.ID, Map: m,
 		Program: ps.Program, VM: ps.VM, Playing: false, SpeedMs: ps.SpeedMs,
 		Seq: ps.Seq, CreatedAt: ps.CreatedAt, LastActionAt: last,
 		Attempts: ps.Attempts, BestSteps: ps.BestSteps,

@@ -1,0 +1,95 @@
+# Code generated from graph/schema.graphqls by cmd/split-schema. DO NOT EDIT.
+
+enum Difficulty {
+	"""
+	Reorder the whole excerpt; no bar is flipped. Rewards 5% per win.
+	"""
+	NOVICE
+	"""
+	Reorder the whole excerpt and undo retrograde (horizontal) flips on about a third of the bars; no bar is inverted. Rewards 10% per win.
+	"""
+	EXPERT
+	"""
+	Reorder the whole excerpt and undo both flips: at least half the bars carry retrograde and inversion together. Rewards 15% per win.
+	"""
+	GENIUS
+}
+type Note {
+	at: Int!
+	dur: Int!
+	pitch: Int!
+}
+type Measure {
+	id: ID!
+	len: Int!
+	notes: [Note!]!
+}
+type Slot {
+	position: Int!
+	measureID: ID!
+	flipH: Boolean!
+	flipV: Boolean!
+}
+input PlacementInput {
+	measureID: ID!
+	flipH: Boolean!
+	flipV: Boolean!
+}
+type Excerpt {
+	id: ID!
+	title: String!
+	composer: String!
+	tempoBPM: Int!
+	timeSig: String!
+	key: String!
+	clef: String!
+	axis: Int!
+	"""
+	The piece's bars in performance order. Every Music Region piece is at most
+	6 bars, and every difficulty challenges the whole piece, so this is also
+	the number of slots in a session.
+	"""
+	measures: [Measure!]!
+	notes: [Note!]!
+}
+type LastChange {
+	kind: String!
+	a: Int!
+	b: Int!
+}
+type Session {
+	id: ID!
+	displayName: String
+	difficulty: Difficulty!
+	excerpt: Excerpt!
+	slots: [Slot!]!
+	solved: Boolean!
+	seq: Int!
+	wins: Int!
+	percentPerWin: Int!
+	createdAt: String!
+	lastActionAt: String!
+	lastChange: LastChange
+}
+type SessionUpdate {
+	session: Session!
+	lastChange: LastChange
+}
+type Query {
+	excerpts: [Excerpt!]!
+	excerpt(id: ID!): Excerpt
+	session(id: ID!): Session
+	sessions(limit: Int = 50): [Session!]!
+}
+type Mutation {
+	createSession(excerptID: ID!, difficulty: Difficulty!, displayName: String, seed: Int): Session!
+	switchMeasures(sessionID: ID!, a: Int!, b: Int!): Session!
+	transformMeasure(sessionID: ID!, position: Int!, flipH: Boolean!, flipV: Boolean!): Session!
+	setArrangement(sessionID: ID!, slots: [PlacementInput!]!): Session!
+	resetArrangement(sessionID: ID!): Session!
+	deleteSession(id: ID!): Boolean!
+	renameSession(id: ID!, displayName: String!): Session!
+}
+type Subscription {
+	sessionUpdated(sessionID: ID!): SessionUpdate!
+}

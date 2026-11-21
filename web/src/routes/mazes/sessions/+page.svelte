@@ -109,13 +109,13 @@
 			<h1 class="text-2xl font-semibold text-indigo-950">Sessions</h1>
 			<p class="mt-1 text-sm text-slate-700">Every run on this server. Anyone can watch any session; unfinished ones can be played.</p>
 		</div>
-		<div class="flex items-center gap-3">
-			<span class="text-xs text-slate-500" data-testid="auto-refresh">{refreshing ? 'Refreshing…' : 'Auto-refreshes every 10 s'}</span>
+		<div class="flex flex-wrap items-center gap-2">
+			<span class="basis-full text-xs text-slate-600 sm:basis-auto" data-testid="auto-refresh">{refreshing ? 'Refreshing…' : 'Auto-refreshes every 10 s'}</span>
 			<button
 				type="button"
 				onclick={() => load()}
 				disabled={loading}
-				class="rounded-full border border-indigo-300 bg-white px-4 py-1.5 text-sm font-medium text-indigo-900 hover:bg-indigo-50 disabled:opacity-60"
+				class="db-button" data-variant="secondary"
 				>Refresh</button
 			>
 			<button
@@ -123,7 +123,7 @@
 				onclick={watchSelected}
 				disabled={selected.length === 0}
 				data-testid="watch-selected"
-				class="rounded-full bg-indigo-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+				class="db-button"
 				>Watch selected ({selected.length})</button
 			>
 		</div>
@@ -155,7 +155,7 @@
 				bind:value={text}
 				oninput={() => (visible = PAGE)}
 				placeholder="Search name, id or map"
-				class="mt-1 w-full rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm"
+				class="db-input mt-1"
 			/>
 		</div>
 		<div>
@@ -167,7 +167,7 @@
 					visible = PAGE;
 					load();
 				}}
-				class="mt-1 w-full rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm"
+				class="db-input mt-1"
 			>
 				<option value="">All maps</option>
 				{#each maps as m (m.id)}
@@ -184,7 +184,7 @@
 					visible = PAGE;
 					load();
 				}}
-				class="mt-1 w-full rounded-lg border border-indigo-300 bg-white px-3 py-2 text-sm"
+				class="db-input mt-1"
 			>
 				<option value="RECENT">Last activity</option>
 				<option value="MOVES">Most moves</option>
@@ -227,18 +227,18 @@
 			{/if}
 		</p>
 	{:else if shown.length > 0}
-		<div class="overflow-x-auto rounded-xl border border-indigo-200 bg-white">
+		<div class="db-panel min-w-0 max-w-full overflow-x-auto">
 			<table class="w-full text-left text-sm">
 				<caption class="sr-only">Sessions</caption>
 				<thead class="bg-indigo-50 text-xs uppercase tracking-wide text-indigo-900">
 					<tr>
-						<th scope="col" class="w-8 px-4 py-2"><span class="sr-only">Select</span></th>
-						<th scope="col" class="px-4 py-2">Player</th>
-						<th scope="col" class="px-4 py-2">Map</th>
-						<th scope="col" class="px-4 py-2">Status</th>
-						<th scope="col" class="px-4 py-2">Progress</th>
-						<th scope="col" class="px-4 py-2">{sort === 'CREATED' ? 'Created' : 'Last activity'}</th>
-						<th scope="col" class="px-4 py-2"><span class="sr-only">Links</span></th>
+						<th scope="col" class="w-8 px-2 py-2 sm:px-4"><span class="sr-only">Select</span></th>
+						<th scope="col" class="px-2 py-2 sm:px-4">Player</th>
+						<th scope="col" class="hidden px-4 py-2 sm:table-cell">Map</th>
+						<th scope="col" class="px-2 py-2 sm:px-4">Status</th>
+						<th scope="col" class="hidden px-4 py-2 sm:table-cell">Progress</th>
+						<th scope="col" class="hidden px-4 py-2 sm:table-cell">{sort === 'CREATED' ? 'Created' : 'Last activity'}</th>
+						<th scope="col" class="px-2 py-2 sm:px-4"><span class="sr-only">Links</span></th>
 					</tr>
 				</thead>
 				<tbody class="divide-y divide-indigo-100">
@@ -246,7 +246,7 @@
 						{@const st = statusText(s)}
 						{@const at = sort === 'CREATED' ? s.createdAt : s.lastActionAt}
 						<tr class={selected.includes(s.id) ? 'bg-indigo-50/60' : ''}>
-							<td class="px-4 py-2">
+							<td class="px-2 py-2 sm:px-4">
 								<input
 									type="checkbox"
 									class="h-4 w-4 accent-indigo-600"
@@ -256,19 +256,22 @@
 									data-testid="select-{s.id}"
 								/>
 							</td>
-							<td class="px-4 py-2 font-medium">{s.displayName || 'Anonymous'}</td>
-							<td class="px-4 py-2">{s.map.name}</td>
-							<td class="px-4 py-2">
+							<td class="break-words px-2 py-2 font-medium sm:px-4">
+								{s.displayName || 'Anonymous'}
+								<span class="mt-0.5 block text-xs text-slate-600 sm:hidden">{s.map.name} · {s.state.moves} / {s.map.maxMoves} moves</span>
+							</td>
+							<td class="hidden px-4 py-2 sm:table-cell">{s.map.name}</td>
+							<td class="px-2 py-2 sm:px-4">
 								<span class="rounded-full px-2 py-0.5 text-xs {statusClass[st]}">{st}</span>
 							</td>
-							<td class="px-4 py-2 tabular-nums text-slate-700">{s.state.moves} / {s.map.maxMoves} moves{s.map.parMoves !== null ? ` · par ${s.map.parMoves}` : ''}</td>
-							<td class="px-4 py-2 text-slate-700"><span title={absoluteTime(at)}>{relativeTime(at, now)}</span></td>
-							<td class="px-4 py-2 whitespace-nowrap text-right">
+							<td class="hidden px-4 py-2 tabular-nums text-slate-700 sm:table-cell">{s.state.moves} / {s.map.maxMoves} moves{s.map.parMoves !== null ? ` · par ${s.map.parMoves}` : ''}</td>
+							<td class="hidden px-4 py-2 text-slate-700 sm:table-cell"><span title={absoluteTime(at)}>{relativeTime(at, now)}</span></td>
+							<td class="px-2 py-2 text-right sm:whitespace-nowrap sm:px-4">
 								{#if !isFinished(s)}
 									<a class="font-semibold text-indigo-700 underline" href="/mazes/play/{s.id}">Play</a>
-									<span aria-hidden="true" class="text-slate-400"> · </span>
+									<span aria-hidden="true" class="hidden text-slate-400 sm:inline"> · </span>
 								{/if}
-								<a class="text-indigo-700 underline" href="/mazes/watch/{s.id}">Watch</a>
+								<a class="block text-indigo-700 underline sm:inline" href="/mazes/watch/{s.id}">Watch</a>
 							</td>
 						</tr>
 					{/each}

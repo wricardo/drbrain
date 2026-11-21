@@ -7,6 +7,7 @@ import (
 	deliverygraph "github.com/wricardo/drbrain/games/delivery/graph"
 	mazesgraph "github.com/wricardo/drbrain/games/mazes/graph"
 	motorgraph "github.com/wricardo/drbrain/games/motor/graph"
+	musicgraph "github.com/wricardo/drbrain/games/music/graph"
 	teslagraph "github.com/wricardo/drbrain/games/tesla/graph"
 )
 
@@ -15,7 +16,8 @@ func TestNamespaceRootsReturnTheirGameResolver(t *testing.T) {
 	m := &mazesgraph.Resolver{}
 	p := &motorgraph.Resolver{}
 	x := &teslagraph.Resolver{}
-	r := New(nil, d, m, p, x)
+	mu := &musicgraph.Resolver{}
+	r := New(nil, d, m, p, x, mu)
 	ctx := context.Background()
 
 	for name, tc := range map[string]struct {
@@ -26,6 +28,7 @@ func TestNamespaceRootsReturnTheirGameResolver(t *testing.T) {
 		"mazes":            {func(ctx context.Context) (any, error) { return r.Query().Mazes(ctx) }, m},
 		"motorProgramming": {func(ctx context.Context) (any, error) { return r.Query().MotorProgramming(ctx) }, p},
 		"tesla":            {func(ctx context.Context) (any, error) { return r.Query().Tesla(ctx) }, x},
+		"music":            {func(ctx context.Context) (any, error) { return r.Query().Music(ctx) }, mu},
 	} {
 		got, err := tc.got(ctx)
 		if err != nil {
@@ -44,6 +47,13 @@ func TestNamespaceRootsReturnTheirGameResolver(t *testing.T) {
 	}
 	if h.Status != "ok" {
 		t.Fatalf("health status = %q, want ok", h.Status)
+	}
+}
+
+func TestDisabledGameReportsNotEnabled(t *testing.T) {
+	r := New(nil, nil, nil, nil, nil, nil)
+	if _, err := r.Query().Music(context.Background()); err == nil || err.Error() != "game is not enabled" {
+		t.Fatalf("disabled music error = %v, want %q", err, "game is not enabled")
 	}
 }
 

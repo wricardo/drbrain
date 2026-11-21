@@ -1,27 +1,5 @@
-@import "tailwindcss";
-
-@theme {
-  --color-tesla-white: #f7f7f7;
-  --color-tesla-gray: #393c41;
-  --color-tesla-light: #e8e8e8;
-  --color-tesla-red: #e82127;
-  --color-tesla-blue: #3e6ae1;
-
-  /* Tailwind's default gray-400 (2.5:1 on white) fails WCAG AA for text and is used
-     for most secondary copy. Shift the lower end of the scale so text-gray-400 is
-     ~4.8:1 and text-gray-500 ~7:1 while keeping the visual hierarchy. */
-  --color-gray-400: #6b7280;
-  --color-gray-500: #4b5563;
-}
-
-/* Visible keyboard focus everywhere (many inputs use focus:outline-none). */
-:focus-visible {
-  outline: 2px solid var(--color-tesla-blue);
-  outline-offset: 2px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .animate-pulse {
-    animation: none;
-  }
+/* Preserve contrast on the existing light Tesla cards and HUD. */
+[data-game='tesla'] {
+	--color-gray-400: #6b7280;
+	--color-gray-500: #4b5563;
 }

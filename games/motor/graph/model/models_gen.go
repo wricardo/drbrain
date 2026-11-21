@@ -54,7 +54,8 @@ type LeaderboardEntry struct {
 	Rank int `json:"rank"`
 	// The winning session; spectate it at /watch/<sessionId>.
 	SessionID string `json:"sessionId"`
-	// Empty names are shown as Anonymous. An account's entry shows its display name, or "Private player" when its profile is private.
+	// The entry's player name. Account rows show the account's display name, or "Private player"
+	// when its profile is private; a session with no account is shown as "Guest".
 	DisplayName string `json:"displayName"`
 	// Handle of the signed-in player who owns this entry (profile at /u/<handle>); null for guests and private profiles.
 	Handle *string `json:"handle,omitempty"`
@@ -167,9 +168,8 @@ type Query struct {
 }
 
 type Session struct {
-	ID          string `json:"id"`
-	DisplayName string `json:"displayName"`
-	MapID       string `json:"mapId"`
+	ID    string `json:"id"`
+	MapID string `json:"mapId"`
 	// Snapshot of the map taken when the session was created.
 	Map *Map `json:"map"`
 	// The robot's program. Only a caller who may change it sees it: the ownerToken holder or the owning
@@ -189,7 +189,7 @@ type Session struct {
 	// Secret that proves the caller created this session; keep it private. Returned only by the
 	// createSession response that made the session and null everywhere else (queries, lists,
 	// subscriptions). It is the credential for playing the session (pass it to setProgram, run, step,
-	// pause and reset) and for changing or attaching it (deleteSession, renameSession, claimSessions).
+	// pause and reset) and for changing or attaching it (deleteSession, claimSessions).
 	// Sharing it is how a session is handed to a second person or an AI agent. Optional: clients that
 	// never select it are unaffected.
 	OwnerToken *string `json:"ownerToken,omitempty"`

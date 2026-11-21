@@ -46,8 +46,12 @@ models:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.CarWindow
   Delivery_CityView:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.CityView
+  Delivery_ClaimStatus:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.ClaimStatus
   Delivery_ClosureView:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.ClosureView
+  Delivery_CreateSessionResult:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.CreateSessionResult
   Delivery_Direction:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.Direction
   Delivery_EventView:
@@ -85,6 +89,8 @@ models:
         resolver: true
       deleteSession:
         resolver: true
+      claimSessions:
+        resolver: true
   Delivery_OrderState:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.OrderState
   Delivery_OrderView:
@@ -106,8 +112,14 @@ models:
         resolver: true
       events:
         resolver: true
+      canPlaySession:
+        resolver: true
   Delivery_RejectReason:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.RejectReason
+  Delivery_SessionClaimInput:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.SessionClaimInput
+  Delivery_SessionClaimResult:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.SessionClaimResult
   Delivery_SessionSummary:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.SessionSummary
   Delivery_Snapshot:
@@ -118,6 +130,8 @@ models:
     model: github.com/wricardo/drbrain/platform/account/graph/model.AccountInput
   Global_AuthProvider:
     model: github.com/wricardo/drbrain/platform/account/graph/model.AuthProvider
+  Global_AuthSession:
+    model: github.com/wricardo/drbrain/platform/account/graph/model.AuthSession
   Global_Mutation:
     model: github.com/wricardo/drbrain/platform/account/graph.Resolver
     fields:
@@ -258,8 +272,6 @@ models:
         resolver: true
       deleteSession:
         resolver: true
-      renameSession:
-        resolver: true
       setProgram:
         resolver: true
       run:
@@ -325,6 +337,52 @@ models:
     model: github.com/wricardo/drbrain/games/motor/graph/model.StepEvent
   Motor_VMState:
     model: github.com/wricardo/drbrain/games/motor/graph/model.VMState
+  Music_Difficulty:
+    model: github.com/wricardo/drbrain/games/music/graph/model.Difficulty
+  Music_Excerpt:
+    model: github.com/wricardo/drbrain/games/music/graph/model.Excerpt
+  Music_LastChange:
+    model: github.com/wricardo/drbrain/games/music/graph/model.LastChange
+  Music_Measure:
+    model: github.com/wricardo/drbrain/games/music/graph/model.Measure
+  Music_Mutation:
+    model: github.com/wricardo/drbrain/games/music/graph.Resolver
+    fields:
+      createSession:
+        resolver: true
+      switchMeasures:
+        resolver: true
+      transformMeasure:
+        resolver: true
+      setArrangement:
+        resolver: true
+      resetArrangement:
+        resolver: true
+      deleteSession:
+        resolver: true
+      renameSession:
+        resolver: true
+  Music_Note:
+    model: github.com/wricardo/drbrain/games/music/graph/model.Note
+  Music_PlacementInput:
+    model: github.com/wricardo/drbrain/games/music/graph/model.PlacementInput
+  Music_Query:
+    model: github.com/wricardo/drbrain/games/music/graph.Resolver
+    fields:
+      excerpts:
+        resolver: true
+      excerpt:
+        resolver: true
+      session:
+        resolver: true
+      sessions:
+        resolver: true
+  Music_Session:
+    model: github.com/wricardo/drbrain/games/music/graph/model.Session
+  Music_SessionUpdate:
+    model: github.com/wricardo/drbrain/games/music/graph/model.SessionUpdate
+  Music_Slot:
+    model: github.com/wricardo/drbrain/games/music/graph/model.Slot
   Tesla_AttemptInfo:
     model: github.com/wricardo/drbrain/games/tesla/graph/model.AttemptInfo
   Tesla_BulkMoveResult:

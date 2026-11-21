@@ -56,10 +56,10 @@ func (e *env) winWith(t *testing.T, id string, p engine.Program) *service.Sessio
 	}
 }
 
-// wonBy creates a session on mapID with a display name and wins it with p.
-func (e *env) wonBy(t *testing.T, mapID, name string, p engine.Program) string {
+// wonBy creates a session on mapID and wins it with p.
+func (e *env) wonBy(t *testing.T, mapID string, p engine.Program) string {
 	t.Helper()
-	s, err := e.svc.CreateSession(mapID, name)
+	s, err := e.svc.CreateSession(mapID)
 	if err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
@@ -85,11 +85,12 @@ func board(t *testing.T, e *env, q service.LeaderboardQuery) *service.Leaderboar
 	return lb
 }
 
-// rows flattens entries to "name #rank slots/steps" for compact comparison.
+// rows flattens entries to "#rank slots/steps" for compact comparison; entry
+// identity is asserted separately through SessionID.
 func rows(lb *service.Leaderboard) []string {
 	out := make([]string, len(lb.Entries))
 	for i, en := range lb.Entries {
-		out[i] = en.DisplayName + " #" + strconv.Itoa(en.Rank) + " " + strconv.Itoa(en.Slots) + "/" + strconv.Itoa(en.Steps)
+		out[i] = "#" + strconv.Itoa(en.Rank) + " " + strconv.Itoa(en.Slots) + "/" + strconv.Itoa(en.Steps)
 	}
 	return out
 }
@@ -111,7 +112,7 @@ func TestWinRecordsSlotsAndSteps(t *testing.T) {
 
 	t.Run("a win records the server-side numbers", func(t *testing.T) {
 		before := time.Now()
-		id := e.wonBy(t, "wide", "Ada", wideViaSub())
+		id := e.wonBy(t, "wide", wideViaSub())
 		s := e.get(t, id)
 		for name, w := range map[string]*service.Win{"fewest slots": s.FewestSlots, "fewest steps": s.FewestSteps} {
 			if w == nil || w.Slots != 6 || w.Steps != 9 {
@@ -142,12 +143,11 @@ func TestWinRecordsSlotsAndSteps(t *testing.T) {
 
 func TestLeaderboardRanking(t *testing.T) {
 	e := newEnv(t, envOpts{}, wideCfg)
-	via := e.wonBy(t, "wide", "Via", wideViaSub())
-	direct1 := e.wonBy(t, "wide", "Direct1", wideDirect())
+	via := e.wonBy(t, "wide", wideViaSub())
+	direct1 := e.wonBy(t, "wide", wideDirect())
 	waitClockAdvance(t, e.get(t, direct1).FewestSlots.At)
-	direct2 := e.wonBy(t, "wide", "Direct2", wideDirect())
-	waste := e.wonBy(t, "wide", "", wideWasteful()) // no name: the service assigns a guest name
-	guest := e.get(t, waste).DisplayName
+	direct2 := e.wonBy(t, "wide", wideDirect())
+	waste := e.wonBy(t, "wide", wideWasteful())
 	e.create(t, "wide") // never won: not on the board
 
 	tests := []struct {
@@ -157,13 +157,13 @@ func TestLeaderboardRanking(t *testing.T) {
 		want  []string
 	}{
 		{"default is slots then steps", service.LeaderboardQuery{MapID: "wide"}, service.OrderSlots,
-			[]string{"Via #1 6/9", "Direct1 #2 7/7", "Direct2 #2 7/7", guest + " #4 8/11"}},
+			[]string{"#1 6/9", "#2 7/7", "#2 7/7", "#4 8/11"}},
 		{"explicit slots, lowercase", service.LeaderboardQuery{MapID: "wide", Order: "slots"}, service.OrderSlots,
-			[]string{"Via #1 6/9", "Direct1 #2 7/7", "Direct2 #2 7/7", guest + " #4 8/11"}},
+			[]string{"#1 6/9", "#2 7/7", "#2 7/7", "#4 8/11"}},
 		{"steps then slots", service.LeaderboardQuery{MapID: "wide", Order: service.OrderSteps}, service.OrderSteps,
-			[]string{"Direct1 #1 7/7", "Direct2 #1 7/7", "Via #3 6/9", guest + " #4 8/11"}},
+			[]string{"#1 7/7", "#1 7/7", "#3 6/9", "#4 8/11"}},
 		{"limit", service.LeaderboardQuery{MapID: "wide", Limit: 2}, service.OrderSlots,
-			[]string{"Via #1 6/9", "Direct1 #2 7/7"}},
+			[]string{"#1 6/9", "#2 7/7"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -211,20 +211,20 @@ func TestLeaderboardRanking(t *testing.T) {
 
 func TestLeaderboardIsPerMap(t *testing.T) {
 	e := newEnv(t, envOpts{}, corridorCfg, wideCfg)
-	e.wonBy(t, "wide", "W", wideDirect())
-	e.wonBy(t, "corridor", "C", corridorFast())
+	e.wonBy(t, "wide", wideDirect())
+	e.wonBy(t, "corridor", corridorFast())
 
-	if got := rows(board(t, e, service.LeaderboardQuery{MapID: "wide"})); !reflect.DeepEqual(got, []string{"W #1 7/7"}) {
+	if got := rows(board(t, e, service.LeaderboardQuery{MapID: "wide"})); !reflect.DeepEqual(got, []string{"#1 7/7"}) {
 		t.Fatalf("wide = %v", got)
 	}
-	if got := rows(board(t, e, service.LeaderboardQuery{MapID: "corridor"})); !reflect.DeepEqual(got, []string{"C #1 4/4"}) {
+	if got := rows(board(t, e, service.LeaderboardQuery{MapID: "corridor"})); !reflect.DeepEqual(got, []string{"#1 4/4"}) {
 		t.Fatalf("corridor = %v", got)
 	}
 }
 
 func TestLeaderboardOneEntryPerSession(t *testing.T) {
 	e := newEnv(t, envOpts{}, wideCfg)
-	id := e.wonBy(t, "wide", "Ada", wideDirect()) // 7 slots, 7 steps
+	id := e.wonBy(t, "wide", wideDirect()) // 7 slots, 7 steps
 
 	t.Run("a worse re-win does not replace the entry", func(t *testing.T) {
 		if _, err := e.svc.Reset(id); err != nil {
@@ -232,7 +232,7 @@ func TestLeaderboardOneEntryPerSession(t *testing.T) {
 		}
 		e.winWith(t, id, wideWasteful()) // 8/11
 		lb := board(t, e, service.LeaderboardQuery{MapID: "wide"})
-		if lb.Total != 1 || !reflect.DeepEqual(rows(lb), []string{"Ada #1 7/7"}) {
+		if lb.Total != 1 || !reflect.DeepEqual(rows(lb), []string{"#1 7/7"}) {
 			t.Fatalf("board = %v (total %d), want only Ada 7/7", rows(lb), lb.Total)
 		}
 	})
@@ -246,10 +246,10 @@ func TestLeaderboardOneEntryPerSession(t *testing.T) {
 		if s.FewestSteps.Slots != 7 || s.FewestSteps.Steps != 7 {
 			t.Fatalf("FewestSteps = %+v, want 7/7", s.FewestSteps)
 		}
-		if got := rows(board(t, e, service.LeaderboardQuery{MapID: "wide"})); !reflect.DeepEqual(got, []string{"Ada #1 6/9"}) {
+		if got := rows(board(t, e, service.LeaderboardQuery{MapID: "wide"})); !reflect.DeepEqual(got, []string{"#1 6/9"}) {
 			t.Fatalf("slots board = %v", got)
 		}
-		if got := rows(board(t, e, service.LeaderboardQuery{MapID: "wide", Order: service.OrderSteps})); !reflect.DeepEqual(got, []string{"Ada #1 7/7"}) {
+		if got := rows(board(t, e, service.LeaderboardQuery{MapID: "wide", Order: service.OrderSteps})); !reflect.DeepEqual(got, []string{"#1 7/7"}) {
 			t.Fatalf("steps board = %v", got)
 		}
 		if s.BestSteps != 7 {
@@ -279,19 +279,19 @@ func TestLeaderboardOneEntryPerSession(t *testing.T) {
 
 func TestLeaderboardDeletedSessionDisappears(t *testing.T) {
 	e := newEnv(t, envOpts{}, wideCfg)
-	a := e.wonBy(t, "wide", "A", wideDirect())
-	e.wonBy(t, "wide", "B", wideWasteful())
+	a := e.wonBy(t, "wide", wideDirect())
+	e.wonBy(t, "wide", wideWasteful())
 	if err := e.svc.DeleteSession(a); err != nil {
 		t.Fatal(err)
 	}
-	if got := rows(board(t, e, service.LeaderboardQuery{MapID: "wide"})); !reflect.DeepEqual(got, []string{"B #1 8/11"}) {
+	if got := rows(board(t, e, service.LeaderboardQuery{MapID: "wide"})); !reflect.DeepEqual(got, []string{"#1 8/11"}) {
 		t.Fatalf("rows = %v, want only B", got)
 	}
 }
 
 func TestLeaderboardFollowsMapRules(t *testing.T) {
 	e := newEnv(t, envOpts{}, wideCfg)
-	e.wonBy(t, "wide", "Old", wideDirect())
+	e.wonBy(t, "wide", wideDirect())
 
 	t.Run("a cosmetic edit keeps the board", func(t *testing.T) {
 		cfg := wideCfg
@@ -314,8 +314,8 @@ func TestLeaderboardFollowsMapRules(t *testing.T) {
 			t.Fatalf("board = %v (total %d), want empty", rows(lb), lb.Total)
 		}
 		// A session started on the new rules ranks again.
-		e.wonBy(t, "wide", "New", wideDirect())
-		if got := rows(board(t, e, service.LeaderboardQuery{MapID: "wide"})); !reflect.DeepEqual(got, []string{"New #1 7/7"}) {
+		e.wonBy(t, "wide", wideDirect())
+		if got := rows(board(t, e, service.LeaderboardQuery{MapID: "wide"})); !reflect.DeepEqual(got, []string{"#1 7/7"}) {
 			t.Fatalf("rows = %v, want only New", got)
 		}
 	})
@@ -344,7 +344,7 @@ func TestLeaderboardLimitIsClamped(t *testing.T) {
 	e := newEnv(t, envOpts{}, wideCfg)
 	const n = service.MaxLeaderboardLimit + 3
 	for i := 0; i < n; i++ {
-		e.wonBy(t, "wide", "", wideDirect())
+		e.wonBy(t, "wide", wideDirect())
 	}
 	tests := []struct {
 		name  string
@@ -373,12 +373,12 @@ func TestPublicName(t *testing.T) {
 		want string
 	}{
 		{"plain", "Ada", 40, "Ada"},
-		{"empty is anonymous", "", 40, "Anonymous"},
-		{"blank is anonymous", " \t ", 40, "Anonymous"},
+		{"empty is a guest", "", 40, "Guest"},
+		{"blank is a guest", " \t ", 40, "Guest"},
 		{"control characters become spaces", "A\x00d\x1b[31ma\nLovelace", 40, "A d [31ma Lovelace"},
 		{"whitespace collapses", "  Ada    Lovelace  ", 40, "Ada Lovelace"},
 		{"zero-width and bidi marks collapse to spaces", "Ad​a‮", 40, "Ad a"},
-		{"only invisible is anonymous", "​‮", 40, "Anonymous"},
+		{"only invisible is a guest", "​‮", 40, "Guest"},
 		{"cut to max characters, not bytes", strings.Repeat("é", 10), 4, "éééé"},
 		{"markup is left to the client to escape", "<b>x</b>", 40, "<b>x</b>"},
 	}

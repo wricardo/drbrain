@@ -6,6 +6,7 @@ package graph
 
 import (
 	"context"
+	"errors"
 
 	"github.com/wricardo/drbrain/games/delivery/game/engine"
 	"github.com/wricardo/drbrain/games/delivery/game/session"
@@ -14,10 +15,13 @@ import (
 )
 
 // CreateSession is the resolver for the createSession field.
-func (r *mutationResolver) CreateSession(ctx context.Context, id *string, seed *int) (*model.Snapshot, error) {
+func (r *mutationResolver) CreateSession(ctx context.Context, id *string, seed *int) (*model.CreateSessionResult, error) {
 	var sid string
 	if id != nil {
 		sid = *id
+		if sid != "" && !session.ValidID(sid) {
+			return nil, errBadInput("invalid session id")
+		}
 	}
 	var s uint64
 	if seed != nil {
@@ -25,19 +29,24 @@ func (r *mutationResolver) CreateSession(ctx context.Context, id *string, seed *
 	} else {
 		s = engine.RandomSeed()
 	}
-	sess, err := r.Mgr.Create(sid, s)
+	// A signed-in creator owns the session; everyone else gets a guest save. The
+	// token is shown only in this response.
+	sess, token, err := r.Mgr.Create(sid, s, viewerID(ctx))
 	if err != nil {
 		return nil, errConflict(err.Error())
 	}
-	return snapshotFrom(sess.Snapshot()), nil
+	return &model.CreateSessionResult{
+		Session:    snapshotFrom(sess.Snapshot()),
+		OwnerToken: token,
+	}, nil
 }
 
 // MoveCar is the resolver for the moveCar field.
 //
 // Queues one step. It deliberately does not advance the clock: that separation
 // is what lets several cars be driven on the same tick.
-func (r *mutationResolver) MoveCar(ctx context.Context, id string, carID string, direction model.Direction) (*model.Snapshot, error) {
-	sess, err := r.load(id)
+func (r *mutationResolver) MoveCar(ctx context.Context, id string, carID string, direction model.Direction, ownerToken *string) (*model.Snapshot, error) {
+	sess, err := r.authorize(ctx, id, ownerToken)
 	if err != nil {
 		return nil, err
 	}
@@ -56,8 +65,8 @@ func (r *mutationResolver) MoveCar(ctx context.Context, id string, carID string,
 }
 
 // Tick is the resolver for the tick field.
-func (r *mutationResolver) Tick(ctx context.Context, id string, count int) (*model.Snapshot, error) {
-	sess, err := r.load(id)
+func (r *mutationResolver) Tick(ctx context.Context, id string, count int, ownerToken *string) (*model.Snapshot, error) {
+	sess, err := r.authorize(ctx, id, ownerToken)
 	if err != nil {
 		return nil, err
 	}
@@ -77,8 +86,8 @@ func (r *mutationResolver) Tick(ctx context.Context, id string, count int) (*mod
 }
 
 // SetSpeed is the resolver for the setSpeed field.
-func (r *mutationResolver) SetSpeed(ctx context.Context, id string, speed int) (*model.Snapshot, error) {
-	sess, err := r.load(id)
+func (r *mutationResolver) SetSpeed(ctx context.Context, id string, speed int, ownerToken *string) (*model.Snapshot, error) {
+	sess, err := r.authorize(ctx, id, ownerToken)
 	if err != nil {
 		return nil, err
 	}
@@ -89,8 +98,8 @@ func (r *mutationResolver) SetSpeed(ctx context.Context, id string, speed int) (
 }
 
 // AssignOrder is the resolver for the assignOrder field.
-func (r *mutationResolver) AssignOrder(ctx context.Context, id string, orderID string, carID string) (*model.Snapshot, error) {
-	sess, err := r.load(id)
+func (r *mutationResolver) AssignOrder(ctx context.Context, id string, orderID string, carID string, ownerToken *string) (*model.Snapshot, error) {
+	sess, err := r.authorize(ctx, id, ownerToken)
 	if err != nil {
 		return nil, err
 	}
@@ -105,8 +114,8 @@ func (r *mutationResolver) AssignOrder(ctx context.Context, id string, orderID s
 }
 
 // UnassignOrder is the resolver for the unassignOrder field.
-func (r *mutationResolver) UnassignOrder(ctx context.Context, id string, orderID string) (*model.Snapshot, error) {
-	sess, err := r.load(id)
+func (r *mutationResolver) UnassignOrder(ctx context.Context, id string, orderID string, ownerToken *string) (*model.Snapshot, error) {
+	sess, err := r.authorize(ctx, id, ownerToken)
 	if err != nil {
 		return nil, err
 	}
@@ -121,8 +130,8 @@ func (r *mutationResolver) UnassignOrder(ctx context.Context, id string, orderID
 }
 
 // BuyCar is the resolver for the buyCar field.
-func (r *mutationResolver) BuyCar(ctx context.Context, id string, className string, depotID string) (*model.Snapshot, error) {
-	sess, err := r.load(id)
+func (r *mutationResolver) BuyCar(ctx context.Context, id string, className string, depotID string, ownerToken *string) (*model.Snapshot, error) {
+	sess, err := r.authorize(ctx, id, ownerToken)
 	if err != nil {
 		return nil, err
 	}
@@ -137,8 +146,8 @@ func (r *mutationResolver) BuyCar(ctx context.Context, id string, className stri
 }
 
 // TowCar is the resolver for the towCar field.
-func (r *mutationResolver) TowCar(ctx context.Context, id string, carID string) (*model.Snapshot, error) {
-	sess, err := r.load(id)
+func (r *mutationResolver) TowCar(ctx context.Context, id string, carID string, ownerToken *string) (*model.Snapshot, error) {
+	sess, err := r.authorize(ctx, id, ownerToken)
 	if err != nil {
 		return nil, err
 	}
@@ -153,8 +162,8 @@ func (r *mutationResolver) TowCar(ctx context.Context, id string, carID string) 
 }
 
 // Build is the resolver for the build field.
-func (r *mutationResolver) Build(ctx context.Context, id string, buildID string) (*model.Snapshot, error) {
-	sess, err := r.load(id)
+func (r *mutationResolver) Build(ctx context.Context, id string, buildID string, ownerToken *string) (*model.Snapshot, error) {
+	sess, err := r.authorize(ctx, id, ownerToken)
 	if err != nil {
 		return nil, err
 	}
@@ -169,8 +178,8 @@ func (r *mutationResolver) Build(ctx context.Context, id string, buildID string)
 }
 
 // SaveSession is the resolver for the saveSession field.
-func (r *mutationResolver) SaveSession(ctx context.Context, id string) (*model.Snapshot, error) {
-	sess, err := r.load(id)
+func (r *mutationResolver) SaveSession(ctx context.Context, id string, ownerToken *string) (*model.Snapshot, error) {
+	sess, err := r.authorize(ctx, id, ownerToken)
 	if err != nil {
 		return nil, err
 	}
@@ -184,22 +193,57 @@ func (r *mutationResolver) SaveSession(ctx context.Context, id string) (*model.S
 //
 // Saves, then drops the session from memory so the next read rehydrates. This is
 // a cache operation, distinct from deleteSession which destroys the save.
-func (r *mutationResolver) EvictSession(ctx context.Context, id string) (bool, error) {
-	if sess, ok := r.Mgr.Get(id); ok {
-		if err := sess.Save(r.Mgr.CityFileName()); err != nil {
-			return false, err
-		}
+func (r *mutationResolver) EvictSession(ctx context.Context, id string, ownerToken *string) (bool, error) {
+	sess, err := r.authorize(ctx, id, ownerToken)
+	if err != nil {
+		return false, err
+	}
+	if err := sess.Save(r.Mgr.CityFileName()); err != nil {
+		return false, err
 	}
 	r.Mgr.Evict(id)
 	return true, nil
 }
 
 // DeleteSession is the resolver for the deleteSession field.
-func (r *mutationResolver) DeleteSession(ctx context.Context, id string) (bool, error) {
+func (r *mutationResolver) DeleteSession(ctx context.Context, id string, ownerToken *string) (bool, error) {
+	if !session.ValidID(id) {
+		return false, errBadInput("invalid session id")
+	}
+	// authorize loads the save, so an absent one is not_found: before any
+	// credential is judged.
+	if _, err := r.authorize(ctx, id, ownerToken); err != nil {
+		return false, err
+	}
 	if err := r.Mgr.Delete(id); err != nil {
 		return false, err
 	}
 	return true, nil
+}
+
+// ClaimSessions is the resolver for the claimSessions field. Each claim needs
+// the session's owner token; knowing an id is never enough, and a session made
+// before owner tokens can never be claimed.
+func (r *mutationResolver) ClaimSessions(ctx context.Context, claims []*model.SessionClaimInput) ([]*model.SessionClaimResult, error) {
+	acct, err := requireViewer(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(claims) > session.MaxClaims {
+		return nil, errBadInput("too many claims (max 100)")
+	}
+	out := make([]*model.SessionClaimResult, 0, len(claims))
+	for _, c := range claims {
+		status, err := r.Mgr.Claim(acct.ID, c.SessionID, c.OwnerToken)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, &model.SessionClaimResult{
+			SessionID: c.SessionID,
+			Status:    model.ClaimStatus(status),
+		})
+	}
+	return out, nil
 }
 
 // Health is the resolver for the health field.
@@ -221,7 +265,7 @@ func (r *queryResolver) Sessions(ctx context.Context) ([]*model.SessionSummary, 
 	list := r.Mgr.List()
 	out := make([]*model.SessionSummary, 0, len(list))
 	for _, s := range list {
-		out = append(out, summaryFrom(s))
+		out = append(out, r.summaryView(ctx, s))
 	}
 	return out, nil
 }
@@ -349,6 +393,26 @@ func (r *queryResolver) Events(ctx context.Context, id string, sinceTick int) ([
 		out = append(out, eventFrom(e))
 	}
 	return out, nil
+}
+
+// CanPlaySession is the resolver for the canPlaySession field.
+//
+// It answers whether this caller may change the session (and so is its player
+// rather than a spectator): the creator by owner token or owning login, or
+// anyone for a session created before owner tokens. It never errors: an
+// unknown or malformed id is false, like any other unauthorized caller.
+func (r *queryResolver) CanPlaySession(ctx context.Context, id string, ownerToken *string) (bool, error) {
+	if !session.ValidID(id) {
+		return false, nil
+	}
+	sess, err := r.Mgr.GetOrLoad(id)
+	if err != nil {
+		if errors.Is(err, session.ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return sess.CanPlay(actor(ctx, ownerToken)), nil
 }
 
 // Session is the resolver for the session field.

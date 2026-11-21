@@ -1,15 +1,45 @@
 @import "tailwindcss";
+@import "@drbrain/ui/tokens.css";
+@import "./lib/motor/app.css";
+@import "./lib/delivery/app.css";
+@import "./lib/tesla/app.css";
 
 @theme {
-	--font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+	--font-sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
 body {
-	font-family: var(--font-sans);
+	font-family: var(--db-sans);
 	margin: 0;
+	background: var(--db-page);
+	color: var(--db-ink);
 }
 
-:focus-visible {
-	outline: 2px solid #4f46e5;
-	outline-offset: 2px;
+:root :focus-visible {
+	outline: 2px solid var(--db-focus);
+	outline-offset: 3px;
 }
+
+.suite-main { flex: 1; min-width: 0; }
+.suite-game { min-width: 0; }
+.suite-skip { position: absolute; z-index: 100; top: .35rem; left: .35rem; }
+.suite-skip:not(:focus) { clip-path: inset(50%); width: 1px; height: 1px; overflow: hidden; }
+
+.game-landing { padding-top: clamp(1rem, 3vw, 2rem); }
+.game-landing .db-heading { font-size: clamp(2.1rem, 3.8vw, 3.75rem); }
+.game-landing .game-resume { margin-top: 1rem; padding: 1rem; }
+
+.game-landing .db-button[data-variant='primary'],
+.game-landing .db-button:not([data-variant]) { background: var(--db-accent); }
+.game-landing .db-button[data-variant='primary']:hover { background: color-mix(in srgb, var(--db-accent), black 13%); }
+.dark .game-landing .db-button[data-variant='primary'] { color: #101829; }
+
+.game-run-title {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: .75rem 1rem;
+	padding: clamp(.9rem, 3vw, 1.4rem);
+}
+.game-run-title h1 { color: var(--db-ink); font-weight: 710; letter-spacing: -.04em; }

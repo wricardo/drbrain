@@ -75,6 +75,10 @@
 
 	function cancelEdit() { editingId = null; }
 
+	function focusNameField(input: HTMLInputElement) {
+		input.focus();
+	}
+
 	let pollInterval: ReturnType<typeof setInterval>;
 	onMount(() => {
 		// Force a fresh fetch whenever this page is entered via client-side navigation.
@@ -208,7 +212,7 @@
 										onclick={(e) => e.stopPropagation()}
 										onkeydown={(e) => e.key === 'Escape' && cancelEdit()}
 										class="font-mono text-sm border-b border-gray-300 focus:border-[#393c41] outline-none px-1 w-32"
-										autofocus
+										use:focusNameField
 									/>
 									<button type="submit" aria-label="Save name" class="text-xs text-green-700 hover:text-green-900">✓</button>
 									<button type="button" aria-label="Cancel rename" onclick={cancelEdit} class="text-xs text-gray-500 hover:text-gray-800">✕</button>

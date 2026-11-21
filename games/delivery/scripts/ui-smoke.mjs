@@ -9,7 +9,10 @@
 //   4. collects console errors and failed requests
 //   5. saves a screenshot for human review
 //
-// Usage: node scripts/ui-smoke.mjs [baseUrl] [outPng]
+//   6. phase 2: drops this browser's owner token and proves the same session
+//      opens read-only (spectator notice shown, no speed controls)
+//
+// Usage: node scripts/ui-smoke.mjs [baseUrl] [ownerPng] [spectatorPng]
 
 import { spawn } from 'node:child_process';
 import { writeFileSync, mkdtempSync } from 'node:fs';
@@ -18,13 +21,15 @@ import { join } from 'node:path';
 
 const BASE = process.argv[2] ?? 'http://localhost:8081';
 const OUT = process.argv[3] ?? '/tmp/ui.png';
+const SPECTATOR_OUT = process.argv[4] ?? OUT.replace(/\.png$/, '') + '-spectator.png';
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
 const VIEW = { width: 1440, height: 950 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// GraphQL is the only transport. These helpers post operations straight to it.
+// GraphQL is the only transport. Every Delivery operation lives in the `delivery`
+// namespace of the unified /graphql schema. These helpers post straight to it.
 async function gql(query, variables) {
 	const res = await fetch(BASE + '/graphql', {
 		method: 'POST',
@@ -126,20 +131,22 @@ class Page {
 // --- start a session so the UI has data ------------------------------------
 
 const sessionId = `smoke${Date.now()}`;
-await gql(`mutation ($id: ID, $seed: Int) { createSession(id: $id, seed: $seed) { id } }`, {
-	id: sessionId,
-	seed: 12345
-});
+const created = await gql(
+	`mutation ($id: ID, $seed: Int) { delivery { createSession(id: $id, seed: $seed) { session { id } ownerToken } } }`,
+	{ id: sessionId, seed: 12345 }
+);
+const ownerToken = created.delivery.createSession.ownerToken;
+if (!ownerToken) throw new Error('createSession returned no ownerToken');
 // Pause so the screenshot is deterministic, then step so orders and movement
 // exist. (New sessions already start paused; explicit for clarity.)
-await gql(`mutation ($id: ID!, $speed: Int!) { setSpeed(id: $id, speed: $speed) { tick } }`, {
-	id: sessionId,
-	speed: 0
-});
-await gql(`mutation ($id: ID!, $count: Int!) { tick(id: $id, count: $count) { tick } }`, {
-	id: sessionId,
-	count: 6
-});
+await gql(
+	`mutation ($id: ID!, $ownerToken: String, $speed: Int!) { delivery { setSpeed(id: $id, ownerToken: $ownerToken, speed: $speed) { tick } } }`,
+	{ id: sessionId, ownerToken, speed: 0 }
+);
+await gql(
+	`mutation ($id: ID!, $ownerToken: String, $count: Int!) { delivery { tick(id: $id, ownerToken: $ownerToken, count: $count) { tick } } }`,
+	{ id: sessionId, ownerToken, count: 6 }
+);
 
 // --- launch chrome ---------------------------------------------------------
 
@@ -193,13 +200,16 @@ try {
 	});
 
 	// Seed the session id so the app resumes straight into it.
-	const nav = await page.send('Page.navigate', { url: BASE + '/' });
+	const nav = await page.send('Page.navigate', { url: BASE + '/delivery' });
 	if (nav.errorText) throw new Error(`navigate: ${nav.errorText}`);
 
 	// localStorage must be set on the origin before the app reads it. The app
 	// only calls resume() on mount, so set it then reload.
 	await page.eval('1');
-	await page.eval(`localStorage.setItem('drbrain:session', ${JSON.stringify(sessionId)})`);
+	await page.eval(`localStorage.setItem('drbrain-delivery.lastSession', ${JSON.stringify(sessionId)})`);
+	await page.eval(
+		`localStorage.setItem('drbrain-delivery.ownerTokens', ${JSON.stringify(JSON.stringify({ [sessionId]: ownerToken }))})`
+	);
 	await page.send('Page.reload', {});
 
 	// The map is 400 buttons; wait for the grid plus a ledger value.
@@ -220,22 +230,31 @@ try {
 		// reflects the rendered casing, so compare case-insensitively.
 		const lower = text.toLowerCase();
 		const tiles = document.querySelectorAll('button[aria-label*="at "]').length;
-		// Clipping check: every panel that should be on screen must end above the
-		// viewport bottom. This is what catches "activity panel cut off".
-		//
-		// Anchored on the panel element itself, not on a class name: the panels
-		// were a div with class "rounded-lg" until they became a shared
-		// collapsible component rendered as a section, and a class-based
-		// closest() silently returned null instead of failing. A -1 here is a
-		// broken assertion, not a passing layout, so it is reported as a problem
-		// below.
+		// Clipping check. The page scrolls normally inside the shared shell, so a
+		// panel below the fold is fine. What is a bug is a panel whose content is
+		// taller than its box while overflow is hidden/clip: that content is
+		// unreachable. Panels are section elements carrying a heading; anchored on
+		// the element, not a class name, so a restyle cannot silently skip it.
+		const panels = [...document.querySelectorAll('section')].filter((sec) => sec.querySelector('h2, h3'));
+		const clippedPanels = panels
+			.filter((sec) => {
+				const oy = getComputedStyle(sec).overflowY;
+				return (oy === 'hidden' || oy === 'clip') && sec.scrollHeight > sec.clientHeight + 1;
+			})
+			.map((sec) => ({
+				heading: (sec.querySelector('h2, h3')?.textContent ?? '').trim(),
+				scrollHeight: sec.scrollHeight,
+				clientHeight: sec.clientHeight
+			}));
+		// Reachability: the Activity panel exists and has height. Below the fold is
+		// fine, so scroll it into view and measure there.
 		const activity = [...document.querySelectorAll('h2')].find((h) =>
 			h.textContent.toLowerCase().includes('activity')
 		);
 		const activityCard = activity ? activity.closest('section') : null;
-		const activityBottom = activityCard
-			? Math.round(activityCard.getBoundingClientRect().bottom)
-			: -1;
+		if (activityCard) activityCard.scrollIntoView({ block: 'center' });
+		const activityHeight = activityCard ? Math.round(activityCard.getBoundingClientRect().height) : -1;
+		window.scrollTo(0, 0);
 		// Every locked upgrade must say what it is waiting for. A card that only
 		// says "locked" is a dead end, and the client's GraphQL selection is
 		// hand-written, so a new criteria field can reach the schema and the Go
@@ -257,9 +276,10 @@ try {
 			silentCards: silent.map((li) => li.textContent.trim().split('\\n')[0]),
 			hasDpad: !!document.querySelector('button[aria-label="Move north"]'),
 			viewportH: window.innerHeight,
-			activityBottom,
+			panelCount: panels.length,
+			clippedPanels,
+			activityHeight,
 			docHeight: document.documentElement.scrollHeight,
-			docScrollable: document.documentElement.scrollHeight > window.innerHeight,
 			title: document.title,
 			header: text.split('\\n').slice(0, 12).join(' | ')
 		};
@@ -327,17 +347,17 @@ try {
 	// from the header, step from outside, and expect the page to catch up.
 	const headerTick = () =>
 		page.eval(`(() => {
-			const m = /tick\\s*(\\d+)/.exec(document.body.innerText);
+			const m = /tick\\s*(\\d+)/i.exec(document.body.innerText);
 			return m ? Number(m[1]) : null;
 		})()`);
 
 	const tickBefore = await headerTick();
-	await gql(`mutation ($id: ID!, $count: Int!) { tick(id: $id, count: $count) { tick } }`, {
-		id: sessionId,
-		count: 3
-	});
+	await gql(
+		`mutation ($id: ID!, $ownerToken: String, $count: Int!) { delivery { tick(id: $id, ownerToken: $ownerToken, count: $count) { tick } } }`,
+		{ id: sessionId, ownerToken, count: 3 }
+	);
 	const refreshOk = await page.waitFor(`(() => {
-		const m = /tick\\s*(\\d+)/.exec(document.body.innerText);
+		const m = /tick\\s*(\\d+)/i.exec(document.body.innerText);
 		return m && Number(m[1]) > ${tickBefore};
 	})()`, 4000);
 	const tickAfter = await headerTick();
@@ -347,6 +367,40 @@ try {
 	const shot = await page.send('Page.captureScreenshot', { format: 'png' });
 	writeFileSync(OUT, Buffer.from(shot.data, 'base64'));
 	console.log('screenshot:', OUT);
+	const ownerErrors = [...page.errors];
+	const ownerFailed = [...page.failedRequests];
+	console.log('phase 1 console errors:', JSON.stringify(ownerErrors));
+	console.log('phase 1 failed requests:', JSON.stringify(ownerFailed));
+
+	// --- phase 2: spectator mode ---------------------------------------------
+	//
+	// Same browser, same session, but without the owner token. Only the token is
+	// cleared; lastSession stays so the app resumes into the session it cannot play.
+	page.errors.length = 0;
+	page.failedRequests.length = 0;
+	await page.eval(`localStorage.removeItem('drbrain-delivery.ownerTokens')`);
+	await page.send('Page.reload', {});
+	const noticeShown = await page.waitFor(`document.querySelector('[data-testid="spectator-notice"]')`);
+	const spectator = noticeShown
+		? await page.eval(`(() => {
+			const notice = document.querySelector('[data-testid="spectator-notice"]');
+			const speedButtons = [...document.querySelectorAll('button')].filter((b) =>
+				/Run at|Pause the clock/.test(b.getAttribute('title') ?? '')
+			);
+			return {
+				notice: notice.textContent.trim(),
+				speedButtons: speedButtons.length,
+				dpad: !!document.querySelector('button[aria-label="Move north"]'),
+				tiles: document.querySelectorAll('button[aria-label*="at "]').length
+			};
+		})()`)
+		: null;
+	console.log('spectator report:', JSON.stringify(spectator));
+	const shot2 = await page.send('Page.captureScreenshot', { format: 'png' });
+	writeFileSync(SPECTATOR_OUT, Buffer.from(shot2.data, 'base64'));
+	console.log('screenshot:', SPECTATOR_OUT);
+	console.log('phase 2 console errors:', JSON.stringify(page.errors));
+	console.log('phase 2 failed requests:', JSON.stringify(page.failedRequests));
 
 	const problems = [];
 	if (!report.hasTick) problems.push('no tick counter in header');
@@ -362,23 +416,21 @@ try {
 		problems.push(`locked upgrades with no criteria shown: ${report.silentCards.join(', ')}`);
 	if (report.tiles < 100) problems.push(`only ${report.tiles} tiles rendered`);
 	if (!report.hasDpad) problems.push('drive D-pad missing');
-	// The activity panel is the bottom-most element; if it runs past the
-	// viewport the dashboard is clipped and the player cannot see their feed.
-	if (report.activityBottom === -1) {
-		problems.push('could not locate the activity panel: the clipping check did not run');
-	} else if (report.activityBottom > report.viewportH) {
+	if (report.panelCount === 0) problems.push('found no panel sections: the clipping check did not run');
+	for (const c of report.clippedPanels) {
 		problems.push(
-			`layout clipped: activity panel ends at ${report.activityBottom}px but viewport is ${report.viewportH}px`
+			`panel "${c.heading}" clips its content: scrollHeight ${c.scrollHeight}px > clientHeight ${c.clientHeight}px with overflow hidden`
 		);
 	}
-	// The page itself must never scroll: panels scroll internally instead.
-	// A scrolling document means the chrome (header, controls) can drift off
-	// screen, which is what made the activity feed unreachable earlier.
-	if (report.docScrollable) {
-		problems.push(
-			`page overflows: document is ${report.docHeight}px tall in a ${report.viewportH}px viewport (panels should scroll internally)`
-		);
+	if (report.activityHeight === -1) {
+		problems.push('could not locate the activity panel: the reachability check did not run');
+	} else if (report.activityHeight <= 0) {
+		problems.push('activity panel has zero height');
 	}
+	// INFO only: the page scrolls normally inside the shared shell.
+	console.log(
+		`info: document ${report.docHeight}px tall in a ${report.viewportH}px viewport; ${report.panelCount} panels, activity panel ${report.activityHeight}px tall`
+	);
 	// Keyboard driving must actually move the car, not just redraw.
 	if (!after || !before || (after[0] === before[0] && after[1] === before[1])) {
 		problems.push(`keyboard drive did not move the car (${before} -> ${after})`);
@@ -390,9 +442,21 @@ try {
 			`UI did not auto-refresh: tick stayed at ${tickAfter} after an external tick (was ${tickBefore})`
 		);
 	}
-	if (page.errors.length) problems.push(`console errors: ${page.errors.join(' | ')}`);
-	if (page.failedRequests.length)
-		problems.push(`failed requests: ${page.failedRequests.join(' | ')}`);
+	if (ownerErrors.length) problems.push(`phase 1 console errors: ${ownerErrors.join(' | ')}`);
+	if (ownerFailed.length) problems.push(`phase 1 failed requests: ${ownerFailed.join(' | ')}`);
+
+	// Spectator phase.
+	if (!spectator) {
+		const body = await page.eval('document.body.innerText.slice(0, 600)');
+		problems.push(`spectator notice never appeared. Body was:\n${body}`);
+	} else {
+		if (!/read-only/i.test(spectator.notice)) problems.push(`spectator notice does not say read-only: "${spectator.notice}"`);
+		if (spectator.speedButtons !== 0) problems.push(`${spectator.speedButtons} speed buttons still shown to a spectator`);
+		if (spectator.dpad) problems.push('drive D-pad still shown to a spectator');
+		if (spectator.tiles < 100) problems.push(`spectator sees only ${spectator.tiles} tiles`);
+	}
+	if (page.errors.length) problems.push(`phase 2 console errors: ${page.errors.join(' | ')}`);
+	if (page.failedRequests.length) problems.push(`phase 2 failed requests: ${page.failedRequests.join(' | ')}`);
 
 	page.close();
 
@@ -407,7 +471,10 @@ try {
 	cleanup();
 	// Best-effort session cleanup; the save file is harmless if this fails.
 	try {
-		await gql(`mutation ($id: ID!) { deleteSession(id: $id) }`, { id: sessionId });
+		await gql(
+			`mutation ($id: ID!, $ownerToken: String) { delivery { deleteSession(id: $id, ownerToken: $ownerToken) } }`,
+			{ id: sessionId, ownerToken }
+		);
 	} catch {
 		/* ignore */
 	}

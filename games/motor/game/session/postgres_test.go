@@ -47,7 +47,7 @@ func TestPostgresRoundTrip(t *testing.T) {
 	if got.Playing || got.LastEvent != nil {
 		t.Fatal("transient fields were restored")
 	}
-	if got.ID != idA || got.DisplayName != "fixture" || got.MapID != "corridor" || got.SpeedMs != 120 ||
+	if got.ID != idA || got.MapID != "corridor" || got.SpeedMs != 120 ||
 		got.Seq != 17 || got.Attempts != 3 || got.BestSteps != 5 || got.OwnerHash != want.OwnerHash {
 		t.Fatalf("scalar fields differ: %+v", got)
 	}
@@ -129,7 +129,7 @@ func TestPostgresSaveReplacesAndKeepsCreatedAt(t *testing.T) {
 	if err := p.Save(s); err != nil {
 		t.Fatal(err)
 	}
-	s.Seq, s.Attempts, s.DisplayName = 99, 8, "renamed"
+	s.Seq, s.Attempts = 99, 8
 	s.CreatedAt = s.CreatedAt.AddDate(1, 0, 0) // a later Save must not rewrite created_at
 	if err := p.Save(s); err != nil {
 		t.Fatal(err)
@@ -138,7 +138,7 @@ func TestPostgresSaveReplacesAndKeepsCreatedAt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Seq != 99 || got.Attempts != 8 || got.DisplayName != "renamed" {
+	if got.Seq != 99 || got.Attempts != 8 {
 		t.Fatalf("replace lost: %+v", got)
 	}
 	if !got.CreatedAt.Equal(fixture(t, idA).CreatedAt.Truncate(time.Microsecond)) {

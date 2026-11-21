@@ -5,12 +5,9 @@ import {
 	filterSessions,
 	lastSessionId,
 	MAX_OWN_SESSIONS,
-	newSessionName,
 	ownSessionIds,
 	recentStarted,
 	rememberSession,
-	saveDisplayName,
-	savedDisplayName,
 	sortSessions,
 	statusGroup,
 	runTitle,
@@ -24,7 +21,6 @@ function sess(id: string, over: Partial<SessionSummary> & { status?: string; ste
 	const { status = 'READY', steps = 0, ...rest } = over;
 	return {
 		id,
-		displayName: '',
 		mapId: 'm',
 		playing: false,
 		createdAt: '2026-01-01T00:00:00Z',
@@ -52,21 +48,19 @@ describe('statusText / statusGroup', () => {
 
 describe('filterSessions', () => {
 	const list = [
-		sess('aa11', { displayName: 'Alice', status: 'WON' }),
-		sess('bb22', { displayName: 'bob', status: 'RUNNING', playing: true, map: { name: 'Ladder' } }),
+		sess('aa11', { status: 'WON' }),
+		sess('bb22', { status: 'RUNNING', playing: true, map: { name: 'Ladder' } }),
 		sess('cc33', { status: 'LOST' })
 	];
 	const base = { status: 'all' as const, text: '' };
 
-	it('filters by status group and by name, id or map (case-insensitive), keeping order', () => {
+	it('filters by status group and by id or map (case-insensitive), keeping order', () => {
 		expect(filterSessions(list, base).map((s) => s.id)).toEqual(['aa11', 'bb22', 'cc33']);
 		expect(filterSessions(list, { ...base, status: 'won' }).map((s) => s.id)).toEqual(['aa11']);
 		expect(filterSessions(list, { ...base, status: 'playing' }).map((s) => s.id)).toEqual(['bb22']);
-		expect(filterSessions(list, { ...base, text: ' ALI ' }).map((s) => s.id)).toEqual(['aa11']);
-		expect(filterSessions(list, { ...base, text: 'anon' }).map((s) => s.id)).toEqual(['cc33']);
-		expect(filterSessions(list, { ...base, text: 'CC3' }).map((s) => s.id)).toEqual(['cc33']);
+		expect(filterSessions(list, { ...base, text: ' CC3 ' }).map((s) => s.id)).toEqual(['cc33']);
 		expect(filterSessions(list, { ...base, text: 'ladder' }).map((s) => s.id)).toEqual(['bb22']);
-		expect(filterSessions(list, { status: 'lost', text: 'bob' })).toEqual([]);
+		expect(filterSessions(list, { status: 'lost', text: 'aa11' })).toEqual([]);
 	});
 });
 
@@ -175,37 +169,6 @@ describe('rememberSession', () => {
 		expect(ownSessionIds()).toEqual(['ok']);
 		rememberSession('new');
 		expect(ownSessionIds()).toEqual(['ok', 'new']);
-	});
-});
-
-describe('guest name', () => {
-	beforeEach(() => localStorage.clear());
-	it('saves the name the server gave a nameless player, so later sessions reuse it', () => {
-		expect(savedDisplayName()).toBe('');
-		rememberSession('a', 'BraveOtter');
-		expect(savedDisplayName()).toBe('BraveOtter');
-		rememberSession('b', 'SleepyComet'); // a later guest name never replaces the identity
-		expect(savedDisplayName()).toBe('BraveOtter');
-	});
-	it('never replaces a name the player typed', () => {
-		saveDisplayName('Ada');
-		rememberSession('a', 'BraveOtter');
-		expect(savedDisplayName()).toBe('Ada');
-	});
-	it('ignores a blank name and works without one', () => {
-		rememberSession('a', '   ');
-		rememberSession('b');
-		expect(savedDisplayName()).toBe('');
-		expect(ownSessionIds()).toEqual(['a', 'b']);
-	});
-	it('creates a guest session with the saved name, or none', () => {
-		expect(newSessionName(false)).toBeNull();
-		saveDisplayName('  Ada  ');
-		expect(newSessionName(false)).toBe('Ada');
-	});
-	it('never names an owned session after a guest alias', () => {
-		saveDisplayName('BraveOtter'); // kept from before this browser signed in
-		expect(newSessionName(true)).toBeNull();
 	});
 });
 

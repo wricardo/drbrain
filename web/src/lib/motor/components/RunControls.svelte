@@ -46,7 +46,7 @@
 
 	// Narrower padding on phones keeps Run/Back/Step/Reset on one row at 360px.
 	const base =
-		'inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition-colors sm:px-4 disabled:cursor-not-allowed disabled:opacity-50';
+		'inline-flex min-h-11 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold transition-colors sm:px-4 disabled:cursor-not-allowed disabled:opacity-50';
 	const secondary = `${base} border border-indigo-300 text-indigo-900 hover:bg-indigo-50 disabled:hover:bg-transparent`;
 </script>
 
@@ -61,7 +61,7 @@
 			<button
 				type="button"
 				data-testid="pause"
-				class="{base} flex-1 bg-amber-500 text-white hover:bg-amber-600"
+				class="{base} flex-1 bg-amber-700 text-white hover:bg-amber-800"
 				disabled={busy}
 				title="Pause (Ctrl+Enter)"
 				onclick={onpause}
@@ -140,7 +140,7 @@
 					role="radio"
 					aria-checked={preset?.id === p.id}
 					data-testid="speed-{p.id}"
-					class="px-3 py-1 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 {preset?.id === p.id
+					class="min-h-11 px-3 py-1 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 {preset?.id === p.id
 						? 'bg-indigo-600 text-white'
 						: 'text-indigo-900 hover:bg-indigo-50 disabled:hover:bg-transparent'}"
 					disabled={busy}

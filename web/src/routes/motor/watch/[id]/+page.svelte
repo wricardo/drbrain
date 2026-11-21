@@ -100,7 +100,7 @@
 		<div class="flex flex-wrap items-center justify-between gap-2">
 			<div>
 				<h1 class="text-2xl font-semibold text-indigo-950">Watching: {session.map.name}</h1>
-				<p class="text-sm text-slate-600">{session.displayName || 'Anonymous'} · {isOwner ? 'owner view' : 'spectator view'}</p>
+				<p class="text-sm text-slate-600">{session.id} · {isOwner ? 'owner view' : 'spectator view'}</p>
 			</div>
 			<ConnectionBadge state={$store.connection} />
 		</div>

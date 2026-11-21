@@ -1,11 +1,17 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import { api, ApiError, SNAPSHOT_FIELDS, type Direction, type SessionSummary, type Snapshot } from '$lib/delivery/api';
+	import { pageTitle } from '$lib/delivery/brand';
 	import { subscribeToSession } from '$lib/delivery/subscribe';
+	import { forgetSession, lastSessionId, rememberSession } from '$lib/delivery/ownerTokens';
 	import Map from '$lib/delivery/Map.svelte';
 	import Panel from '$lib/delivery/Panel.svelte';
 	import FleetPanel from '$lib/delivery/FleetPanel.svelte';
 	import OrdersPanel from '$lib/delivery/OrdersPanel.svelte';
+	import Hero from '@drbrain/ui/components/Hero.svelte';
+	import Button from '@drbrain/ui/components/Button.svelte';
+	import EmptyState from '@drbrain/ui/components/EmptyState.svelte';
+	import Skeleton from '@drbrain/ui/components/Skeleton.svelte';
 	import ProgressPanel from '$lib/delivery/ProgressPanel.svelte';
 
 	// --- state ---------------------------------------------------------------
@@ -17,20 +23,24 @@
 	let selectedOrderId = $state<string | null>(null);
 	let busy = $state(false);
 
-	const SESSION_KEY = 'drbrain:session';
+	/** False when the open session belongs to someone else: the page then only watches. */
+	let canPlay = $state(true);
 
 	/** Saves on disk, shown on the start screen. */
 	let saves = $state<SessionSummary[]>([]);
-	let savesLoading = $state(false);
+	let savesLoading = $state(true);
+	let savesFailed = $state(false);
+	let opening = $state(false);
 
 	async function loadSaves() {
 		savesLoading = true;
+		savesFailed = false;
 		try {
 			// The client already unwraps the GraphQL envelope and guarantees an
 			// array, so assigning it directly is safe here.
 			saves = await api.sessions();
 		} catch {
-			// A listing failure must not block starting a new city.
+			savesFailed = true;
 			saves = [];
 		} finally {
 			savesLoading = false;
@@ -38,15 +48,20 @@
 	}
 
 	async function openSave(id: string) {
+		if (opening) return;
+		opening = true;
 		try {
 			const s = await api.session(id);
-			localStorage.setItem(SESSION_KEY, s.id);
+			canPlay = await api.canPlay(s.id);
+			if (canPlay) rememberSession(s.id);
 			snap = s;
 			selectedCarId = s.cars[0]?.id ?? null;
 			error = null;
 		} catch (e) {
 			error = e instanceof ApiError ? `${e.message} (${e.code})` : String(e);
 			void loadSaves();
+		} finally {
+			opening = false;
 		}
 	}
 
@@ -270,32 +285,37 @@
 	}
 
 	async function startSession() {
+		if (opening) return;
+		opening = true;
 		try {
-			const s = await api.createSession();
-			localStorage.setItem(SESSION_KEY, s.id);
+			const s = await api.createSession(); // api remembers the session and its owner token
+			canPlay = true;
 			snap = s;
 			selectedCarId = s.cars[0]?.id ?? null;
 			error = null;
 		} catch (e) {
 			error = e instanceof ApiError ? `${e.message} (${e.code})` : String(e);
+		} finally {
+			opening = false;
 		}
 	}
 
 	async function resume() {
-		const id = localStorage.getItem(SESSION_KEY);
+		const id = lastSessionId();
 		if (!id) return;
 		try {
 			snap = await api.session(id);
+			canPlay = await api.canPlay(id);
 			selectedCarId = snap.cars[0]?.id ?? null;
 		} catch {
 			// Stale id (deleted save): fall through to the start screen.
-			localStorage.removeItem(SESSION_KEY);
+			forgetSession();
 		}
 	}
 
 	/** Leave the current city and return to the picker. The save stays on disk. */
 	async function leave() {
-		if (snap) {
+		if (snap && canPlay) {
 			// Persist before walking away so nothing since the last tick is lost.
 			try {
 				await api.saveSession(snap.id);
@@ -303,7 +323,7 @@
 				/* best effort: the server also saves on shutdown */
 			}
 		}
-		localStorage.removeItem(SESSION_KEY);
+		forgetSession();
 		snap = null;
 		selectedCarId = null;
 		selectedOrderId = null;
@@ -319,7 +339,7 @@
 	 * still available for setting up multi-car moves.
 	 */
 	async function drive(dir: Direction) {
-		if (!snap || !selectedCar) return;
+		if (!snap || !canPlay || !selectedCar) return;
 		const id = snap.id;
 		const carId = selectedCar.id;
 		busy = true;
@@ -345,42 +365,42 @@
 	 * the clock separate for exactly this, so the UI must not hide it.
 	 */
 	function queueStep(dir: Direction) {
-		if (!snap || !selectedCar) return;
+		if (!snap || !canPlay || !selectedCar) return;
 		void apply(() => api.moveCar(snap!.id, selectedCar!.id, dir));
 	}
 
 	function step(n = 1) {
-		if (!snap) return;
+		if (!snap || !canPlay) return;
 		void apply(() => api.tick(snap!.id, n));
 	}
 
 	function setSpeed(speed: number) {
-		if (!snap) return;
+		if (!snap || !canPlay) return;
 		void apply(() => api.setSpeed(snap!.id, speed));
 	}
 
 	function assign(orderId: string) {
-		if (!snap || !selectedCar) return;
+		if (!snap || !canPlay || !selectedCar) return;
 		void apply(() => api.assignOrder(snap!.id, orderId, selectedCar!.id));
 	}
 
 	function unassign(orderId: string) {
-		if (!snap) return;
+		if (!snap || !canPlay) return;
 		void apply(() => api.unassignOrder(snap!.id, orderId));
 	}
 
 	function tow(carId: string) {
-		if (!snap) return;
+		if (!snap || !canPlay) return;
 		void apply(() => api.towCar(snap!.id, carId));
 	}
 
 	function buy(cls: string) {
-		if (!snap) return;
+		if (!snap || !canPlay) return;
 		void apply(() => api.buyCar(snap!.id, cls));
 	}
 
 	function build(buildId: string) {
-		if (!snap) return;
+		if (!snap || !canPlay) return;
 		void apply(() => api.build(snap!.id, buildId));
 	}
 
@@ -405,10 +425,9 @@
 	};
 
 	function onKey(e: KeyboardEvent) {
-		if (!snap) return;
+		if (!snap || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
 		const target = e.target as HTMLElement | null;
-		// Never hijack typing in a form control.
-		if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+		if (target?.closest('input, textarea, select, button, a, [contenteditable], [role="region"]')) return;
 
 		const dir = KEY_DIRS[e.key];
 		if (dir) {
@@ -428,7 +447,7 @@
 			step(1);
 			return;
 		}
-		if (e.key === 'Tab') {
+		if (e.key.toLowerCase() === 'c') {
 			e.preventDefault();
 			cycleCar(e.shiftKey ? -1 : 1);
 			return;
@@ -476,86 +495,85 @@
 </script>
 
 <svelte:head>
-	<title>DrBrain Delivery</title>
+	<title>{snap ? pageTitle() : "Delivery · drbrain"}</title>
 </svelte:head>
 
 {#if !snap}
-	<main class="flex h-full items-start justify-center overflow-y-auto p-6">
-		<div class="w-full max-w-lg">
-			<h1 class="text-2xl font-semibold text-fog-300">DrBrain Delivery</h1>
-			<p class="mt-2 text-sm text-fog-400">
-				One city that grows as you deliver. Drive the cars yourself, one step at a time.
-			</p>
-
-			<button
-				type="button"
-				class="mt-6 w-full rounded bg-[var(--color-money)]/15 px-4 py-2.5 text-sm font-medium text-[var(--color-money)] transition-colors hover:bg-[var(--color-money)]/25"
-				onclick={startSession}
-			>
-				Start a new city
-			</button>
-
-			<h2 class="mt-8 text-xs font-semibold tracking-wide text-fog-400 uppercase">
-				Your cities
-				{#if savesLoading}
-					<span class="ml-1 font-normal normal-case text-fog-500">loading…</span>
-				{/if}
-			</h2>
-
+	<div class="db-container game-landing">
+		<Hero
+			label="Delivery"
+			title="Run the fleet."
+			accent="Grow the city."
+			description="Drive a delivery van, pick up orders and earn enough to expand your fleet. The city grows as you deliver."
+			image="/art/delivery.webp"
+			wideArt
+		>
+			<Button disabled={opening} onclick={startSession} data-testid="start-city">
+				{opening ? 'Opening city…' : 'Start a new city'} <span aria-hidden="true">→</span>
+			</Button>
+		</Hero>
+		{#if error}<p class="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900" role="alert">{error}</p>{/if}
+		<section class="py-8" aria-labelledby="saved-cities">
+			<h2 id="saved-cities" class="mb-3 text-2xl font-bold tracking-tight">Saved cities</h2>
 			{#if savesLoading}
-				<ul class="mt-2 space-y-1.5">
-					{#each [0, 1] as i (i)}
-						<li class="h-12 animate-pulse rounded-lg border border-ink-700 bg-ink-800/50"></li>
-					{/each}
-				</ul>
+				<Skeleton label="Loading cities…" />
+			{:else if savesFailed}
+				<EmptyState title="Could not load cities" description="Try loading your saved cities again.">
+					<Button variant="secondary" onclick={loadSaves}>Retry</Button>
+				</EmptyState>
 			{:else if saves.length === 0}
-				<div class="mt-2 rounded-lg border border-dashed border-ink-700 px-3 py-4 text-center">
-					<p class="text-xs text-fog-400">No saved cities yet.</p>
-					<p class="mt-1 text-xs text-fog-500">Start a new city to begin.</p>
-				</div>
+				<EmptyState title="No saved cities yet" description="Start your first city to build a fleet." />
 			{:else}
-				<ul class="mt-2 divide-y divide-ink-800 rounded-lg border border-ink-700 bg-ink-900">
+				<ul class="db-panel divide-y divide-edge">
 					{#each saves as s (s.id)}
 						<li>
 							<button
 								type="button"
-								class="group flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left transition-colors hover:bg-ink-800"
+								class="group flex min-h-14 w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-surface-muted disabled:opacity-60"
+								disabled={opening}
 								onclick={() => openSave(s.id)}
 								title={`Open ${s.id}`}
 							>
 								<span class="min-w-0">
-									<span class="block truncate text-sm text-fog-300">{s.id}</span>
-									<span class="text-xs text-fog-500">
+									<span class="block truncate text-sm text-body">
+										{s.ownerDisplayName !== 'Guest' ? `${s.ownerDisplayName}’s city` : s.id}
+										{#if s.mine}
+											<span class="ml-1 rounded bg-[var(--color-charger)]/15 px-1.5 py-0.5 text-[11px] font-semibold text-[var(--color-charger)]">yours</span>
+										{/if}
+									</span>
+									{#if s.ownerDisplayName !== 'Guest'}
+										<span class="block truncate text-[11px] text-faint">{s.id}</span>
+									{/if}
+									<span class="text-xs text-faint">
 										tick {s.tick} · {s.deliveries} delivered · rep {s.reputation.toFixed(2)}
 									</span>
 								</span>
 								<span class="flex shrink-0 items-center gap-2">
 									<span class="text-sm text-[var(--color-money)]">${s.money}</span>
 									<span
-										class="rounded border border-ink-600 px-2 py-0.5 text-xs text-fog-400 transition-colors group-hover:border-[var(--color-charger)] group-hover:text-[var(--color-charger)]"
+										class="rounded border border-edge-strong px-2 py-0.5 text-xs text-muted transition-colors group-hover:border-[var(--color-charger)] group-hover:text-[var(--color-charger)]"
 									>
 										Open
 									</span>
 								</span>
 							</button>
+							<!-- Outside the button: a link inside a button is invalid HTML. -->
+							{#if s.ownerHandle && !s.mine}
+								<a href={`/u/${s.ownerHandle}`} class="-mt-1.5 block px-4 pb-2 text-xs text-muted hover:text-body">@{s.ownerHandle}</a>
+							{/if}
 						</li>
 					{/each}
 				</ul>
 			{/if}
 
-			{#if error}
-				<p class="mt-4 text-xs text-[var(--color-danger)]">{error}</p>
-			{/if}
-		</div>
-	</main>
+		</section>
+	</div>
 {:else}
-	<div class="flex h-full flex-col">
-		<!-- top bar -->
-		<header class="flex flex-wrap items-center gap-x-6 gap-y-1 border-b border-ink-600 bg-ink-900 px-4 py-2">
-			<h1 class="text-sm font-semibold tracking-wide text-fog-300">DrBrain Delivery</h1>
-
-			<div class="flex items-center gap-4 text-xs">
-				<span class="text-fog-500">tick <span class="text-fog-300">{snap.tick}</span></span>
+	<div class="db-container flex min-h-0 flex-col gap-3 py-4">
+		<header class="db-panel game-run-title">
+			<h1 class="text-xl">Fleet dashboard</h1>
+			<div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm tabular-nums">
+				<span class="text-faint">Tick <strong class="text-body">{snap.tick}</strong></span>
 				<span class="text-[var(--color-money)]">${snap.ledger.money}</span>
 				{#if snap.ledger.upkeepDue > 0}
 					<!--
@@ -564,18 +582,18 @@
 						act on it (park the car) before the charge lands.
 					-->
 					<span
-						class="text-fog-500"
+						class="text-faint"
 						data-upkeep-due={snap.ledger.upkeepDue}
 						title="Fleet upkeep charged next interval. Park cars on a depot tile to stop it."
 					>
 						−<span class="text-[var(--color-warn)]">${snap.ledger.upkeepDue}</span>/ivl
 					</span>
 				{/if}
-				<span class="text-fog-500">
-					rep <span class="text-fog-300">{snap.ledger.reputation.toFixed(2)}</span>
+				<span class="text-faint">
+					Reputation <span class="text-body">{snap.ledger.reputation.toFixed(2)}</span>
 				</span>
-				<span class="text-fog-500">
-					deliveries <span class="text-fog-300">{snap.ledger.deliveries}</span>
+				<span class="text-faint">
+					Deliveries <span class="text-body">{snap.ledger.deliveries}</span>
 				</span>
 				{#if snap.ledger.onTimeStreak > 0}
 					<span class="text-[var(--color-money)]">streak {snap.ledger.onTimeStreak}</span>
@@ -597,46 +615,54 @@
 				{/if}
 			</div>
 
-			<div class="ml-auto flex items-center gap-2">
+			<div class="flex flex-wrap items-center gap-1.5">
 				<button
 					type="button"
-					class="rounded px-2 py-1 text-xs text-fog-500 hover:text-fog-300"
+					class="min-h-11 rounded-lg px-2.5 text-sm font-semibold text-faint hover:bg-surface-muted hover:text-body"
 					onclick={leave}
 					title="Save and return to the city picker"
 				>
-					cities
+					Cities
 				</button>
-				<span class="h-4 w-px bg-ink-700"></span>
-				{#each SPEEDS as s (s.value)}
+				{#if canPlay}
+					<span class="h-4 w-px bg-track"></span>
+					{#each SPEEDS as s (s.value)}
+						<button
+							type="button"
+							class="min-h-11 min-w-9 rounded-lg px-2 text-sm font-semibold transition-colors {snap.speed === s.value
+								? 'bg-[var(--color-charger)]/20 text-[var(--color-charger)]'
+								: 'text-faint hover:text-body'}"
+							onclick={() => setSpeed(s.value)}
+							aria-pressed={snap.speed === s.value}
+							title={s.value === 0 ? 'Pause the clock' : `Run at ${s.value}× speed`}
+						>
+							{s.value === 0 ? (snap.paused ? 'paused' : 'pause') : s.label}
+						</button>
+					{/each}
+					<span class="mx-1 h-4 w-px bg-track"></span>
 					<button
 						type="button"
-						class="rounded px-2 py-1 text-xs transition-colors {snap.speed === s.value
-							? 'bg-[var(--color-charger)]/20 text-[var(--color-charger)]'
-							: 'text-fog-500 hover:text-fog-300'}"
-						onclick={() => setSpeed(s.value)}
-						aria-pressed={snap.speed === s.value}
-						title={s.value === 0 ? 'Pause the clock' : `Run at ${s.value}× speed`}
+						class="min-h-11 rounded-lg border border-edge-strong px-2.5 text-sm font-semibold text-muted hover:bg-surface-muted hover:text-body"
+						onclick={() => step(1)}>step</button
 					>
-						{s.value === 0 ? (snap.paused ? 'paused' : 'pause') : s.label}
-					</button>
-				{/each}
-				<span class="mx-1 h-4 w-px bg-ink-700"></span>
-				<button
-					type="button"
-					class="rounded border border-ink-600 px-2 py-1 text-xs text-fog-400 hover:text-fog-300"
-					onclick={() => step(1)}>step</button
-				>
-				<button
-					type="button"
-					class="rounded border border-ink-600 px-2 py-1 text-xs text-fog-400 hover:text-fog-300"
-					onclick={() => step(10)}>+10</button
-				>
+					<button
+						type="button"
+						class="min-h-11 rounded-lg border border-edge-strong px-2.5 text-sm font-semibold text-muted hover:bg-surface-muted hover:text-body"
+						onclick={() => step(10)}>+10</button
+					>
+				{/if}
 			</div>
 		</header>
 
+		{#if !canPlay}
+			<p class="rounded-lg border border-edge bg-surface-muted px-4 py-2 text-sm text-muted" role="status" data-testid="spectator-notice">
+				Viewing someone else's save — read-only
+			</p>
+		{/if}
+
 		{#if error}
 			<div
-				class="border-b border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 px-4 py-1.5 text-xs text-[var(--color-danger)]"
+				class="rounded-lg border border-[var(--color-danger)]/40 bg-[var(--color-danger)]/10 px-4 py-2 text-sm text-[var(--color-danger)]" role="alert"
 			>
 				{error}
 			</div>
@@ -644,12 +670,11 @@
 
 		<!-- body -->
 		<div
-			class="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-hidden px-3 pt-3 pb-5 lg:grid-cols-[minmax(0,1fr)_360px]"
+			class="grid min-h-0 grid-cols-[minmax(0,1fr)] gap-3 pb-5 lg:grid-cols-[minmax(0,1fr)_360px]"
 		>
-			<div class="flex min-h-0 flex-col gap-3 overflow-y-auto">
-				<!-- The map panel sizes to its content instead of stretching, so
-				     the square grid does not float in a wide empty box. -->
-				<div class="w-fit self-center">
+			<div class="flex min-w-0 flex-col gap-3">
+				<!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard users can scroll a wide map.) -->
+				<div class="w-fit max-w-full self-center overflow-x-auto rounded-xl" tabindex="0" role="region" aria-label="Scrollable city map">
 					<Map
 						city={snap.city}
 						cars={snap.cars}
@@ -662,79 +687,81 @@
 					/>
 				</div>
 
-				<Panel title="Controls" summary={selectedCar ? `driving ${selectedCar.name}` : ''}>
-					<div class="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2 text-xs text-fog-400">
-						<!-- A D-pad, because keyboard-only excludes mouse and touch. -->
-						<div class="grid grid-cols-3 gap-1" role="group" aria-label="Drive">
-							<span></span>
-							<button
-								type="button"
-								class="rounded border border-ink-600 px-2 py-1 text-fog-300 hover:border-[var(--color-charger)] hover:text-[var(--color-charger)]"
-								onclick={() => drive('NORTH')}
-								aria-label="Move north"
-								title="Move north (w)">↑</button
-							>
-							<span></span>
-							<button
-								type="button"
-								class="rounded border border-ink-600 px-2 py-1 text-fog-300 hover:border-[var(--color-charger)] hover:text-[var(--color-charger)]"
-								onclick={() => drive('WEST')}
-								aria-label="Move west"
-								title="Move west (a)">←</button
-							>
-							<button
-								type="button"
-								class="rounded border border-ink-600 px-2 py-1 text-fog-300 hover:border-[var(--color-charger)] hover:text-[var(--color-charger)]"
-								onclick={() => step(1)}
-								aria-label="Advance one tick"
-								title="Advance one tick (space)">•</button
-							>
-							<button
-								type="button"
-								class="rounded border border-ink-600 px-2 py-1 text-fog-300 hover:border-[var(--color-charger)] hover:text-[var(--color-charger)]"
-								onclick={() => drive('EAST')}
-								aria-label="Move east"
-								title="Move east (d)">→</button
-							>
-							<span></span>
-							<button
-								type="button"
-								class="rounded border border-ink-600 px-2 py-1 text-fog-300 hover:border-[var(--color-charger)] hover:text-[var(--color-charger)]"
-								onclick={() => drive('SOUTH')}
-								aria-label="Move south"
-								title="Move south (s)">↓</button
-							>
-							<span></span>
-						</div>
+				{#if canPlay}
+					<Panel title="Controls" summary={selectedCar ? `driving ${selectedCar.name}` : ''}>
+						<div class="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2 text-xs text-muted">
+							<!-- A D-pad, because keyboard-only excludes mouse and touch. -->
+							<div class="grid grid-cols-3 gap-1" role="group" aria-label="Drive">
+								<span></span>
+								<button
+									type="button"
+									class="size-11 rounded-lg border border-edge-strong text-base font-semibold text-body hover:border-[var(--color-charger)] hover:text-[var(--color-charger)]"
+									onclick={() => drive('NORTH')}
+									aria-label="Move north"
+									title="Move north (w)">↑</button
+								>
+								<span></span>
+								<button
+									type="button"
+									class="size-11 rounded-lg border border-edge-strong text-base font-semibold text-body hover:border-[var(--color-charger)] hover:text-[var(--color-charger)]"
+									onclick={() => drive('WEST')}
+									aria-label="Move west"
+									title="Move west (a)">←</button
+								>
+								<button
+									type="button"
+									class="size-11 rounded-lg border border-edge-strong text-base font-semibold text-body hover:border-[var(--color-charger)] hover:text-[var(--color-charger)]"
+									onclick={() => step(1)}
+									aria-label="Advance one tick"
+									title="Advance one tick (space)">•</button
+								>
+								<button
+									type="button"
+									class="size-11 rounded-lg border border-edge-strong text-base font-semibold text-body hover:border-[var(--color-charger)] hover:text-[var(--color-charger)]"
+									onclick={() => drive('EAST')}
+									aria-label="Move east"
+									title="Move east (d)">→</button
+								>
+								<span></span>
+								<button
+									type="button"
+									class="size-11 rounded-lg border border-edge-strong text-base font-semibold text-body hover:border-[var(--color-charger)] hover:text-[var(--color-charger)]"
+									onclick={() => drive('SOUTH')}
+									aria-label="Move south"
+									title="Move south (s)">↓</button
+								>
+								<span></span>
+							</div>
 
-						<div class="flex flex-col gap-0.5">
-							<span><kbd class="text-fog-300">w a s d</kbd> drive</span>
-							<span><kbd class="text-fog-300">shift</kbd> + direction: queue only</span>
-							<span><kbd class="text-fog-300">space</kbd> tick only</span>
-							<span><kbd class="text-fog-300">tab</kbd> switch car</span>
-							<span><kbd class="text-fog-300">p</kbd> pause/resume</span>
+							<div class="flex flex-col gap-0.5">
+								<span><kbd class="text-body">w a s d</kbd> drive</span>
+								<span><kbd class="text-body">shift</kbd> + direction: queue only</span>
+								<span><kbd class="text-body">space</kbd> tick only</span>
+								<span><kbd class="text-body">c</kbd> switch car</span>
+								<span><kbd class="text-body">p</kbd> pause/resume</span>
+							</div>
 						</div>
-					</div>
-					{#if selectedCar}
-						<div class="border-t border-ink-800 px-3 py-1.5 text-xs text-fog-400">
-							driving <span class="text-fog-300">{selectedCar.name}</span>
-							{#if selectedCar.batteryPct <= 25}
-								<span class="text-[var(--color-warn)]"> — low battery</span>
-							{/if}
-						</div>
-					{/if}
-				</Panel>
+						{#if selectedCar}
+							<div class="border-t border-edge px-3 py-1.5 text-xs text-muted">
+								driving <span class="text-body">{selectedCar.name}</span>
+								{#if selectedCar.batteryPct <= 25}
+									<span class="text-[var(--color-warn)]"> — low battery</span>
+								{/if}
+							</div>
+						{/if}
+					</Panel>
+				{/if}
 
 				<Panel title="Activity" summary="{feed.length} event{feed.length === 1 ? '' : 's'}">
 					<ul class="max-h-44 overflow-y-auto px-3 py-1">
 						{#each feed as e, i (i)}
-							<li class="py-0.5 text-xs text-fog-400">
-								<span class="text-fog-500">t{e.tick}</span>
+							<li class="py-0.5 text-xs text-muted">
+								<span class="text-faint">t{e.tick}</span>
 								{e.message}
 							</li>
 						{/each}
 						{#if feed.length === 0}
-							<li class="py-0.5 text-xs text-fog-500">Nothing has happened yet.</li>
+							<li class="py-0.5 text-xs text-faint">Nothing has happened yet.</li>
 						{/if}
 					</ul>
 				</Panel>
@@ -745,23 +772,23 @@
 					cars={snap.cars}
 					selectedCarId={selectedCar?.id ?? null}
 					onSelect={(id) => (selectedCarId = id)}
-					onTow={tow}
-					{buyable}
-					onBuy={buy}
+					onTow={canPlay ? tow : undefined}
+					buyable={canPlay ? buyable : []}
+					onBuy={canPlay ? buy : undefined}
 				/>
 				<OrdersPanel
 					orders={snap.orders}
 					selectedCarId={selectedCar?.id ?? null}
 					selectedOrderId={highlightedOrder?.id ?? null}
-					onAssign={assign}
-					onUnassign={unassign}
+					onAssign={canPlay ? assign : undefined}
+					onUnassign={canPlay ? unassign : undefined}
 					onSelectOrder={(id) => (selectedOrderId = id)}
 				/>
 				<ProgressPanel
 					achievements={snap.achievements}
 					unlocks={snap.unlocks}
 					builds={snap.builds}
-					onBuild={build}
+					onBuild={canPlay ? build : undefined}
 				/>
 			</div>
 		</div>

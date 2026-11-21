@@ -7,7 +7,7 @@
 # tmp/drbrain.log. The server is started detached with DRBRAIN_STATIC_DIR=web/build.
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
-port := env("DRBRAIN_PORT", "8080")
+port := env("DRBRAIN_PORT", "8181")
 addr := "127.0.0.1:" + port
 bin := "tmp/drbrain"
 pidfile := "tmp/drbrain.pid"
@@ -96,6 +96,8 @@ start:
     export DRBRAIN_STATIC_DIR="web/build"
     export DRBRAIN_DEBUG="${DRBRAIN_DEBUG:-false}"
     export DRBRAIN_ACCOUNTS_DIR="tmp/state/accounts"
+    # Signs Bearer tokens. Dev-only value; production must set a real secret.
+    export DRBRAIN_AUTH_JWT_SECRET="${DRBRAIN_AUTH_JWT_SECRET:-dev-only-insecure-jwt-secret-change-me}"
     # Built-in maps come from the repo; sessions/accounts stay under tmp/.
     export MAZES_MAPS_DIR="games/mazes/maps"
     export MAZES_SESSIONS_DIR="tmp/state/mazes/sessions"
@@ -103,12 +105,15 @@ start:
     export MOTOR_USER_MAPS_DIR="tmp/state/motor/maps-user"
     export MOTOR_SESSIONS_DIR="tmp/state/motor/sessions"
     export MOTOR_ACCOUNTS_DIR="tmp/state/motor/accounts"
+    export MUSIC_SCORES_DIR="games/music/scores"
+    export MUSIC_CUSTOM_SCORES_DIR="tmp/state/music/scores-custom"
+    export MUSIC_SESSIONS_DIR="tmp/state/music/sessions"
     export TESLA_CONFIG_DIR="games/tesla/maps"
     export TESLA_SESSIONS_DIR="tmp/state/tesla/sessions"
     export TESLA_CUSTOM_MAPS_DIR="tmp/state/tesla/maps-custom"
     export DELIVERY_CITY="games/delivery/maps/city.json"
     export DELIVERY_SESSIONS_DIR="tmp/state/delivery/sessions"
-    mkdir -p tmp/state/{mazes,motor/{maps-user,sessions,accounts},tesla/{sessions,maps-custom},delivery/sessions}
+    mkdir -p tmp/state/{mazes,motor/{maps-user,sessions,accounts},music/{sessions,scores-custom},tesla/{sessions,maps-custom},delivery/sessions}
 
     nohup "{{bin}}" serve >"{{logfile}}" 2>&1 &
     pid=$!

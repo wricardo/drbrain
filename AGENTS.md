@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-drbrain is one Go module (`github.com/wricardo/drbrain`) and one binary that hosts four browser games plus the SvelteKit app they share:
+drbrain is one Go module (`github.com/wricardo/drbrain`) and one binary that hosts five browser games plus the SvelteKit app they share:
 
 | game | Go package | URL prefix | GraphQL namespace |
 |---|---|---|---|
@@ -10,6 +10,7 @@ drbrain is one Go module (`github.com/wricardo/drbrain`) and one binary that hos
 | Motor Programming | `games/motor` | `/motor` | `motorProgramming` |
 | Tesla Road Trip | `games/tesla` | `/tesla` | `tesla` |
 | Delivery | `games/delivery` | `/delivery` | `delivery` |
+| Music Region | `games/music` | `/music` | `music` |
 
 One listener, one process, one GraphQL endpoint at `/graphql`, one frontend. Production is one systemd unit behind one nginx vhost (`deploy/`). There is no per-game server, no gateway fan-out, no second Go module.
 
@@ -32,10 +33,10 @@ flowchart LR
 
 - `platform/` owns the process: config (`platform/config`), pre-bind mounting and graceful shutdown (`platform/host`), global accounts and sign-in (`platform/account`, `platform/auth`), routing/health/SPA/CORS/gzip/ws limits (`platform/httpserve`), durable payload stores (`platform/sessionstore` file or Postgres, `platform/mapstore` builtin/custom maps).
 - `platform.Game` (`platform/game.go`) is the only required contract: `Name`, `Prefix`, `API`, `Mount(*http.ServeMux, Deps)`, `Shutdown`. Optional interfaces discovered by type assertion: `LLMSProvider`, `GraphQLResolver`, `Validator`, `MapGenerator`.
-- Games are compiled in by `cmd/drbrain.builtinGames()` in order mazes, motor, delivery, tesla; `DRBRAIN_GAMES` or `--games` selects at runtime. Unselected games 404 under their prefix and their namespace returns `game is not enabled`.
+- Games are compiled in by `cmd/drbrain.builtinGames()` in order mazes, motor, delivery, tesla, music; `DRBRAIN_GAMES` or `--games` selects at runtime. Unselected games 404 under their prefix and their namespace returns `game is not enabled`.
 - Every `Game.Mount` runs **before** the listener binds, so bad maps, city files, or DB settings fail startup with the game named.
 - `cmd/drbrain.builtinGraphQL()` type-asserts each game's `*graph.Resolver` into `host.GraphQLBindings`, adds the global `platform/account/graph` resolver, then builds `graph.New(...)` and `graph.NewHandler(...)`; `host.mount` registers it with `Router.MountPlatform("/graphql", ...)`.
-- Canonical schema is `graph/schema.graphqls`: types prefixed `Global_`, `Delivery_`, `Mazes_`, `Motor_`, `Tesla_`; `Query`/`Mutation` expose the `account` global namespace plus the four games; subscriptions are flat roots (`deliverySession`, `mazesSessionUpdated`, `motorProgrammingSessionUpdated`, `teslaSessionUpdated`, `teslaLobbyUpdated`) because GraphQL only streams at the operation root.
+- Canonical schema is `graph/schema.graphqls`: types prefixed `Global_`, `Delivery_`, `Mazes_`, `Motor_`, `Tesla_`, `Music_`; `Query`/`Mutation` expose the `account` global namespace plus the five games; subscriptions are flat roots (`deliverySession`, `mazesSessionUpdated`, `motorProgrammingSessionUpdated`, `teslaSessionUpdated`, `teslaLobbyUpdated`, `musicSessionUpdated`) because GraphQL only streams at the operation root.
 - Gateways live at `/<game>/<api>` only: tesla `/tesla/mcp`, and `/<game>/llms.txt` rendered from embedded `llms.txt.tmpl`. Global sign-in is mounted by the host at `/auth/...`.
 - Sessions embed a map snapshot; map edits never change running sessions. Broadcasts carry a monotonic `seq`; hubs are latest-wins and drop intermediate snapshots for slow clients. Service mutation pattern: lock → mutate → bump seq → clone → unlock → persist → broadcast; never do I/O under a session lock.
 
@@ -47,7 +48,7 @@ flowchart LR
 | `cmd/split-schema/`, `cmd/merge-schema/`, `cmd/gentypes/` | schema derivation, round-trip verification, TypeScript type generation |
 | `graph/` | unified executor: `schema.graphqls`, `handler.go`, `resolver.go`, `schema.resolvers.go`, `complexity.go`, `merge/`, `generated/`, `model/` |
 | `platform/` | process host, config, router, stores, shared origin/ws/gzip helpers |
-| `games/<game>/` | `game.go` (platform adapter), `graph/` (resolvers + conversions), `game/{engine,service,session,config}`, optional `auth/`, `transport/`, `validate/`, `cmd/`, `maps/` |
+| `games/<game>/` | `game.go` (platform adapter), `graph/` (resolvers + conversions), `game/{engine,service,session,config}`, optional `auth/`, `transport/`, `validate/`, `cmd/`, `maps/`, `scores/` (music's built-in library), `llms.txt.tmpl` |
 | `web/` | SvelteKit app: `src/routes/<game>/`, `src/lib/<game>/`, shared `src/lib/graphql-types.ts`, `packages/ui` (`@drbrain/ui`) |
 | `deploy/` | systemd unit, env example, nginx templates, install, smoke, rollback |
 | `docs/routing.md` | authoritative routing and namespace behavior |
@@ -89,6 +90,7 @@ Issue tracking uses Beads: `bd ready`, `bd show <id>`, `bd update <id> --claim`,
 
 ## Code Conventions & Common Patterns
 
+- For new or modified frontend UI, use the [ui-guidelines skill](.agents/skills/ui-guidelines/SKILL.md) for the shared design system, accessibility, and browser verification.
 - Go 1.27.2, gofmt, stdlib `testing` only (no testify). `go vet` must pass. Frontend gate is `svelte-check` (`npm run check`); there is no ESLint/Prettier or root golangci config.
 - Generated boundaries — never hand-edit: `graph/generated/`, `graph/model/`, `graph/gqlgen.yml`, `games/*/graph/{generated,model}`, `games/*/graph/schema.graphqls`, `web/src/lib/graphql-types.ts`. Put hand-written resolver helpers in `helpers.go`, `convert.go`, `subscription_forward.go` so regeneration cannot erase them.
 - Unified resolvers are pure delegation: `return obj.Query().X(ctx, args...)`, root accessors `return r.Resolver.Delivery, nil`. Domain models stay in `games/<g>/graph/model`; explicit conversion in each game's `convert.go`.
@@ -98,7 +100,7 @@ Issue tracking uses Beads: `bd ready`, `bd show <id>`, `bd update <id> --claim`,
 - Dependency injection is option structs, not globals: `service.Options`, `auth.Config`, `graph.Options`, `mapstore.Options[T]`, `sessionstore.Options`, `host.WithGraphQL`, `graph.WithAdminPolicy`.
 - Config is `envconfig`: platform `DRBRAIN_*` (including `DRBRAIN_DATABASE_URL`, `DRBRAIN_ACCOUNTS_DIR`, `DRBRAIN_AUTH_*`), `MAZES_*`, `TESLA_*`, `DELIVERY_*`, motor dirs `MOTOR_*`. Motor's `internal/appconfig` and legacy fallbacks read unprefixed vars (`DATABASE_URL`, `ADMIN_API_KEY`, `ALLOWED_ORIGINS`, `SESSION_TTL`). `DRBRAIN_ALLOWED_ORIGINS` falls back to the unprefixed value.
 - Frontend: one urql client per game; wrap every operation in its namespace and unwrap with `mapExchange({ onResult })` so screens keep game-local shapes. Flat subscriptions map back to `sessionUpdated`/`lobbyUpdated`. Documents live in `web/src/lib/<game>/queries.ts`; global account documents live in `web/src/lib/account/queries.ts` and read the `account` namespace directly. Per-game `types.ts` may alias shared generated types.
-- Global auth uses one cookie (`drbrain_session`) with `Path=/` because the origin is shared; account data lives in `platform/account`, sign-in in `platform/auth`. Theme pre-paint in `web/src/app.html` must stay gated to `/motor`.
+- Global auth uses stateless Bearer JWTs (`Authorization: Bearer`, or the graphql-ws `connection_init` payload) signed by `DRBRAIN_AUTH_JWT_SECRET`; there is no session cookie or `logins` table. OAuth callbacks hand the SPA a one-time `signin_code` exchanged at `POST /auth/token`. Account data lives in `platform/account`, sign-in in `platform/auth`. Theme pre-paint in `web/src/app.html` must stay gated to `/motor`.
 - Naming: `newTestX` (constructor), `fakeX`/`spyX`/`recorder` (doubles), `mustX`, `wantCode`, `freeAddr`, `waitFor` (deadline polling).
 
 ## Important Files

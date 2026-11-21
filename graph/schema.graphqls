@@ -33,6 +33,17 @@ type Global_AuthProvider {
 	name: String!
 }
 """
+A signed-in session: the bearer token to send as `Authorization: Bearer <token>`
+on every request (HTTP and the graphql-ws `connection_init` message) plus the
+player it belongs to. Tokens last 24 hours; there is no refresh token, so a
+client stores it and signs in again when it expires.
+"""
+type Global_AuthSession {
+	token: String!
+	expiresAt: Time!
+	user: Global_User!
+}
+"""
 A player's public identity page. Game-specific statistics live under that game.
 """
 type Global_Profile {
@@ -71,33 +82,35 @@ type Global_Query {
 }
 type Global_Mutation {
 	"""
-	Signs the player out (clears the login cookie). Always true.
+	Sign-out counterpart for clients: tokens are stateless, so the server has
+	nothing to revoke and the client must discard its token. Always true.
 	"""
 	logout: Boolean!
 	"""
-	Creates a username/password account and signs the browser in with it. The username is the public
+	Creates a username/password account and returns a bearer token for it. The username is the public
 	handle. Refused cross-site, so another site cannot create accounts through a victim's browser.
 	Errors: INVALID_ARGUMENT (bad handle, weak or taken password), LIMIT_REACHED, FORBIDDEN (password
-	sign-in is off, or no cookie can be set: a subscription connection).
+	sign-in is off, or the call is not an HTTP request).
 	"""
-	registerWithPassword(handle: String!, password: String!): Global_User!
+	registerWithPassword(handle: String!, password: String!): Global_AuthSession!
 	"""
-	Signs in with a username and password, rotating the browser's previous login. Refused cross-site.
+	Signs in with a username and password and returns a bearer token. Refused cross-site.
 	An unknown username and a wrong password are answered identically (UNAUTHENTICATED). Repeated
 	failures lock the (address, username) pair and then the username: LIMIT_REACHED, refused before
-	any hashing. FORBIDDEN when password sign-in is off or no cookie can be set.
+	any hashing. FORBIDDEN when password sign-in is off or the call is not an HTTP request.
 	"""
-	logInWithPassword(handle: String!, password: String!): Global_User!
+	logInWithPassword(handle: String!, password: String!): Global_AuthSession!
 	"""
 	Changes the signed-in player's handle, display name or profile visibility.
 	"""
 	updateAccount(input: Global_AccountInput!): Global_User!
 	"""
-	Changes the password of a username/password account and signs out its other browsers. There is no email, so there is no password reset.
+	Changes the password of a username/password account. Access tokens already issued stay valid until
+	they expire (they are stateless). There is no email, so there is no password reset.
 	"""
 	changePassword(currentPassword: String!, newPassword: String!): Boolean!
 	"""
-	Permanently deletes the account and signs out. confirmHandle must equal the current handle. Its runs stay on the boards as guest entries.
+	Permanently deletes the account. confirmHandle must equal the current handle. Its runs stay on the boards as guest entries, and its tokens stop resolving immediately.
 	"""
 	deleteAccount(confirmHandle: String!): Boolean!
 }
@@ -119,6 +132,56 @@ type Delivery_SessionSummary {
 	reputation: Float!
 	deliveries: Int!
 	loaded: Boolean!
+	"""
+	The owning player's public name: an account's display name, "Private player"
+	when its profile is private, or "Guest" for a session with no account.
+	"""
+	ownerDisplayName: String!
+	"""
+	Handle of the signed-in player who owns this session (profile at /u/<handle>);
+	null for guests and private profiles.
+	"""
+	ownerHandle: String
+	"""
+	True when the session belongs to the signed-in viewer's account.
+	"""
+	mine: Boolean!
+}
+"""
+The result of createSession. The ownerToken is returned only here and never by a
+query, a list or a subscription: it is the credential that lets this browser
+change the session (and attach it to an account later), while the session id
+alone stays enough to read it.
+"""
+type Delivery_CreateSessionResult {
+	session: Delivery_Snapshot!
+	"""
+	Secret that proves you created this session; keep it private.
+	"""
+	ownerToken: String!
+}
+enum Delivery_ClaimStatus {
+	"""
+	The session now belongs to your account.
+	"""
+	ATTACHED
+	"""
+	It already belonged to your account.
+	"""
+	ALREADY_YOURS
+	"""
+	Unknown session, no or wrong owner token, a session created before owner
+	tokens, or one that belongs to another account.
+	"""
+	REJECTED
+}
+input Delivery_SessionClaimInput {
+	sessionID: ID!
+	ownerToken: String!
+}
+type Delivery_SessionClaimResult {
+	sessionID: ID!
+	status: Delivery_ClaimStatus!
 }
 """
 The full client view of a session at one tick.
@@ -483,53 +546,74 @@ type Delivery_Query {
 	Events newer than a tick, so a client can poll for deltas.
 	"""
 	events(id: ID!, sinceTick: Int! = 0): [Delivery_EventView!]!
+	"""
+	Whether this caller may change the session: true for the session's creator
+	(by owner token or signed-in owning account) and for a session created before
+	owner tokens, false for everyone else. Never an error: an unknown session is
+	false. Reads stay public, so this decides between playing and spectating.
+	"""
+	canPlaySession(id: ID!, ownerToken: String): Boolean!
 }
 type Delivery_Mutation {
 	"""
-	Start a new city. Both fields optional; a seed makes it reproducible.
+	Start a new city. Both fields optional; a seed makes it reproducible, and an
+	omitted id is generated. A signed-in creator's session belongs to their
+	account. The response carries the secret ownerToken, needed to change the
+	session later, so keep it.
 	"""
-	createSession(id: ID, seed: Int): Delivery_Snapshot!
+	createSession(id: ID, seed: Int): Delivery_CreateSessionResult!
 	"""
-	Queue one step for one car. Does NOT advance the clock.
+	Queue one step for one car. Does NOT advance the clock. Only the session's
+	creator may change it: pass the ownerToken from createSession, or be signed in
+	to the account that owns the session (FORBIDDEN otherwise). Sessions created
+	before owner tokens stay open.
 	"""
-	moveCar(id: ID!, carId: ID!, direction: Delivery_Direction!): Delivery_Snapshot!
+	moveCar(id: ID!, carId: ID!, direction: Delivery_Direction!, ownerToken: String): Delivery_Snapshot!
 	"""
-	Advance the world manually. Useful when paused.
+	Advance the world manually. Useful when paused. Creator-only, as moveCar.
 	"""
-	tick(id: ID!, count: Int! = 1): Delivery_Snapshot!
+	tick(id: ID!, count: Int! = 1, ownerToken: String): Delivery_Snapshot!
 	"""
-	Set the clock multiplier. 0 pauses.
+	Set the clock multiplier. 0 pauses. Creator-only, as moveCar.
 	"""
-	setSpeed(id: ID!, speed: Int!): Delivery_Snapshot!
+	setSpeed(id: ID!, speed: Int!, ownerToken: String): Delivery_Snapshot!
 	"""
 	Point an order at a car; refreshes its deadline from that car's position.
+	Creator-only, as moveCar.
 	"""
-	assignOrder(id: ID!, orderId: ID!, carId: ID!): Delivery_Snapshot!
-	unassignOrder(id: ID!, orderId: ID!): Delivery_Snapshot!
+	assignOrder(id: ID!, orderId: ID!, carId: ID!, ownerToken: String): Delivery_Snapshot!
+	unassignOrder(id: ID!, orderId: ID!, ownerToken: String): Delivery_Snapshot!
 	"""
-	Buy a vehicle at a depot.
+	Buy a vehicle at a depot. Creator-only, as moveCar.
 	"""
-	buyCar(id: ID!, className: String!, depotId: String! = "d_main"): Delivery_Snapshot!
+	buyCar(id: ID!, className: String!, depotId: String! = "d_main", ownerToken: String): Delivery_Snapshot!
 	"""
-	Return a stranded car to its nearest depot for a fee.
+	Return a stranded car to its nearest depot for a fee. Creator-only, as moveCar.
 	"""
-	towCar(id: ID!, carId: ID!): Delivery_Snapshot!
+	towCar(id: ID!, carId: ID!, ownerToken: String): Delivery_Snapshot!
 	"""
-	Purchase an unlocked build; mutates the map atomically.
+	Purchase an unlocked build; mutates the map atomically. Creator-only, as moveCar.
 	"""
-	build(id: ID!, buildId: ID!): Delivery_Snapshot!
+	build(id: ID!, buildId: ID!, ownerToken: String): Delivery_Snapshot!
 	"""
-	Write the save to disk.
+	Write the save to disk. Creator-only, as moveCar.
 	"""
-	saveSession(id: ID!): Delivery_Snapshot!
+	saveSession(id: ID!, ownerToken: String): Delivery_Snapshot!
 	"""
-	Save, then drop from memory. The next read rehydrates.
+	Save, then drop from memory. The next read rehydrates. Creator-only: evicting
+	someone else's session would stop their clock.
 	"""
-	evictSession(id: ID!): Boolean!
+	evictSession(id: ID!, ownerToken: String): Boolean!
 	"""
-	Delete the save file permanently.
+	Delete the save file permanently. Needs the ownerToken (or the owning account)
+	even for a guest session; only a save created before owner tokens is open.
 	"""
-	deleteSession(id: ID!): Boolean!
+	deleteSession(id: ID!, ownerToken: String): Boolean!
+	"""
+	Attaches guest sessions of this browser to the signed-in account; each needs
+	its owner token (up to 100 per call). UNAUTHENTICATED when not signed in.
+	"""
+	claimSessions(claims: [Delivery_SessionClaimInput!]!): [Delivery_SessionClaimResult!]!
 }
 enum Mazes_Direction {
 	UP
@@ -974,7 +1058,6 @@ type Motor_StepEvent {
 }
 type Motor_Session {
 	id: ID!
-	displayName: String!
 	mapId: ID!
 	"""
 	Snapshot of the map taken when the session was created.
@@ -1002,7 +1085,7 @@ type Motor_Session {
 	Secret that proves the caller created this session; keep it private. Returned only by the
 	createSession response that made the session and null everywhere else (queries, lists,
 	subscriptions). It is the credential for playing the session (pass it to setProgram, run, step,
-	pause and reset) and for changing or attaching it (deleteSession, renameSession, claimSessions).
+	pause and reset) and for changing or attaching it (deleteSession, claimSessions).
 	Sharing it is how a session is handed to a second person or an AI agent. Optional: clients that
 	never select it are unaffected.
 	"""
@@ -1059,7 +1142,8 @@ type Motor_LeaderboardEntry {
 	"""
 	sessionId: ID!
 	"""
-	Empty names are shown as Anonymous. An account's entry shows its display name, or "Private player" when its profile is private.
+	The entry's player name. Account rows show the account's display name, or "Private player"
+	when its profile is private; a session with no account is shown as "Guest".
 	"""
 	displayName: String!
 	"""
@@ -1160,11 +1244,10 @@ type Motor_Query {
 	leaderboard(mapId: ID!, order: Motor_LeaderboardOrder = SLOTS, limit: Int = 20, sessionId: ID): Motor_Leaderboard
 	"""
 	A player's best run per map they have won (maps never won are absent), ordered by map id.
-	Give exactly one of sessionIds (up to 200; exact) or name (case-insensitive; matches every
-	session with that display name, so it can mix people who picked the same name; guest sessions only).
-	When signed in, the account's own runs are included with sessionIds, and sessionIds may be left out.
+	Session ids select exact guest sessions (up to 200); when signed in, the account's own runs are
+	included too, and sessionIds may be left out for just the account's runs.
 	"""
-	playerRuns(sessionIds: [ID!], name: String): [Motor_PlayerRun!]!
+	playerRuns(sessionIds: [ID!]): [Motor_PlayerRun!]!
 	"""
 	A player's best run per map they have won, looked up by account handle. Empty when the
 	handle is unknown; game-specific statistics stay with the game.
@@ -1174,19 +1257,15 @@ type Motor_Query {
 type Motor_Mutation {
 	"""
 	Starts a session. The response carries the secret `ownerToken`: it is needed to play the session
-	(setProgram, run, step, pause, reset) and to rename, delete or claim it, so keep it.
+	(setProgram, run, step, pause, reset) and to delete or claim it, so keep it.
 	"""
-	createSession(mapID: ID!, displayName: String): Motor_Session!
+	createSession(mapID: ID!): Motor_Session!
 	"""
 	Deletes a session. A guest session can be deleted by anyone who knows its id. A session that belongs to a
 	signed-in player can only be deleted by that player's signed-in browser, or by passing the ownerToken
 	that createSession returned (FORBIDDEN otherwise).
 	"""
 	deleteSession(id: ID!, ownerToken: String): Boolean!
-	"""
-	Renames a session; the same rule as deleteSession applies. Its program is included only for a caller who may change it.
-	"""
-	renameSession(id: ID!, displayName: String!, ownerToken: String): Motor_Session!
 	"""
 	Stores the program and resets the robot. Only the session's creator may do it: pass the
 	ownerToken that createSession returned, or be signed in to the account that owns the session
@@ -1497,6 +1576,96 @@ type Tesla_Mutation {
 	deleteMap(name: String!, editKey: String): Tesla_DeleteSessionResult!
 	validateMap(map: Tesla_GameMapInput!): Tesla_MapValidationResult!
 }
+enum Music_Difficulty {
+	"""
+	Reorder the whole excerpt; no bar is flipped. Rewards 5% per win.
+	"""
+	NOVICE
+	"""
+	Reorder the whole excerpt and undo retrograde (horizontal) flips on about a third of the bars; no bar is inverted. Rewards 10% per win.
+	"""
+	EXPERT
+	"""
+	Reorder the whole excerpt and undo both flips: at least half the bars carry retrograde and inversion together. Rewards 15% per win.
+	"""
+	GENIUS
+}
+type Music_Note {
+	at: Int!
+	dur: Int!
+	pitch: Int!
+}
+type Music_Measure {
+	id: ID!
+	len: Int!
+	notes: [Music_Note!]!
+}
+type Music_Slot {
+	position: Int!
+	measureID: ID!
+	flipH: Boolean!
+	flipV: Boolean!
+}
+input Music_PlacementInput {
+	measureID: ID!
+	flipH: Boolean!
+	flipV: Boolean!
+}
+type Music_Excerpt {
+	id: ID!
+	title: String!
+	composer: String!
+	tempoBPM: Int!
+	timeSig: String!
+	key: String!
+	clef: String!
+	axis: Int!
+	"""
+	The piece's bars in performance order. Every Music Region piece is at most
+	6 bars, and every difficulty challenges the whole piece, so this is also
+	the number of slots in a session.
+	"""
+	measures: [Music_Measure!]!
+	notes: [Music_Note!]!
+}
+type Music_LastChange {
+	kind: String!
+	a: Int!
+	b: Int!
+}
+type Music_Session {
+	id: ID!
+	displayName: String
+	difficulty: Music_Difficulty!
+	excerpt: Music_Excerpt!
+	slots: [Music_Slot!]!
+	solved: Boolean!
+	seq: Int!
+	wins: Int!
+	percentPerWin: Int!
+	createdAt: String!
+	lastActionAt: String!
+	lastChange: Music_LastChange
+}
+type Music_SessionUpdate {
+	session: Music_Session!
+	lastChange: Music_LastChange
+}
+type Music_Query {
+	excerpts: [Music_Excerpt!]!
+	excerpt(id: ID!): Music_Excerpt
+	session(id: ID!): Music_Session
+	sessions(limit: Int = 50): [Music_Session!]!
+}
+type Music_Mutation {
+	createSession(excerptID: ID!, difficulty: Music_Difficulty!, displayName: String, seed: Int): Music_Session!
+	switchMeasures(sessionID: ID!, a: Int!, b: Int!): Music_Session!
+	transformMeasure(sessionID: ID!, position: Int!, flipH: Boolean!, flipV: Boolean!): Music_Session!
+	setArrangement(sessionID: ID!, slots: [Music_PlacementInput!]!): Music_Session!
+	resetArrangement(sessionID: ID!): Music_Session!
+	deleteSession(id: ID!): Boolean!
+	renameSession(id: ID!, displayName: String!): Music_Session!
+}
 scalar Time
 type Query {
 	account: Global_Query!
@@ -1504,6 +1673,7 @@ type Query {
 	mazes: Mazes_Query!
 	motorProgramming: Motor_Query!
 	tesla: Tesla_Query!
+	music: Music_Query!
 }
 type Mutation {
 	account: Global_Mutation!
@@ -1511,6 +1681,7 @@ type Mutation {
 	mazes: Mazes_Mutation!
 	motorProgramming: Motor_Mutation!
 	tesla: Tesla_Mutation!
+	music: Music_Mutation!
 }
 type Subscription {
 	"""
@@ -1541,4 +1712,5 @@ type Subscription {
 	motorProgrammingSessionUpdated(sessionID: ID!, ownerToken: String): Motor_SessionUpdate!
 	teslaSessionUpdated(sessionID: ID!): Tesla_GameState!
 	teslaLobbyUpdated: Tesla_GameState!
+	musicSessionUpdated(sessionID: ID!): Music_SessionUpdate!
 }

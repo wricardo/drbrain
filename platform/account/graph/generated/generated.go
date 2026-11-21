@@ -52,6 +52,12 @@ type ComplexityRoot struct {
 		Name func(childComplexity int) int
 	}
 
+	AuthSession struct {
+		ExpiresAt func(childComplexity int) int
+		Token     func(childComplexity int) int
+		User      func(childComplexity int) int
+	}
+
 	Mutation struct {
 		ChangePassword       func(childComplexity int, currentPassword string, newPassword string) int
 		DeleteAccount        func(childComplexity int, confirmHandle string) int
@@ -86,8 +92,8 @@ type ComplexityRoot struct {
 
 type MutationResolver interface {
 	Logout(ctx context.Context) (bool, error)
-	RegisterWithPassword(ctx context.Context, handle string, password string) (*model.User, error)
-	LogInWithPassword(ctx context.Context, handle string, password string) (*model.User, error)
+	RegisterWithPassword(ctx context.Context, handle string, password string) (*model.AuthSession, error)
+	LogInWithPassword(ctx context.Context, handle string, password string) (*model.AuthSession, error)
 	UpdateAccount(ctx context.Context, input model.AccountInput) (*model.User, error)
 	ChangePassword(ctx context.Context, currentPassword string, newPassword string) (bool, error)
 	DeleteAccount(ctx context.Context, confirmHandle string) (bool, error)
@@ -130,6 +136,27 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.AuthProvider.Name(childComplexity), true
+
+	case "AuthSession.expiresAt":
+		if e.complexity.AuthSession.ExpiresAt == nil {
+			break
+		}
+
+		return e.complexity.AuthSession.ExpiresAt(childComplexity), true
+
+	case "AuthSession.token":
+		if e.complexity.AuthSession.Token == nil {
+			break
+		}
+
+		return e.complexity.AuthSession.Token(childComplexity), true
+
+	case "AuthSession.user":
+		if e.complexity.AuthSession.User == nil {
+			break
+		}
+
+		return e.complexity.AuthSession.User(childComplexity), true
 
 	case "Mutation.changePassword":
 		if e.complexity.Mutation.ChangePassword == nil {
@@ -434,6 +461,17 @@ type AuthProvider {
 	name: String!
 }
 """
+A signed-in session: the bearer token to send as ` + "`" + `Authorization: Bearer <token>` + "`" + `
+on every request (HTTP and the graphql-ws ` + "`" + `connection_init` + "`" + ` message) plus the
+player it belongs to. Tokens last 24 hours; there is no refresh token, so a
+client stores it and signs in again when it expires.
+"""
+type AuthSession {
+	token: String!
+	expiresAt: Time!
+	user: User!
+}
+"""
 A player's public identity page. Game-specific statistics live under that game.
 """
 type Profile {
@@ -473,33 +511,35 @@ type Query {
 }
 type Mutation {
 	"""
-	Signs the player out (clears the login cookie). Always true.
+	Sign-out counterpart for clients: tokens are stateless, so the server has
+	nothing to revoke and the client must discard its token. Always true.
 	"""
 	logout: Boolean!
 	"""
-	Creates a username/password account and signs the browser in with it. The username is the public
+	Creates a username/password account and returns a bearer token for it. The username is the public
 	handle. Refused cross-site, so another site cannot create accounts through a victim's browser.
 	Errors: INVALID_ARGUMENT (bad handle, weak or taken password), LIMIT_REACHED, FORBIDDEN (password
-	sign-in is off, or no cookie can be set: a subscription connection).
+	sign-in is off, or the call is not an HTTP request).
 	"""
-	registerWithPassword(handle: String!, password: String!): User!
+	registerWithPassword(handle: String!, password: String!): AuthSession!
 	"""
-	Signs in with a username and password, rotating the browser's previous login. Refused cross-site.
+	Signs in with a username and password and returns a bearer token. Refused cross-site.
 	An unknown username and a wrong password are answered identically (UNAUTHENTICATED). Repeated
 	failures lock the (address, username) pair and then the username: LIMIT_REACHED, refused before
-	any hashing. FORBIDDEN when password sign-in is off or no cookie can be set.
+	any hashing. FORBIDDEN when password sign-in is off or the call is not an HTTP request.
 	"""
-	logInWithPassword(handle: String!, password: String!): User!
+	logInWithPassword(handle: String!, password: String!): AuthSession!
 	"""
 	Changes the signed-in player's handle, display name or profile visibility.
 	"""
 	updateAccount(input: AccountInput!): User!
 	"""
-	Changes the password of a username/password account and signs out its other browsers. There is no email, so there is no password reset.
+	Changes the password of a username/password account. Access tokens already issued stay valid until
+	they expire (they are stateless). There is no email, so there is no password reset.
 	"""
 	changePassword(currentPassword: String!, newPassword: String!): Boolean!
 	"""
-	Permanently deletes the account and signs out. confirmHandle must equal the current handle. Its runs stay on the boards as guest entries.
+	Permanently deletes the account. confirmHandle must equal the current handle. Its runs stay on the boards as guest entries, and its tokens stop resolving immediately.
 	"""
 	deleteAccount(confirmHandle: String!): Boolean!
 }
@@ -984,6 +1024,152 @@ func (ec *executionContext) fieldContext_AuthProvider_name(_ context.Context, fi
 	return fc, nil
 }
 
+func (ec *executionContext) _AuthSession_token(ctx context.Context, field graphql.CollectedField, obj *model.AuthSession) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_AuthSession_token(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Token, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_AuthSession_token(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "AuthSession",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _AuthSession_expiresAt(ctx context.Context, field graphql.CollectedField, obj *model.AuthSession) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_AuthSession_expiresAt(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.ExpiresAt, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(time.Time)
+	fc.Result = res
+	return ec.marshalNTime2timeᚐTime(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_AuthSession_expiresAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "AuthSession",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _AuthSession_user(ctx context.Context, field graphql.CollectedField, obj *model.AuthSession) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_AuthSession_user(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.User, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.User)
+	fc.Result = res
+	return ec.marshalNUser2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚋmodelᚐUser(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_AuthSession_user(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "AuthSession",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "handle":
+				return ec.fieldContext_User_handle(ctx, field)
+			case "displayName":
+				return ec.fieldContext_User_displayName(ctx, field)
+			case "profilePublic":
+				return ec.fieldContext_User_profilePublic(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_User_createdAt(ctx, field)
+			case "handleChangeableAt":
+				return ec.fieldContext_User_handleChangeableAt(ctx, field)
+			case "hasPassword":
+				return ec.fieldContext_User_hasPassword(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Mutation_logout(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Mutation_logout(ctx, field)
 	if err != nil {
@@ -1054,9 +1240,9 @@ func (ec *executionContext) _Mutation_registerWithPassword(ctx context.Context, 
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model.User)
+	res := resTmp.(*model.AuthSession)
 	fc.Result = res
-	return ec.marshalNUser2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚋmodelᚐUser(ctx, field.Selections, res)
+	return ec.marshalNAuthSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚋmodelᚐAuthSession(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Mutation_registerWithPassword(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -1067,20 +1253,14 @@ func (ec *executionContext) fieldContext_Mutation_registerWithPassword(ctx conte
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
-			case "handle":
-				return ec.fieldContext_User_handle(ctx, field)
-			case "displayName":
-				return ec.fieldContext_User_displayName(ctx, field)
-			case "profilePublic":
-				return ec.fieldContext_User_profilePublic(ctx, field)
-			case "createdAt":
-				return ec.fieldContext_User_createdAt(ctx, field)
-			case "handleChangeableAt":
-				return ec.fieldContext_User_handleChangeableAt(ctx, field)
-			case "hasPassword":
-				return ec.fieldContext_User_hasPassword(ctx, field)
+			case "token":
+				return ec.fieldContext_AuthSession_token(ctx, field)
+			case "expiresAt":
+				return ec.fieldContext_AuthSession_expiresAt(ctx, field)
+			case "user":
+				return ec.fieldContext_AuthSession_user(ctx, field)
 			}
-			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
+			return nil, fmt.Errorf("no field named %q was found under type AuthSession", field.Name)
 		},
 	}
 	defer func() {
@@ -1123,9 +1303,9 @@ func (ec *executionContext) _Mutation_logInWithPassword(ctx context.Context, fie
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model.User)
+	res := resTmp.(*model.AuthSession)
 	fc.Result = res
-	return ec.marshalNUser2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚋmodelᚐUser(ctx, field.Selections, res)
+	return ec.marshalNAuthSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚋmodelᚐAuthSession(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Mutation_logInWithPassword(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -1136,20 +1316,14 @@ func (ec *executionContext) fieldContext_Mutation_logInWithPassword(ctx context.
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
-			case "handle":
-				return ec.fieldContext_User_handle(ctx, field)
-			case "displayName":
-				return ec.fieldContext_User_displayName(ctx, field)
-			case "profilePublic":
-				return ec.fieldContext_User_profilePublic(ctx, field)
-			case "createdAt":
-				return ec.fieldContext_User_createdAt(ctx, field)
-			case "handleChangeableAt":
-				return ec.fieldContext_User_handleChangeableAt(ctx, field)
-			case "hasPassword":
-				return ec.fieldContext_User_hasPassword(ctx, field)
+			case "token":
+				return ec.fieldContext_AuthSession_token(ctx, field)
+			case "expiresAt":
+				return ec.fieldContext_AuthSession_expiresAt(ctx, field)
+			case "user":
+				return ec.fieldContext_AuthSession_user(ctx, field)
 			}
-			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
+			return nil, fmt.Errorf("no field named %q was found under type AuthSession", field.Name)
 		},
 	}
 	defer func() {
@@ -4124,6 +4298,55 @@ func (ec *executionContext) _AuthProvider(ctx context.Context, sel ast.Selection
 	return out
 }
 
+var authSessionImplementors = []string{"AuthSession"}
+
+func (ec *executionContext) _AuthSession(ctx context.Context, sel ast.SelectionSet, obj *model.AuthSession) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, authSessionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("AuthSession")
+		case "token":
+			out.Values[i] = ec._AuthSession_token(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "expiresAt":
+			out.Values[i] = ec._AuthSession_expiresAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "user":
+			out.Values[i] = ec._AuthSession_user(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var mutationImplementors = []string{"Mutation"}
 
 func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet) graphql.Marshaler {
@@ -4825,6 +5048,20 @@ func (ec *executionContext) marshalNAuthProvider2ᚖgithubᚗcomᚋwricardoᚋdr
 		return graphql.Null
 	}
 	return ec._AuthProvider(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNAuthSession2githubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚋmodelᚐAuthSession(ctx context.Context, sel ast.SelectionSet, v model.AuthSession) graphql.Marshaler {
+	return ec._AuthSession(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNAuthSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋplatformᚋaccountᚋgraphᚋmodelᚐAuthSession(ctx context.Context, sel ast.SelectionSet, v *model.AuthSession) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._AuthSession(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNBoolean2bool(ctx context.Context, v any) (bool, error) {

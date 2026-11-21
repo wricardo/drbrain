@@ -53,7 +53,6 @@ const MAP_FIELDS = `
 /** Full session snapshot: everything the board, tapes and counters need. */
 export const SESSION_FIELDS = `
   id
-  displayName
   mapId
   map { ${MAP_FIELDS} }
   program { main subs }
@@ -101,7 +100,6 @@ export const SESSIONS_QUERY = `
     motorProgramming {
       sessions(sort: $sort, limit: $limit, mapId: $mapId) {
         id
-        displayName
         mapId
         playing
         createdAt
@@ -114,20 +112,14 @@ export const SESSIONS_QUERY = `
 `;
 
 export const CREATE_SESSION_MUTATION = `
-  mutation CreateSession($mapID: ID!, $displayName: String) {
-    motorProgramming { createSession(mapID: $mapID, displayName: $displayName) { ${SESSION_FIELDS} ownerToken } }
+  mutation CreateSession($mapID: ID!) {
+    motorProgramming { createSession(mapID: $mapID) { ${SESSION_FIELDS} ownerToken } }
   }
 `;
 
 export const DELETE_SESSION_MUTATION = `
   mutation DeleteSession($id: ID!) {
     motorProgramming { deleteSession(id: $id) }
-  }
-`;
-
-export const RENAME_SESSION_MUTATION = `
-  mutation RenameSession($id: ID!, $displayName: String!) {
-    motorProgramming { renameSession(id: $id, displayName: $displayName) { ${SESSION_FIELDS} } }
   }
 `;
 
@@ -225,11 +217,11 @@ export const LEADERBOARD_QUERY = `
   }
 `;
 
-/** Keep in sync with `playerRunsQ` in api/leaderboard_test.go (complexity check). Give exactly one of sessionIds or name. */
+/** Keep in sync with `playerRunsQ` in api/leaderboard_test.go (complexity check). */
 export const PLAYER_RUNS_QUERY = `
-  query PlayerRuns($sessionIds: [ID!], $name: String) {
+  query PlayerRuns($sessionIds: [ID!]) {
     motorProgramming {
-      playerRuns(sessionIds: $sessionIds, name: $name) {
+      playerRuns(sessionIds: $sessionIds) {
         mapId
         total
         entry { ${LEADERBOARD_ENTRY_FIELDS} }

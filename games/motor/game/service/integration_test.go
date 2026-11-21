@@ -35,7 +35,7 @@ func TestRestartRestoresSessionPaused(t *testing.T) {
 	maps := newFakeMaps(t, corridorCfg, spinCfg)
 
 	svc1, _ := boot(t, dir, maps, nil)
-	s, err := svc1.CreateSession("spin", "restart me")
+	s, err := svc1.CreateSession("spin")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestRestartRestoresSessionPaused(t *testing.T) {
 	if got.Playing {
 		t.Fatal("restored session is Playing")
 	}
-	if got.DisplayName != "restart me" || got.MapID != "spin" || got.Seq != want.Seq || got.Attempts != want.Attempts {
+	if got.MapID != "spin" || got.Seq != want.Seq || got.Attempts != want.Attempts {
 		t.Fatalf("metadata differs: %+v", got)
 	}
 	if !reflect.DeepEqual(got.Program, want.Program) || !reflect.DeepEqual(got.VM, want.VM) {
@@ -107,7 +107,7 @@ func TestRestartKeepsOutcomeAndCounters(t *testing.T) {
 	maps := newFakeMaps(t, corridorCfg)
 
 	svc1, _ := boot(t, dir, maps, nil)
-	s, _ := svc1.CreateSession("corridor", "")
+	s, _ := svc1.CreateSession("corridor")
 	if _, err := svc1.SetProgram(s.ID, corridorFast()); err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestDeleteSessionRemovesFile(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "sessions")
 	maps := newFakeMaps(t, spinCfg)
 	svc, _ := boot(t, dir, maps, nil)
-	s, _ := svc.CreateSession("spin", "")
+	s, _ := svc.CreateSession("spin")
 	if _, err := svc.SetProgram(s.ID, spinProgram()); err != nil {
 		t.Fatal(err)
 	}
@@ -178,11 +178,11 @@ func TestMaxSessionsFromManager(t *testing.T) {
 	svc := service.New(maps, mgr, nil, service.Options{})
 	t.Cleanup(svc.Shutdown)
 	for range 2 {
-		if _, err := svc.CreateSession("corridor", ""); err != nil {
+		if _, err := svc.CreateSession("corridor"); err != nil {
 			t.Fatal(err)
 		}
 	}
-	_, err := svc.CreateSession("corridor", "")
+	_, err := svc.CreateSession("corridor")
 	wantCode(t, err, service.CodeLimit)
 }
 

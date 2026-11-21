@@ -1,5 +1,6 @@
 import { createClient, cacheExchange, fetchExchange, mapExchange, type Client } from '@urql/svelte';
 import { createClient as createWsClient, type Client as WsClient } from 'graphql-ws';
+import { authHeaders, wsConnectionParams } from '$lib/account/token';
 import { subscriptionExchange } from '@urql/svelte';
 
 const GRAPHQL_URL = (typeof window !== 'undefined' && import.meta.env?.PUBLIC_GRAPHQL_URL)
@@ -16,7 +17,7 @@ let wsClient: WsClient | null = null;
 
 function getWsClient(): WsClient {
   if (!wsClient) {
-    wsClient = createWsClient({ url: WS_URL });
+    wsClient = createWsClient({ url: WS_URL, connectionParams: () => wsConnectionParams() });
   }
   return wsClient;
 }
@@ -24,6 +25,7 @@ function getWsClient(): WsClient {
 export function makeClient(): Client {
   return createClient({
     url: GRAPHQL_URL,
+    fetchOptions: () => ({ headers: authHeaders() }),
     exchanges: [
       // Documents select under `tesla`; unwrap it so screens keep reading the
       // game-local shape. Subscriptions have flat prefixed root fields.

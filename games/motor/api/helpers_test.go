@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	createSessionQ = `mutation($name: String) { createSession(mapID: "wide", displayName: $name) { id displayName ownerToken } }`
+	createSessionQ = `mutation { createSession(mapID: "wide") { id ownerToken } }`
 	setProgramQ    = `mutation($id: ID!, $p: ProgramInput!, $t: String) { setProgram(sessionID: $id, program: $p, ownerToken: $t) { id program { main subs } } }`
 	stepQ          = `mutation($id: ID!, $t: String) { step(sessionID: $id, ownerToken: $t) { id vm { status steps } } }`
 	claimQ         = `mutation($c: [SessionClaimInput!]!) { claimSessions(claims: $c) { sessionID status } }`
@@ -123,6 +123,39 @@ func (b *browser) signIn(handle, next string) {
 	if resp.StatusCode != http.StatusFound {
 		b.t.Fatalf("callback status = %d", resp.StatusCode)
 	}
+	cbLoc, err := url.Parse(resp.Header.Get("Location"))
+	if err != nil {
+		b.t.Fatalf("callback location %q: %v", resp.Header.Get("Location"), err)
+	}
+	code := cbLoc.Query().Get("signin_code")
+	if code == "" {
+		b.t.Fatalf("callback location %q has no signin_code", resp.Header.Get("Location"))
+	}
+	token := b.exchangeCode(code)
+	b.headers["Authorization"] = "Bearer " + token
+}
+
+// exchangeCode trades a callback handoff code for an access token.
+func (b *browser) exchangeCode(code string) string {
+	b.t.Helper()
+	body, _ := json.Marshal(map[string]string{"code": code})
+	req, err := http.NewRequest(http.MethodPost, b.base+"/auth/token", bytes.NewReader(body))
+	if err != nil {
+		b.t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", b.base)
+	resp, raw := b.do(req)
+	if resp.StatusCode != http.StatusOK {
+		b.t.Fatalf("token exchange = %d: %s", resp.StatusCode, raw)
+	}
+	var out struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil || out.Token == "" {
+		b.t.Fatalf("token response = %s (%v)", raw, err)
+	}
+	return out.Token
 }
 
 // pwSignIn signs a browser in through the enabled provider; the legacy server

@@ -249,7 +249,7 @@ func toSession(s *service.Session, withProgram bool) *model.Session {
 		return nil
 	}
 	out := &model.Session{
-		ID: s.ID, DisplayName: s.DisplayName, MapID: s.MapID,
+		ID: s.ID, MapID: s.MapID,
 		Map:     toMap(s.Map),
 		VM:      toVMState(&s.VM, s.Map),
 		Playing: s.Playing, SpeedMs: s.SpeedMs,

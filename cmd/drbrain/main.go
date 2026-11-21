@@ -22,6 +22,8 @@ import (
 	mazesgraph "github.com/wricardo/drbrain/games/mazes/graph"
 	"github.com/wricardo/drbrain/games/motor"
 	motorgraph "github.com/wricardo/drbrain/games/motor/graph"
+	"github.com/wricardo/drbrain/games/music"
+	musicgraph "github.com/wricardo/drbrain/games/music/graph"
 	"github.com/wricardo/drbrain/games/tesla"
 	teslagraph "github.com/wricardo/drbrain/games/tesla/graph"
 	"github.com/wricardo/drbrain/graph"
@@ -46,6 +48,7 @@ func builtinGames() []platform.Game {
 		motor.New(),
 		delivery.New(),
 		tesla.New(),
+		music.New(),
 	}
 }
 
@@ -58,10 +61,11 @@ func builtinGraphQL(cfg config.Config) host.GraphQLBuilder {
 		mazes, _ := b.Resolvers["mazes"].(*mazesgraph.Resolver)
 		motor, _ := b.Resolvers["motor"].(*motorgraph.Resolver)
 		tesla, _ := b.Resolvers["tesla"].(*teslagraph.Resolver)
+		music, _ := b.Resolvers["music"].(*musicgraph.Resolver)
 		accountResolver := accountgraph.New(b.Accounts, b.Authn)
 		mux := http.NewServeMux()
 		mux.Handle("/graphql", graph.NewHandler(graph.Options{
-			Resolver:       graph.New(accountResolver, delivery, mazes, motor, tesla),
+			Resolver:       graph.New(accountResolver, delivery, mazes, motor, tesla, music),
 			AllowedOrigins: cfg.AllowedOrigins,
 			Introspection:  true,
 			Playground:     true,
@@ -185,6 +189,7 @@ func runServe(args []string, games []platform.Game, stdout, stderr io.Writer) in
 		authn, err = auth.New(auth.Config{
 			Providers: providers, Accounts: accounts, PublicURL: cfg.PublicURL,
 			AllowedOrigins: cfg.AllowedOrigins, Password: cfg.AuthPassword,
+			JWTSecret: cfg.AuthJWTSecret,
 		})
 		if err != nil {
 			fmt.Fprintf(stderr, "drbrain serve: sign-in: %v\n", err)

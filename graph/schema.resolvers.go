@@ -13,6 +13,8 @@ import (
 	model1 "github.com/wricardo/drbrain/games/mazes/graph/model"
 	graph2 "github.com/wricardo/drbrain/games/motor/graph"
 	model2 "github.com/wricardo/drbrain/games/motor/graph/model"
+	graph5 "github.com/wricardo/drbrain/games/music/graph"
+	model5 "github.com/wricardo/drbrain/games/music/graph/model"
 	graph3 "github.com/wricardo/drbrain/games/tesla/graph"
 	model3 "github.com/wricardo/drbrain/games/tesla/graph/model"
 	"github.com/wricardo/drbrain/graph/generated"
@@ -21,63 +23,68 @@ import (
 )
 
 // CreateSession is the resolver for the createSession field.
-func (r *delivery_MutationResolver) CreateSession(ctx context.Context, obj *graph.Resolver, id *string, seed *int) (*model.Snapshot, error) {
+func (r *delivery_MutationResolver) CreateSession(ctx context.Context, obj *graph.Resolver, id *string, seed *int) (*model.CreateSessionResult, error) {
 	return obj.Mutation().CreateSession(ctx, id, seed)
 }
 
 // MoveCar is the resolver for the moveCar field.
-func (r *delivery_MutationResolver) MoveCar(ctx context.Context, obj *graph.Resolver, id string, carID string, direction model.Direction) (*model.Snapshot, error) {
-	return obj.Mutation().MoveCar(ctx, id, carID, direction)
+func (r *delivery_MutationResolver) MoveCar(ctx context.Context, obj *graph.Resolver, id string, carID string, direction model.Direction, ownerToken *string) (*model.Snapshot, error) {
+	return obj.Mutation().MoveCar(ctx, id, carID, direction, ownerToken)
 }
 
 // Tick is the resolver for the tick field.
-func (r *delivery_MutationResolver) Tick(ctx context.Context, obj *graph.Resolver, id string, count int) (*model.Snapshot, error) {
-	return obj.Mutation().Tick(ctx, id, count)
+func (r *delivery_MutationResolver) Tick(ctx context.Context, obj *graph.Resolver, id string, count int, ownerToken *string) (*model.Snapshot, error) {
+	return obj.Mutation().Tick(ctx, id, count, ownerToken)
 }
 
 // SetSpeed is the resolver for the setSpeed field.
-func (r *delivery_MutationResolver) SetSpeed(ctx context.Context, obj *graph.Resolver, id string, speed int) (*model.Snapshot, error) {
-	return obj.Mutation().SetSpeed(ctx, id, speed)
+func (r *delivery_MutationResolver) SetSpeed(ctx context.Context, obj *graph.Resolver, id string, speed int, ownerToken *string) (*model.Snapshot, error) {
+	return obj.Mutation().SetSpeed(ctx, id, speed, ownerToken)
 }
 
 // AssignOrder is the resolver for the assignOrder field.
-func (r *delivery_MutationResolver) AssignOrder(ctx context.Context, obj *graph.Resolver, id string, orderID string, carID string) (*model.Snapshot, error) {
-	return obj.Mutation().AssignOrder(ctx, id, orderID, carID)
+func (r *delivery_MutationResolver) AssignOrder(ctx context.Context, obj *graph.Resolver, id string, orderID string, carID string, ownerToken *string) (*model.Snapshot, error) {
+	return obj.Mutation().AssignOrder(ctx, id, orderID, carID, ownerToken)
 }
 
 // UnassignOrder is the resolver for the unassignOrder field.
-func (r *delivery_MutationResolver) UnassignOrder(ctx context.Context, obj *graph.Resolver, id string, orderID string) (*model.Snapshot, error) {
-	return obj.Mutation().UnassignOrder(ctx, id, orderID)
+func (r *delivery_MutationResolver) UnassignOrder(ctx context.Context, obj *graph.Resolver, id string, orderID string, ownerToken *string) (*model.Snapshot, error) {
+	return obj.Mutation().UnassignOrder(ctx, id, orderID, ownerToken)
 }
 
 // BuyCar is the resolver for the buyCar field.
-func (r *delivery_MutationResolver) BuyCar(ctx context.Context, obj *graph.Resolver, id string, className string, depotID string) (*model.Snapshot, error) {
-	return obj.Mutation().BuyCar(ctx, id, className, depotID)
+func (r *delivery_MutationResolver) BuyCar(ctx context.Context, obj *graph.Resolver, id string, className string, depotID string, ownerToken *string) (*model.Snapshot, error) {
+	return obj.Mutation().BuyCar(ctx, id, className, depotID, ownerToken)
 }
 
 // TowCar is the resolver for the towCar field.
-func (r *delivery_MutationResolver) TowCar(ctx context.Context, obj *graph.Resolver, id string, carID string) (*model.Snapshot, error) {
-	return obj.Mutation().TowCar(ctx, id, carID)
+func (r *delivery_MutationResolver) TowCar(ctx context.Context, obj *graph.Resolver, id string, carID string, ownerToken *string) (*model.Snapshot, error) {
+	return obj.Mutation().TowCar(ctx, id, carID, ownerToken)
 }
 
 // Build is the resolver for the build field.
-func (r *delivery_MutationResolver) Build(ctx context.Context, obj *graph.Resolver, id string, buildID string) (*model.Snapshot, error) {
-	return obj.Mutation().Build(ctx, id, buildID)
+func (r *delivery_MutationResolver) Build(ctx context.Context, obj *graph.Resolver, id string, buildID string, ownerToken *string) (*model.Snapshot, error) {
+	return obj.Mutation().Build(ctx, id, buildID, ownerToken)
 }
 
 // SaveSession is the resolver for the saveSession field.
-func (r *delivery_MutationResolver) SaveSession(ctx context.Context, obj *graph.Resolver, id string) (*model.Snapshot, error) {
-	return obj.Mutation().SaveSession(ctx, id)
+func (r *delivery_MutationResolver) SaveSession(ctx context.Context, obj *graph.Resolver, id string, ownerToken *string) (*model.Snapshot, error) {
+	return obj.Mutation().SaveSession(ctx, id, ownerToken)
 }
 
 // EvictSession is the resolver for the evictSession field.
-func (r *delivery_MutationResolver) EvictSession(ctx context.Context, obj *graph.Resolver, id string) (bool, error) {
-	return obj.Mutation().EvictSession(ctx, id)
+func (r *delivery_MutationResolver) EvictSession(ctx context.Context, obj *graph.Resolver, id string, ownerToken *string) (bool, error) {
+	return obj.Mutation().EvictSession(ctx, id, ownerToken)
 }
 
 // DeleteSession is the resolver for the deleteSession field.
-func (r *delivery_MutationResolver) DeleteSession(ctx context.Context, obj *graph.Resolver, id string) (bool, error) {
-	return obj.Mutation().DeleteSession(ctx, id)
+func (r *delivery_MutationResolver) DeleteSession(ctx context.Context, obj *graph.Resolver, id string, ownerToken *string) (bool, error) {
+	return obj.Mutation().DeleteSession(ctx, id, ownerToken)
+}
+
+// ClaimSessions is the resolver for the claimSessions field.
+func (r *delivery_MutationResolver) ClaimSessions(ctx context.Context, obj *graph.Resolver, claims []*model.SessionClaimInput) ([]*model.SessionClaimResult, error) {
+	return obj.Mutation().ClaimSessions(ctx, claims)
 }
 
 // Health is the resolver for the health field.
@@ -110,18 +117,23 @@ func (r *delivery_QueryResolver) Events(ctx context.Context, obj *graph.Resolver
 	return obj.Query().Events(ctx, id, sinceTick)
 }
 
+// CanPlaySession is the resolver for the canPlaySession field.
+func (r *delivery_QueryResolver) CanPlaySession(ctx context.Context, obj *graph.Resolver, id string, ownerToken *string) (bool, error) {
+	return obj.Query().CanPlaySession(ctx, id, ownerToken)
+}
+
 // Logout is the resolver for the logout field.
 func (r *global_MutationResolver) Logout(ctx context.Context, obj *graph4.Resolver) (bool, error) {
 	return obj.Mutation().Logout(ctx)
 }
 
 // RegisterWithPassword is the resolver for the registerWithPassword field.
-func (r *global_MutationResolver) RegisterWithPassword(ctx context.Context, obj *graph4.Resolver, handle string, password string) (*model4.User, error) {
+func (r *global_MutationResolver) RegisterWithPassword(ctx context.Context, obj *graph4.Resolver, handle string, password string) (*model4.AuthSession, error) {
 	return obj.Mutation().RegisterWithPassword(ctx, handle, password)
 }
 
 // LogInWithPassword is the resolver for the logInWithPassword field.
-func (r *global_MutationResolver) LogInWithPassword(ctx context.Context, obj *graph4.Resolver, handle string, password string) (*model4.User, error) {
+func (r *global_MutationResolver) LogInWithPassword(ctx context.Context, obj *graph4.Resolver, handle string, password string) (*model4.AuthSession, error) {
 	return obj.Mutation().LogInWithPassword(ctx, handle, password)
 }
 
@@ -236,18 +248,13 @@ func (r *motor_MapResolver) Builtin(ctx context.Context, obj *model2.Map) (bool,
 }
 
 // CreateSession is the resolver for the createSession field.
-func (r *motor_MutationResolver) CreateSession(ctx context.Context, obj *graph2.Resolver, mapID string, displayName *string) (*model2.Session, error) {
-	return obj.Mutation().CreateSession(ctx, mapID, displayName)
+func (r *motor_MutationResolver) CreateSession(ctx context.Context, obj *graph2.Resolver, mapID string) (*model2.Session, error) {
+	return obj.Mutation().CreateSession(ctx, mapID)
 }
 
 // DeleteSession is the resolver for the deleteSession field.
 func (r *motor_MutationResolver) DeleteSession(ctx context.Context, obj *graph2.Resolver, id string, ownerToken *string) (bool, error) {
 	return obj.Mutation().DeleteSession(ctx, id, ownerToken)
-}
-
-// RenameSession is the resolver for the renameSession field.
-func (r *motor_MutationResolver) RenameSession(ctx context.Context, obj *graph2.Resolver, id string, displayName string, ownerToken *string) (*model2.Session, error) {
-	return obj.Mutation().RenameSession(ctx, id, displayName, ownerToken)
 }
 
 // SetProgram is the resolver for the setProgram field.
@@ -331,13 +338,68 @@ func (r *motor_QueryResolver) Leaderboard(ctx context.Context, obj *graph2.Resol
 }
 
 // PlayerRuns is the resolver for the playerRuns field.
-func (r *motor_QueryResolver) PlayerRuns(ctx context.Context, obj *graph2.Resolver, sessionIds []string, name *string) ([]*model2.PlayerRun, error) {
-	return obj.Query().PlayerRuns(ctx, sessionIds, name)
+func (r *motor_QueryResolver) PlayerRuns(ctx context.Context, obj *graph2.Resolver, sessionIds []string) ([]*model2.PlayerRun, error) {
+	return obj.Query().PlayerRuns(ctx, sessionIds)
 }
 
 // PlayerRunsFor is the resolver for the playerRunsFor field.
 func (r *motor_QueryResolver) PlayerRunsFor(ctx context.Context, obj *graph2.Resolver, handle string) ([]*model2.PlayerRun, error) {
 	return obj.Query().PlayerRunsFor(ctx, handle)
+}
+
+// CreateSession is the resolver for the createSession field.
+func (r *music_MutationResolver) CreateSession(ctx context.Context, obj *graph5.Resolver, excerptID string, difficulty model5.Difficulty, displayName *string, seed *int) (*model5.Session, error) {
+	return obj.Mutation().CreateSession(ctx, excerptID, difficulty, displayName, seed)
+}
+
+// SwitchMeasures is the resolver for the switchMeasures field.
+func (r *music_MutationResolver) SwitchMeasures(ctx context.Context, obj *graph5.Resolver, sessionID string, a int, b int) (*model5.Session, error) {
+	return obj.Mutation().SwitchMeasures(ctx, sessionID, a, b)
+}
+
+// TransformMeasure is the resolver for the transformMeasure field.
+func (r *music_MutationResolver) TransformMeasure(ctx context.Context, obj *graph5.Resolver, sessionID string, position int, flipH bool, flipV bool) (*model5.Session, error) {
+	return obj.Mutation().TransformMeasure(ctx, sessionID, position, flipH, flipV)
+}
+
+// SetArrangement is the resolver for the setArrangement field.
+func (r *music_MutationResolver) SetArrangement(ctx context.Context, obj *graph5.Resolver, sessionID string, slots []*model5.PlacementInput) (*model5.Session, error) {
+	return obj.Mutation().SetArrangement(ctx, sessionID, slots)
+}
+
+// ResetArrangement is the resolver for the resetArrangement field.
+func (r *music_MutationResolver) ResetArrangement(ctx context.Context, obj *graph5.Resolver, sessionID string) (*model5.Session, error) {
+	return obj.Mutation().ResetArrangement(ctx, sessionID)
+}
+
+// DeleteSession is the resolver for the deleteSession field.
+func (r *music_MutationResolver) DeleteSession(ctx context.Context, obj *graph5.Resolver, id string) (bool, error) {
+	return obj.Mutation().DeleteSession(ctx, id)
+}
+
+// RenameSession is the resolver for the renameSession field.
+func (r *music_MutationResolver) RenameSession(ctx context.Context, obj *graph5.Resolver, id string, displayName string) (*model5.Session, error) {
+	return obj.Mutation().RenameSession(ctx, id, displayName)
+}
+
+// Excerpts is the resolver for the excerpts field.
+func (r *music_QueryResolver) Excerpts(ctx context.Context, obj *graph5.Resolver) ([]*model5.Excerpt, error) {
+	return obj.Query().Excerpts(ctx)
+}
+
+// Excerpt is the resolver for the excerpt field.
+func (r *music_QueryResolver) Excerpt(ctx context.Context, obj *graph5.Resolver, id string) (*model5.Excerpt, error) {
+	return obj.Query().Excerpt(ctx, id)
+}
+
+// Session is the resolver for the session field.
+func (r *music_QueryResolver) Session(ctx context.Context, obj *graph5.Resolver, id string) (*model5.Session, error) {
+	return obj.Query().Session(ctx, id)
+}
+
+// Sessions is the resolver for the sessions field.
+func (r *music_QueryResolver) Sessions(ctx context.Context, obj *graph5.Resolver, limit *int) ([]*model5.Session, error) {
+	return obj.Query().Sessions(ctx, limit)
 }
 
 // Account is the resolver for the account field.
@@ -380,6 +442,14 @@ func (r *mutationResolver) Tesla(ctx context.Context) (*graph3.Resolver, error) 
 	return r.Resolver.Tesla, nil
 }
 
+// Music is the resolver for the music field.
+func (r *mutationResolver) Music(ctx context.Context) (*graph5.Resolver, error) {
+	if r.Resolver.Music == nil {
+		return nil, errGameDisabled
+	}
+	return r.Resolver.Music, nil
+}
+
 // Account is the resolver for the account field.
 func (r *queryResolver) Account(ctx context.Context) (*graph4.Resolver, error) {
 	if r.Resolver.Account == nil {
@@ -420,6 +490,14 @@ func (r *queryResolver) Tesla(ctx context.Context) (*graph3.Resolver, error) {
 	return r.Resolver.Tesla, nil
 }
 
+// Music is the resolver for the music field.
+func (r *queryResolver) Music(ctx context.Context) (*graph5.Resolver, error) {
+	if r.Resolver.Music == nil {
+		return nil, errGameDisabled
+	}
+	return r.Resolver.Music, nil
+}
+
 // DeliverySession is the resolver for the deliverySession field.
 func (r *subscriptionResolver) DeliverySession(ctx context.Context, id string) (<-chan *model.Snapshot, error) {
 	if r.Delivery == nil {
@@ -458,6 +536,14 @@ func (r *subscriptionResolver) TeslaLobbyUpdated(ctx context.Context) (<-chan *m
 		return nil, errGameDisabled
 	}
 	return r.Tesla.Subscription().LobbyUpdated(ctx)
+}
+
+// MusicSessionUpdated is the resolver for the musicSessionUpdated field.
+func (r *subscriptionResolver) MusicSessionUpdated(ctx context.Context, sessionID string) (<-chan *model5.SessionUpdate, error) {
+	if r.Music == nil {
+		return nil, errGameDisabled
+	}
+	return r.Music.Subscription().SessionUpdated(ctx, sessionID)
 }
 
 // Layout is the resolver for the layout field.
@@ -592,6 +678,14 @@ func (r *Resolver) Motor_Mutation() generated.Motor_MutationResolver {
 // Motor_Query returns generated.Motor_QueryResolver implementation.
 func (r *Resolver) Motor_Query() generated.Motor_QueryResolver { return &motor_QueryResolver{r} }
 
+// Music_Mutation returns generated.Music_MutationResolver implementation.
+func (r *Resolver) Music_Mutation() generated.Music_MutationResolver {
+	return &music_MutationResolver{r}
+}
+
+// Music_Query returns generated.Music_QueryResolver implementation.
+func (r *Resolver) Music_Query() generated.Music_QueryResolver { return &music_QueryResolver{r} }
+
 // Mutation returns generated.MutationResolver implementation.
 func (r *Resolver) Mutation() generated.MutationResolver { return &mutationResolver{r} }
 
@@ -626,6 +720,8 @@ type mazes_QueryResolver struct{ *Resolver }
 type motor_MapResolver struct{ *Resolver }
 type motor_MutationResolver struct{ *Resolver }
 type motor_QueryResolver struct{ *Resolver }
+type music_MutationResolver struct{ *Resolver }
+type music_QueryResolver struct{ *Resolver }
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
 type subscriptionResolver struct{ *Resolver }

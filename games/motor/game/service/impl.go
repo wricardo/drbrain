@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode/utf8"
 
 	"github.com/wricardo/drbrain/games/motor/game/engine"
 	"github.com/wricardo/drbrain/platform/account"
@@ -191,19 +190,6 @@ func advance(s *Session) bool {
 	return false
 }
 
-// cleanName trims and length-checks a display name. An empty name becomes a
-// random guest name (see GuestName), so a session always has one.
-func (svc *gameService) cleanName(name string) (string, error) {
-	name = strings.TrimSpace(name)
-	if n := utf8.RuneCountInString(name); n > svc.opts.MaxDisplayName {
-		return "", Errorf(CodeInvalidArgument, "display name too long (%d characters, max %d)", n, svc.opts.MaxDisplayName)
-	}
-	if name == "" {
-		name = account.GuestName(svc.opts.MaxDisplayName)
-	}
-	return name, nil
-}
-
 func newSessionID() (string, error) {
 	var b [8]byte
 	if _, err := rand.Read(b[:]); err != nil {
@@ -216,17 +202,13 @@ func newSessionID() (string, error) {
 
 // CreateSession starts a session on a private snapshot of map mapID with an
 // all-EMPTY program.
-func (svc *gameService) CreateSession(mapID, displayName string) (*Session, error) {
+func (svc *gameService) CreateSession(mapID string) (*Session, error) {
 	// No owner token: the caller cannot attach this session to an account later.
-	return svc.createSession(mapID, displayName, "", "")
+	return svc.createSession(mapID, "", "")
 }
 
 // createSession builds and registers a session; accountID and ownerHash may be empty.
-func (svc *gameService) createSession(mapID, displayName, accountID, ownerHash string) (*Session, error) {
-	name, err := svc.cleanName(displayName)
-	if err != nil {
-		return nil, err
-	}
+func (svc *gameService) createSession(mapID, accountID, ownerHash string) (*Session, error) {
 	m, err := svc.maps.Get(mapID)
 	if err != nil {
 		return nil, err
@@ -239,7 +221,7 @@ func (svc *gameService) createSession(mapID, displayName, accountID, ownerHash s
 	prog := engine.EmptyProgram(snapMap)
 	now := time.Now()
 	s := &Session{
-		ID: id, DisplayName: name, MapID: snapMap.ID, Map: snapMap,
+		ID: id, MapID: snapMap.ID, Map: snapMap,
 		Program: prog, VM: initVM(snapMap, &prog), SpeedMs: DefaultSpeedMs,
 		Seq: 1, CreatedAt: now, LastActionAt: now,
 		AccountID: accountID, OwnerHash: ownerHash,
@@ -338,26 +320,6 @@ func (svc *gameService) DeleteSession(id string) error {
 		r.wait()
 	}
 	return nil
-}
-
-// RenameSession sets the display name.
-func (svc *gameService) RenameSession(id, name string) (*Session, error) {
-	name, err := svc.cleanName(name)
-	if err != nil {
-		return nil, err
-	}
-	s, err := svc.get(id)
-	if err != nil {
-		return nil, err
-	}
-	s.Lock()
-	s.DisplayName = name
-	touch(s)
-	snap := s.Clone()
-	s.Unlock()
-	svc.persist(s)
-	svc.broadcast(snap)
-	return snap, nil
 }
 
 // SetProgram validates and stores p and resets the VM to the start.

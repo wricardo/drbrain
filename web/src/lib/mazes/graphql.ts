@@ -1,6 +1,7 @@
 import { createClient, cacheExchange, fetchExchange, mapExchange, subscriptionExchange, type Client } from '@urql/svelte';
 import { createClient as createWsClient, type Client as WsClient } from 'graphql-ws';
 import { getAdminKey } from './admin';
+import { authHeaders, wsConnectionParams } from '$lib/account/token';
 
 const GRAPHQL_URL =
 	typeof window !== 'undefined' && import.meta.env?.PUBLIC_GRAPHQL_URL
@@ -21,7 +22,7 @@ let wsClient: WsClient | null = null;
 /** Returns the shared graphql-ws client, creating it lazily. */
 export function getWsClient(): WsClient {
 	if (!wsClient) {
-		wsClient = createWsClient({ url: WS_URL });
+		wsClient = createWsClient({ url: WS_URL, connectionParams: () => wsConnectionParams() });
 	}
 	return wsClient;
 }
@@ -36,7 +37,7 @@ export function makeClient(): Client {
 		preferGetMethod: false,
 		fetchOptions: () => {
 			const key = getAdminKey();
-			return key ? { headers: { 'X-Admin-Key': key } } : {};
+			return { headers: { ...authHeaders(), ...(key ? { 'X-Admin-Key': key } : {}) } };
 		},
 		exchanges: [
 			// Documents select under the `mazes` namespace; unwrap it so every

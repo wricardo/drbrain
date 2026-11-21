@@ -196,9 +196,9 @@ func (s *Service) VerifyPassword(handle, password string) (*Account, error) {
 }
 
 // ChangePassword sets a new password for a password account after checking the
-// current one, and ends every other login of the account. keepToken is the
-// caller's own login token (kept signed in).
-func (s *Service) ChangePassword(accountID, current, next, keepToken string) error {
+// current one. Access tokens already issued keep working until they expire,
+// because they are stateless.
+func (s *Service) ChangePassword(accountID, current, next string) error {
 	st := s.store
 	if st == nil || !s.opts.PasswordSignIn {
 		return errAccountsOff()
@@ -223,9 +223,5 @@ func (s *Service) ChangePassword(accountID, current, next, keepToken string) err
 	if _, err := st.Update(accountID, func(a *Account) error { a.PasswordHash = hash; return nil }); err != nil {
 		return err
 	}
-	keep := ""
-	if keepToken != "" {
-		keep = HashToken(keepToken)
-	}
-	return st.DeleteOtherLogins(accountID, keep)
+	return nil
 }

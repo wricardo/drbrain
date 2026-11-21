@@ -35,7 +35,7 @@ export const SESSION_SORTS: [SessionSort, string][] = [
 
 export interface SessionFilters {
 	status: StatusFilter;
-	/** Case-insensitive substring match on display name, session id or map name (empty = no filter). */
+	/** Case-insensitive substring match on session id or map name (empty = no filter). */
 	text: string;
 }
 
@@ -44,12 +44,7 @@ export function filterSessions(list: SessionSummary[], f: SessionFilters): Sessi
 	const needle = f.text.trim().toLowerCase();
 	return list.filter((s) => {
 		if (f.status !== 'all' && statusGroup(s) !== f.status) return false;
-		if (
-			needle &&
-			!(s.displayName || 'anonymous').toLowerCase().includes(needle) &&
-			!s.id.toLowerCase().includes(needle) &&
-			!s.map.name.toLowerCase().includes(needle)
-		)
+		if (needle && !s.id.toLowerCase().includes(needle) && !s.map.name.toLowerCase().includes(needle))
 			return false;
 		return true;
 	});
@@ -129,14 +124,8 @@ export const MAX_OWN_SESSIONS = 200;
  * Remembers the session this browser created most recently (for the home
  * "Continue" card) and adds it to the list of sessions this browser owns (so
  * the leaderboard can highlight its entries and "My runs" can find them).
- *
- * When the player had no name the server gave the session a random guest name
- * ("BraveOtter"); pass it as `name` and it becomes this browser's saved name,
- * so every later session is the same guest. A name the player typed is never
- * replaced.
  */
-export function rememberSession(id: string, name?: string, ownerToken?: string | null): void {
-	if (name?.trim() && !savedDisplayName().trim()) saveDisplayName(name.trim());
+export function rememberSession(id: string, ownerToken?: string | null): void {
 	if (ownerToken) rememberOwnerToken(id, ownerToken);
 	try {
 		localStorage.setItem(LAST_SESSION_KEY, id);
@@ -274,40 +263,4 @@ export function progressText(
 	if (!map) return `${s.vm.steps} steps · ${s.vm.treatsRemaining.length} treats left`;
 	const total = map.treats.length;
 	return `${s.vm.steps} / ${map.maxSteps} steps · ${total - s.vm.treatsRemaining.length} / ${total} treats`;
-}
-
-const NAME_KEY = 'drbrain-motor-programming.displayName';
-/** Key used before the repo rename; read as a fallback so saved names survive. */
-const LEGACY_NAME_KEY = 'drbrain3.displayName';
-
-/** The player name saved on the home page ('' when none). */
-export function savedDisplayName(): string {
-	try {
-		return localStorage.getItem(NAME_KEY) ?? localStorage.getItem(LEGACY_NAME_KEY) ?? '';
-	} catch {
-		return '';
-	}
-}
-
-/**
- * The `displayName` to create a session with. A signed-in player's run belongs
- * to the account already (the login cookie is the identity; `createSession`
- * takes no account argument), and the server names an owned session after the
- * account when no name is sent. So send nothing rather than the guest alias this
- * browser kept from before signing in: an owned run showing a guest name is the
- * drift that had to be reconciled by hand afterwards.
- */
-export function newSessionName(signedIn: boolean): string | null {
-	if (signedIn) return null;
-	return savedDisplayName().trim() || null;
-}
-
-/** Saves the player name used for new sessions. */
-export function saveDisplayName(name: string): void {
-	try {
-		localStorage.setItem(NAME_KEY, name);
-		localStorage.removeItem(LEGACY_NAME_KEY);
-	} catch {
-		// ignore
-	}
 }

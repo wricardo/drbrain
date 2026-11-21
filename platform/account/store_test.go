@@ -2,7 +2,6 @@ package account
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -78,12 +77,6 @@ func TestCreateRejectsBadIDsBeforeTouchingDisk(t *testing.T) {
 	if err := s.Delete("../x"); !errors.Is(err, ErrInvalidID) {
 		t.Fatalf("Delete(../x) = %v", err)
 	}
-	if err := s.PutLogin(Login{TokenHash: "../x", AccountID: id1}); !errors.Is(err, ErrInvalidID) {
-		t.Fatalf("PutLogin bad hash = %v", err)
-	}
-	if err := s.DeleteLogin("../x"); !errors.Is(err, ErrInvalidID) {
-		t.Fatalf("DeleteLogin bad hash = %v", err)
-	}
 }
 
 func TestPersistenceRoundTrip(t *testing.T) {
@@ -97,9 +90,6 @@ func TestPersistenceRoundTrip(t *testing.T) {
 	if err := s.Create(a); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.PutLogin(Login{TokenHash: hash('a'), AccountID: id1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)}); err != nil {
-		t.Fatal(err)
-	}
 
 	s2 := open(t, dir, clock)
 	got, ok := s2.ByHandle("OTTER")
@@ -109,23 +99,13 @@ func TestPersistenceRoundTrip(t *testing.T) {
 	if byID, _ := s2.ByIdentity("google", "sub-1"); byID.ID != id1 {
 		t.Fatalf("ByIdentity = %+v", byID)
 	}
-	if l, ok := s2.GetLogin(hash('a')); !ok || l.AccountID != id1 {
-		t.Fatalf("login not reloaded: %+v %v", l, ok)
-	}
 }
 
-// Nothing but the minimum is on disk: no email, no avatar, no raw token.
+// Nothing but the minimum is on disk: no email, no avatar, no credentials.
 func TestFilesHoldOnlyMinimalData(t *testing.T) {
 	dir := t.TempDir()
 	s := open(t, dir, nil)
 	if err := s.Create(acct(id1, "otter", "google", "sub-1")); err != nil {
-		t.Fatal(err)
-	}
-	const token = "super-secret-cookie-value-0123456789"
-	if err := s.PutLogin(Login{
-		TokenHash: HashToken(token), AccountID: id1,
-		CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour),
-	}); err != nil {
 		t.Fatal(err)
 	}
 	var all strings.Builder
@@ -136,13 +116,7 @@ func TestFilesHoldOnlyMinimalData(t *testing.T) {
 		}
 		return nil
 	})
-	if strings.Contains(all.String(), token) {
-		t.Fatal("the raw login token is on disk")
-	}
-	if _, err := os.Stat(filepath.Join(dir, "logins", HashToken(token)+".json")); err != nil {
-		t.Fatalf("login file is not named by the token hash: %v", err)
-	}
-	for _, banned := range []string{"email", "avatar", "picture", "photo", "locale"} {
+	for _, banned := range []string{"email", "avatar", "picture", "photo", "locale", "password_hash"} {
 		if strings.Contains(strings.ToLower(all.String()), banned) {
 			t.Errorf("stored data mentions %q", banned)
 		}
@@ -185,13 +159,10 @@ func TestUpdateHandleChangeAndConflict(t *testing.T) {
 	}
 }
 
-func TestDeleteRemovesAccountAndLogins(t *testing.T) {
+func TestDeleteRemovesAccount(t *testing.T) {
 	dir := t.TempDir()
 	s := open(t, dir, nil)
 	_ = s.Create(acct(id1, "otter", "google", "u1"))
-	future := time.Now().Add(time.Hour)
-	_ = s.PutLogin(Login{TokenHash: hash('a'), AccountID: id1, CreatedAt: time.Now(), ExpiresAt: future})
-	_ = s.PutLogin(Login{TokenHash: hash('b'), AccountID: id1, CreatedAt: time.Now(), ExpiresAt: future})
 
 	if err := s.Delete(id1); err != nil {
 		t.Fatal(err)
@@ -205,10 +176,7 @@ func TestDeleteRemovesAccountAndLogins(t *testing.T) {
 	if _, ok := s.ByIdentity("google", "u1"); ok {
 		t.Fatal("identity still indexed")
 	}
-	if _, ok := s.GetLogin(hash('a')); ok {
-		t.Fatal("login survived")
-	}
-	for _, sub := range []string{"accounts", "logins"} {
+	for _, sub := range []string{"accounts"} {
 		if entries, _ := os.ReadDir(filepath.Join(dir, sub)); len(entries) != 0 {
 			t.Fatalf("%s not empty: %v", sub, entries)
 		}
@@ -219,43 +187,6 @@ func TestDeleteRemovesAccountAndLogins(t *testing.T) {
 	// The handle and identity can be used again.
 	if err := s.Create(acct(id2, "otter", "google", "u1")); err != nil {
 		t.Fatalf("re-create after delete: %v", err)
-	}
-}
-
-func TestLoginsExpireOnLoadAndAreCapped(t *testing.T) {
-	dir := t.TempDir()
-	now := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
-	clock := func() time.Time { return now }
-	s := open(t, dir, clock)
-	_ = s.Create(acct(id1, "otter", "google", "u1"))
-	_ = s.PutLogin(Login{TokenHash: hash('a'), AccountID: id1, CreatedAt: now, ExpiresAt: now.Add(time.Hour)})
-
-	later := func() time.Time { return now.Add(2 * time.Hour) }
-	s2 := open(t, dir, later)
-	if _, ok := s2.GetLogin(hash('a')); ok {
-		t.Fatal("expired login was loaded")
-	}
-	if _, err := os.Stat(filepath.Join(dir, "logins", hash('a')+".json")); !os.IsNotExist(err) {
-		t.Fatal("expired login file was not cleaned up")
-	}
-
-	// Cap: the oldest logins are dropped beyond MaxLoginsPerAccount.
-	for i := 0; i < MaxLoginsPerAccount+3; i++ {
-		h := fmt.Sprintf("%064x", i+1)
-		if err := s2.PutLogin(Login{TokenHash: h, AccountID: id1, CreatedAt: now.Add(time.Duration(i) * time.Second), ExpiresAt: now.Add(10 * time.Hour)}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, ok := s2.GetLogin(fmt.Sprintf("%064x", 1)); ok {
-		t.Error("oldest login was not evicted")
-	}
-	newest := fmt.Sprintf("%064x", MaxLoginsPerAccount+3)
-	if _, ok := s2.GetLogin(newest); !ok {
-		t.Error("newest login was evicted")
-	}
-	files, _ := os.ReadDir(filepath.Join(dir, "logins"))
-	if len(files) != MaxLoginsPerAccount {
-		t.Fatalf("%d login files, want %d", len(files), MaxLoginsPerAccount)
 	}
 }
 

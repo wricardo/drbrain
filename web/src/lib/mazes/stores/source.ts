@@ -13,12 +13,12 @@ export function createSessionSource(client: Client): SessionSource<Session, Sess
 			return res.data?.session ?? null;
 		},
 		subscribe(id, sink) {
-			return getWsClient().subscribe<{ sessionUpdated: SessionUpdate }>(
+			return getWsClient().subscribe<{ mazesSessionUpdated: SessionUpdate }>(
 				{ query: SESSION_UPDATED_SUBSCRIPTION, variables: { sessionID: id } },
 				{
 					next(result) {
 						if (result.errors?.length) sink.error(result.errors);
-						else if (result.data?.sessionUpdated) sink.next(result.data.sessionUpdated);
+						else if (result.data?.mazesSessionUpdated) sink.next(result.data.mazesSessionUpdated);
 					},
 					error: (err) => sink.error(err),
 					complete: () => sink.complete()

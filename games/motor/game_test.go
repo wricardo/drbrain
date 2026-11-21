@@ -2,6 +2,7 @@ package motor
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net"
@@ -62,7 +63,7 @@ func TestCookiesReachUnifiedGraphQL(t *testing.T) {
 		t.Fatalf("GraphQLResolver = %T, want *motorgraph.Resolver", game.GraphQLResolver())
 	}
 	unified := graph.NewHandler(graph.Options{
-		Resolver:      graph.New(accountgraph.New(accounts, authn), nil, nil, resolver, nil),
+		Resolver:      graph.New(accountgraph.New(accounts, authn), nil, nil, resolver, nil, nil),
 		Introspection: true,
 		Auth:          authn,
 	})
@@ -84,40 +85,49 @@ func TestCookiesReachUnifiedGraphQL(t *testing.T) {
 	}
 	client := &http.Client{Jar: jar}
 
-	body := `{"query":"mutation { account { registerWithPassword(handle:\"cookie_pilot\", password:\"tangerine-ladder-42\") { handle } } }"}`
+	body := `{"query":"mutation { account { registerWithPassword(handle:\"bearer_pilot\", password:\"tangerine-ladder-42\") { token user { handle } } } }"}`
 	resp, err := client.Post(ts.URL+"/graphql", "application/json", strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(resp.Body)
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(raw), `"token"`) {
 		t.Fatalf("register status = %d: %s", resp.StatusCode, raw)
 	}
-	var sessionCookie *http.Cookie
-	for _, c := range resp.Cookies() {
-		if c.Name == auth.SessionCookie {
-			sessionCookie = c
-			break
-		}
+	var out struct {
+		Data struct {
+			Account struct {
+				RegisterWithPassword struct {
+					Token string `json:"token"`
+				} `json:"registerWithPassword"`
+			} `json:"account"`
+		} `json:"data"`
 	}
-	if sessionCookie == nil {
-		t.Fatalf("no %s cookie in %v", auth.SessionCookie, resp.Cookies())
+	if err := json.Unmarshal(raw, &out); err != nil || out.Data.Account.RegisterWithPassword.Token == "" {
+		t.Fatalf("no token in %s (%v)", raw, err)
 	}
-	if sessionCookie.Path != "/" {
-		t.Errorf("%s Path = %q, want /", auth.SessionCookie, sessionCookie.Path)
-	}
+	token := out.Data.Account.RegisterWithPassword.Token
 
 	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/graphql", strings.NewReader(`{"query":"{ account { me { handle } } }"}`))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
 	resp2, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
 	me, _ := io.ReadAll(resp2.Body)
 	resp2.Body.Close()
-	if !strings.Contains(string(me), "cookie_pilot") {
-		t.Errorf("unified handler did not read the login cookie: %s", me)
+	if !strings.Contains(string(me), "bearer_pilot") {
+		t.Errorf("unified handler did not read the bearer token: %s", me)
+	}
+
+	// Without the header the same browser is anonymous: no cookie fallback.
+	anon, _ := client.Post(ts.URL+"/graphql", "application/json", strings.NewReader(`{"query":"{ account { me { handle } } }"}`))
+	body2, _ := io.ReadAll(anon.Body)
+	anon.Body.Close()
+	if !strings.Contains(string(body2), `"me":null`) {
+		t.Errorf("me without a bearer token = %s", body2)
 	}
 }
 
@@ -222,13 +232,26 @@ func TestDevSignInAtRoot(t *testing.T) {
 	if resp.StatusCode != http.StatusFound {
 		t.Fatalf("callback status = %d", resp.StatusCode)
 	}
-	var session *http.Cookie
-	for _, c := range resp.Cookies() {
-		if c.Name == auth.SessionCookie {
-			session = c
-		}
+	loc, err := url.Parse(resp.Header.Get("Location"))
+	if err != nil || loc.Query().Get("signin_code") == "" {
+		t.Fatalf("callback did not hand off a code: %q", resp.Header.Get("Location"))
 	}
-	if session == nil || session.Path != "/" {
-		t.Fatalf("session cookie = %+v, want %s Path=/", session, auth.SessionCookie)
+	code := loc.Query().Get("signin_code")
+	body, _ := json.Marshal(map[string]string{"code": code})
+	tokResp, err := client.Post(ts+"/auth/token", "application/json", strings.NewReader(string(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tokResp.Body.Close()
+	var got struct {
+		Token string `json:"token"`
+	}
+	if tokResp.StatusCode != http.StatusOK {
+		raw, _ := io.ReadAll(tokResp.Body)
+		t.Fatalf("token exchange = %d: %s", tokResp.StatusCode, raw)
+	}
+	_ = json.NewDecoder(tokResp.Body).Decode(&got)
+	if got.Token == "" {
+		t.Fatal("token exchange returned no token")
 	}
 }

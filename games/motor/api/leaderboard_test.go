@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -22,7 +21,7 @@ import (
 const leaderboardQ = `query Leaderboard($mapId: ID!, $order: LeaderboardOrder, $limit: Int, $sessionId: ID) { leaderboard(mapId: $mapId, order: $order, limit: $limit, sessionId: $sessionId) { mapId order total entries { rank sessionId displayName handle mine slots steps achievedAt } yours { rank sessionId displayName handle mine slots steps achievedAt } } }`
 
 // The frontend's my-runs queries (frontend/src/lib/queries.ts).
-const playerRunsQ = `query PlayerRuns($sessionIds: [ID!], $name: String) { playerRuns(sessionIds: $sessionIds, name: $name) { mapId total entry { rank sessionId displayName handle mine slots steps achievedAt } } }`
+const playerRunsQ = `query PlayerRuns($sessionIds: [ID!]) { playerRuns(sessionIds: $sessionIds) { mapId total entry { rank sessionId displayName handle mine slots steps achievedAt } } }`
 
 // newRealServer serves the real game service over a one-map temp directory.
 func newRealServer(t *testing.T) *httptest.Server {
@@ -66,8 +65,8 @@ func dig(t *testing.T, v any, path ...string) any {
 func TestLeaderboardOverHTTP(t *testing.T) {
 	ts := newRealServer(t)
 
-	createWith := func(name, main, sub string) string {
-		_, out := gql(t, ts.URL, `mutation { createSession(mapID: "wide", displayName: "`+name+`") { id ownerToken } }`, nil)
+	createWith := func(main, sub string) string {
+		_, out := gql(t, ts.URL, `mutation { createSession(mapID: "wide") { id ownerToken } }`, nil)
 		id, _ := dig(t, out, "data", "createSession", "id").(string)
 		token, _ := dig(t, out, "data", "createSession", "ownerToken").(string)
 		if id == "" || token == "" {
@@ -104,8 +103,8 @@ func TestLeaderboardOverHTTP(t *testing.T) {
 		return strings.Join(parts, ",")
 	}
 
-	direct := createWith("Direct", pad(mv(7), 8), pad("", 4))                             // 7 slots, 7 steps
-	via := createWith("Via", pad("CALL_SUB_1,CALL_SUB_1,MOVE_FORWARD", 8), pad(mv(3), 4)) // 6 slots, 9 steps
+	direct := createWith(pad(mv(7), 8), pad("", 4))                                // 7 slots, 7 steps
+	via := createWith(pad("CALL_SUB_1,CALL_SUB_1,MOVE_FORWARD", 8), pad(mv(3), 4)) // 6 slots, 9 steps
 	vars := func(order string) map[string]any {
 		return map[string]any{"mapId": "wide", "order": order, "sessionId": direct}
 	}
@@ -118,17 +117,17 @@ func TestLeaderboardOverHTTP(t *testing.T) {
 		}
 		return dig(t, out, "data", "leaderboard").(map[string]any)
 	}
-	names := func(lb map[string]any) []string {
+	ids := func(lb map[string]any) []string {
 		var out []string
 		for _, e := range lb["entries"].([]any) {
-			out = append(out, e.(map[string]any)["displayName"].(string))
+			out = append(out, e.(map[string]any)["sessionId"].(string))
 		}
 		return out
 	}
 
 	slots := run("SLOTS")
-	if got := strings.Join(names(slots), ","); got != "Via,Direct" {
-		t.Fatalf("SLOTS order = %s, want Via,Direct (fewest slots first)", got)
+	if got := strings.Join(ids(slots), ","); got != via+","+direct {
+		t.Fatalf("SLOTS order = %s, want the via-sub session first (fewest slots)", got)
 	}
 	if slots["total"] != float64(2) || slots["order"] != "SLOTS" {
 		t.Fatalf("board header = %v", slots)
@@ -141,8 +140,8 @@ func TestLeaderboardOverHTTP(t *testing.T) {
 		t.Fatalf("yours = %v", yours)
 	}
 
-	if got := strings.Join(names(run("STEPS")), ","); got != "Direct,Via" {
-		t.Fatalf("STEPS order = %s, want Direct,Via (fewest steps first)", got)
+	if got := strings.Join(ids(run("STEPS")), ","); got != direct+","+via {
+		t.Fatalf("STEPS order = %s, want the direct session first (fewest steps)", got)
 	}
 
 	t.Run("a missing map is null", func(t *testing.T) {
@@ -187,18 +186,14 @@ func gqlVars(t *testing.T, url, query string, vars map[string]any) (int, map[str
 	return resp.StatusCode, out
 }
 
-// TestGuestNamesAndPlayerRunsOverHTTP: a session created without a name gets a
-// guest name, and the player's runs can be read back by session id or by name.
-func TestGuestNamesAndPlayerRunsOverHTTP(t *testing.T) {
+// TestPlayerRunsOverHTTP: a session with no account is shown as a guest, and
+// the player's runs can be read back by session id.
+func TestPlayerRunsOverHTTP(t *testing.T) {
 	ts := newRealServer(t)
 
-	_, out := gql(t, ts.URL, `mutation { createSession(mapID: "wide") { id displayName ownerToken } }`, nil)
+	_, out := gql(t, ts.URL, `mutation { createSession(mapID: "wide") { id ownerToken } }`, nil)
 	id, _ := dig(t, out, "data", "createSession", "id").(string)
-	guest, _ := dig(t, out, "data", "createSession", "displayName").(string)
 	token, _ := dig(t, out, "data", "createSession", "ownerToken").(string)
-	if !regexp.MustCompile(`^[A-Z][a-z]+[A-Z][a-z]+$`).MatchString(guest) {
-		t.Fatalf("displayName = %q, want a <Adjective><Noun> guest name (%v)", guest, out)
-	}
 	main := "[" + strings.Repeat("MOVE_FORWARD,", 7) + "EMPTY]"
 	if _, out = gql(t, ts.URL, `mutation { setProgram(sessionID: "`+id+`", program: {main: `+main+`, subs: [[EMPTY,EMPTY,EMPTY,EMPTY]]}, ownerToken: "`+token+`") { id } }`, nil); out["errors"] != nil {
 		t.Fatalf("setProgram: %v", out)
@@ -222,28 +217,22 @@ func TestGuestNamesAndPlayerRunsOverHTTP(t *testing.T) {
 		run := runs[0].(map[string]any)
 		entry := run["entry"].(map[string]any)
 		if run["mapId"] != "wide" || run["total"] != float64(1) || entry["rank"] != float64(1) ||
-			entry["sessionId"] != id || entry["displayName"] != guest || entry["slots"] != float64(7) || entry["steps"] != float64(7) {
+			entry["sessionId"] != id || entry["displayName"] != "Guest" || entry["slots"] != float64(7) || entry["steps"] != float64(7) {
 			t.Fatalf("%s: run = %v", label, run)
 		}
 	}
 	check("by session ids", map[string]any{"sessionIds": []string{id, "0123456789abcdef"}})
-	check("by name", map[string]any{"name": strings.ToLower(guest)})
 
 	t.Run("nothing won is an empty list", func(t *testing.T) {
-		_, out := gqlVars(t, ts.URL, playerRunsQ, map[string]any{"name": "NobodyAtAll"})
+		_, out := gqlVars(t, ts.URL, playerRunsQ, map[string]any{"sessionIds": []string{"0123456789abcdef"}})
 		if runs, ok := dig(t, out, "data", "playerRuns").([]any); !ok || len(runs) != 0 {
 			t.Fatalf("out = %v, want []", out)
 		}
 	})
-	t.Run("the selector must be exactly one", func(t *testing.T) {
-		for label, vars := range map[string]map[string]any{
-			"neither": {},
-			"both":    {"name": "x", "sessionIds": []string{id}},
-		} {
-			_, out := gqlVars(t, ts.URL, playerRunsQ, vars)
-			if code := firstErrCode(out); code != service.CodeInvalidArgument {
-				t.Fatalf("%s: code = %q (%v)", label, code, out)
-			}
+	t.Run("a signed-out caller needs session ids", func(t *testing.T) {
+		_, out := gqlVars(t, ts.URL, playerRunsQ, map[string]any{})
+		if code := firstErrCode(out); code != service.CodeInvalidArgument {
+			t.Fatalf("code = %q (%v)", code, out)
 		}
 	})
 }

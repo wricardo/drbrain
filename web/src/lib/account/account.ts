@@ -1,6 +1,7 @@
 import { unwrap } from '@drbrain/ui/graphql';
 import { describeError } from '@drbrain/ui/errors';
-import { LOG_IN_WITH_PASSWORD_MUTATION, REGISTER_WITH_PASSWORD_MUTATION } from './queries';
+import { accountRequestContext, LOG_IN_WITH_PASSWORD_MUTATION, REGISTER_WITH_PASSWORD_MUTATION } from './queries';
+import { saveAuthToken } from './token';
 import type { Client } from '@urql/svelte';
 import type { Account } from './types';
 
@@ -34,6 +35,12 @@ export function safeNext(path: string | null | undefined): string {
 /** Where a provider's button leads. A plain navigation: the server redirects to the provider and back to `next`. */
 export function signInHref(providerId: string, next: string): string {
 	return `/auth/${encodeURIComponent(providerId)}/login?next=${encodeURIComponent(safeNext(next))}`;
+}
+
+export function initials(displayName: string, handle: string): string {
+	const words = (displayName.trim() || handle).split(/\s+/);
+	const letters = words.length > 1 ? [...words[0]].slice(0, 1).concat([...words[1]].slice(0, 1)) : [...words[0]].slice(0, 2);
+	return letters.join('').toUpperCase();
 }
 
 /** The public profile page of a handle. */
@@ -101,8 +108,8 @@ export interface PasswordResult {
 
 /**
  * Signs up or signs in with a username and password, through the
- * registerWithPassword / logInWithPassword mutations. The server sets the login
- * cookie on that response, exactly as the old form post did.
+ * registerWithPassword / logInWithPassword mutations, and stores the bearer
+ * token they return.
  *
  * The failure text comes from the GraphQL error: the server answers a wrong
  * password and an unknown username identically (UNAUTHENTICATED), and locks a
@@ -116,12 +123,15 @@ export async function submitPassword(
 	client: Pick<Client, 'mutation'>
 ): Promise<PasswordResult> {
 	try {
-		await unwrap(
+		const data = await unwrap<{ account: Record<string, { token: string }> }>(
 			client.mutation(mode === 'register' ? REGISTER_WITH_PASSWORD_MUTATION : LOG_IN_WITH_PASSWORD_MUTATION, {
 				handle: normalizeHandle(handle),
 				password
-			})
+			}, accountRequestContext)
 		);
+		const session = data.account[mode === 'register' ? 'registerWithPassword' : 'logInWithPassword'];
+		if (!session?.token) return { ok: false, message: 'The server did not return a token. Try again.' };
+		saveAuthToken(session.token);
 		return { ok: true, message: '' };
 	} catch (err) {
 		const described = describeError(err);

@@ -47,30 +47,76 @@ func NewManager(cityFile, dir string) (*Manager, error) {
 	}, nil
 }
 
-// Create starts a new session with the given id (or a generated one when
-// empty) and an optional seed.
-func (m *Manager) Create(id string, seed uint64) (*Session, error) {
+// Create starts a new session with the given id (or a random one when empty),
+// an optional seed, and returns the session plus the secret owner token that
+// proves the caller created it. Only the token's hash is stored. accountID is
+// the signed-in creator ("" = guest).
+//
+// A client-supplied id is accepted when ValidID; otherwise one is generated.
+func (m *Manager) Create(id string, seed uint64, accountID string) (*Session, string, error) {
 	city, cfg, err := engine.CityFromFile(m.cityFile)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if id == "" {
-		id = fmt.Sprintf("s%d", time.Now().UnixNano())
+		id, err = newSessionID()
+		if err != nil {
+			return nil, "", err
+		}
+	}
+	if !ValidID(id) {
+		return nil, "", fmt.Errorf("invalid session id %q", id)
 	}
 	if _, exists := m.Get(id); exists {
-		return nil, fmt.Errorf("session %q already exists", id)
+		return nil, "", fmt.Errorf("session %q already exists", id)
+	}
+	// A save already on disk with this id must not be adopted by a new creator:
+	// its owner credentials live in that file. A corrupt file also blocks the id
+	// rather than being silently overwritten.
+	if _, _, err := m.store.Load(id); err == nil {
+		return nil, "", fmt.Errorf("session %q already exists", id)
+	} else if !errors.Is(err, sessionstore.ErrNotFound) {
+		return nil, "", fmt.Errorf("session %q already exists", id)
 	}
 
-	s, err := newWithStore(id, city, cfg, seed, m.store)
+	token, hash, err := newOwnerToken()
 	if err != nil {
-		return nil, err
+		return nil, "", err
+	}
+	s, err := newWithStore(id, city, cfg, seed, m.store, sanitizeAccountID(accountID), hash)
+	if err != nil {
+		return nil, "", err
 	}
 	m.mu.Lock()
 	m.sessions[id] = s
 	m.mu.Unlock()
 
 	s.Start()
-	return s, nil
+	return s, token, nil
+}
+
+// Claim attaches a session to accountID when token proves ownership. A session
+// already owned by this account reports ALREADY_YOURS; one owned by another
+// account, unknown, or with a wrong token reports REJECTED. Legacy sessions
+// (no stored hash) can never be claimed.
+func (m *Manager) Claim(accountID, id, token string) (string, error) {
+	if accountID == "" {
+		return ClaimRejected, fmt.Errorf("claim needs a signed-in account")
+	}
+	s, err := m.GetOrLoad(id)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) || !ValidID(id) {
+			return ClaimRejected, nil
+		}
+		return ClaimRejected, err
+	}
+	status := s.claim(accountID, token)
+	if status == ClaimAttached {
+		if err := s.Save(filepath.Base(m.cityFile)); err != nil {
+			return status, err
+		}
+	}
+	return status, nil
 }
 
 // Get returns a live session, loading it from disk if it is not in memory.
@@ -130,7 +176,8 @@ func (m *Manager) load(id string) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
-	s, err := newWithStore(id, city, cfg, p.World.Seed, m.store)
+	s, err := newWithStore(id, city, cfg, p.World.Seed, m.store,
+		sanitizeAccountID(p.AccountID), sanitizeHash(p.OwnerHash))
 	if err != nil {
 		return nil, err
 	}
@@ -209,7 +256,8 @@ func (m *Manager) summaryFromDisk(id string) (Summary, error) {
 	if err := json.Unmarshal(blob, &p); err != nil {
 		return Summary{}, err
 	}
-	sum := Summary{ID: id, CreatedAt: p.CreatedAt, Speed: p.Speed, Loaded: false}
+	sum := Summary{ID: id, CreatedAt: p.CreatedAt, Speed: p.Speed, Loaded: false,
+		AccountID: sanitizeAccountID(p.AccountID)}
 	if p.World.Ledger != nil {
 		sum.Money = p.World.Ledger.Money
 		sum.Reputation = p.World.Ledger.Reputation
@@ -303,4 +351,7 @@ type Summary struct {
 	Reputation float64   `json:"reputation"`
 	Deliveries int       `json:"deliveries"`
 	Loaded     bool      `json:"loaded"`
+	// AccountID is the owning account id ("" = guest). It never leaves the
+	// server: the GraphQL layer turns it into a display name and a `mine` flag.
+	AccountID string `json:"-"`
 }

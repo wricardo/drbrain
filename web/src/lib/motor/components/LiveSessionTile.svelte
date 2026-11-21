@@ -29,7 +29,7 @@
 		<div class="flex items-start justify-between gap-2">
 			<div class="min-w-0">
 				<h2 class="truncate font-semibold text-indigo-950">{session.map.name}</h2>
-				<p class="truncate text-xs text-slate-600">{session.displayName || 'Anonymous'}</p>
+				<p class="truncate font-mono text-xs text-slate-600">{id}</p>
 			</div>
 			<ConnectionBadge state={$store.connection} />
 		</div>

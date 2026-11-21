@@ -10,7 +10,7 @@
 	import { describeError, type DescribedError } from '@drbrain/ui/errors';
 	import { recursionChip } from '$lib/motor/recursion';
 	import { CREATE_SESSION_MUTATION, MAP_QUERY } from '$lib/motor/queries';
-	import { newSessionName, rememberSession, statusLine } from '$lib/motor/sessions';
+	import { rememberSession, statusLine } from '$lib/motor/sessions';
 	import { account } from '$lib/account/stores/account';
 	import type { GameMap, Session } from '$lib/motor/types';
 
@@ -58,9 +58,9 @@
 		error = null;
 		try {
 			const data = await unwrap<{ createSession: Session }>(
-				client.mutation(CREATE_SESSION_MUTATION, { mapID: m.id, displayName: newSessionName(!!$account.me) })
+				client.mutation(CREATE_SESSION_MUTATION, { mapID: m.id })
 			);
-			rememberSession(data.createSession.id, data.createSession.displayName, data.createSession.ownerToken);
+			rememberSession(data.createSession.id, data.createSession.ownerToken);
 			await goto(`/motor/play/${data.createSession.id}`);
 		} catch (e) {
 			error = describeError(e);

@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "id": "twinkle-twinkle",
+  "title": "Twinkle, Twinkle, Little Star (Ah vous dirai-je maman)",
+  "composer": "Traditional (Mozart variations)",
+  "tempoBPM": 120,
+  "timeSig": "4/4",
+  "key": "C",
+  "clef": "treble",
+  "measures": [
+    {
+      "len": 1920,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 480,
+          "pitch": 60
+        },
+        {
+          "start": 480,
+          "dur": 480,
+          "pitch": 60
+        },
+        {
+          "start": 960,
+          "dur": 480,
+          "pitch": 67
+        },
+        {
+          "start": 1440,
+          "dur": 480,
+          "pitch": 67
+        }
+      ]
+    },
+    {
+      "len": 1920,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 480,
+          "pitch": 69
+        },
+        {
+          "start": 480,
+          "dur": 480,
+          "pitch": 69
+        },
+        {
+          "start": 960,
+          "dur": 960,
+          "pitch": 67
+        }
+      ]
+    },
+    {
+      "len": 1920,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 480,
+          "pitch": 65
+        },
+        {
+          "start": 480,
+          "dur": 480,
+          "pitch": 65
+        },
+        {
+          "start": 960,
+          "dur": 480,
+          "pitch": 64
+        },
+        {
+          "start": 1440,
+          "dur": 480,
+          "pitch": 64
+        }
+      ]
+    },
+    {
+      "len": 1920,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 480,
+          "pitch": 62
+        },
+        {
+          "start": 480,
+          "dur": 480,
+          "pitch": 62
+        },
+        {
+          "start": 960,
+          "dur": 960,
+          "pitch": 60
+        }
+      ]
+    }
+  ]
+}

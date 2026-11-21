@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { createClient, fetchExchange } from '@urql/svelte';
 import {
 	handleChangeText,
 	handleProblem,
@@ -7,6 +8,7 @@ import {
 	safeNext,
 	signInHref,
 	signinNotice,
+	submitPassword,
 	withoutSigninParam
 } from './account';
 import { claimOffer, claimResultText, summarizeClaims, summarizeProfile, tallyText } from '$lib/motor/profile';
@@ -77,6 +79,20 @@ describe('sign-in notices', () => {
 		expect(withoutSigninParam('/maps', '?signin=failed')).toBe('/maps');
 		expect(withoutSigninParam('/leaderboard', '?map=a&signin=failed&order=steps')).toBe('/leaderboard?map=a&order=steps');
 		expect(withoutSigninParam('/', '')).toBe('/');
+	});
+});
+
+describe('password sessions', () => {
+	it('stores the bearer token from the response', async () => {
+		const fetch = vi.fn(async (_url: RequestInfo | URL, _init?: RequestInit) => new Response(
+			JSON.stringify({ data: { account: { logInWithPassword: { token: 'jwt-token', expiresAt: '2026-06-02T00:00:00Z', user: { handle: 'fox' } } } } }),
+			{ headers: { 'Content-Type': 'application/json' } }
+		));
+		const client = createClient({ url: '/graphql', exchanges: [fetchExchange], fetch });
+
+		await expect(submitPassword('login', 'fox', 'demo password', client)).resolves.toMatchObject({ ok: true });
+		expect(new Headers(fetch.mock.calls[0][1]?.headers).get('Accept')).toBe('application/json');
+		expect(localStorage.getItem('drbrain.auth.token')).toBe('jwt-token');
 	});
 });
 

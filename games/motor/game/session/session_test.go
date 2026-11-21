@@ -63,7 +63,7 @@ func fixture(t testing.TB, id string) *service.Session {
 		last = ev
 	}
 	return &service.Session{
-		ID: id, DisplayName: "fixture", MapID: m.ID, Map: m, Program: prog, VM: vm,
+		ID: id, MapID: m.ID, Map: m, Program: prog, VM: vm,
 		Playing: true, SpeedMs: 120, Seq: 17,
 		CreatedAt:    time.Date(2026, 1, 2, 3, 4, 5, 6, time.UTC),
 		LastActionAt: time.Date(2026, 1, 2, 4, 4, 5, 6, time.UTC),
@@ -118,7 +118,7 @@ func TestFileRoundTrip(t *testing.T) {
 	if generic["schema_version"] != float64(1) {
 		t.Fatalf("schema_version = %v", generic["schema_version"])
 	}
-	for _, k := range []string{"id", "display_name", "map", "program", "vm", "speed_ms", "seq", "created_at", "last_action_at", "attempts", "best_steps"} {
+	for _, k := range []string{"id", "map", "program", "vm", "speed_ms", "seq", "created_at", "last_action_at", "attempts", "best_steps"} {
 		if _, ok := generic[k]; !ok {
 			t.Errorf("persisted file lacks %q", k)
 		}
@@ -139,7 +139,7 @@ func TestFileRoundTrip(t *testing.T) {
 	if got.LastEvent != nil {
 		t.Fatal("LastEvent is transient and must not be restored")
 	}
-	if got.ID != idA || got.DisplayName != "fixture" || got.MapID != "corridor" || got.SpeedMs != 120 ||
+	if got.ID != idA || got.MapID != "corridor" || got.SpeedMs != 120 ||
 		got.Seq != 17 || got.Attempts != 3 || got.BestSteps != 5 {
 		t.Fatalf("scalar fields differ: %+v", got)
 	}
@@ -344,7 +344,7 @@ func writeFile(t *testing.T, dir, id string, mutate func(*PersistedSession)) {
 	t.Helper()
 	s := fixture(t, id)
 	ps := PersistedSession{
-		SchemaVersion: SchemaVersion, ID: id, DisplayName: s.DisplayName, Map: s.Map.Config(),
+		SchemaVersion: SchemaVersion, ID: id, Map: s.Map.Config(),
 		Program: s.Program, VM: s.VM, SpeedMs: s.SpeedMs, Seq: s.Seq,
 		CreatedAt: s.CreatedAt, LastActionAt: s.LastActionAt, Attempts: s.Attempts, BestSteps: s.BestSteps,
 	}

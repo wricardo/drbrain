@@ -1,7 +1,6 @@
 import type { GameMap, LeaderboardEntry, LeaderboardOrder } from './types';
 import { sortMaps } from './maps';
 import { profileHref } from '$lib/account/account';
-import { runsHref } from './runs';
 
 export interface OrderOption {
 	order: LeaderboardOrder;
@@ -79,13 +78,12 @@ export function isMine(entry: Pick<LeaderboardEntry, 'sessionId'> & { mine?: boo
 export const PRIVATE_PLAYER = 'Private player';
 
 /**
- * Where a player's name links: an account's profile, a guest's runs by name, or nowhere
- * (anonymous and private players).
+ * Where a player's name links: an account's profile, or nowhere (guests and
+ * private profiles have no page of their own).
  */
 export function playerHref(entry: Pick<LeaderboardEntry, 'displayName' | 'handle'>): string | null {
 	if (entry.handle) return profileHref(entry.handle);
-	if (entry.displayName === PRIVATE_PLAYER || entry.displayName === 'Anonymous') return null;
-	return runsHref(entry.displayName);
+	return null;
 }
 
 /** "1 slot" / "6 slots". */

@@ -314,29 +314,39 @@ plain ints, so a client cannot distinguish "at the origin" from "no position".
 
 ## Mutation
 
+Every state-changing mutation needs the session's **owner token** — the secret
+`createSession` returns. Reading is public; changing the world is not. A
+signed-in creator may use their login instead, and a save written before owner
+tokens stays open. A caller with neither gets `forbidden: ...`; an absent
+session is `not_found:` regardless of the credential.
+
 ```graphql
 mutation {
-  createSession(id: "demo", seed: 7) { id tick paused }
+  "Returns the session AND the secret that proves you created it. Keep it."
+  createSession(id: "demo", seed: 7) {
+    session { id tick paused }
+    ownerToken
+  }
 
   "Queue one step. Does NOT advance the clock."
-  moveCar(id: "demo", carId: "car_1", direction: SOUTH) { cars { x y queuedMove } }
+  moveCar(id: "demo", carId: "car_1", direction: SOUTH, ownerToken: "…") { cars { x y queuedMove } }
 
   "Advance manually. count is capped at 1000."
-  tick(id: "demo", count: 1) { tick orders { id state } }
+  tick(id: "demo", count: 1, ownerToken: "…") { tick orders { id state } }
 
-  setSpeed(id: "demo", speed: 0) { paused }       # 0 pauses; 1/2/4 run
+  setSpeed(id: "demo", speed: 0, ownerToken: "…") { paused }  # 0 pauses; 1/2/4 run
 
-  assignOrder(id: "demo", orderId: "ord_1", carId: "car_1") { orders { state } }
-  unassignOrder(id: "demo", orderId: "ord_1") { orders { state } }
+  assignOrder(id: "demo", orderId: "ord_1", carId: "car_1", ownerToken: "…") { orders { state } }
+  unassignOrder(id: "demo", orderId: "ord_1", ownerToken: "…") { orders { state } }
 
-  buyCar(id: "demo", className: "van", depotId: "d_main") { cars { id className } }
+  buyCar(id: "demo", className: "van", depotId: "d_main", ownerToken: "…") { cars { id className } }
   "Costs tow_fee_per_tile x route distance (min tow_fee_min), clamped to the balance."
-  towCar(id: "demo", carId: "car_1") { ledger { money towFees } cars { state } }
-  build(id: "demo", buildId: "b02_east_bridge") { city { rows } }
+  towCar(id: "demo", carId: "car_1", ownerToken: "…") { ledger { money towFees } cars { state } }
+  build(id: "demo", buildId: "b02_east_bridge", ownerToken: "…") { city { rows } }
 
-  saveSession(id: "demo") { tick }
-  evictSession(id: "demo")   # save, then drop from memory
-  deleteSession(id: "demo")  # remove the save file
+  saveSession(id: "demo", ownerToken: "…") { tick }
+  evictSession(id: "demo", ownerToken: "…")   # save, then drop from memory
+  deleteSession(id: "demo", ownerToken: "…")  # remove the save file
 }
 ```
 
@@ -345,6 +355,36 @@ needs a follow-up read to know the new state. The two exceptions are
 `evictSession` and `deleteSession`, which return a bare `Boolean` because the
 session they would have described no longer exists — verified live (`true` for
 each, with no snapshot in the payload).
+
+An omitted `createSession` id is generated (16 random hex characters); a
+client-supplied id is accepted when it is 1-64 characters of `[A-Za-z0-9_-]`.
+A signed-in creator's session belongs to their account automatically.
+
+### Ownership, claiming and the save list
+
+```graphql
+query {
+  "Reads are public: anyone with the id may watch. canPlaySession says whether
+  "this caller may also change it."
+  canPlaySession(id: "demo", ownerToken: "…")
+  session(id: "demo") { tick cars { id x y } }
+  sessions { id ownerDisplayName ownerHandle mine loaded }
+}
+
+mutation {
+  "Attach guest saves to the signed-in account. Each needs its own token."
+  claimSessions(claims: [{ sessionID: "demo", ownerToken: "…" }]) {
+    sessionID
+    status   # ATTACHED | ALREADY_YOURS | REJECTED
+  }
+}
+```
+
+`ownerDisplayName` is the owning account's display name, `Private player` when
+its profile is private, or `Guest` for a session with no account. `ownerHandle`
+is null for guests and private profiles, and `mine` is true when the row belongs
+to the signed-in viewer. A save made before owner tokens can never be claimed
+and has no display name beyond `Guest`; it stays open for anyone with its id.
 
 ## Subscription — live updates instead of polling
 

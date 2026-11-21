@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "id": "ode-to-joy",
+  "title": "Ode to Joy",
+  "composer": "Ludwig van Beethoven",
+  "tempoBPM": 100,
+  "timeSig": "4/4",
+  "key": "D",
+  "clef": "treble",
+  "measures": [
+    {
+      "len": 1920,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 480,
+          "pitch": 66
+        },
+        {
+          "start": 480,
+          "dur": 480,
+          "pitch": 66
+        },
+        {
+          "start": 960,
+          "dur": 480,
+          "pitch": 67
+        },
+        {
+          "start": 1440,
+          "dur": 480,
+          "pitch": 69
+        }
+      ]
+    },
+    {
+      "len": 1920,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 480,
+          "pitch": 69
+        },
+        {
+          "start": 480,
+          "dur": 480,
+          "pitch": 67
+        },
+        {
+          "start": 960,
+          "dur": 480,
+          "pitch": 66
+        },
+        {
+          "start": 1440,
+          "dur": 480,
+          "pitch": 64
+        }
+      ]
+    },
+    {
+      "len": 1920,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 480,
+          "pitch": 62
+        },
+        {
+          "start": 480,
+          "dur": 480,
+          "pitch": 62
+        },
+        {
+          "start": 960,
+          "dur": 480,
+          "pitch": 64
+        },
+        {
+          "start": 1440,
+          "dur": 480,
+          "pitch": 66
+        }
+      ]
+    },
+    {
+      "len": 1920,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 720,
+          "pitch": 66
+        },
+        {
+          "start": 720,
+          "dur": 240,
+          "pitch": 64
+        },
+        {
+          "start": 960,
+          "dur": 960,
+          "pitch": 64
+        }
+      ]
+    }
+  ]
+}

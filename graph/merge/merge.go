@@ -12,7 +12,7 @@
 //   - every game-defined type is prefixed with the game name, except the shared
 //     Time scalar;
 //   - Query and Mutation are namespaced (delivery, mazes, motorProgramming,
-//     tesla);
+//     tesla, music);
 //   - Subscription stays flat, because GraphQL only streams at the root.
 package merge
 
@@ -57,6 +57,7 @@ var Games = []Game{
 	{Name: "Mazes", Namespace: "mazes", Dir: "games/mazes", ModelPkg: "games/mazes/graph/model", ResolverPkg: "games/mazes/graph"},
 	{Name: "Motor", Namespace: "motorProgramming", Dir: "games/motor", ModelPkg: "games/motor/graph/model", ResolverPkg: "games/motor/graph"},
 	{Name: "Tesla", Namespace: "tesla", Dir: "games/tesla", ModelPkg: "games/tesla/graph/model", ResolverPkg: "games/tesla/graph"},
+	{Name: "Music", Namespace: "music", Dir: "games/music", ModelPkg: "games/music/graph/model", ResolverPkg: "games/music/graph"},
 }
 
 // SchemaPath is the module-relative path of the generated SDL.

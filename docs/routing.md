@@ -15,6 +15,12 @@ single SvelteKit app.
 | `/<game>/...` | the SvelteKit app |
 | `/settings`, `/u/<handle>` | global account settings and public profiles |
 
+Game prefixes are `/mazes`, `/motor`, `/tesla`, `/delivery` and `/music`. Only
+tesla mounts a per-game transport (`/tesla/mcp`); every other prefix serves the
+SPA and its `llms.txt`. `/music` has **no MCP mount**: the music game exposes no
+per-game API surface (`API()` returns nil), so `/music/mcp` is not routed and
+404s. That is deliberate for v1 — agents use the GraphQL namespace below.
+
 ## GraphQL namespaces
 
 Queries and mutations select a namespace:
@@ -26,6 +32,7 @@ query {
   mazes { maps { id } }
   motorProgramming { maps { id } }
   tesla { maps { mapId } }
+  music { excerpts { id title } }
 }
 ```
 
@@ -39,23 +46,28 @@ subscription {
   motorProgrammingSessionUpdated(sessionID: "…") { seq }
   teslaSessionUpdated(sessionID: "…") { battery }
   teslaLobbyUpdated { mapName }
+  musicSessionUpdated(sessionID: "…") { session { solved wins } }
 }
 ```
 
 Types are prefixed (`Global_User`, `Delivery_Snapshot`, `Mazes_Map`,
-`Motor_Session`, `Tesla_GameState`) so the schemas cannot collide. The shared
-`Time` scalar is emitted once. The `account` namespace is global: its types use
-the `Global_` prefix and live in `platform/account`.
+`Motor_Session`, `Tesla_GameState`, `Music_Excerpt`) so the schemas cannot
+collide. The shared `Time` scalar is emitted once. The `account` namespace is
+global: its types use the `Global_` prefix and live in `platform/account`.
 
 ## Removing the old per-game endpoints
 
 `/<game>/graphql` and `/<game>/playground` were removed. A game's GraphQL
 handler is no longer built or mounted; each game exposes its resolver root to
-the platform, which serves the one executor. `/tesla/mcp` stays where it was.
+the platform, which serves the one executor. `/tesla/mcp` stays where it was;
+music has no MCP transport at all (`/music/mcp` is not mounted).
 
-Sign-in moved out of motor: the routes are at `/auth/...`, the cookie is
-`drbrain_session` with `Path=/`, and accounts live in `platform/account` for
-every game to use.
+Sign-in moved out of motor: the routes are at `/auth/...` and accounts live in
+`platform/account` for every game to use. Sessions are stateless Bearer JWTs
+(`Authorization: Bearer <token>`, or the `connection_init` payload on
+websockets); there is no session cookie and no `logins` table. An OAuth callback
+hands the SPA a one-time `signin_code` that `POST /auth/token` exchanges for a
+token.
 
 ## Disabling a game
 
@@ -65,6 +77,6 @@ namespace answers `game is not enabled`. `/graphql` and the other enabled
 namespaces stay up.
 
 ```sh
-DRBRAIN_GAMES=mazes,motor,tesla,delivery   # all four
-DRBRAIN_GAMES=mazes,tesla,delivery          # motor 404s, its namespace reports disabled
+DRBRAIN_GAMES=mazes,motor,tesla,delivery,music   # all five
+DRBRAIN_GAMES=mazes,tesla,delivery,music          # motor 404s, its namespace reports disabled
 ```

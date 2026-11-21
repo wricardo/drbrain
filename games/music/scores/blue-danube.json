@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "id": "blue-danube",
+  "title": "The Blue Danube",
+  "composer": "Johann Strauss II",
+  "tempoBPM": 150,
+  "timeSig": "3/4",
+  "key": "D",
+  "clef": "treble",
+  "measures": [
+    {
+      "len": 1440,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 480,
+          "pitch": 62
+        },
+        {
+          "start": 480,
+          "dur": 480,
+          "pitch": 66
+        },
+        {
+          "start": 960,
+          "dur": 480,
+          "pitch": 69
+        }
+      ]
+    },
+    {
+      "len": 1440,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 1440,
+          "pitch": 69
+        }
+      ]
+    },
+    {
+      "len": 1440,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 480,
+          "pitch": 81
+        },
+        {
+          "start": 480,
+          "dur": 960,
+          "pitch": 81
+        }
+      ]
+    },
+    {
+      "len": 1440,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 480,
+          "pitch": 78
+        },
+        {
+          "start": 480,
+          "dur": 960,
+          "pitch": 78
+        }
+      ]
+    },
+    {
+      "len": 1440,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 480,
+          "pitch": 62
+        },
+        {
+          "start": 480,
+          "dur": 480,
+          "pitch": 66
+        },
+        {
+          "start": 960,
+          "dur": 480,
+          "pitch": 69
+        }
+      ]
+    },
+    {
+      "len": 1440,
+      "notes": [
+        {
+          "start": 0,
+          "dur": 1440,
+          "pitch": 69
+        }
+      ]
+    }
+  ]
+}

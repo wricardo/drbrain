@@ -91,9 +91,6 @@ func (h *harness) browserReq(hdr ...string) *http.Request {
 	// A loopback peer, as a real browser behind the local reverse proxy is: that
 	// is what makes ClientIP trust the X-Forwarded-For the tests set.
 	req.RemoteAddr = "127.0.0.1:1234"
-	if c := h.cookie(SessionCookie); c != nil {
-		req.AddCookie(c)
-	}
 	for i := 0; i+1 < len(hdr); i += 2 {
 		if hdr[i+1] == "" {
 			req.Header.Del(hdr[i])
@@ -104,7 +101,8 @@ func (h *harness) browserReq(hdr ...string) *http.Request {
 	return req
 }
 
-// session is what PasswordSignIn hands to the transport: the cookie it must set.
+// session is what PasswordSignIn returns to the transport: the access token it
+// must hand back to the client.
 type session struct {
 	token   string
 	expires time.Time
@@ -112,14 +110,11 @@ type session struct {
 }
 
 // signIn calls PasswordSignIn as the browser would and returns the account, the
-// session it asked to set and the error.
+// session it minted and the error.
 func (h *harness) signIn(register bool, handle, password string, hdr ...string) (*account.Account, session, error) {
 	h.t.Helper()
-	var s session
-	acct, err := h.a.PasswordSignIn(register, h.browserReq(hdr...), handle, password, func(token string, expires time.Time) {
-		s = session{token: token, expires: expires, set: true}
-	})
-	return acct, s, err
+	acct, token, expires, err := h.a.PasswordSignIn(register, h.browserReq(hdr...), handle, password)
+	return acct, session{token: token, expires: expires, set: token != ""}, err
 }
 
 // wantCode asserts err is a coded service error with code.
@@ -145,15 +140,13 @@ func TestPasswordRegisterAndLogin(t *testing.T) {
 		t.Fatalf("handle = %q", acct.Handle)
 	}
 	if !s.set || len(s.token) < 20 {
-		t.Fatal("no login cookie was set")
+		t.Fatal("no access token was minted")
 	}
-	if _, ok := h.accounts.Authenticate(s.token); !ok {
-		t.Fatal("the token is not a valid login")
+	if a, err := h.a.ParseToken(s.token); err != nil || a.ID != acct.ID {
+		t.Fatalf("the token does not name the account: %+v, %v", a, err)
 	}
 
-	// Logging in again rotates the token and ends the one the browser arrived with.
-	first := s.token
-	h.client.Jar.(*simpleJar).cookies[SessionCookie] = &http.Cookie{Name: SessionCookie, Value: first, Path: "/"}
+	// Logging in again works and both tokens stay valid (they are stateless).
 	acct2, s2, err := h.signIn(false, "SPEEDY_FOX", goodPw)
 	if err != nil {
 		t.Fatalf("login: %v", err)
@@ -161,11 +154,8 @@ func TestPasswordRegisterAndLogin(t *testing.T) {
 	if acct2.Handle != goodHandle {
 		t.Fatalf("login handle = %q", acct2.Handle)
 	}
-	if s2.token == first {
-		t.Fatal("the session token was reused (fixation)")
-	}
-	if _, ok := h.accounts.Authenticate(first); ok {
-		t.Fatal("the previous login was not ended")
+	if _, err := h.a.ParseToken(s2.token); err != nil {
+		t.Fatalf("second token: %v", err)
 	}
 }
 
@@ -365,11 +355,10 @@ func TestPasswordSignInWithoutPublicURLRefusesPublicHosts(t *testing.T) {
 	req.Header.Set("Origin", "http://rebind.evil.example")
 	req.Host = "rebind.evil.example"
 	req.RemoteAddr = "192.0.2.10:1234"
-	set := false
-	_, err := h.a.PasswordSignIn(true, req, goodHandle, goodPw, func(string, time.Time) { set = true })
+	_, token, _, err := h.a.PasswordSignIn(true, req, goodHandle, goodPw)
 	wantCode(t, err, errs.CodeForbidden)
-	if set {
-		t.Fatal("a refused sign-in still set a cookie")
+	if token != "" {
+		t.Fatal("a refused sign-in still minted a token")
 	}
 }
 
