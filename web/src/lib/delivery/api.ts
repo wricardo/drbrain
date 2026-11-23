@@ -156,7 +156,7 @@ export const CITY_VIEW_FIELDS = `
  * undefined only after the first pushed frame replaced the fetched snapshot.
  */
 export const SNAPSHOT_FIELDS = `
-	id createdAt tick speed paused tickMs
+	id createdAt displayName tick speed paused tickMs
 	city {
 		name gridSize rows hiddenTiles
 		kitchens { id name x y }
@@ -229,7 +229,7 @@ export const api = {
 
 	sessions: async (): Promise<SessionSummary[]> => {
 		const d = await post<{ sessions: SessionSummary[] }>(`query {
-			delivery { sessions { id createdAt tick speed money reputation deliveries loaded ownerDisplayName ownerHandle mine } }
+			delivery { sessions { id createdAt displayName tick speed money reputation deliveries loaded ownerDisplayName ownerHandle mine } }
 		}`);
 		return d.sessions ?? [];
 	},
@@ -570,6 +570,14 @@ export const api = {
 			{ id, ownerToken: ownerTokenFor(id) }
 		);
 		return d.saveSession;
+	},
+
+	renameSession: async (id: string, displayName: string): Promise<Snapshot> => {
+		const d = await post<{ renameSession: Snapshot }>(
+			`mutation ($id: ID!, $displayName: String!, $ownerToken: String) { delivery { renameSession(id: $id, displayName: $displayName, ownerToken: $ownerToken) { ${SNAPSHOT_FIELDS} } } }`,
+			{ id, displayName, ownerToken: ownerTokenFor(id) }
+		);
+		return d.renameSession;
 	},
 
 	deleteSession: async (id: string): Promise<boolean> => {

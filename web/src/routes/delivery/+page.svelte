@@ -35,6 +35,10 @@
 
 	/** False when the open session belongs to someone else: the page then only watches. */
 	let canPlay = $state(true);
+	let editingName = $state(false);
+	let nameDraft = $state('');
+	let nameSaving = $state(false);
+	let nameError = $state<string | null>(null);
 
 	/** Saves on disk, shown on the start screen. */
 	let saves = $state<SessionSummary[]>([]);
@@ -114,6 +118,7 @@
 	 */
 	const openName = $derived.by(() => {
 		if (!snap) return '';
+		if (snap.displayName) return snap.displayName;
 		if (openEntry?.mine) return 'Your city';
 		if (openEntry && openEntry.ownerDisplayName !== 'Guest') {
 			return `${openEntry.ownerDisplayName}’s city`;
@@ -383,6 +388,24 @@
 		}
 	}
 
+	async function saveName() {
+		if (!snap || !canPlay || nameSaving) return;
+		const id = snap.id;
+		nameSaving = true;
+		nameError = null;
+		try {
+			const updated = await api.renameSession(id, nameDraft);
+			if (snap?.id === id) {
+				snap = { ...snap, displayName: updated.displayName };
+				editingName = false;
+			}
+		} catch (e) {
+			nameError = e instanceof ApiError ? `${e.message} (${e.code})` : String(e);
+		} finally {
+			nameSaving = false;
+		}
+	}
+
 	async function startSession(cityId?: string) {
 		if (opening) return;
 		opening = true;
@@ -422,6 +445,8 @@
 		}
 		if (snap?.id !== cur?.id) return; // another city opened meanwhile
 		forgetSession();
+		editingName = false;
+		nameError = null;
 		snap = null;
 		selectedCarId = null;
 		selectedOrderId = null;
@@ -698,7 +723,7 @@
 							>
 								<span class="min-w-0">
 									<span class="block truncate text-sm text-body">
-										{s.mine || ownerTokenFor(s.id) ? 'Your city' : cityName(s)}
+										{s.displayName || (s.mine || ownerTokenFor(s.id) ? 'Your city' : cityName(s))}
 										{#if s.mine || ownerTokenFor(s.id)}
 											<span class="ml-1 rounded bg-[var(--db-accent)]/15 px-1.5 py-0.5 text-[11px] font-semibold text-[var(--db-accent)]">yours</span>
 										{/if}
@@ -735,6 +760,21 @@
 		<header class="db-panel game-run-title">
 			<h1 class="text-xl">Fleet dashboard</h1>
 			<span class="text-sm text-faint" data-testid="open-city-name">{openName}</span>
+			{#if canPlay}
+				{#if editingName}
+					<form class="flex flex-wrap items-end gap-2" onsubmit={(event) => { event.preventDefault(); void saveName(); }}>
+						<label class="text-sm text-muted">
+							Session name (optional)
+							<input class="db-input mt-1" bind:value={nameDraft} maxlength="80" placeholder="e.g. Scooter-only strategy" />
+						</label>
+						<Button type="submit" disabled={nameSaving}>{nameSaving ? 'Saving…' : 'Save name'}</Button>
+						<Button variant="secondary" disabled={nameSaving} onclick={() => { editingName = false; nameError = null; }}>Cancel</Button>
+						{#if nameError}<p class="text-sm text-[var(--db-danger)]" role="alert">{nameError}</p>{/if}
+					</form>
+				{:else}
+					<Button variant="secondary" onclick={() => { nameDraft = snap?.displayName ?? ''; editingName = true; }}>Name session</Button>
+				{/if}
+			{/if}
 			<div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm tabular-nums">
 				<span class="text-faint">Tick <strong class="text-body">{snap.tick}</strong></span>
 				<span class="text-[var(--color-money)]">${snap.ledger.money}</span>
