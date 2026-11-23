@@ -96,11 +96,6 @@ func completeConfig(cfg *CityConfig) *CityConfig {
 		}
 	}
 
-	for i := range cfg.Depots {
-		if cfg.Depots[i].Capacity == 0 {
-			cfg.Depots[i].Capacity = 4
-		}
-	}
 	for i := range cfg.Chargers {
 		if cfg.Chargers[i].Capacity == 0 {
 			cfg.Chargers[i].Capacity = 1

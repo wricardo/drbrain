@@ -9,82 +9,134 @@ import (
 	"strconv"
 )
 
+// One excerpt: metadata, its bars and the original note sequence.
 type Excerpt struct {
-	ID       string `json:"id"`
-	Title    string `json:"title"`
+	// Excerpt id used by createSession.
+	ID string `json:"id"`
+	// Title.
+	Title string `json:"title"`
+	// Composer.
 	Composer string `json:"composer"`
-	TempoBpm int    `json:"tempoBPM"`
-	TimeSig  string `json:"timeSig"`
-	Key      string `json:"key"`
-	Clef     string `json:"clef"`
-	Axis     int    `json:"axis"`
+	// Tempo in beats per minute.
+	TempoBpm int `json:"tempoBPM"`
+	// Time signature, e.g. "4/4".
+	TimeSig string `json:"timeSig"`
+	// Key signature, e.g. "C major".
+	Key string `json:"key"`
+	// Clef the arrangement is drawn in.
+	Clef string `json:"clef"`
+	// Vertical axis used when inverting pitches.
+	Axis int `json:"axis"`
 	// The piece's bars in performance order. Every Music Region piece is at most
 	// 6 bars, and every difficulty challenges the whole piece, so this is also
 	// the number of slots in a session.
 	Measures []*Measure `json:"measures"`
-	Notes    []*Note    `json:"notes"`
-}
-
-type LastChange struct {
-	Kind string `json:"kind"`
-	A    int    `json:"a"`
-	B    int    `json:"b"`
-}
-
-type Measure struct {
-	ID    string  `json:"id"`
-	Len   int     `json:"len"`
+	// Every note of the excerpt in performance order, for preview rendering.
 	Notes []*Note `json:"notes"`
 }
 
+// The last change made to a session, for highlighting the modified bars.
+type LastChange struct {
+	// Mutation kind: SWITCH, TRANSFORM, ARRANGE, RESET or SOLVE.
+	Kind string `json:"kind"`
+	// First affected slot; 0 for changes that are not slot-specific.
+	A int `json:"a"`
+	// Second affected slot for SWITCH; 0 when not applicable.
+	B int `json:"b"`
+}
+
+// One bar of the excerpt.
+type Measure struct {
+	// Bar id used by slots and arrangement inputs.
+	ID string `json:"id"`
+	// Bar length in ticks.
+	Len int `json:"len"`
+	// Notes in the bar, in time order.
+	Notes []*Note `json:"notes"`
+}
+
+// Music writes: start a session and rearrange its bars.
 type Mutation struct {
 }
 
+// One sounding note.
 type Note struct {
-	At    int `json:"at"`
-	Dur   int `json:"dur"`
+	// Start position in ticks from the start of the measure.
+	At int `json:"at"`
+	// Duration in ticks.
+	Dur int `json:"dur"`
+	// MIDI pitch number.
 	Pitch int `json:"pitch"`
 }
 
+// One slot in a setArrangement call.
 type PlacementInput struct {
+	// Bar to place.
 	MeasureID string `json:"measureID"`
-	FlipH     bool   `json:"flipH"`
-	FlipV     bool   `json:"flipV"`
+	// Reverse the bar.
+	FlipH bool `json:"flipH"`
+	// Invert the bar's pitches.
+	FlipV bool `json:"flipV"`
 }
 
+// Music reads: excerpts and sessions.
 type Query struct {
 }
 
+// One play-through: the excerpt, the current arrangement and its progress.
 type Session struct {
-	ID            string      `json:"id"`
-	DisplayName   *string     `json:"displayName,omitempty"`
-	Difficulty    Difficulty  `json:"difficulty"`
-	Excerpt       *Excerpt    `json:"excerpt"`
-	Slots         []*Slot     `json:"slots"`
-	Solved        bool        `json:"solved"`
-	Seq           int         `json:"seq"`
-	Wins          int         `json:"wins"`
-	PercentPerWin int         `json:"percentPerWin"`
-	CreatedAt     string      `json:"createdAt"`
-	LastActionAt  string      `json:"lastActionAt"`
-	LastChange    *LastChange `json:"lastChange,omitempty"`
-}
-
-type SessionUpdate struct {
-	Session    *Session    `json:"session"`
+	// Session id.
+	ID string `json:"id"`
+	// The player's name for this save; null/empty falls back to the excerpt title.
+	DisplayName *string `json:"displayName,omitempty"`
+	// Difficulty the session was created at.
+	Difficulty Difficulty `json:"difficulty"`
+	// The excerpt being restored.
+	Excerpt *Excerpt `json:"excerpt"`
+	// Current arrangement, one slot per excerpt bar.
+	Slots []*Slot `json:"slots"`
+	// True when every bar is back in place and unflipped.
+	Solved bool `json:"solved"`
+	// Monotonic sequence of this snapshot.
+	Seq int `json:"seq"`
+	// Wins recorded on this save.
+	Wins int `json:"wins"`
+	// Percent of the excerpt's reward granted per win at this difficulty.
+	PercentPerWin int `json:"percentPerWin"`
+	// When the session was created (RFC3339 UTC).
+	CreatedAt string `json:"createdAt"`
+	// When the session last changed (RFC3339 UTC).
+	LastActionAt string `json:"lastActionAt"`
+	// The most recent change, or null before the first one.
 	LastChange *LastChange `json:"lastChange,omitempty"`
 }
 
+// One subscription frame: the new session and the change that caused it.
+type SessionUpdate struct {
+	// Full current session.
+	Session *Session `json:"session"`
+	// The change that produced this frame, or null.
+	LastChange *LastChange `json:"lastChange,omitempty"`
+}
+
+// One output position in the arrangement: which bar sits there and whether it is
+// flipped.
 type Slot struct {
-	Position  int    `json:"position"`
+	// 0-based position in the excerpt.
+	Position int `json:"position"`
+	// Bar placed at this position.
 	MeasureID string `json:"measureID"`
-	FlipH     bool   `json:"flipH"`
-	FlipV     bool   `json:"flipV"`
+	// True when the bar is reversed (retrograde).
+	FlipH bool `json:"flipH"`
+	// True when the bar's pitches are inverted.
+	FlipV bool `json:"flipV"`
 }
 
 type Subscription struct {
 }
 
+// Challenge level. Higher difficulties flip more bars, and each win rewards a
+// larger share of the excerpt.
 type Difficulty string
 
 const (

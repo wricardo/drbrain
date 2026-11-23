@@ -2,6 +2,7 @@ package engine
 
 import (
 	"encoding/json"
+	"math"
 	"testing"
 )
 
@@ -28,7 +29,7 @@ func orderWorld(t *testing.T) *World {
 			"W": "water", "R": "road", "D": "depot", "K": "kitchen", "H": "house",
 		},
 		Items:  map[string]string{"pizza": "Pizza"},
-		Depots: []DepotConfig{{ID: "d1", Pos: Position{1, 1}, Capacity: 4, ChargeSlots: 2}},
+		Depots: []DepotConfig{{ID: "d1", Pos: Position{1, 1}, ChargeSlots: 2}},
 		Kitchens: []KitchenConfig{
 			{ID: "k1", Name: "Kitchen", Pos: Position{2, 1}, Menu: []string{"pizza"}},
 		},
@@ -51,7 +52,7 @@ func orderWorld(t *testing.T) *World {
 			LatePayMultiplier:       0.5,
 			ReputationPerDelivery:   0.02,
 			ReputationPerLate:       0.05,
-			ExpirePenaltyReputation: 0.05,
+			ExpirePenaltyReputation: 0.10,
 		},
 		Charging: ChargingConfig{DepotRate: 5, ChargerRate: 2},
 	})
@@ -147,6 +148,7 @@ func TestOrderSpawnsOnFirstTick(t *testing.T) {
 
 func TestPickupOnKitchenAndDeliverOnCustomer(t *testing.T) {
 	w := orderWorld(t)
+	w.Ledger.Reputation = w.maxReputation // full standing pays the full reward
 	w.Advance()
 	o := firstOrder(t, w)
 	car := w.Cars[0]
@@ -216,6 +218,59 @@ func TestAssignToFullCarIsRejected(t *testing.T) {
 		if err := w.AssignOrder(o.ID, car.ID); err == nil {
 			t.Fatal("expected assignment to a full car to fail")
 		}
+	}
+}
+
+// TestAssignReservesBoxesForEarlierAssignments pins that capacity committed by
+// one assignOrder counts against the next: a car may be given several orders
+// only while their total fits, even though none has been picked up yet.
+func TestAssignReservesBoxesForEarlierAssignments(t *testing.T) {
+	w := orderWorld(t)
+	w.Advance()
+	car := w.Cars[0]
+	car.Class.Capacity = 5
+
+	pendingOrder := func(id string, boxes int) *Order {
+		o := &Order{
+			ID: id, Item: "pizza", KitchenID: "k1", CustomerID: "c1",
+			Quantity: boxes, CreatedTick: w.Tick, DeadlineTick: w.Tick + 1000,
+			Reward: 50, State: OrderPending,
+		}
+		w.Orders = append(w.Orders, o)
+		return o
+	}
+
+	first := firstOrder(t, w)
+	first.Quantity = 3
+	second := pendingOrder("o2", 3)
+	third := pendingOrder("o3", 2)
+
+	if err := w.AssignOrder(first.ID, car.ID); err != nil {
+		t.Fatalf("assign first: %v", err)
+	}
+	err := w.AssignOrder(second.ID, car.ID)
+	if err == nil {
+		t.Fatalf("%d boxes accepted with %d already assigned to a %d-box car",
+			second.Boxes(), first.Boxes(), car.Class.Capacity)
+	}
+	if second.State != OrderPending || second.AssignedCar != "" {
+		t.Fatalf("rejected assignment changed the order: state=%s car=%q", second.State, second.AssignedCar)
+	}
+	if err := w.AssignOrder(third.ID, car.ID); err != nil {
+		t.Fatalf("assign third (exactly fills the hold): %v", err)
+	}
+
+	// Re-assigning the same order to the same car is a no-op, not an overbook.
+	if err := w.AssignOrder(first.ID, car.ID); err != nil {
+		t.Fatalf("re-assign first to the same car: %v", err)
+	}
+
+	// Released capacity can be claimed.
+	if err := w.UnassignOrder(first.ID); err != nil {
+		t.Fatalf("unassign first: %v", err)
+	}
+	if err := w.AssignOrder(second.ID, car.ID); err != nil {
+		t.Fatalf("assign second after freeing 3 boxes: %v", err)
 	}
 }
 
@@ -295,8 +350,8 @@ func TestExpiredOrderAppliesPenaltyAndClearsCargo(t *testing.T) {
 	if w.Ledger.ExpiredInTransit != 1 {
 		t.Errorf("in-transit expiry diagnostic = %d, want 1", w.Ledger.ExpiredInTransit)
 	}
-	if w.Ledger.Reputation >= 3.0 {
-		t.Errorf("reputation did not fall on expiry: %f", w.Ledger.Reputation)
+	if want := w.maxReputation - w.ordersCfg.ExpirePenaltyReputation; math.Abs(w.Ledger.Reputation-want) > 1e-9 {
+		t.Errorf("reputation = %f, want the one-expiry penalty applied to full standing (%f)", w.Ledger.Reputation, want)
 	}
 	// The customer leaves on expiry, so its next appearance is a full interval
 	// after the expiry tick, not after the tick it originally ordered.

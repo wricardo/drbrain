@@ -1,5 +1,10 @@
 # AI Strategy Guide for Tesla Road Trip Game
 
+> **Endpoint note.** The strategy advice below is current. The curl examples
+> predate the unified endpoint: use `POST /graphql` with every operation wrapped
+> in the `tesla` namespace (`query { tesla { … } }`), and subscribe with the flat
+> root `teslaSessionUpdated(sessionID:)`. MCP is mounted at `POST /tesla/mcp`.
+
 This guide provides strategies and techniques for AI agents playing the Tesla Road Trip game.
 
 ## Table of Contents
@@ -54,11 +59,11 @@ When analyzing any grid row, you MUST:
 
 ## Game API Reference
 
-Gameplay uses GraphQL at `/graphql` (or the MCP tools at `/mcp`: `create_session`, `game_state`, `move`, `bulk_move`, `reset_game`, ...). The only REST routes are `POST/GET /api/sessions`; there is no REST move/state endpoint.
+Gameplay uses GraphQL at `/graphql` under the `tesla` namespace (or the MCP tools at `/tesla/mcp`: `create_session`, `game_state`, `move`, `bulk_move`, `reset_game`, ...). There is no REST move/state endpoint.
 
 ### Base URL
 ```
-http://localhost:8000/graphql
+http://127.0.0.1:8181/graphql
 ```
 
 ### Create a Session

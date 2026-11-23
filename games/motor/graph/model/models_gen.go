@@ -10,18 +10,23 @@ import (
 	"time"
 )
 
+// A one-way tile: moving onto it carries the robot one extra cell.
 type Conveyor struct {
+	// Tile occupied by the belt.
 	Pos *Position `json:"pos"`
 	// Direction the robot is carried after moving onto this tile.
 	Dir Facing `json:"dir"`
 }
 
+// A door, impassable until its key is collected.
 type DoorTile struct {
+	// Tile occupied by the door.
 	Pos *Position `json:"pos"`
 	// Upper-case door letter ('A'..'C').
 	Letter string `json:"letter"`
 }
 
+// One entry on the call stack.
 type Frame struct {
 	// Tape index; -1 is the main tape.
 	Tape int `json:"tape"`
@@ -29,7 +34,9 @@ type Frame struct {
 	Pc int `json:"pc"`
 }
 
+// A collectable key that opens every matching door.
 type KeyTile struct {
+	// Tile occupied by the key.
 	Pos *Position `json:"pos"`
 	// Lower-case key letter ('a'..'c').
 	Letter string `json:"letter"`
@@ -39,10 +46,13 @@ type KeyTile struct {
 // chosen order; the sessions of one account are collapsed into the account's single best entry.
 // Only sessions that played the map's current rules count.
 type Leaderboard struct {
-	MapID string           `json:"mapId"`
+	// Map this board ranks.
+	MapID string `json:"mapId"`
+	// Order the rows are ranked by.
 	Order LeaderboardOrder `json:"order"`
 	// Ranked sessions on this board, not just the rows returned.
-	Total   int                 `json:"total"`
+	Total int `json:"total"`
+	// The returned rows, best first.
 	Entries []*LeaderboardEntry `json:"entries"`
 	// The signed-in viewer's entry, else the entry of the requested sessionId, even beyond the returned rows; null when it has not won.
 	Yours *LeaderboardEntry `json:"yours,omitempty"`
@@ -69,25 +79,39 @@ type LeaderboardEntry struct {
 	AchievedAt time.Time `json:"achievedAt"`
 }
 
+// One map, with the tape sizes and terrain the player must work with.
 type Map struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
+	// Map id used by createSession.
+	ID string `json:"id"`
+	// Display name.
+	Name string `json:"name"`
+	// One-line description.
 	Description string `json:"description"`
-	Difficulty  string `json:"difficulty"`
+	// Difficulty label shown on the map card.
+	Difficulty string `json:"difficulty"`
 	// True for a map shipped with the game: only an admin may change or delete it.
 	Builtin bool `json:"builtin"`
 	// DRAFT maps are visible only to their owner and cannot be played or published
 	// by anyone else. Every shipped map is PUBLISHED.
 	Status MapStatus `json:"status"`
 	// True when the signed-in caller created this community map.
-	OwnedByMe   bool        `json:"ownedByMe"`
-	Width       int         `json:"width"`
-	Height      int         `json:"height"`
-	Layout      []string    `json:"layout"`
-	Start       *Position   `json:"start"`
-	StartFacing Facing      `json:"startFacing"`
-	Rocks       []*Position `json:"rocks"`
-	Treats      []*Position `json:"treats"`
+	OwnedByMe bool `json:"ownedByMe"`
+	// Number of columns.
+	Width int `json:"width"`
+	// Number of rows.
+	Height int `json:"height"`
+	// Glyph rows: '.' floor, '#' rock, '*' treat, '^>v<' robot start and initial
+	// facing, 'U/D/L/R' conveyors, '/' and '\\' mirrors, 'a'-'c' keys, 'A'-'C'
+	// doors, '1'-'9' portals.
+	Layout []string `json:"layout"`
+	// Robot start tile.
+	Start *Position `json:"start"`
+	// Direction the robot faces at the start.
+	StartFacing Facing `json:"startFacing"`
+	// Impassable rock tiles.
+	Rocks []*Position `json:"rocks"`
+	// Collectable treats; collecting every one wins.
+	Treats []*Position `json:"treats"`
 	// One-way tiles: a move onto one is carried one extra cell in Conveyor.dir.
 	Conveyors []*Conveyor `json:"conveyors"`
 	// Mirrors force a 90-degree turn on arrival: slash=true is '/', false is '\\'.
@@ -97,50 +121,74 @@ type Map struct {
 	// Doors ('A'..'C'), impassable until their key is collected.
 	Doors []*DoorTile `json:"doors"`
 	// Portal pairs ('1'..'9'); arriving on one teleports to the other.
-	Portals        []*Portal `json:"portals"`
-	MainTapeLength int       `json:"mainTapeLength"`
-	SubTapeLengths []int     `json:"subTapeLengths"`
-	MaxSteps       int       `json:"maxSteps"`
-	MaxCallDepth   int       `json:"maxCallDepth"`
-	AllowRecursion bool      `json:"allowRecursion"`
+	Portals []*Portal `json:"portals"`
+	// Slot count of the main tape.
+	MainTapeLength int `json:"mainTapeLength"`
+	// Slot count of each subroutine tape, in CALL_SUB order.
+	SubTapeLengths []int `json:"subTapeLengths"`
+	// Step limit for one run.
+	MaxSteps int `json:"maxSteps"`
+	// Maximum subroutine nesting depth.
+	MaxCallDepth int `json:"maxCallDepth"`
+	// True when a subroutine may call itself (directly or through a cycle).
+	AllowRecursion bool `json:"allowRecursion"`
 }
 
 type MapInput struct {
-	ID             string   `json:"id"`
-	Name           string   `json:"name"`
-	Description    *string  `json:"description,omitempty"`
-	Difficulty     *string  `json:"difficulty,omitempty"`
-	Layout         []string `json:"layout"`
-	MainTapeLength *int     `json:"mainTapeLength,omitempty"`
-	SubTapeLengths []int    `json:"subTapeLengths,omitempty"`
-	MaxSteps       *int     `json:"maxSteps,omitempty"`
-	MaxCallDepth   *int     `json:"maxCallDepth,omitempty"`
-	AllowRecursion *bool    `json:"allowRecursion,omitempty"`
+	// Map id (also the URL and save key).
+	ID string `json:"id"`
+	// Display name.
+	Name string `json:"name"`
+	// One-line description.
+	Description *string `json:"description,omitempty"`
+	// Difficulty label.
+	Difficulty *string `json:"difficulty,omitempty"`
+	// Glyph rows of the map.
+	Layout []string `json:"layout"`
+	// Main tape slot count.
+	MainTapeLength *int `json:"mainTapeLength,omitempty"`
+	// Slot count of each subroutine tape.
+	SubTapeLengths []int `json:"subTapeLengths,omitempty"`
+	// Step limit for one run.
+	MaxSteps *int `json:"maxSteps,omitempty"`
+	// Maximum subroutine nesting depth.
+	MaxCallDepth *int `json:"maxCallDepth,omitempty"`
+	// Whether subroutines may recurse.
+	AllowRecursion *bool `json:"allowRecursion,omitempty"`
 }
 
+// One problem found by validateMap.
 type MapValidationIssue struct {
+	// Human-readable failure, with the coordinate when relevant.
 	Message string `json:"message"`
 }
 
+// Outcome of validateMap.
 type MapValidationResult struct {
-	Valid  bool                  `json:"valid"`
+	// True when the map parses and is structurally playable.
+	Valid bool `json:"valid"`
+	// Problems found; empty when valid.
 	Issues []*MapValidationIssue `json:"issues"`
 	// Cells reachable check result: treats unreachable from start.
 	UnreachableTreats []*Position `json:"unreachableTreats"`
 }
 
+// A mirror: arriving on it turns the robot 90 degrees.
 type Mirror struct {
+	// Tile occupied by the mirror.
 	Pos *Position `json:"pos"`
 	// True for '/', false for '\\'.
 	Slash bool `json:"slash"`
 }
 
+// Motor writes: play a program, manage sessions and author maps.
 type Mutation struct {
 }
 
 // A player's best result on one map: their best winning session on the SLOTS board
 // and where it ranks there.
 type PlayerRun struct {
+	// Map the run was played on.
 	MapID string `json:"mapId"`
 	// Ranked sessions on that map's SLOTS board.
 	Total int `json:"total"`
@@ -148,32 +196,48 @@ type PlayerRun struct {
 	Entry *LeaderboardEntry `json:"entry"`
 }
 
+// A portal: arriving on one end teleports the robot to the other.
 type Portal struct {
+	// Tile occupied by this end.
 	Pos *Position `json:"pos"`
 	// Digit shared by the two ends of the pair.
 	Pair string `json:"pair"`
 }
 
+// A tile coordinate: x = column, y = row (0,0 is the top-left).
 type Position struct {
+	// Column (0 = left).
 	X int `json:"x"`
+	// Row (0 = top).
 	Y int `json:"y"`
 }
 
+// The robot's program: the main tape and one tape per subroutine.
 type Program struct {
-	Main []Instruction   `json:"main"`
+	// Main tape, exactly mainTapeLength slots.
+	Main []Instruction `json:"main"`
+	// Subroutine tapes, each exactly its map's subTapeLengths slot count.
 	Subs [][]Instruction `json:"subs"`
 }
 
+// Program input for setProgram; tape lengths must match the map exactly.
 type ProgramInput struct {
-	Main []Instruction   `json:"main"`
+	// Main tape slots.
+	Main []Instruction `json:"main"`
+	// Subroutine tapes.
 	Subs [][]Instruction `json:"subs"`
 }
 
+// Motor reads: maps, sessions, leaderboards and a player's runs.
 type Query struct {
 }
 
+// One session: the map snapshot, the run state, the player's program (when the
+// caller may see it) and the run counters.
 type Session struct {
-	ID    string `json:"id"`
+	// Session id; public enough to watch.
+	ID string `json:"id"`
+	// Map this session plays.
 	MapID string `json:"mapId"`
 	// Snapshot of the map taken when the session was created.
 	Map *Map `json:"map"`
@@ -181,16 +245,24 @@ type Session struct {
 	// account's login. Spectators — a shared /watch link, the session lists — get null, so a program is
 	// never a public answer key. Driving playback (run, step, pause, reset) does not reveal it either.
 	Program *Program `json:"program,omitempty"`
-	VM      *VMState `json:"vm"`
-	Playing bool     `json:"playing"`
-	SpeedMs int      `json:"speedMs"`
+	// Robot state after the latest step.
+	VM *VMState `json:"vm"`
+	// True while the program is running on the server clock.
+	Playing bool `json:"playing"`
+	// Delay between steps in milliseconds.
+	SpeedMs int `json:"speedMs"`
 	// Increments on every state change; clients ignore updates with seq <= last seen.
-	Seq          int        `json:"seq"`
-	CreatedAt    time.Time  `json:"createdAt"`
-	LastActionAt time.Time  `json:"lastActionAt"`
-	Attempts     int        `json:"attempts"`
-	BestSteps    *int       `json:"bestSteps,omitempty"`
-	LastEvent    *StepEvent `json:"lastEvent,omitempty"`
+	Seq int `json:"seq"`
+	// When the session was created (UTC).
+	CreatedAt time.Time `json:"createdAt"`
+	// When the session last changed (UTC).
+	LastActionAt time.Time `json:"lastActionAt"`
+	// Finished runs (won or lost) in this session.
+	Attempts int `json:"attempts"`
+	// Fewest steps in a won run; null until the first win.
+	BestSteps *int `json:"bestSteps,omitempty"`
+	// The most recent executed step, or null before the first step.
+	LastEvent *StepEvent `json:"lastEvent,omitempty"`
 	// Secret that proves the caller created this session; keep it private. Returned only by the
 	// createSession response that made the session and null everywhere else (queries, lists,
 	// subscriptions). It is the credential for playing the session (pass it to setProgram, run, step,
@@ -201,31 +273,50 @@ type Session struct {
 }
 
 type SessionClaimInput struct {
-	SessionID  string `json:"sessionID"`
+	// Session id to attach.
+	SessionID string `json:"sessionID"`
+	// The secret createSession returned for that session.
 	OwnerToken string `json:"ownerToken"`
 }
 
+// Per-claim outcome; claims are answered independently.
 type SessionClaimResult struct {
-	SessionID string      `json:"sessionID"`
-	Status    ClaimStatus `json:"status"`
+	// The session id from the request.
+	SessionID string `json:"sessionID"`
+	// Whether the session now belongs to the caller.
+	Status ClaimStatus `json:"status"`
 }
 
+// One subscription frame: the new session snapshot plus the step that caused it.
 type SessionUpdate struct {
-	Seq     int        `json:"seq"`
-	Session *Session   `json:"session"`
-	Event   *StepEvent `json:"event,omitempty"`
+	// Monotonic sequence of this snapshot.
+	Seq int `json:"seq"`
+	// Full current session.
+	Session *Session `json:"session"`
+	// The step that produced this frame; null for non-step changes.
+	Event *StepEvent `json:"event,omitempty"`
 }
 
+// One executed instruction and everything it changed.
 type StepEvent struct {
-	Step         int         `json:"step"`
-	Instruction  Instruction `json:"instruction"`
-	TapeIndex    int         `json:"tapeIndex"`
-	SlotIndex    int         `json:"slotIndex"`
-	From         *Position   `json:"from"`
-	To           *Position   `json:"to"`
-	FacingBefore Facing      `json:"facingBefore"`
-	FacingAfter  Facing      `json:"facingAfter"`
-	Blocked      bool        `json:"blocked"`
+	// 1-based step number in the run.
+	Step int `json:"step"`
+	// Instruction that ran.
+	Instruction Instruction `json:"instruction"`
+	// Tape index: -1 for main, 0-9 for a subroutine.
+	TapeIndex int `json:"tapeIndex"`
+	// Slot index on that tape.
+	SlotIndex int `json:"slotIndex"`
+	// Position before the step.
+	From *Position `json:"from"`
+	// Position after the step (before conveyor/portal effects when applicable).
+	To *Position `json:"to"`
+	// Facing before the instruction.
+	FacingBefore Facing `json:"facingBefore"`
+	// Facing after the instruction.
+	FacingAfter Facing `json:"facingAfter"`
+	// True when a MOVE_FORWARD was blocked by a rock, door or the edge.
+	Blocked bool `json:"blocked"`
 	// True when a CALL_SUB_k was ignored because the map has allowRecursion: false and that sub is already on the call stack. The step is still spent.
 	CallBlocked bool `json:"callBlocked"`
 	// True when the move landed on a conveyor and was carried one extra cell (same step).
@@ -237,30 +328,43 @@ type StepEvent struct {
 	// The key letter picked up on this step, or null.
 	CollectedKey *string `json:"collectedKey,omitempty"`
 	// Portal destination when the arrival tile was a portal.
-	Teleported *Position   `json:"teleported,omitempty"`
-	Collected  *Position   `json:"collected,omitempty"`
-	CallStack  []*Frame    `json:"callStack"`
-	Status     Status      `json:"status"`
+	Teleported *Position `json:"teleported,omitempty"`
+	// Treat collected on this step, or null.
+	Collected *Position `json:"collected,omitempty"`
+	// Call stack after the step; the last frame is the active tape.
+	CallStack []*Frame `json:"callStack"`
+	// Run state after the step.
+	Status Status `json:"status"`
+	// Loss reason when this step ended the run.
 	LossReason *LossReason `json:"lossReason,omitempty"`
 }
 
 type Subscription struct {
 }
 
+// The robot's observable state after the latest step.
 type VMState struct {
-	Pos             *Position   `json:"pos"`
-	Facing          Facing      `json:"facing"`
+	// Robot tile.
+	Pos *Position `json:"pos"`
+	// Direction the robot faces.
+	Facing Facing `json:"facing"`
+	// Treats not yet collected.
 	TreatsRemaining []*Position `json:"treatsRemaining"`
 	// Bottom frame is main; the last frame is the active tape.
-	CallStack  []*Frame    `json:"callStack"`
-	Steps      int         `json:"steps"`
-	Status     Status      `json:"status"`
+	CallStack []*Frame `json:"callStack"`
+	// Steps spent in the current run.
+	Steps int `json:"steps"`
+	// Run state.
+	Status Status `json:"status"`
+	// Why the run is LOST; null while playing or after a win.
 	LossReason *LossReason `json:"lossReason,omitempty"`
-	Visited    []*Position `json:"visited"`
+	// Tiles the robot has entered, in order.
+	Visited []*Position `json:"visited"`
 	// Lower-case letters of the doors this run has opened.
 	OpenDoors []string `json:"openDoors"`
 }
 
+// Outcome of asking to attach a guest session to the signed-in account.
 type ClaimStatus string
 
 const (
@@ -321,13 +425,19 @@ func (e ClaimStatus) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// Direction the robot is facing. UP decreases y, RIGHT increases x, DOWN
+// increases y, LEFT decreases x.
 type Facing string
 
 const (
-	FacingUp    Facing = "UP"
+	// Facing up (y-1).
+	FacingUp Facing = "UP"
+	// Facing right (x+1).
 	FacingRight Facing = "RIGHT"
-	FacingDown  Facing = "DOWN"
-	FacingLeft  Facing = "LEFT"
+	// Facing down (y+1).
+	FacingDown Facing = "DOWN"
+	// Facing left (x-1).
+	FacingLeft Facing = "LEFT"
 )
 
 var AllFacing = []Facing{
@@ -380,23 +490,38 @@ func (e Facing) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// One tape slot. EMPTY is a no-op that still spends a step.
 type Instruction string
 
 const (
-	InstructionEmpty       Instruction = "EMPTY"
-	InstructionTurnLeft    Instruction = "TURN_LEFT"
-	InstructionTurnRight   Instruction = "TURN_RIGHT"
+	// Skipped for free; does not spend a step.
+	InstructionEmpty Instruction = "EMPTY"
+	// Turn 90 degrees left in place.
+	InstructionTurnLeft Instruction = "TURN_LEFT"
+	// Turn 90 degrees right in place.
+	InstructionTurnRight Instruction = "TURN_RIGHT"
+	// Step one tile in the facing direction.
 	InstructionMoveForward Instruction = "MOVE_FORWARD"
-	InstructionCallSub1    Instruction = "CALL_SUB_1"
-	InstructionCallSub2    Instruction = "CALL_SUB_2"
-	InstructionCallSub3    Instruction = "CALL_SUB_3"
-	InstructionCallSub4    Instruction = "CALL_SUB_4"
-	InstructionCallSub5    Instruction = "CALL_SUB_5"
-	InstructionCallSub6    Instruction = "CALL_SUB_6"
-	InstructionCallSub7    Instruction = "CALL_SUB_7"
-	InstructionCallSub8    Instruction = "CALL_SUB_8"
-	InstructionCallSub9    Instruction = "CALL_SUB_9"
-	InstructionCallSub10   Instruction = "CALL_SUB_10"
+	// Call subroutine 1, then resume the next slot.
+	InstructionCallSub1 Instruction = "CALL_SUB_1"
+	// Call subroutine 2.
+	InstructionCallSub2 Instruction = "CALL_SUB_2"
+	// Call subroutine 3.
+	InstructionCallSub3 Instruction = "CALL_SUB_3"
+	// Call subroutine 4.
+	InstructionCallSub4 Instruction = "CALL_SUB_4"
+	// Call subroutine 5.
+	InstructionCallSub5 Instruction = "CALL_SUB_5"
+	// Call subroutine 6.
+	InstructionCallSub6 Instruction = "CALL_SUB_6"
+	// Call subroutine 7.
+	InstructionCallSub7 Instruction = "CALL_SUB_7"
+	// Call subroutine 8.
+	InstructionCallSub8 Instruction = "CALL_SUB_8"
+	// Call subroutine 9.
+	InstructionCallSub9 Instruction = "CALL_SUB_9"
+	// Call subroutine 10.
+	InstructionCallSub10 Instruction = "CALL_SUB_10"
 )
 
 var AllInstruction = []Instruction{
@@ -459,6 +584,7 @@ func (e Instruction) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// How to rank the winning sessions of a map.
 type LeaderboardOrder string
 
 const (
@@ -516,11 +642,15 @@ func (e LeaderboardOrder) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// Why a run ended in LOST.
 type LossReason string
 
 const (
-	LossReasonStepLimit    LossReason = "STEP_LIMIT"
-	LossReasonCallDepth    LossReason = "CALL_DEPTH"
+	// The map's step limit was reached.
+	LossReasonStepLimit LossReason = "STEP_LIMIT"
+	// Subroutine nesting exceeded maxCallDepth.
+	LossReasonCallDepth LossReason = "CALL_DEPTH"
+	// The main tape ran off its end without collecting every treat.
 	LossReasonProgramEnded LossReason = "PROGRAM_ENDED"
 )
 
@@ -573,6 +703,7 @@ func (e LossReason) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// Lifecycle of a community map: a draft is private to its owner.
 type MapStatus string
 
 const (
@@ -630,10 +761,13 @@ func (e MapStatus) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// How to order the session list.
 type SessionSort string
 
 const (
-	SessionSortRecent  SessionSort = "RECENT"
+	// Most recent action first. The default.
+	SessionSortRecent SessionSort = "RECENT"
+	// Newest save first.
 	SessionSortCreated SessionSort = "CREATED"
 )
 
@@ -685,13 +819,18 @@ func (e SessionSort) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// Run state of the robot.
 type Status string
 
 const (
-	StatusReady   Status = "READY"
+	// Program loaded but not started.
+	StatusReady Status = "READY"
+	// A run is in progress.
 	StatusRunning Status = "RUNNING"
-	StatusWon     Status = "WON"
-	StatusLost    Status = "LOST"
+	// Every treat was collected.
+	StatusWon Status = "WON"
+	// The run ended without collecting every treat.
+	StatusLost Status = "LOST"
 )
 
 var AllStatus = []Status{

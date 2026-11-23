@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"context"
 	"sort"
 	"strings"
 
@@ -29,26 +30,33 @@ import (
 // snapshotFrom converts a full session snapshot.
 func snapshotFrom(s session.Snapshot) *model.Snapshot {
 	out := &model.Snapshot{
-		ID:         s.ID,
-		CreatedAt:  s.CreatedAt,
-		Tick:       int(s.Tick),
-		Speed:      s.Speed,
-		Paused:     s.Paused,
-		TickMs:     s.TickMS,
-		City:       cityFrom(s.City),
-		Cars:       make([]*model.CarView, 0, len(s.Cars)),
-		Orders:     make([]*model.OrderView, 0, len(s.Orders)),
-		Ledger:     ledgerFrom(s.Ledger),
-		CarClasses: make([]*model.CarClassView, 0, len(s.CarClasses)),
-		Growth:     make([]*model.GrowthView, 0, len(s.Growth)),
-		Events:     make([]*model.EventView, 0, len(s.Events)),
-		Closures:   make([]*model.ClosureView, 0, len(s.Closures)),
+		ID:            s.ID,
+		CreatedAt:     s.CreatedAt,
+		DisplayName:   s.DisplayName,
+		Tick:          int(s.Tick),
+		Speed:         s.Speed,
+		Paused:        s.Paused,
+		TickMs:        s.TickMS,
+		OpenOrders:    make([]*model.OrderView, 0, len(s.Orders)),
+		EventCapacity: s.EventCapacity,
+		City:          cityFrom(s.City),
+		Cars:          make([]*model.CarView, 0, len(s.Cars)),
+		Orders:        make([]*model.OrderView, 0, len(s.Orders)),
+		Ledger:        ledgerFromWithStatement(s.Ledger),
+		CarClasses:    make([]*model.CarClassView, 0, len(s.CarClasses)),
+		Growth:        make([]*model.GrowthView, 0, len(s.Growth)),
+		Events:        make([]*model.EventView, 0, len(s.Events)),
+		Closures:      make([]*model.ClosureView, 0, len(s.Closures)),
 	}
 	for _, c := range s.Cars {
 		out.Cars = append(out.Cars, carFrom(c))
 	}
 	for _, o := range s.Orders {
-		out.Orders = append(out.Orders, orderFrom(o))
+		view := orderFrom(o)
+		out.Orders = append(out.Orders, view)
+		if view.State != model.OrderStateDone && view.State != model.OrderStateExpired {
+			out.OpenOrders = append(out.OpenOrders, view)
+		}
 	}
 	for _, c := range s.CarClasses {
 		out.CarClasses = append(out.CarClasses, &model.CarClassView{
@@ -203,6 +211,12 @@ func carFrom(c session.CarView) *model.CarView {
 			out.QueuedMove = &d
 		}
 	}
+	out.QueuedMoves = make([]model.Direction, 0, len(c.QueuedMoves))
+	for _, q := range c.QueuedMoves {
+		if d, ok := directionFrom(q); ok {
+			out.QueuedMoves = append(out.QueuedMoves, d)
+		}
+	}
 	if c.LastReject != "" {
 		if rr, ok := rejectFrom(c.LastReject); ok {
 			out.LastReject = &rr
@@ -261,12 +275,23 @@ func ledgerFrom(l session.LedgerView) *model.LedgerView {
 		UpkeepPaid:       l.UpkeepPaid,
 		TowFees:          l.TowFees,
 		UpkeepDue:        l.UpkeepDue,
+		PayMultiplier:    l.PayMultiplier,
 		Tows:             l.Tows,
 		DeliveriesByItem: items,
 		CashEntries:      cashEntriesFrom(l.CashEntries),
 		TicksPerMonth:    l.TicksPerMonth,
 		Months:           monthsFrom(l.Months),
 	}
+}
+
+// ledgerFromWithStatement converts the counters and binds the full-history
+// reader, so months and cashEntries can be filtered past the bounded window.
+func ledgerFromWithStatement(l session.LedgerView) *model.LedgerView {
+	out := ledgerFrom(l)
+	if l.Statement != nil {
+		out.SetStatement(statementSource{reader: l.Statement})
+	}
+	return out
 }
 
 // cashEntriesFrom converts the statement. The engine kind is a lower-case
@@ -336,14 +361,15 @@ func eventFrom(e session.EventView) *model.EventView {
 // summaryFrom converts a save listing entry.
 func summaryFrom(s session.Summary) *model.SessionSummary {
 	return &model.SessionSummary{
-		ID:         s.ID,
-		CreatedAt:  s.CreatedAt,
-		Tick:       int(s.Tick),
-		Speed:      s.Speed,
-		Money:      s.Money,
-		Reputation: s.Reputation,
-		Deliveries: s.Deliveries,
-		Loaded:     s.Loaded,
+		ID:          s.ID,
+		CreatedAt:   s.CreatedAt,
+		DisplayName: s.DisplayName,
+		Tick:        int(s.Tick),
+		Speed:       s.Speed,
+		Money:       s.Money,
+		Reputation:  s.Reputation,
+		Deliveries:  s.Deliveries,
+		Loaded:      s.Loaded,
 	}
 }
 
@@ -446,4 +472,65 @@ func nonNil(s []string) []string {
 		return []string{}
 	}
 	return s
+}
+
+// moneyHistoryFrom converts the session reader's tick series into the GraphQL
+// model, keeping every points list non-nil.
+func moneyHistoryFrom(rows []session.MoneyHistory) []*model.MoneyHistory {
+	out := make([]*model.MoneyHistory, 0, len(rows))
+	for _, h := range rows {
+		points := make([]*model.MoneyPoint, 0, len(h.Points))
+		for _, p := range h.Points {
+			points = append(points, &model.MoneyPoint{Tick: int(p.Tick), Money: p.Money})
+		}
+		out = append(out, &model.MoneyHistory{
+			SessionID: h.SessionID,
+			CityID:    h.CityID,
+			Points:    points,
+		})
+	}
+	return out
+}
+
+// seriesHistoryFrom converts a generic items/reputation series.
+func seriesHistoryFrom(rows []session.SeriesHistory) []*model.ValueSeries {
+	out := make([]*model.ValueSeries, 0, len(rows))
+	for _, h := range rows {
+		points := make([]*model.ValuePoint, 0, len(h.Points))
+		for _, p := range h.Points {
+			points = append(points, &model.ValuePoint{Tick: int(p.Tick), Value: p.Value})
+		}
+		out = append(out, &model.ValueSeries{
+			SessionID: h.SessionID,
+			CityID:    h.CityID,
+			Points:    points,
+		})
+	}
+	return out
+}
+
+// snapshotView builds the client snapshot and fills in the city metadata a
+// session view cannot know: ownership, draft status, and whether the city is
+// builtin or legacy-ownerless. Without this the session's `city` would claim
+// PUBLISHED for the caller's own draft while `city(id)` says DRAFT.
+func (r *Resolver) snapshotView(ctx context.Context, s session.Snapshot) *model.Snapshot {
+	out := snapshotFrom(s)
+	r.enrichCity(ctx, out.City)
+	return out
+}
+
+// enrichCity overwrites a city view's catalogue metadata. A missing or
+// unreadable catalogue leaves the view as built; the terrain is still valid.
+func (r *Resolver) enrichCity(ctx context.Context, city *model.CityView) {
+	if city == nil || city.ID == "" || r.Catalog == nil {
+		return
+	}
+	entry, err := r.Catalog.Lookup(city.ID)
+	if err != nil {
+		return
+	}
+	city.Status = cityStatusFrom(entry.Status)
+	city.Builtin = entry.Builtin
+	city.Ownerless = !entry.Builtin && entry.OwnerID == ""
+	city.OwnedByMe = entry.OwnerID != "" && entry.OwnerID == viewerID(ctx)
 }

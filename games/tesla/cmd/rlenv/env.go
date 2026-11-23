@@ -14,6 +14,7 @@ const GridPad = 20
 // Observation planes (each GridPad x GridPad, one byte per cell).
 const (
 	planeWall        = iota // building, water, or padding outside the map
+	planeUnknown            // fog of war: the car has never seen this cell
 	planeHome               // H
 	planeCharger            // S
 	planePark               // park not yet visited
@@ -48,9 +49,11 @@ type rewards struct {
 	Death    float64 // run ended without winning
 	Step     float64 // paid on every move
 	Progress float64 // per cell of road-distance closed on the nearest park
+	Illegal  float64 // charged for an illegal action when the env rejects it
+	Reveal   float64 // paid per newly seen cell (only useful with fog)
 }
 
-var defaultRewards = rewards{Park: 1, Victory: 5, Death: -2, Step: -0.01, Progress: 0.05}
+var defaultRewards = rewards{Park: 1, Victory: 5, Death: -2, Step: -0.01, Progress: 0.05, Illegal: 0.05, Reveal: 0.02}
 
 // safetyGamma must match the trainer's discount factor for the battery-safety
 // shaping term to leave the optimal policy unchanged.
@@ -65,7 +68,10 @@ type env struct {
 	lastVisit []int   // step index of the last visit per cell; -1 = never
 	tick      int     // moves since the current run started
 	sincePark int     // moves since the last park was collected
+	fog       int     // visibility radius in cells; 0 = the whole map is known (no fog)
+	known     []bool  // cells the car has seen so far (all true when fog is off)
 	safety    float64 // weight of the battery-safety shaping term; 0 disables it
+	reject    bool    // treat an illegal action as a wasted step instead of letting it crash
 	prevPhi   float64 // safety potential at the previous state
 }
 
@@ -149,9 +155,14 @@ func (e *env) loadRemote(st remoteState, visited [][2]int) error {
 			e.lastVisit[p[1]*w+p[0]] = 0
 		}
 	}
+	e.tick, e.sincePark = 0, 0
+	e.known = make([]bool, len(e.lastVisit))
+	for i := range e.known {
+		e.known[i] = e.fog <= 0
+	}
+	e.revealAround(e.eng.GetState().PlayerPos)
 	e.prevDist = e.nearestParkDist()
 	e.prevPhi = e.potential()
-	e.tick, e.sincePark = 0, 0
 	return nil
 }
 
@@ -165,23 +176,70 @@ func (e *env) load(cfg *engine.GameConfig) error {
 		return err
 	}
 	e.eng, e.cfg = eng, cfg
-	e.prevDist = e.nearestParkDist()
 	e.lastVisit = make([]int, cfg.GridSize*cfg.GridSize)
 	for i := range e.lastVisit {
 		e.lastVisit[i] = -1
 	}
 	e.tick, e.sincePark = 0, 0
+	e.known = make([]bool, len(e.lastVisit))
+	for i := range e.known {
+		e.known[i] = e.fog <= 0
+	}
+	e.revealAround(e.eng.GetState().PlayerPos)
+	e.prevDist = e.nearestParkDist()
 	e.prevPhi = e.potential()
 	e.lastVisit[e.eng.GetState().PlayerPos.Y*cfg.GridSize+e.eng.GetState().PlayerPos.X] = 0
 	return nil
 }
 
 func (e *env) mask() (m [4]bool, any bool) {
-	for i, a := range actions {
-		m[i] = e.eng.CanMove(a)
+	st := e.eng.GetState()
+	w := len(st.Grid[0])
+	for i := range actions {
+		if e.fog > 0 {
+			nx, ny := st.PlayerPos.X+actionDelta[i][0], st.PlayerPos.Y+actionDelta[i][1]
+			if ny < 0 || ny >= len(st.Grid) || nx < 0 || nx >= w {
+				continue // off the map: known to be fatal
+			}
+			if !e.known[ny*w+nx] {
+				m[i] = true // unexplored: allowed, but it may be a wall (that is the risk)
+				any = true
+				continue
+			}
+		}
+		m[i] = e.eng.CanMove(actions[i])
 		any = any || m[i]
 	}
 	return m, any
+}
+
+// revealAround marks cells within the visibility radius of pos as known and
+// returns how many were new.
+func (e *env) revealAround(pos engine.Position) int {
+	if e.fog <= 0 {
+		return 0
+	}
+	st := e.eng.GetState()
+	h, w := len(st.Grid), len(st.Grid[0])
+	n := 0
+	for y := pos.Y - e.fog; y <= pos.Y+e.fog; y++ {
+		for x := pos.X - e.fog; x <= pos.X+e.fog; x++ {
+			if y < 0 || y >= h || x < 0 || x >= w || e.known[y*w+x] {
+				continue
+			}
+			e.known[y*w+x] = true
+			n++
+		}
+	}
+	return n
+}
+
+// sees reports whether the cell is known (always true without fog).
+func (e *env) sees(x, y int) bool {
+	if e.fog <= 0 {
+		return true
+	}
+	return e.known[y*len(e.eng.GetState().Grid[0])+x]
 }
 
 // step applies action a. Illegal actions are masked by the learner, but if one
@@ -191,7 +249,14 @@ func (e *env) step(a int) stepResult {
 	before := st.Score
 	r := e.rw.Step
 	if a >= 0 && a < 4 {
-		e.eng.Move(actions[a])
+		if e.reject && !e.eng.CanMove(actions[a]) {
+			// Maskable learners never choose these; recurrent ones can. Refusing the
+			// input (instead of driving into the wall and dying) keeps training
+			// usable and costs the step, so it cannot inflate the win rate.
+			r -= e.rw.Illegal
+		} else {
+			e.eng.Move(actions[a])
+		}
 	}
 	st = e.eng.GetState()
 
@@ -204,6 +269,9 @@ func (e *env) step(a int) stepResult {
 	}
 	e.tick++
 	e.lastVisit[st.PlayerPos.Y*len(st.Grid[0])+st.PlayerPos.X] = e.tick
+	if seen := e.revealAround(st.PlayerPos); seen > 0 {
+		r += e.rw.Reveal * float64(seen)
+	}
 	if e.safety != 0 {
 		phi := e.potential()
 		r += e.safety * (safetyGamma*phi - e.prevPhi)
@@ -292,7 +360,7 @@ func allows(c engine.Cell, dir string) bool {
 
 // bfsFrom returns road distance (in moves) from (sx,sy) to every cell; -1 means
 // unreachable. Battery is ignored on purpose: that is the learner's problem.
-func bfsFrom(grid [][]engine.Cell, sx, sy int) []int {
+func bfsFrom(grid [][]engine.Cell, sx, sy int, vis func(x, y int) bool) []int {
 	h, w := len(grid), len(grid[0])
 	dist := make([]int, h*w)
 	for i := range dist {
@@ -306,7 +374,7 @@ func bfsFrom(grid [][]engine.Cell, sx, sy int) []int {
 		x, y := cur%w, cur/w
 		for d := range 4 {
 			nx, ny, ok := canStep(grid, x, y, d)
-			if ok && dist[ny*w+nx] < 0 {
+			if ok && vis(nx, ny) && dist[ny*w+nx] < 0 {
 				dist[ny*w+nx] = dist[cur] + 1
 				queue = append(queue, ny*w+nx)
 			}
@@ -320,7 +388,7 @@ func bfsFrom(grid [][]engine.Cell, sx, sy int) []int {
 func (e *env) nearestParkDist() int {
 	st := e.eng.GetState()
 	w := len(st.Grid[0])
-	dist := bfsFrom(st.Grid, st.PlayerPos.X, st.PlayerPos.Y)
+	dist := bfsFrom(st.Grid, st.PlayerPos.X, st.PlayerPos.Y, e.sees)
 	best := -1
 	for y, row := range st.Grid {
 		for x, c := range row {
@@ -364,6 +432,10 @@ func (e *env) observe(buf []byte) {
 				plane(planeDistCharger)[i] = 255
 				continue
 			}
+			if !e.sees(x, y) {
+				plane(planeUnknown)[i] = 1
+				continue
+			}
 			c := st.Grid[y][x]
 			switch c.Type {
 			case engine.Building, engine.Water:
@@ -387,9 +459,9 @@ func (e *env) observe(buf []byte) {
 	plane(planePlayer)[st.PlayerPos.Y*GridPad+st.PlayerPos.X] = 1
 
 	// distance from the car to each cell
-	dp := bfsFrom(st.Grid, st.PlayerPos.X, st.PlayerPos.Y)
+	dp := bfsFrom(st.Grid, st.PlayerPos.X, st.PlayerPos.Y, e.sees)
 	// distance from each cell to the nearest charger (undirected multi-source BFS)
-	dc := chargerDist(st.Grid)
+	dc := chargerDist(st.Grid, e.sees)
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
 			if age := e.tick - e.lastVisit[y*w+x]; e.lastVisit[y*w+x] >= 0 && age < visitForget {
@@ -444,7 +516,7 @@ func (e *env) bestBattery() []int {
 		}
 		for d := range 4 {
 			nx, ny, ok := canStep(st.Grid, x, y, d)
-			if !ok {
+			if !ok || !e.sees(nx, ny) {
 				continue
 			}
 			nb := best[cur] - 1
@@ -463,7 +535,7 @@ func (e *env) bestBattery() []int {
 // chargerDist is the distance from every cell to the nearest home or
 // supercharger, ignoring one-way restrictions (a lower bound on the real trip,
 // which is what you want for a "will my battery last" warning). -1 = none.
-func chargerDist(grid [][]engine.Cell) []int {
+func chargerDist(grid [][]engine.Cell, vis func(x, y int) bool) []int {
 	h, w := len(grid), len(grid[0])
 	dist := make([]int, h*w)
 	for i := range dist {
@@ -487,7 +559,7 @@ func chargerDist(grid [][]engine.Cell) []int {
 			if ny < 0 || ny >= h || nx < 0 || nx >= w || dist[ny*w+nx] >= 0 {
 				continue
 			}
-			if t := grid[ny][nx].Type; t == engine.Building || t == engine.Water {
+			if t := grid[ny][nx].Type; t == engine.Building || t == engine.Water || !vis(nx, ny) {
 				continue
 			}
 			dist[ny*w+nx] = dist[cur] + 1
@@ -504,7 +576,7 @@ func chargerDist(grid [][]engine.Cell) []int {
 func (e *env) potential() float64 {
 	st := e.eng.GetState()
 	w := len(st.Grid[0])
-	d := chargerDist(st.Grid)[st.PlayerPos.Y*w+st.PlayerPos.X]
+	d := chargerDist(st.Grid, e.sees)[st.PlayerPos.Y*w+st.PlayerPos.X]
 	if d < 0 {
 		return -float64(st.MaxBattery) // no charger exists: uniformly bad
 	}

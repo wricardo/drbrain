@@ -1,0 +1,18 @@
+# Tesla RL environment: Go helper binary and Python virtualenv.
+#
+# Run from the repo root with the justfile path:
+#   just -f games/tesla/rl/justfile venv build
+# The game server runs from the repo root (`just start`).
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+default:
+    @just --list
+
+# Build the rlenv helper binary into this directory
+build:
+    go build -o rlenv ../cmd/rlenv
+
+# Create the Python virtualenv and install the requirements
+venv:
+    python3 -m venv .venv
+    .venv/bin/pip install -r requirements.txt

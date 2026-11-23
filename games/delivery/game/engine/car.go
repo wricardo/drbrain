@@ -103,10 +103,14 @@ type Car struct {
 	// capacity check.
 	cargoBoxes int `json:"-"`
 
-	// QueuedMove is the direction this car will attempt on the next tick.
-	// Empty means "stand still". A new command overwrites it, so a fast client
-	// cannot accumulate a backlog of steps.
+	// QueuedMove is the direction this car will attempt on the next tick: the
+	// head of its movement queue. Empty means "stand still".
 	QueuedMove Direction
+	// MoveQueue holds the steps after QueuedMove, in the order they will be
+	// attempted. A car executes at most one step per tick, so a long queue is a
+	// route that unfolds over several ticks. Existing saves have no such field;
+	// its absence is simply an empty queue.
+	MoveQueue []Direction `json:",omitempty"`
 
 	// LastReject records why the most recent attempted move failed, for the
 	// player's benefit. It is cleared on a successful move.
@@ -254,5 +258,51 @@ func NewCar(id, name, class string, pos Position, classes map[string]CarClassCon
 func (c *Car) Clone() *Car {
 	out := *c
 	out.Cargo = append([]string(nil), c.Cargo...)
+	out.MoveQueue = append([]Direction(nil), c.MoveQueue...)
 	return &out
+}
+
+// PendingMoves returns the queued directions in execution order: the step for
+// the next tick first, then the rest of the backlog. It is nil when the car has
+// no pending step.
+func (c *Car) PendingMoves() []Direction {
+	if c.QueuedMove == "" && len(c.MoveQueue) == 0 {
+		return nil
+	}
+	out := make([]Direction, 0, 1+len(c.MoveQueue))
+	if c.QueuedMove != "" {
+		out = append(out, c.QueuedMove)
+	}
+	return append(out, c.MoveQueue...)
+}
+
+// pendingMoveCount is PendingMoves without the allocation, for the queue cap.
+func (c *Car) pendingMoveCount() int {
+	n := len(c.MoveQueue)
+	if c.QueuedMove != "" {
+		n++
+	}
+	return n
+}
+
+// popMove removes the step for the next tick and promotes the backlog. It
+// returns "" when nothing is queued. A rejected step is still spent: the queue
+// is a plan, and a blocked plan must not stall the rest of it forever.
+func (c *Car) popMove() Direction {
+	dir := c.QueuedMove
+	if len(c.MoveQueue) > 0 {
+		c.QueuedMove = c.MoveQueue[0]
+		c.MoveQueue = c.MoveQueue[1:]
+	} else {
+		c.QueuedMove = ""
+	}
+	return dir
+}
+
+// clearMoves drops the whole movement plan. Towing and a stale route both need
+// this: a preloaded backlog must never steer a car after the player has
+// abandoned the plan.
+func (c *Car) clearMoves() {
+	c.QueuedMove = ""
+	c.MoveQueue = nil
 }

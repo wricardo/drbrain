@@ -56,7 +56,7 @@ var _ SessionPersistence = (*StorePersistence)(nil)
 
 // NewPostgresPersistence opens the PostgreSQL-backed store.
 func NewPostgresPersistence(pool *pgxpool.Pool, maxSessions int) (*StorePersistence, error) {
-	store, err := sessionstore.Open(sessionstore.Options{Pool: pool, MaxSessions: maxSessions})
+	store, err := sessionstore.Open(sessionstore.Options{Pool: pool, Game: "music", MaxSessions: maxSessions})
 	if err != nil {
 		return nil, err
 	}

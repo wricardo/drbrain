@@ -10,37 +10,77 @@ import (
 	"time"
 )
 
+// One purchasable vehicle class, with this session's unlock and affordability
+// flags.
 type CarClassView struct {
+	// Class name accepted by buyCar.
 	ClassName string `json:"className"`
-	Price     int    `json:"price"`
+	// Purchase price in dollars.
+	Price int `json:"price"`
 	// Hold size in boxes.
-	Capacity   int `json:"capacity"`
+	Capacity int `json:"capacity"`
+	// Charge capacity of this class.
 	MaxBattery int `json:"maxBattery"`
-	StepCost   int `json:"stepCost"`
+	// Battery spent per road step for this class; ground tiles add the city's
+	// ground surcharge.
+	StepCost int `json:"stepCost"`
 	// True once a build has granted this class, or it never needed one.
-	Unlocked   bool `json:"unlocked"`
+	Unlocked bool `json:"unlocked"`
+	// True when the current balance covers the price.
 	Affordable bool `json:"affordable"`
 }
 
+// One car's income, expenses and net for a window of the statement.
+type CarLedgerView struct {
+	// Car id these totals are attributed to.
+	CarID string `json:"carId"`
+	// Car display name.
+	CarName string `json:"carName"`
+	// Positive magnitude of money in attributed to this car.
+	Income int `json:"income"`
+	// Positive magnitude of money out attributed to this car.
+	Expenses int `json:"expenses"`
+	// income minus expenses.
+	Net int `json:"net"`
+	// Statement rows behind these totals.
+	Rows int `json:"rows"`
+}
+
+// One vehicle in the fleet: position, charge, hold and what it is doing.
 type CarView struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	ClassName  string `json:"className"`
-	X          int    `json:"x"`
-	Y          int    `json:"y"`
-	Battery    int    `json:"battery"`
-	MaxBattery int    `json:"maxBattery"`
-	BatteryPct int    `json:"batteryPct"`
+	// Stable car id, used by every car mutation.
+	ID string `json:"id"`
+	// Display name.
+	Name string `json:"name"`
+	// Vehicle class: scooter, van or truck.
+	ClassName string `json:"className"`
+	// Column on the grid (right is +x).
+	X int `json:"x"`
+	// Row on the grid (down is +y).
+	Y int `json:"y"`
+	// Current battery charge.
+	Battery int `json:"battery"`
+	// Charge capacity of this class.
+	MaxBattery int `json:"maxBattery"`
+	// Charge as an integer percentage 0-100.
+	BatteryPct int `json:"batteryPct"`
 	// Hold size in boxes.
 	Capacity int `json:"capacity"`
 	// Boxes currently in the hold.
 	Load int `json:"load"`
 	// Boxes still free.
-	FreeBoxes int      `json:"freeBoxes"`
-	Cargo     []string `json:"cargo"`
-	State     CarState `json:"state"`
-	// The move queued for the next tick, if any.
+	FreeBoxes int `json:"freeBoxes"`
+	// Order ids whose boxes are in the hold.
+	Cargo []string `json:"cargo"`
+	// Coarse status shown by the UI.
+	State CarState `json:"state"`
+	// The move queued for the next tick, if any. This is the head of the car's
+	// movement queue; steps after it are listed in `queuedMoves`.
 	QueuedMove *Direction `json:"queuedMove,omitempty"`
+	// The full movement plan in execution order: the step for the next tick first,
+	// then the backlog. A car executes at most one step per tick, so a long list
+	// unfolds over several ticks. Empty when nothing is queued.
+	QueuedMoves []Direction `json:"queuedMoves"`
 	// Why the most recent move was rejected, if it was.
 	LastReject *RejectReason `json:"lastReject,omitempty"`
 	// Unpaid balance of a charging session in progress, in dollars. Zero when the
@@ -50,23 +90,31 @@ type CarView struct {
 
 // A window of the city around one car, for cheap polling.
 type CarWindow struct {
-	Car     *CarView `json:"car"`
-	RowSpan int      `json:"rowSpan"`
-	ColSpan int      `json:"colSpan"`
+	// The car at the centre of the window.
+	Car *CarView `json:"car"`
+	// Number of rows in the window (shrinks at map edges).
+	RowSpan int `json:"rowSpan"`
+	// Number of glyph columns in the window (shrinks at map edges).
+	ColSpan int `json:"colSpan"`
 	// Row-major glyph rows for the window only.
 	Rows []string `json:"rows"`
 	// Origin of rows[0][0] in city coordinates.
-	OriginX      int          `json:"originX"`
-	OriginY      int          `json:"originY"`
-	VisibleCars  []*CarView   `json:"visibleCars"`
+	OriginX int `json:"originX"`
+	// City row of rows[0].
+	OriginY int `json:"originY"`
+	// Cars inside the window, including the centre car.
+	VisibleCars []*CarView `json:"visibleCars"`
+	// Orders whose kitchen or customer lies inside the window.
 	NearbyOrders []*OrderView `json:"nearbyOrders"`
 }
 
 // One movement through the player's checking account.
 type CashEntryView struct {
 	// Stable, monotonic id within the session. Use it as the list key.
-	Seq  int      `json:"seq"`
-	Tick int      `json:"tick"`
+	Seq int `json:"seq"`
+	// World tick the movement was recorded at.
+	Tick int `json:"tick"`
+	// What the movement is.
 	Kind CashKind `json:"kind"`
 	// Economic bucket used by the monthly report.
 	Category CashCategory `json:"category"`
@@ -77,8 +125,10 @@ type CashEntryView struct {
 	// Running balance after this movement.
 	Balance int `json:"balance"`
 	// The car this movement belongs to, when it belongs to one.
-	CarID   *string `json:"carId,omitempty"`
+	CarID *string `json:"carId,omitempty"`
+	// Car display name when carId is set.
 	CarName *string `json:"carName,omitempty"`
+	// Order this movement belongs to, for delivery income and fines.
 	OrderID *string `json:"orderId,omitempty"`
 	// Short human-readable detail, e.g. "pizza to Rosa's" or "fleet upkeep".
 	Memo string `json:"memo"`
@@ -86,9 +136,12 @@ type CashEntryView struct {
 
 // One entry in the city catalogue: a published city or the caller's own draft.
 type CityInfo struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	GridSize int    `json:"gridSize"`
+	// City id used by `city`, `cityConfig` and `createSession(cityId:)`.
+	ID string `json:"id"`
+	// Display name.
+	Name string `json:"name"`
+	// Width and height of the square grid.
+	GridSize int `json:"gridSize"`
 	// DRAFT cities are visible only to their owner. The owner may play and publish a draft;
 	// another player can neither see nor select it.
 	Status CityStatus `json:"status"`
@@ -104,15 +157,24 @@ type CityInfo struct {
 // The outcome of validateCity: valid means the JSON parses into a city; publishable means the
 // full publication gate (the same validation the server runs at startup) accepts it.
 type CityValidationResult struct {
-	Valid       bool     `json:"valid"`
-	Publishable bool     `json:"publishable"`
-	Issues      []string `json:"issues"`
+	// True when the JSON parses into a city config.
+	Valid bool `json:"valid"`
+	// True when the full publication gate (grid, districts, orders, reachability)
+	// accepts the city.
+	Publishable bool `json:"publishable"`
+	// Human-readable validation failures; empty when publishable.
+	Issues []string `json:"issues"`
 }
 
+// The city as one session sees it: explored districts, waiting customers and the
+// static facilities.
 type CityView struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	GridSize int    `json:"gridSize"`
+	// City id.
+	ID string `json:"id"`
+	// Display name.
+	Name string `json:"name"`
+	// Width and height of the square grid.
+	GridSize int `json:"gridSize"`
 	// DRAFT cities are visible only to their owner. The owner may play a draft; another
 	// player can neither see nor select it.
 	Status CityStatus `json:"status"`
@@ -128,31 +190,41 @@ type CityView struct {
 	// delivery.
 	Rows []string `json:"rows"`
 	// Tiles still unexplored. Always 0 on the static city query, which reveals all.
-	HiddenTiles int          `json:"hiddenTiles"`
-	Kitchens    []*PointView `json:"kitchens"`
+	HiddenTiles int `json:"hiddenTiles"`
+	// Pickup points (restaurants).
+	Kitchens []*PointView `json:"kitchens"`
 	// Customers currently waiting for a delivery. A customer appears when it
 	// raises an order and leaves once that order is delivered or expires; a house
 	// with nobody waiting is not listed. Empty on the static city query, which
 	// shows authored houses as 'h' and carries no session state.
 	Customers []*PointView `json:"customers"`
-	Depots    []*PointView `json:"depots"`
-	Chargers  []*PointView `json:"chargers"`
+	// Depots: the only place cars can be bought and where charging is fastest.
+	Depots []*PointView `json:"depots"`
+	// Standalone charging points (slower than a depot).
+	Chargers []*PointView `json:"chargers"`
 }
 
 // A stretch of street closed for works.
 type ClosureView struct {
-	ID        string `json:"id"`
-	Reason    string `json:"reason"`
-	StartTick int    `json:"startTick"`
-	EndTick   int    `json:"endTick"`
+	// Closure id, used by events and the UI.
+	ID string `json:"id"`
+	// Why the street is closed, e.g. "street works".
+	Reason string `json:"reason"`
+	// Tick the closure begins.
+	StartTick int `json:"startTick"`
+	// Tick the closure ends (reopens at this tick).
+	EndTick int `json:"endTick"`
 	// Ticks until it reopens; negative when it has already ended.
 	TicksLeft int `json:"ticksLeft"`
 	// The closed tiles, so a client can draw them without guessing.
 	Tiles []*PointView `json:"tiles"`
 	// Bounding box of the closed tiles, for camera moves.
 	MinX int `json:"minX"`
+	// Top row of the closure.
 	MinY int `json:"minY"`
+	// Rightmost column of the closure.
 	MaxX int `json:"maxX"`
+	// Bottom row of the closure.
 	MaxY int `json:"maxY"`
 }
 
@@ -161,81 +233,96 @@ type ClosureView struct {
 // change the session (and attach it to an account later), while the session id
 // alone stays enough to read it.
 type CreateSessionResult struct {
+	// The new session's first snapshot.
 	Session *Snapshot `json:"session"`
 	// Secret that proves you created this session; keep it private.
 	OwnerToken string `json:"ownerToken"`
 }
 
+// The retained event feed with the metadata a poller needs to tell a quiet
+// stretch from a gap it missed.
+type EventFeed struct {
+	// Matching events, oldest first, capped at the requested limit (newest kept).
+	Events []*EventView `json:"events"`
+	// Tick of the oldest retained event, or the current tick when the feed is
+	// empty.
+	OldestTick int `json:"oldestTick"`
+	// True when the requested sinceTick predates the retained feed, so events
+	// before oldestTick are gone rather than absent.
+	Truncated bool `json:"truncated"`
+	// How many events the feed can retain (the city's max_events).
+	Capacity int `json:"capacity"`
+}
+
+// One entry in the session's retained activity feed.
 type EventView struct {
+	// Tick the event was recorded at.
 	Tick int `json:"tick"`
 	// One of the car_* / order_* / city_growth / closure_* names the engine emits.
-	Type    string `json:"type"`
+	Type string `json:"type"`
+	// Human-readable description of what happened.
 	Message string `json:"message"`
 	// Null for world events (spawns, builds, closures); set for anything a car caused.
 	CarID *string `json:"carId,omitempty"`
 	// Position of the event, or 0,0 when it has none — non-null, so 0,0 is ambiguous.
 	X int `json:"x"`
+	// Row of the event, 0 when it has no position.
 	Y int `json:"y"`
 }
 
+// One scheduled city-growth stage.
 type GrowthView struct {
-	ID          string `json:"id"`
-	Tick        int    `json:"tick"`
-	Title       string `json:"title"`
+	// Stage id, stable within a city.
+	ID string `json:"id"`
+	// Tick at which the stage applies.
+	Tick int `json:"tick"`
+	// Short name, e.g. "Harbour Gate".
+	Title string `json:"title"`
+	// What the stage changes: districts revealed, kitchens/customers added,
+	// chargers or depot bays built.
 	Description string `json:"description"`
-	Done        bool   `json:"done"`
+	// True once the stage has applied.
+	Done bool `json:"done"`
 }
 
+// Liveness of the delivery subsystem inside the process.
 type Health struct {
+	// "ok" while sessions can be created and served.
 	Status string `json:"status"`
 }
 
+// Delivered orders for one item, counted as orders rather than boxes.
 type ItemCount struct {
-	Item  string `json:"item"`
-	Count int    `json:"count"`
+	// Item code.
+	Item string `json:"item"`
+	// Orders delivered for this item.
+	Count int `json:"count"`
 }
 
-type LedgerView struct {
-	// Spendable balance. Buying a car or build reduces it.
+// A session's money-by-tick series, read from the indexed delivery history
+// projection. Points are downsampled to at most the requested maxPoints; when the
+// window reaches the session's current tick, the last point is its current
+// balance.
+type MoneyHistory struct {
+	// Session the series belongs to.
+	SessionID string `json:"sessionId"`
+	// City the session was created from.
+	CityID string `json:"cityId"`
+	// Sampled balances, oldest first.
+	Points []*MoneyPoint `json:"points"`
+}
+
+// One balance point in a session's money-by-tick curve.
+type MoneyPoint struct {
+	// Tick of the sampled balance.
+	Tick int `json:"tick"`
+	// Balance at that tick, in dollars.
 	Money int `json:"money"`
-	// Lifetime earnings; never decreases. Achievements read this, not money.
-	MoneyEarned int `json:"moneyEarned"`
-	// 0-5, clamped. Grants and deliveries cannot push it past the scale.
-	Reputation float64 `json:"reputation"`
-	// On-time deliveries only. A late delivery increments lateDeliveries instead.
-	Deliveries     int `json:"deliveries"`
-	LateDeliveries int `json:"lateDeliveries"`
-	ExpiredOrders  int `json:"expiredOrders"`
-	// Every order ever raised, including the ones that later expired.
-	OrdersSpawned int `json:"ordersSpawned"`
-	// Consecutive on-time deliveries. Both a late delivery and an expiry reset it to 0.
-	OnTimeStreak int `json:"onTimeStreak"`
-	Tows         int `json:"tows"`
-	// Delivered ORDERS per item, not boxes: a two-box delivery adds 1.
-	DeliveriesByItem []*ItemCount `json:"deliveriesByItem"`
-	// Lifetime fleet running cost paid, cumulative. Zero when the map disables
-	// upkeep. Not subtracted from moneyEarned: upkeep is a cost, not negative
-	// income, and progression is measured by the city's own growth schedule.
-	UpkeepPaid int `json:"upkeepPaid"`
-	// Lifetime spend on tows, cumulative. A tow costs towFeePerTile x route distance, floored at towFeeMin, and is clamped to the balance.
-	TowFees int `json:"towFees"`
-	// What the fleet would be charged on the next upkeep interval, given where the
-	// cars are standing right now. A car on a depot tile contributes zero. Lets a
-	// client show the drain before it lands rather than only after.
-	UpkeepDue int `json:"upkeepDue"`
-	// Checking-account statement, newest first: every movement of money with the
-	// car it belongs to when the movement is car-specific. Snapshots carry the
-	// most recent rows; the engine retains the full statement with the save. The
-	// live subscription carries fewer rows than a query.
-	CashEntries []*CashEntryView `json:"cashEntries"`
-	// Length of one accounting month in simulation ticks.
-	TicksPerMonth int `json:"ticksPerMonth"`
-	// Monthly income/expense report, newest first. Snapshots carry at most 12
-	// months; quiet months are included as zero rows so month numbers do not skip.
-	Months []*MonthView `json:"months"`
 }
 
+// One economic bucket's totals within a month.
 type MonthCategoryView struct {
+	// Bucket this row describes.
 	Category CashCategory `json:"category"`
 	// Positive magnitude in this category, or zero.
 	Income int `json:"income"`
@@ -246,36 +333,52 @@ type MonthCategoryView struct {
 // One accounting month of income and expenses.
 type MonthView struct {
 	// One-based month number. Month 1 covers ticks 0 through ticksPerMonth-1.
-	Index     int `json:"index"`
+	Index int `json:"index"`
+	// First tick in the month (inclusive).
 	StartTick int `json:"startTick"`
-	EndTick   int `json:"endTick"`
+	// Last tick in the month (inclusive).
+	EndTick int `json:"endTick"`
 	// Positive magnitude of money in.
 	Income int `json:"income"`
 	// Positive magnitude of money out.
 	Expenses int `json:"expenses"`
 	// income minus expenses.
-	Net        int                  `json:"net"`
+	Net int `json:"net"`
+	// Per-bucket totals for the month, in category order.
 	Categories []*MonthCategoryView `json:"categories"`
 }
 
+// Delivery writes and lifecycle. Every session mutation requires the creator's
+// owner token or the owning account; reads stay public.
 type Mutation struct {
 }
 
+// One delivery job: what was ordered, where it goes, its deadline and pay.
 type OrderView struct {
-	ID       string `json:"id"`
-	Item     string `json:"item"`
+	// Order id used by assignOrder/unassignOrder.
+	ID string `json:"id"`
+	// Item code the customer ordered (e.g. "pizza").
+	Item string `json:"item"`
+	// Item display name.
 	ItemName string `json:"itemName"`
 	// How many boxes the customer asked for.
-	Quantity     int        `json:"quantity"`
-	KitchenID    string     `json:"kitchenId"`
-	KitchenName  string     `json:"kitchenName"`
-	CustomerID   string     `json:"customerId"`
-	CustomerName string     `json:"customerName"`
-	State        OrderState `json:"state"`
+	Quantity int `json:"quantity"`
+	// Kitchen that supplies it.
+	KitchenID string `json:"kitchenId"`
+	// Kitchen display name.
+	KitchenName string `json:"kitchenName"`
+	// Customer that placed it.
+	CustomerID string `json:"customerId"`
+	// Customer display name.
+	CustomerName string `json:"customerName"`
+	// Lifecycle state; PENDING/ASSIGNED/PICKED_UP are live, DONE/EXPIRED are settled.
+	State OrderState `json:"state"`
 	// The car holding or holding-to-be. Kept after DONE, so read it as history once state is terminal.
-	AssignedCar  *string `json:"assignedCar,omitempty"`
-	CreatedTick  int     `json:"createdTick"`
-	DeadlineTick int     `json:"deadlineTick"`
+	AssignedCar *string `json:"assignedCar,omitempty"`
+	// Tick the customer raised the order.
+	CreatedTick int `json:"createdTick"`
+	// Tick by which the delivery must be completed.
+	DeadlineTick int `json:"deadlineTick"`
 	// Ticks until the deadline. Signed: negative means already past it but not yet swept.
 	TicksLeft int `json:"ticksLeft"`
 	// What the job would pay if delivered now.
@@ -286,35 +389,62 @@ type OrderView struct {
 	Late bool `json:"late"`
 }
 
+// A named location on the grid: kitchen, depot, charger or waiting customer.
 type PointView struct {
-	ID   string `json:"id"`
+	// Stable id used by orders, builds and assignments.
+	ID string `json:"id"`
+	// Display name.
 	Name string `json:"name"`
-	X    int    `json:"x"`
-	Y    int    `json:"y"`
+	// Column on the grid (right is +x).
+	X int `json:"x"`
+	// Row on the grid (down is +y).
+	Y int `json:"y"`
 }
 
+// Delivery reads: cities, saves, live snapshots, event deltas and money history.
+// Reads are public; mutations are creator-only.
 type Query struct {
 }
 
 type SessionClaimInput struct {
-	SessionID  string `json:"sessionID"`
+	// Session id to attach.
+	SessionID string `json:"sessionID"`
+	// The secret createSession returned for that session.
 	OwnerToken string `json:"ownerToken"`
 }
 
+// Per-claim outcome; claims are answered independently.
 type SessionClaimResult struct {
-	SessionID string      `json:"sessionID"`
-	Status    ClaimStatus `json:"status"`
+	// The session id from the request.
+	SessionID string `json:"sessionID"`
+	// Whether the save now belongs to the caller.
+	Status ClaimStatus `json:"status"`
 }
 
+// One row in a save picker. Counters come from the stored metadata, so listing
+// does not decode every session payload.
 type SessionSummary struct {
-	ID         string    `json:"id"`
-	CreatedAt  time.Time `json:"createdAt"`
-	Tick       int       `json:"tick"`
-	Speed      int       `json:"speed"`
-	Money      int       `json:"money"`
-	Reputation float64   `json:"reputation"`
-	Deliveries int       `json:"deliveries"`
-	Loaded     bool      `json:"loaded"`
+	// Session id; also the save's primary key.
+	ID string `json:"id"`
+	// When the save was created (UTC).
+	CreatedAt time.Time `json:"createdAt"`
+	// The player's name for this save; empty when unnamed, in which case a client
+	// shows the city name.
+	DisplayName string `json:"displayName"`
+	// World tick the save was last written at.
+	Tick int `json:"tick"`
+	// Clock multiplier for a loaded session. An unloaded save reports 0
+	// (paused), because a stored save has no running clock.
+	Speed int `json:"speed"`
+	// Spendable balance in dollars.
+	Money int `json:"money"`
+	// Lifetime reputation, 0-5.
+	Reputation float64 `json:"reputation"`
+	// On-time deliveries completed.
+	Deliveries int `json:"deliveries"`
+	// True when the session is currently held in memory; false means it will be
+	// loaded from PostgreSQL on the next read.
+	Loaded bool `json:"loaded"`
 	// The owning player's public name: an account's display name, "Private player"
 	// when its profile is private, or "Guest" for a session with no account.
 	OwnerDisplayName string `json:"ownerDisplayName"`
@@ -323,42 +453,125 @@ type SessionSummary struct {
 	OwnerHandle *string `json:"ownerHandle,omitempty"`
 	// True when the session belongs to the signed-in viewer's account.
 	Mine bool `json:"mine"`
-}
-
-// The full client view of a session at one tick.
-type Snapshot struct {
-	ID        string    `json:"id"`
-	CreatedAt time.Time `json:"createdAt"`
-	Tick      int       `json:"tick"`
-	// Clock multiplier: 0 paused, 1/2/4 running.
-	Speed  int  `json:"speed"`
-	Paused bool `json:"paused"`
-	// Wall-clock length of one tick at 1x, from the city config.
-	TickMs int          `json:"tickMs"`
-	City   *CityView    `json:"city"`
-	Cars   []*CarView   `json:"cars"`
-	Orders []*OrderView `json:"orders"`
-	Ledger *LedgerView  `json:"ledger"`
-	// The purchasable catalogue with per-session unlock and affordability flags, cheapest first.
-	CarClasses []*CarClassView `json:"carClasses"`
-	// The city's scheduled expansion: stages in tick order, each with its fire
-	// tick and whether it has already applied. Read-only — the city grows on its
-	// own timeline, not through purchases.
-	Growth []*GrowthView `json:"growth"`
-	Events []*EventView  `json:"events"`
-	// Street works currently closing part of the map.
-	Closures []*ClosureView `json:"closures"`
+	// Opaque cursor naming this row's position in the requested sort order. Pass
+	// the last row's cursor as `sessions(cursor:)` to fetch the next page without
+	// skipping or repeating rows that share a sort value.
+	Cursor string `json:"cursor"`
 }
 
 type Subscription struct {
 }
 
+// One value at a tick in a non-money analytics series.
+type ValuePoint struct {
+	// Tick of the sample.
+	Tick int `json:"tick"`
+	// Sample value: cumulative boxes for itemsHistory, reputation for
+	// reputationHistory.
+	Value float64 `json:"value"`
+}
+
+// One session's downsampled items-or-reputation series.
+type ValueSeries struct {
+	// Session the series belongs to.
+	SessionID string `json:"sessionId"`
+	// City the session was created from.
+	CityID string `json:"cityId"`
+	// Sampled values, oldest first.
+	Points []*ValuePoint `json:"points"`
+}
+
+// Cumulative operational series available from metricHistory.
+type AnalyticsMetric string
+
+const (
+	// On-time orders completed, counted at delivery tick.
+	AnalyticsMetricDeliveries AnalyticsMetric = "DELIVERIES"
+	// Orders completed after their deadline, counted at delivery tick.
+	AnalyticsMetricLateDeliveries AnalyticsMetric = "LATE_DELIVERIES"
+	// Orders that expired undelivered, counted just after their deadline.
+	AnalyticsMetricExpiredOrders AnalyticsMetric = "EXPIRED_ORDERS"
+	// Every order ever raised, counted at creation tick.
+	AnalyticsMetricOrdersCreated AnalyticsMetric = "ORDERS_CREATED"
+	// Cash paid by completed orders (on time and late), counted at delivery tick.
+	AnalyticsMetricDeliveryIncome AnalyticsMetric = "DELIVERY_INCOME"
+	// Cash fined for expired orders, as a positive spend magnitude.
+	AnalyticsMetricOrderFines AnalyticsMetric = "ORDER_FINES"
+	// Fleet upkeep paid, as a positive spend magnitude.
+	AnalyticsMetricUpkeepSpend AnalyticsMetric = "UPKEEP_SPEND"
+	// Charging fees paid, as a positive spend magnitude.
+	AnalyticsMetricChargingSpend AnalyticsMetric = "CHARGING_SPEND"
+	// Tow fees paid, as a positive spend magnitude.
+	AnalyticsMetricTowSpend AnalyticsMetric = "TOW_SPEND"
+)
+
+var AllAnalyticsMetric = []AnalyticsMetric{
+	AnalyticsMetricDeliveries,
+	AnalyticsMetricLateDeliveries,
+	AnalyticsMetricExpiredOrders,
+	AnalyticsMetricOrdersCreated,
+	AnalyticsMetricDeliveryIncome,
+	AnalyticsMetricOrderFines,
+	AnalyticsMetricUpkeepSpend,
+	AnalyticsMetricChargingSpend,
+	AnalyticsMetricTowSpend,
+}
+
+func (e AnalyticsMetric) IsValid() bool {
+	switch e {
+	case AnalyticsMetricDeliveries, AnalyticsMetricLateDeliveries, AnalyticsMetricExpiredOrders, AnalyticsMetricOrdersCreated, AnalyticsMetricDeliveryIncome, AnalyticsMetricOrderFines, AnalyticsMetricUpkeepSpend, AnalyticsMetricChargingSpend, AnalyticsMetricTowSpend:
+		return true
+	}
+	return false
+}
+
+func (e AnalyticsMetric) String() string {
+	return string(e)
+}
+
+func (e *AnalyticsMetric) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = AnalyticsMetric(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid AnalyticsMetric", str)
+	}
+	return nil
+}
+
+func (e AnalyticsMetric) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *AnalyticsMetric) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e AnalyticsMetric) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+// What a car is doing right now.
 type CarState string
 
 const (
-	CarStateIdle     CarState = "IDLE"
+	// Empty hold, not on a charger, with charge left.
+	CarStateIdle CarState = "IDLE"
+	// Carrying at least one box.
 	CarStateCarrying CarState = "CARRYING"
+	// On a depot or charger with battery below full. Depot charging is free;
+	// standalone chargers bill per tick.
 	CarStateCharging CarState = "CHARGING"
+	// Out of battery away from a charger; must be towed.
 	CarStateStranded CarState = "STRANDED"
 )
 
@@ -412,19 +625,31 @@ func (e CarState) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// Economic bucket used by the monthly report. Income buckets are positive;
+// expense buckets are negative.
 type CashCategory string
 
 const (
-	CashCategoryOpening        CashCategory = "OPENING"
+	// Opening balance.
+	CashCategoryOpening CashCategory = "OPENING"
+	// Delivery income, on time or late.
 	CashCategoryDeliveryIncome CashCategory = "DELIVERY_INCOME"
-	CashCategoryRewards        CashCategory = "REWARDS"
-	CashCategoryOrderFines     CashCategory = "ORDER_FINES"
-	CashCategoryUpkeep         CashCategory = "UPKEEP"
-	CashCategoryCharging       CashCategory = "CHARGING"
-	CashCategoryTows           CashCategory = "TOWS"
-	CashCategoryCarPurchases   CashCategory = "CAR_PURCHASES"
-	CashCategoryBuilds         CashCategory = "BUILDS"
-	CashCategoryOther          CashCategory = "OTHER"
+	// Rewards and grants.
+	CashCategoryRewards CashCategory = "REWARDS"
+	// Fines for expired orders.
+	CashCategoryOrderFines CashCategory = "ORDER_FINES"
+	// Fleet running cost.
+	CashCategoryUpkeep CashCategory = "UPKEEP"
+	// Charging fees.
+	CashCategoryCharging CashCategory = "CHARGING"
+	// Tow fees.
+	CashCategoryTows CashCategory = "TOWS"
+	// Vehicle purchases.
+	CashCategoryCarPurchases CashCategory = "CAR_PURCHASES"
+	// Builds and city upgrades.
+	CashCategoryBuilds CashCategory = "BUILDS"
+	// Anything that does not fit another bucket.
+	CashCategoryOther CashCategory = "OTHER"
 )
 
 var AllCashCategory = []CashCategory{
@@ -483,19 +708,31 @@ func (e CashCategory) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// Specific reason for a checking-account movement. The category groups these for
+// the monthly report.
 type CashKind string
 
 const (
-	CashKindOpening      CashKind = "OPENING"
-	CashKindDelivery     CashKind = "DELIVERY"
+	// Starting balance granted with the save.
+	CashKindOpening CashKind = "OPENING"
+	// On-time delivery income.
+	CashKindDelivery CashKind = "DELIVERY"
+	// Late delivery income at the reduced multiplier.
 	CashKindLateDelivery CashKind = "LATE_DELIVERY"
-	CashKindOrderFine    CashKind = "ORDER_FINE"
-	CashKindUpkeep       CashKind = "UPKEEP"
-	CashKindCharging     CashKind = "CHARGING"
-	CashKindTow          CashKind = "TOW"
-	CashKindCarPurchase  CashKind = "CAR_PURCHASE"
-	CashKindBuild        CashKind = "BUILD"
-	CashKindGrant        CashKind = "GRANT"
+	// Fine for an expired order.
+	CashKindOrderFine CashKind = "ORDER_FINE"
+	// Periodic fleet running cost.
+	CashKindUpkeep CashKind = "UPKEEP"
+	// Paid charging on a charger or depot.
+	CashKindCharging CashKind = "CHARGING"
+	// Tow back to a depot.
+	CashKindTow CashKind = "TOW"
+	// Vehicle purchase.
+	CashKindCarPurchase CashKind = "CAR_PURCHASE"
+	// Build or city upgrade purchase.
+	CashKindBuild CashKind = "BUILD"
+	// Reward or grant (achievement, opening bonus).
+	CashKindGrant CashKind = "GRANT"
 )
 
 var AllCashKind = []CashKind{
@@ -554,6 +791,8 @@ func (e CashKind) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// Lifecycle of a city: a draft is private to its owner, a published city is
+// selectable by everyone.
 type CityStatus string
 
 const (
@@ -611,6 +850,7 @@ func (e CityStatus) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// Outcome of asking to attach a guest save to the signed-in account.
 type ClaimStatus string
 
 const (
@@ -672,13 +912,19 @@ func (e ClaimStatus) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// One grid step. Coordinates are x to the right, y downward, matching
+// `grid[y][x]`.
 type Direction string
 
 const (
+	// One row up (y-1).
 	DirectionNorth Direction = "NORTH"
+	// One row down (y+1).
 	DirectionSouth Direction = "SOUTH"
-	DirectionEast  Direction = "EAST"
-	DirectionWest  Direction = "WEST"
+	// One column right (x+1).
+	DirectionEast Direction = "EAST"
+	// One column left (x-1).
+	DirectionWest Direction = "WEST"
 )
 
 var AllDirection = []Direction{
@@ -731,14 +977,20 @@ func (e Direction) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// Order lifecycle. Live states can still be assigned and delivered.
 type OrderState string
 
 const (
-	OrderStatePending  OrderState = "PENDING"
+	// Raised by a customer, no car assigned.
+	OrderStatePending OrderState = "PENDING"
+	// A car is assigned but the boxes are still at the kitchen.
 	OrderStateAssigned OrderState = "ASSIGNED"
+	// The car picked the boxes up and is carrying them.
 	OrderStatePickedUp OrderState = "PICKED_UP"
-	OrderStateDone     OrderState = "DONE"
-	OrderStateExpired  OrderState = "EXPIRED"
+	// Delivered, on time or late.
+	OrderStateDone OrderState = "DONE"
+	// The deadline passed before delivery.
+	OrderStateExpired OrderState = "EXPIRED"
 )
 
 var AllOrderState = []OrderState{
@@ -792,14 +1044,22 @@ func (e OrderState) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// Why the engine rejected a queued move. A rejection does not advance the clock;
+// the car stays where it is. Checks run in a fixed order and the first failure is
+// reported.
 type RejectReason string
 
 const (
+	// The queued direction is not one of the four grid steps.
 	RejectReasonBadDirection RejectReason = "BAD_DIRECTION"
-	RejectReasonOffGrid      RejectReason = "OFF_GRID"
-	RejectReasonBlocked      RejectReason = "BLOCKED"
-	RejectReasonNoBattery    RejectReason = "NO_BATTERY"
-	// The tile is closed for street works.
+	// The destination is outside the grid.
+	RejectReasonOffGrid RejectReason = "OFF_GRID"
+	// Water, building or an unexplored tile. A street closure reports CLOSED.
+	RejectReasonBlocked RejectReason = "BLOCKED"
+	// The car has no charge left, or the step costs more than it has.
+	RejectReasonNoBattery RejectReason = "NO_BATTERY"
+	// The tile is closed for street works. A car already standing on it may
+	// still drive off.
 	RejectReasonClosed RejectReason = "CLOSED"
 	// Another car already holds that tile, or it is at capacity.
 	RejectReasonOccupied RejectReason = "OCCUPIED"
@@ -852,6 +1112,67 @@ func (e *RejectReason) UnmarshalJSON(b []byte) error {
 }
 
 func (e RejectReason) MarshalJSON() ([]byte, error) {
+	var buf bytes.Buffer
+	e.MarshalGQL(&buf)
+	return buf.Bytes(), nil
+}
+
+// How to order the session list.
+type SessionSort string
+
+const (
+	// Newest save first. The default, and the only order that needs no counters.
+	SessionSortCreatedAt SessionSort = "CREATED_AT"
+	// Highest world tick first.
+	SessionSortTick SessionSort = "TICK"
+	// Highest spendable balance first.
+	SessionSortMoney SessionSort = "MONEY"
+)
+
+var AllSessionSort = []SessionSort{
+	SessionSortCreatedAt,
+	SessionSortTick,
+	SessionSortMoney,
+}
+
+func (e SessionSort) IsValid() bool {
+	switch e {
+	case SessionSortCreatedAt, SessionSortTick, SessionSortMoney:
+		return true
+	}
+	return false
+}
+
+func (e SessionSort) String() string {
+	return string(e)
+}
+
+func (e *SessionSort) UnmarshalGQL(v any) error {
+	str, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("enums must be strings")
+	}
+
+	*e = SessionSort(str)
+	if !e.IsValid() {
+		return fmt.Errorf("%s is not a valid SessionSort", str)
+	}
+	return nil
+}
+
+func (e SessionSort) MarshalGQL(w io.Writer) {
+	fmt.Fprint(w, strconv.Quote(e.String()))
+}
+
+func (e *SessionSort) UnmarshalJSON(b []byte) error {
+	s, err := strconv.Unquote(string(b))
+	if err != nil {
+		return err
+	}
+	return e.UnmarshalGQL(s)
+}
+
+func (e SessionSort) MarshalJSON() ([]byte, error) {
 	var buf bytes.Buffer
 	e.MarshalGQL(&buf)
 	return buf.Bytes(), nil

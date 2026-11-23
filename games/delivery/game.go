@@ -5,6 +5,8 @@ package delivery
 
 import (
 	"context"
+	_ "embed"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -16,9 +18,15 @@ import (
 	"github.com/wricardo/drbrain/games/delivery/game/session"
 	"github.com/wricardo/drbrain/games/delivery/graph"
 	"github.com/wricardo/drbrain/platform"
+	"github.com/wricardo/drbrain/platform/mapstore"
 )
 
 const prefix = "/delivery"
+
+// llmsTemplate is the agent guide, rendered by the platform at /delivery/llms.txt.
+//
+//go:embed llms.txt.tmpl
+var llmsTemplate string
 
 // Env is this game's environment section: DELIVERY_*.
 type Env struct {
@@ -121,9 +129,10 @@ func cityIDFromFile(path string) string {
 // Game is DrBrain Delivery on the platform. The tick loop stays inside each
 // session; the host only owns the listener and lifecycle.
 type Game struct {
-	env      Env
-	mgr      *session.Manager
-	resolver *graph.Resolver
+	env       Env
+	publicURL string
+	mgr       *session.Manager
+	resolver  *graph.Resolver
 }
 
 // New returns the game for the compiled-in registry.
@@ -145,6 +154,12 @@ func (g *Game) API() []string { return nil }
 // GraphQLResolver implements platform.GraphQLResolver.
 func (g *Game) GraphQLResolver() any { return g.resolver }
 
+// LLMSTemplate implements platform.LLMSProvider.
+func (g *Game) LLMSTemplate() string { return llmsTemplate }
+
+// LLMSPublicURL implements platform.LLMSProvider.
+func (g *Game) LLMSPublicURL() string { return g.publicURL }
+
 // Mount loads DELIVERY_* configuration, opens the city catalogue, requires
 // PostgreSQL, and installs the GraphQL resolver. It registers no HTTP routes:
 // the host owns "/graphql" and the SPA fallback, so the mux argument is
@@ -159,6 +174,7 @@ func (g *Game) Mount(mux *http.ServeMux, deps platform.Deps) error {
 		return fmt.Errorf("DELIVERY_ environment: %w", err)
 	}
 	g.env = env
+	g.publicURL = deps.Config.PublicURL
 
 	setup, err := resolveCities(env)
 	if err != nil {
@@ -181,7 +197,30 @@ func (g *Game) Mount(mux *http.ServeMux, deps platform.Deps) error {
 		return fmt.Errorf("session manager: %w", err)
 	}
 	if deps.Accounts != nil {
-		deps.Accounts.AddOnDelete(catalog.OnAccountDelete)
+		deps.Accounts.AddOnDelete(func(ownerID string) error {
+			// Sessions on this player's drafts must go with the drafts, before
+			// the rows disappear and their visibility can no longer be judged.
+			var errs []error
+			entries, err := catalog.ListFor(ownerID)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("list cities for %s: %w", ownerID, err))
+			} else {
+				for _, e := range entries {
+					if e.Status == mapstore.StatusDraft && e.OwnerID == ownerID {
+						if _, err := mgr.DeleteByCity(e.ID); err != nil {
+							errs = append(errs, err)
+						}
+					}
+				}
+			}
+			errs = append(errs, catalog.OnAccountDelete(ownerID))
+			return errors.Join(errs...)
+		})
+	}
+	if deps.Metrics != nil {
+		if err := deps.Metrics.Register(cityMoneyCollector{live: mgr.LiveSummaries}); err != nil {
+			return fmt.Errorf("delivery metrics: %w", err)
+		}
 	}
 	g.mgr = mgr
 	g.resolver = &graph.Resolver{

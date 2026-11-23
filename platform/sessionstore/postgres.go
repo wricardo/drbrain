@@ -20,6 +20,7 @@ const queryTimeout = 10 * time.Second
 type store struct {
 	mu    sync.Mutex
 	pool  *pgxpool.Pool
+	game  string
 	max   int
 	evict bool
 	mem   map[string]entry
@@ -27,11 +28,26 @@ type store struct {
 
 var _ Store = (*store)(nil)
 
+// owns reports whether meta belongs to this store's game. An unscoped store
+// (game "") owns every row; a scoped store never sees rows of other games.
+func (s *store) owns(meta Meta) bool {
+	return s.game == "" || meta.Game == s.game
+}
+
+// stamp forces the owning game onto a meta about to be written, so a caller
+// cannot register a row under another game's namespace.
+func (s *store) stamp(meta *Meta) {
+	if s.game != "" {
+		meta.Game = s.game
+	}
+}
+
 // Put registers a live entry without writing it.
 func (s *store) Put(meta Meta, payload []byte) error {
 	if err := validID(meta.ID); err != nil {
 		return err
 	}
+	s.stamp(&meta)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.mem[meta.ID]; !ok {
@@ -49,14 +65,23 @@ func (s *store) Get(id string) (Meta, []byte, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	e, ok := s.mem[id]
-	return e.meta, e.payload, ok
+	if !ok || !s.owns(e.meta) {
+		return Meta{}, nil, false
+	}
+	return e.meta, e.payload, true
 }
 
 // Count is the number of loaded entries.
 func (s *store) Count() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return len(s.mem)
+	n := 0
+	for _, e := range s.mem {
+		if s.owns(e.meta) {
+			n++
+		}
+	}
+	return n
 }
 
 // Delete removes the entry everywhere.
@@ -66,8 +91,13 @@ func (s *store) Delete(id string) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_, inMem := s.mem[id]
-	delete(s.mem, id)
+	e, inMem := s.mem[id]
+	if inMem && !s.owns(e.meta) {
+		inMem = false
+	}
+	if inMem {
+		delete(s.mem, id)
+	}
 	durable, err := s.pgDelete(id)
 	if err != nil {
 		return err
@@ -87,6 +117,9 @@ func (s *store) List() ([]Meta, error) {
 		return nil, err
 	}
 	for id, e := range s.mem {
+		if !s.owns(e.meta) {
+			continue
+		}
 		m := e.meta
 		m.Loaded = true
 		byID[id] = m
@@ -102,6 +135,7 @@ func (s *store) Persist(meta Meta, payload []byte) error {
 	if len(payload) == 0 || !json.Valid(payload) {
 		return fmt.Errorf("%w: payload for %s is not JSON", ErrInvalid, meta.ID)
 	}
+	s.stamp(&meta)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.mem[meta.ID]; !ok {
@@ -188,13 +222,20 @@ func (s *store) pgLoad(id string) (Meta, []byte, error) {
 		return Meta{}, nil, fmt.Errorf("sessionstore: decode meta %s: %w", id, err)
 	}
 	meta.ID = id
+	if !s.owns(meta) {
+		// Another game's row: hide it exactly like a missing save so a scoped
+		// store cannot read or overwrite it.
+		return Meta{}, nil, ErrNotFound
+	}
 	return meta, payload, nil
 }
 
 func (s *store) pgDelete(id string) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
 	defer cancel()
-	tag, err := s.pool.Exec(ctx, `DELETE FROM platform_sessions WHERE id = $1`, id)
+	tag, err := s.pool.Exec(ctx,
+		`DELETE FROM platform_sessions WHERE id = $1 AND ($2 = '' OR meta->>'game' = $2)`,
+		id, s.game)
 	if err != nil {
 		return false, fmt.Errorf("sessionstore: delete %s: %w", id, err)
 	}
@@ -204,7 +245,8 @@ func (s *store) pgDelete(id string) (bool, error) {
 func (s *store) pgList(dst map[string]Meta) error {
 	ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
 	defer cancel()
-	rows, err := s.pool.Query(ctx, `SELECT id, meta FROM platform_sessions`)
+	rows, err := s.pool.Query(ctx,
+		`SELECT id, meta FROM platform_sessions WHERE ($1 = '' OR meta->>'game' = $1)`, s.game)
 	if err != nil {
 		return fmt.Errorf("sessionstore: list: %w", err)
 	}

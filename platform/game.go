@@ -1,3 +1,7 @@
+// Package platform is the contract between the host and a game: the Game
+// interface, the per-game dependency bundle and the optional capabilities
+// (GraphQL resolvers, llms guides, validators, map generators) the host
+// discovers by type assertion.
 package platform
 
 import (
@@ -6,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/wricardo/drbrain/platform/account"
 	"github.com/wricardo/drbrain/platform/auth"
@@ -37,9 +42,9 @@ type Game interface {
 type Deps struct {
 	// Config is the process-wide platform configuration.
 	Config Config
-	// Hub is the game's own websocket fan-out instance. Each game's hub is
-	// tied to that game's snapshot type, so the host only carries the value
-	// through; it constructs one per game when the shared hub lands.
+	// Hub is reserved for a shared websocket fan-out and is always nil today.
+	// Each game owns its own hub, tied to that game's snapshot type, and the
+	// host never populates this field. Read it only with a nil check.
 	Hub any
 	// StaticDir is the built web app root.
 	StaticDir string
@@ -54,6 +59,10 @@ type Deps struct {
 	Accounts *account.Service
 	// Auth is the global sign-in service (nil when sign-in is disabled).
 	Auth *auth.Auth
+	// Metrics is the process-wide Prometheus registry served on the host's
+	// metrics listener. Games register their collectors here during Mount.
+	// Nil when the listener is disabled or a game is mounted standalone.
+	Metrics *prometheus.Registry
 }
 
 // LLMSProvider lets a game supply its agent guide. The platform renders it at
@@ -72,7 +81,9 @@ type Validator interface {
 	Validate(ctx context.Context) error
 }
 
+// MapGenerator lets `drbrain mapgen` run a game's map generator.
 type MapGenerator interface {
+	// Mapgen generates a map from the game-specific arguments.
 	Mapgen(ctx context.Context, args []string) error
 }
 

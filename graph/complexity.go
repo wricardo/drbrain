@@ -2,7 +2,9 @@ package graph
 
 import (
 	"math"
+	"time"
 
+	deliverygraph "github.com/wricardo/drbrain/games/delivery/graph"
 	deliverymodel "github.com/wricardo/drbrain/games/delivery/graph/model"
 	mazesservice "github.com/wricardo/drbrain/games/mazes/game/service"
 	mazesmodel "github.com/wricardo/drbrain/games/mazes/graph/model"
@@ -25,8 +27,9 @@ const (
 	playerRunsRowCost = 10
 )
 
-// Complexity ports the mazes and motor field weights onto the namespaced
-// schema. Delivery and Tesla have no fan-out fields worth weighting.
+// Complexity ports the per-game field weights onto the namespaced schema.
+// Delivery's session list is weighted like the other games' lists; its orders
+// filter is bounded by the resolver's own cap, so it needs none.
 func Complexity() generated.ComplexityRoot {
 	var c generated.ComplexityRoot
 	c.Mazes_Query.Sessions = func(child int, _ *mazesmodel.SessionSort, limit *int, _ *string) int {
@@ -62,6 +65,13 @@ func Complexity() generated.ComplexityRoot {
 	}
 	c.Delivery_Mutation.ClaimSessions = func(child int, claims []*deliverymodel.SessionClaimInput) int {
 		return safeMul(child, len(claims)) + 1
+	}
+	c.Delivery_Query.Sessions = func(child int, _ *deliverymodel.SessionSort, limit *int, _ *time.Time, _ *string, _ *bool) int {
+		n := deliverygraph.DefaultSessionListLimit
+		if limit != nil && *limit > 0 {
+			n = min(*limit, deliverygraph.MaxSessionListLimit)
+		}
+		return safeMul(child, (n+sessionsPerCostUnit-1)/sessionsPerCostUnit) + 1
 	}
 	return c
 }

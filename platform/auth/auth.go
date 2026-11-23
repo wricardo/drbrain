@@ -73,7 +73,8 @@ type Config struct {
 	TokenTTL time.Duration
 }
 
-// Auth owns the sign-in routes and the login cookie.
+// Auth owns the sign-in routes, the OAuth flow cookie and the Bearer tokens
+// issued after a successful sign-in.
 type Auth struct {
 	cfg       Config
 	base      *url.URL

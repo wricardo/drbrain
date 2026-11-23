@@ -57,10 +57,16 @@ func main() {
 	mapsDir := flag.String("maps", "maps", "directory with shipped map JSON files")
 	safety := flag.Float64("safety", 0.05,
 		"weight of the battery-safety reward shaping (0 disables); see potential() in env.go")
+	reject := flag.Bool("reject-illegal", false,
+		"treat illegal moves as a wasted step instead of letting them crash (needed without action masking)")
+	fog := flag.Int("fog", 0,
+		"visibility radius in cells; 0 = whole map visible. With fog the car only sees cells it has visited, and unexplored cells are legal-but-risky moves")
 	flag.Parse()
 
 	e := newEnv(defaultRewards)
+	e.fog = *fog
 	e.safety = *safety
+	e.reject = *reject
 	rng := rand.New(rand.NewPCG(rand.Uint64(), rand.Uint64()))
 	obs := make([]byte, NumPlanes*GridPad*GridPad)
 	in := bufio.NewScanner(os.Stdin)

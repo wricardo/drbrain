@@ -26,7 +26,7 @@ func quantityWorld(t *testing.T, cap int, bands []QuantityBandConfig) *World {
 			"W": "water", "R": "road", "D": "depot", "K": "kitchen", "H": "house",
 		},
 		Items:    map[string]string{"pizza": "Pizza"},
-		Depots:   []DepotConfig{{ID: "d1", Pos: Position{1, 2}, Capacity: 4, ChargeSlots: 2}},
+		Depots:   []DepotConfig{{ID: "d1", Pos: Position{1, 2}, ChargeSlots: 2}},
 		Kitchens: []KitchenConfig{{ID: "k1", Name: "Kitchen", Pos: Position{2, 2}, Menu: []string{"pizza"}}},
 		Customers: []CustomerConfig{{
 			ID: "c1", Name: "Cust", Pos: Position{5, 2}, Demands: []string{"pizza"},
@@ -129,6 +129,47 @@ func TestQuantityBandsAreProgressGated(t *testing.T) {
 	}
 	if got := maxAt(0.8); got < 30 {
 		t.Errorf("80%% ramp largest = %d, want at least 30", got)
+	}
+}
+
+// TestEarlyWeightKeepsBandsAvailableBeforeTheirGate proves the floor contract:
+// a band with a positive EarlyWeight can roll from the first tick at a small
+// share, and its full Weight still takes over at FromProgress.
+func TestEarlyWeightKeepsBandsAvailableBeforeTheirGate(t *testing.T) {
+	bands := []QuantityBandConfig{
+		{MinSize: 1, MaxSize: 3, Weight: 40},
+		{MinSize: 30, MaxSize: 40, FromProgress: 0.5, EarlyWeight: 1, Weight: 1000},
+	}
+	w := quantityWorld(t, 40, bands)
+	var cu Customer
+	for _, c := range w.City.Customers {
+		cu = c
+	}
+
+	counts := func(progress float64) (small, big int) {
+		w.Tick = int64(progress * float64(w.ordersCfg.RampTicks))
+		for seed := uint64(0); seed < 3000; seed++ {
+			w.Seed = seed
+			if q := w.rollQuantity(cu); q >= 30 {
+				big++
+			} else {
+				small++
+			}
+		}
+		return small, big
+	}
+
+	small0, big0 := counts(0)
+	if big0 == 0 {
+		t.Fatal("early_weight band never rolled at progress 0; the range is still gated")
+	}
+	if big0*20 > small0 {
+		t.Fatalf("early_weight band is %d/%d rolls at progress 0; want a rare floor, under 5%%", big0, small0+big0)
+	}
+
+	_, big1 := counts(0.5)
+	if big1 < big0*10 {
+		t.Fatalf("gate did not escalate the band: %d rolls before, %d after", big0, big1)
 	}
 }
 

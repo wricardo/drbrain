@@ -1,3 +1,6 @@
+// Package graph is Tesla's GraphQL transport: the resolver tree, engine/session
+// conversions and the admin policy for map mutations. The HTTP executor lives
+// in the host's unified graph package.
 package graph
 
 import (
@@ -31,6 +34,9 @@ func WithAdminPolicy(policy appconfig.AdminPolicy) Option {
 	return func(r *Resolver) { r.Admin = policy }
 }
 
+// NewResolver builds the resolver root. The optional policies configure what a
+// request may change: without WithAdminPolicy, map mutations require the
+// X-Admin-Key the environment configured.
 func NewResolver(gameService service.GameService, hub *websocket.Hub, opts ...Option) *Resolver {
 	r := &Resolver{Service: gameService, Hub: hub}
 	for _, opt := range opts {

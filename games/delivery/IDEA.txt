@@ -103,28 +103,28 @@ Car {
   capacity               how many orders it can carry (MVP: 1 for scooter)
   step_cost              battery per tile (road 1, ground 2 if O3 accepted)
   cargo: [order_id...]
-  queued_move            the one direction it will attempt on the next tick
+  queued_moves           directions this car will attempt, one per tick, in order
   state                  IDLE | CARRYING | CHARGING | STRANDED
 }
 
 MOVEMENT MODEL — how manual play and a tick loop coexist:
 
-  - The world advances on a fixed tick (default 300 ms).
+  - The world advances on a fixed tick (default 600 ms).
   - A player command is `moveCar(carID, direction)` and it does NOT teleport
-    the car. It sets that car's `queued_move`.
+    the car. It appends that direction to the car's movement queue.
   - On the next tick, every car with a queued move takes exactly one step, in
     a deterministic order (by car id). Then pickups/dropoffs/spawns/expiry
     resolve.
   - A queued move that arrives after the tick started applies to the
-    following tick. Commands are idempotent-ish: the latest command within a
-    window wins, which keeps a fast client from double-stepping.
+    following tick. Commands accumulate up to a per-car cap so an agent can
+    preload a route while the clock runs; `clearMoves` cancels the plan.
   - If a car has no queued move, it stands still (but still drains nothing).
   - Rejected moves (wall, water, another car, no battery) fail without moving
     and return a reason. Do collisions matter? MVP: cars may share a tile;
     revisit if it feels wrong.
     RESOLVED (drbrain-delivery-9by): revisited, and cars no longer share a tile.
-    A tile holds one car; a depot or charger holds its authored capacity, so
-    parking still works. The check is on ENTRY and evaluates last. Moves are
+    A tile holds one car; a depot holds any number and a charger holds its
+    authored capacity, so parking still works. The check is on ENTRY and evaluates last. Moves are
     planned then resolved to a fixpoint, so a follower may enter a tile a car
     vacated this tick while a head-on pair is refused on both sides.
 
@@ -147,7 +147,7 @@ Server-authoritative tick loop PER SESSION (D3). Each session has its own
 clock, tick counter, pause state and speed, so a slow, careful player is not
 hurried by another session's fast forward.
 
-  - tick_ms (per map, default 300 ms)
+  - tick_ms (per map, default 600 ms)
   - each tick, in fixed order:
       1. take queued moves for all cars
       2. apply moves, validate, spend battery
@@ -319,7 +319,7 @@ tuning option, not required).
       { type: "add_customer",   entity: {...} },
       { type: "add_charger",    entity: {...} },
       { type: "add_depot",      entity: {...} },
-      { type: "upgrade_depot",  depot:"d_main", capacity:8, charge_slots:6 },
+      { type: "upgrade_depot",  depot:"d_main", charge_slots:6 },
       { type: "grant_car_class", class: "truck" },          // makes it buyable
       { type: "grant_money",    amount: 200 },
       { type: "grant_reputation", amount: 0.2 }
@@ -395,8 +395,8 @@ tuning option, not required).
   A08  Fleet Owner
        requires: cars_owned >= 3
        build:    B08 "Depot Extension"  $700
-                 upgrade_depot d_main capacity 4 -> 8, +2 charge slots
-       why:      more cars are useless without somewhere to park/recharge them.
+                 upgrade_depot d_main +2 charge slots
+       why:      more cars are useless without enough charging bays.
        (The VAN class is buyable from the start at $400. The TRUCK is the
         reward here:)
 
@@ -424,7 +424,7 @@ tuning option, not required).
   A12  Second Base
        requires: deliveries >= 100
        build:    B12 "Hills Depot"  $1200
-                 add_depot in the hills, capacity 4
+                 add_depot in the hills
        why:      kills the long return trip; changes how you route the fleet.
 
   --- CHAPTER 5: THE CITY (endgame) -----------------------------------------
@@ -479,7 +479,7 @@ tuning option, not required).
 {
   "name": "DrBrain City",
   "grid_size": 20,
-  "tick_ms": 300,
+  "tick_ms": 600,
   "starting_money": 0,
   "layout": [
     "WWWWWWWWWWWWWWWWWWWW",
@@ -498,7 +498,7 @@ tuning option, not required).
                   "demands":["pizza"],
                   "order_interval_ticks":40,   // own cooldown (GATE 1)
                   "jitter_ticks":10} ],        // +/- randomness on the cooldown
-  "depots":    [ {"id":"d_main","pos":{"x":2,"y":2},"capacity":4} ],
+  "depots":    [ {"id":"d_main","pos":{"x":2,"y":2}} ],
   "chargers":  [ {"id":"ch_1","pos":{"x":17,"y":2},"capacity":1} ],
   "initial_cars":[ {"class":"scooter","pos":{"x":2,"y":2}} ],
   "car_classes": {

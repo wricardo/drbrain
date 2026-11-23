@@ -78,3 +78,57 @@ func TestSafetyShapingPaysForBackingOutOfDanger(t *testing.T) {
 		t.Log("still safe after the walk; shaping had nothing to say")
 	}
 }
+
+func TestFogHidesUnseenCellsAndAllowsExploringThem(t *testing.T) {
+	e := newTestEnv(t, 10, 0)
+	e.fog = 2
+	if err := e.load(testMap(10)); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	buf := make([]byte, NumPlanes*GridPad*GridPad)
+	plane := func(p, x, y int) byte { return buf[p*GridPad*GridPad+y*GridPad+x] }
+	e.observe(buf)
+
+	// the park at (5,5) is four cells from home (1,1): outside a radius-2 view
+	if plane(planeUnknown, 5, 5) != 1 {
+		t.Fatalf("park cell should be unknown at reset with fog 2")
+	}
+	if plane(planePark, 5, 5) != 0 {
+		t.Fatalf("unknown park must not leak its type")
+	}
+	if plane(planeUnknown, 1, 1) != 0 {
+		t.Fatalf("the cell the car is on must be known")
+	}
+
+	// unexplored cells are offered as legal moves: exploring them is the risk
+	m, any := e.mask()
+	if !any {
+		t.Fatalf("no legal moves at reset")
+	}
+	if !m[0] && !m[1] && !m[2] && !m[3] {
+		t.Fatalf("mask rejected every direction")
+	}
+
+	// driving reveals the cells around the new position
+	for range 4 { // four steps right along row 1
+		e.step(3)
+	}
+	e.observe(buf)
+	if e.sees(5, 1) != true {
+		t.Fatalf("driven-over cells must become known")
+	}
+	if plane(planeUnknown, 5, 5) != 1 {
+		t.Fatalf("the park four rows away must still be unknown after a 4-cell drive")
+	}
+}
+
+func TestFogOffMeansEverythingIsVisible(t *testing.T) {
+	e := newTestEnv(t, 10, 0)
+	buf := make([]byte, NumPlanes*GridPad*GridPad)
+	e.observe(buf)
+	for i := range GridPad * GridPad {
+		if buf[planeUnknown*GridPad*GridPad+i] != 0 {
+			t.Fatalf("no cell may be unknown when fog is off")
+		}
+	}
+}

@@ -135,10 +135,10 @@ func parseOrder(s string) (string, error) {
 
 // boardRow is one session's recorded win under an ordering.
 type boardRow struct {
-	id       string
-	mapID    string
-	win      Win
-	rank     int
+	id    string
+	mapID string
+	win   Win
+	rank  int
 	// accountID is the owning account ("" = guest row); acct is that account,
 	// nil when it no longer exists (such a row counts as a guest row).
 	accountID string

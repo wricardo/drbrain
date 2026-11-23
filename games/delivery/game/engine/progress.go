@@ -82,8 +82,7 @@ func (w *World) applyGrowthGrants(st GrowthConfig) {
 			w.recordCash(CashGrant, e.Amount, nil, "", st.Title+" grant")
 			w.Ledger.MoneyEarned += e.Amount
 		case EffectGrantRep:
-			w.Ledger.Reputation += e.Rep
-			w.clampReputation()
+			w.recordReputation(e.Rep, ReputationGrowth, "", st.Title)
 		case EffectGrantCarClass:
 			if e.Class != "" {
 				w.buyableClasses[e.Class] = true

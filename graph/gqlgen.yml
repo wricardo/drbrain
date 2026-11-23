@@ -32,8 +32,12 @@ models:
     model: github.com/99designs/gqlgen/graphql.Boolean
   Time:
     model: github.com/99designs/gqlgen/graphql.Time
+  Delivery_AnalyticsMetric:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.AnalyticsMetric
   Delivery_CarClassView:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.CarClassView
+  Delivery_CarLedgerView:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.CarLedgerView
   Delivery_CarState:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.CarState
   Delivery_CarView:
@@ -62,6 +66,8 @@ models:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.CreateSessionResult
   Delivery_Direction:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.Direction
+  Delivery_EventFeed:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.EventFeed
   Delivery_EventView:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.EventView
   Delivery_GrowthView:
@@ -72,6 +78,17 @@ models:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.ItemCount
   Delivery_LedgerView:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.LedgerView
+    fields:
+      months:
+        resolver: true
+      cashEntries:
+        resolver: true
+      cars:
+        resolver: true
+  Delivery_MoneyHistory:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.MoneyHistory
+  Delivery_MoneyPoint:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.MoneyPoint
   Delivery_MonthCategoryView:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.MonthCategoryView
   Delivery_MonthView:
@@ -83,7 +100,11 @@ models:
         resolver: true
       moveCar:
         resolver: true
+      clearMoves:
+        resolver: true
       tick:
+        resolver: true
+      waitUntil:
         resolver: true
       setSpeed:
         resolver: true
@@ -96,6 +117,8 @@ models:
       towCar:
         resolver: true
       saveSession:
+        resolver: true
+      renameSession:
         resolver: true
       evictSession:
         resolver: true
@@ -132,6 +155,14 @@ models:
         resolver: true
       sessions:
         resolver: true
+      moneyHistory:
+        resolver: true
+      itemsHistory:
+        resolver: true
+      reputationHistory:
+        resolver: true
+      metricHistory:
+        resolver: true
       session:
         resolver: true
       carView:
@@ -146,10 +177,21 @@ models:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.SessionClaimInput
   Delivery_SessionClaimResult:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.SessionClaimResult
+  Delivery_SessionSort:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.SessionSort
   Delivery_SessionSummary:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.SessionSummary
   Delivery_Snapshot:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.Snapshot
+    fields:
+      orders:
+        resolver: true
+      openOrders:
+        resolver: true
+  Delivery_ValuePoint:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.ValuePoint
+  Delivery_ValueSeries:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.ValueSeries
   Global_AccountInput:
     model: github.com/wricardo/drbrain/platform/account/graph/model.AccountInput
   Global_AuthProvider:

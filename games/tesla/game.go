@@ -1,6 +1,8 @@
 //go:generate go run github.com/wricardo/drbrain/cmd/split-schema
 //go:generate go run github.com/99designs/gqlgen generate
 
+// Package tesla is Dr Brain - Tesla Road Trip as a platform game: drive a
+// fogged grid to visit every park without running out of battery.
 package tesla
 
 import (

@@ -1,5 +1,15 @@
 # Development
 
+> **Monorepo note.** This guide originated in the standalone Motor Programming
+> repository. The engine, rules and map sections remain accurate. Commands and
+> frontend paths describe the pre-merge repository: today Motor is served by the
+> shared `drbrain` binary at `/motor/`, every GraphQL operation goes through the
+> `motorProgramming` namespace of `/graphql`, and the UI lives in
+> `web/src/routes/motor/`. Current equivalents: `just restart`, `just regen`,
+> `go test ./...`, `go test ./games/motor/validate`,
+> `go run ./games/motor/cmd/mapgen`. Current commands are in the root
+> README/AGENTS and `justfile`.
+
 How Motor Programming is built, how it looks, how to maintain it, and how to build another game like it. Players should start at the [README](../README.md).
 
 - [Design principles](#design-principles)
@@ -32,25 +42,29 @@ These decisions shape everything else. Keep them when changing the game or start
 ## Run it
 
 ```sh
-cp .env.example .env      # optional
-just restart              # rebuild UI + binary and serve http://localhost:8000 (API + UI)
-just run                  # rebuild and serve in the foreground
-just dev                  # stop whatever holds the port, then go run . -port 8000 -host 0.0.0.0 -public-url http://localhost:8000 -debug
+just restart              # regen + build web/binary, serve on :8181
+just stop                 # stop the detached server
+go test ./...             # all Go tests
+just port=9000 restart    # another port
 ```
 
-Every recipe passes `-public-url http://localhost:<port>` (override with `PUBLIC_URL=... just restart`); sign-in is on by default and uses it for the same-origin check. Plain `go run .` works too on localhost, where the request's own `Host` is trusted instead, but a public host without `-public-url` refuses sign-in rather than trust a rebindable host.
+The root `justfile` is the maintained loop. `just restart` regenerates the
+schema, rebuilds the UI into `web/build` and the binary into `tmp/`, stops
+whatever holds the port, and starts `tmp/drbrain` in the background with its log
+at `tmp/drbrain.log`.
 
-Tooling lives in the `justfile` ([`just`](https://github.com/casey/just) is required): `just --list` shows every recipe. `just restart` is the everyday loop — it rebuilds the UI into `static/` and the binary, stops whatever holds the port (`lsof`, plus the pid it recorded in `.run/drbrain-<port>.pid`), and starts the server in the background with its log at `.run/drbrain-<port>.log`. `just stop`, `just status` and `just logs` act on that process, and `PORT=9000 just restart` (or `just port=9000 restart`) moves to another port. The UI build is reproducible: `svelte.config.js` pins the app version to the git commit, so rebuilding unchanged sources leaves `static/` untouched.
-
-Frontend development with hot reload, against a server running on :8000:
+Frontend development with hot reload, against a server running on :8181:
 
 ```sh
-cd frontend && npm run dev:local     # http://localhost:5173
+npm run dev              # Vite on :5173, proxies /graphql (ws included)
 ```
 
-Server: `drbrain serve` reads `DRBRAIN_DATABASE_URL` (required), `DRBRAIN_ADDR`, `DRBRAIN_PUBLIC_URL` and the game's `MOTOR_*`/unprefixed settings (`MOTOR_MAPS_DIR`, `MAX_USER_MAPS`, `ALLOWED_ORIGINS`). There are no `-user-maps-dir`, `-sessions-dir` or `-accounts-dir` flags: sessions, accounts and player maps are PostgreSQL.
+Server: `drbrain serve` reads `DRBRAIN_DATABASE_URL` (required), `DRBRAIN_ADDR`,
+`DRBRAIN_PUBLIC_URL` and the game's `MOTOR_*`/unprefixed settings (`MOTOR_MAPS_DIR`, `MAX_USER_MAPS`, `ALLOWED_ORIGINS`). There are no `-user-maps-dir`, `-sessions-dir` or `-accounts-dir` flags: sessions, accounts and player maps are PostgreSQL.
 
-Routes:
+Routes: every UI route below is under the `/motor` prefix; `/graphql`,
+`/graphql/playground`, `/auth/...`, `/settings` and `/u/<handle>` are shared
+platform routes.
 
 | Path | What it is |
 |---|---|
@@ -68,9 +82,10 @@ Routes:
 | `/auth/<provider>/login`, `/auth/<provider>/callback` | Sign-in routes for the redirect providers (Google, GitHub, dev); only exist when that provider is configured, and the dev fake additionally serves `/auth/dev/authorize`, the page where you type a name. Username/password sign-in and signing out are GraphQL mutations (`registerWithPassword`, `logInWithPassword`, `logout`), see [Accounts and sign-in](#accounts-and-sign-in) |
 | `/editor` | Map editor with server-side validation; creating a map needs a signed-in player, changing a built-in one needs the admin key |
 | `/learn` | How it works: the game, instructions, rules, controls, how an AI plays, a generic AI prompt, tips |
-| `/graphql` | GraphQL over HTTP and WebSocket (`graphql-ws`); `/playground` when enabled |
-| `/llms.txt` | Guide for AI agents, rendered from `llms.txt.tmpl` |
-| `/healthz` | `{"status":"ok"}` once the server is listening; the deploy smoke test and `scripts/smoke.sh` use it |
+| `/graphql` | The single platform GraphQL endpoint (HTTP + graphql-ws); select the `motorProgramming` namespace |
+| `/graphql/playground` | The GraphQL playground |
+| `/motor/llms.txt` | Guide for AI agents, rendered from `llms.txt.tmpl` |
+| `/healthz` | `{"status":"ok"}` once the server is listening; the deploy smoke test uses it |
 
 ## Architecture
 
@@ -79,19 +94,20 @@ game/engine          pure rules, no deps/IO: MapConfig/NewMap, Program, VMState 
 game/service         Session type, GameService facade + impl + Runner (ticker goroutine per playing session);
                      interfaces MapStore, SessionStore, Broadcaster, AccountStore; coded errors; leaderboard (recorded wins + ranking);
                      accounts, handles, claims
-game/account         AccountStore impls: files (accounts/accounts/<id>.json, in-memory indexes) and PostgreSQL (postgres.go)
-auth                 Sign-in: username/password (on by default), providers (Google OIDC, GitHub OAuth2, dev fake), /auth routes,
+platform/account     Global account store (PostgreSQL) shared by every game
+platform/auth        Sign-in: username/password (on by default), providers (Google OIDC, GitHub OAuth2, dev fake), /auth routes,
                      Bearer tokens, flow cookie, same-origin check, per-IP rate limiter
 game/config          MapStore impl over platform/mapstore: builtin maps/*.json (shipped, admin-only writes) + player maps in `platform_maps` (owner, DRAFT/PUBLISHED, quota)
 game/session         SessionStore impl: in-memory Manager + platform/sessionstore (PostgreSQL)
 transport/websocket  Hub: per-session fan-out, latest-wins delivery
 validate             map checks, reachability, reference-solution checks (+ cmd/validate CLI)
-graph                gqlgen schema, resolvers, converters, subscription forwarder, admin gate
+graph                resolvers, converters, subscription forwarder, admin gate
                      (only for writes to built-in maps)
-api                  HTTP mux, /graphql, /llms.txt, SPA serving, hardening (limits, CORS, origin checks)
-main.go              flags, .env, wiring, graceful shutdown
-frontend/            SvelteKit (Svelte 5) + Tailwind v4, adapter-static → static/ (committed)
+game.go              platform adapter: Mount, GraphQLResolver, validators
 ```
+
+The shared web app is `web/src/routes/motor/` and `web/src/lib/motor/`; the
+platform owns `/graphql`, `/graphql/playground`, `/auth`, `/healthz` and the SPA.
 
 ### Request and update flow
 
@@ -155,9 +171,9 @@ Every row requires `DRBRAIN_DATABASE_URL`; there is no file fallback.
 - **Startup** fails with a message naming `DATABASE_URL` (never its password) when the database is unreachable; it does not fall back to files. Open the pool before anything else and close it after `svc.Shutdown`, which persists every session.
 - **Not covered:** an admin editing a *shipped* map still writes `maps/<id>.json` (that path is for local use; the deploy replaces `maps/`). `MAX_SESSIONS` still bounds the live registry; sessions are loaded into memory at startup, so history beyond the live registry is not kept.
 
-**Local database.** `docker-compose.yaml` runs PostgreSQL 17 with a healthcheck and a named volume; the app stays on the host. `just db-up` / `just db-down` start and stop it, `just dev-db` is `just dev` against it, and `just test-db` runs the Go tests including the database ones. Set `POSTGRES_PORT` when 5432 is taken. A local `.env` line is enough: `DATABASE_URL=postgres://drbrain:drbrain_dev@localhost:5432/drbrain?sslmode=disable`.
+**Local database.** The root `docker-compose.yaml` runs PostgreSQL 17 with a healthcheck and a named volume on `127.0.0.1:55432` (credentials `drbrain`/`drbrain`); the app stays on the host. `just db-up` / `just db-down` start and stop it, `just dev-db` is `just dev` against it, and `just test-db` runs the Go tests including the database ones. Set `POSTGRES_PORT` when 55432 is taken. A local `.env` line is enough: `DRBRAIN_DATABASE_URL=postgres://drbrain:drbrain@localhost:55432/drbrain?sslmode=disable`.
 
-**Production database.** `docker-compose.prod.yaml` is the production variant of the same service: explicit project and volume names (`drbrain-pgdata`), `restart: unless-stopped`, a required `POSTGRES_PASSWORD`, a loopback-only port, a 256 MB memory limit with tuned `shared_buffers`, and log rotation. The deploy workflow ships it to `/opt/drbrain-motor-programming`; the unit's `ExecStartPre` runs `docker compose -f docker-compose.prod.yaml up -d --wait postgres`, and the deploy step does the same, so the app never starts before the database is healthy. Back up with `pg_dump` (nightly cron, see [Deployment and hosting](#deployment-and-hosting)); the Docker volume is not a backup.
+**Production database.** `deploy/docker-compose.postgres.yaml` is the production variant of the same service: explicit project and volume names (`drbrain-pgdata`), `restart: unless-stopped`, a required `POSTGRES_PASSWORD`, a loopback-only port, a 256 MB memory limit with tuned `shared_buffers`, and log rotation. The deploy workflow ships it to `/opt/drbrain-motor-programming`; the unit's `ExecStartPre` runs `docker compose -f deploy/docker-compose.postgres.yaml up -d --wait postgres`, and the deploy step does the same, so the app never starts before the database is healthy. Back up with `pg_dump` (nightly cron, see [Deployment and hosting](#deployment-and-hosting)); the Docker volume is not a backup.
 
 **Tests.** Database tests call `pgtest.Pool(t)` (`platform/pgdb/pgtest`): it skips unless `TEST_DATABASE_URL` is set and otherwise gives each test its own freshly migrated schema, dropped afterwards, so tests and packages never see each other's rows. `go test ./...` therefore needs no database; CI runs them against a PostgreSQL service container.
 
@@ -572,21 +588,21 @@ Frontend build-time variables: `PUBLIC_GRAPHQL_URL`, `PUBLIC_WS_URL` (Vite, not 
 
 ## Deployment and hosting
 
-Production runs at https://motor-programming.wricardo.net on a small ARM64 Ubuntu EC2 host shared with other apps. PostgreSQL 17 runs there in Docker from `docker-compose.prod.yaml`; the app stays a systemd unit on the host.
+Production runs at https://motor-programming.wricardo.net on a small ARM64 Ubuntu EC2 host shared with other apps. PostgreSQL 17 runs there in Docker from `deploy/docker-compose.postgres.yaml`; the app stays a systemd unit on the host.
 
-**Continuous deployment.** Every push to `main` runs `.github/workflows/deploy.yml`: vet and test, build the static `linux/arm64` binary, upload it with `maps/`, `static/` and `docker-compose.prod.yaml`, unpack into `/opt/drbrain-motor-programming` (keeping `.env` and the PostgreSQL volume), start/reconcile PostgreSQL with Compose, restart the service and smoke-test `/graphql` on the host. The Go tests there run against a PostgreSQL service container (`TEST_DATABASE_URL`); `.github/workflows/ci.yml` runs the tests on every pull request. Repository secrets: `EC2_HOST`, `EC2_SSH_KEY` (a deploy-only key), `EC2_KNOWN_HOSTS`.
+**Continuous deployment.** Every push to `main` runs `.github/workflows/deploy.yml`: vet and test, build the static `linux/arm64` binary, upload it with `maps/`, `static/` and `deploy/docker-compose.postgres.yaml`, unpack into `/opt/drbrain-motor-programming` (keeping `.env` and the PostgreSQL volume), start/reconcile PostgreSQL with Compose, restart the service and smoke-test `/graphql` on the host. The Go tests there run against a PostgreSQL service container (`TEST_DATABASE_URL`); `.github/workflows/ci.yml` runs the tests on every pull request. Repository secrets: `EC2_HOST`, `EC2_SSH_KEY` (a deploy-only key), `EC2_KNOWN_HOSTS`.
 
 **One-time host setup** (not in the repo; repeat on a new host):
 
 1. Create `/opt/drbrain-motor-programming/` owned by `ubuntu`, with a `.env` (production: a random `ADMIN_API_KEY`, `DRBRAIN_DATABASE_URL`, `ALLOWED_ORIGINS` set to the site's http and https origins). No state directories are needed; PostgreSQL holds sessions, accounts and custom maps.
-2. Install the database host: `sudo apt-get install -y docker.io docker-compose-v2`, `sudo systemctl enable --now docker`, `sudo usermod -aG docker ubuntu`. On hosts under ~1 GiB RAM add a swap file first. Put `POSTGRES_PASSWORD` (hex, so Compose cannot interpolate it) in `.env`; the deploy ships `docker-compose.prod.yaml`.
-3. Add a systemd unit `drbrain-motor-programming.service`: `WorkingDirectory=/opt/drbrain-motor-programming`, `ExecStart=… serve` with `DRBRAIN_DATABASE_URL`/`MOTOR_MAPS_DIR` in the unit environment, `Restart=always`; add a drop-in with `After=docker.service`, `Wants=docker.service` and `ExecStartPre=/usr/bin/docker compose -f docker-compose.prod.yaml up -d --wait postgres`.
+2. Install the database host: `sudo apt-get install -y docker.io docker-compose-v2`, `sudo systemctl enable --now docker`, `sudo usermod -aG docker ubuntu`. On hosts under ~1 GiB RAM add a swap file first. Put `POSTGRES_PASSWORD` (hex, so Compose cannot interpolate it) in `.env`; the deploy ships `deploy/docker-compose.postgres.yaml`.
+3. Add a systemd unit `drbrain-motor-programming.service`: `WorkingDirectory=/opt/drbrain-motor-programming`, `ExecStart=… serve` with `DRBRAIN_DATABASE_URL`/`MOTOR_MAPS_DIR` in the unit environment, `Restart=always`; add a drop-in with `After=docker.service`, `Wants=docker.service` and `ExecStartPre=/usr/bin/docker compose -f deploy/docker-compose.postgres.yaml up -d --wait postgres`.
 4. Add an nginx `server` block for the domain that proxies to `127.0.0.1:8086` with WebSocket upgrade headers and a long `proxy_read_timeout`.
 5. Point DNS at the host and run `sudo certbot --nginx -d motor-programming.wricardo.net --redirect`. `certbot.timer` renews the certificate.
 6. To enable sign-in follow [Owner setup](#owner-setup): register the OAuth apps, add the `AUTH_*` variables to `.env`, restart.
 7. Add the deploy key's public half to `~/.ssh/authorized_keys` and set the three repository secrets. The systemd `ExecStart` already carries `-public-url https://motor-programming.wricardo.net`; keep it, because password sign-in (on by default) uses it for the same-origin check on sign-in.
 
-**Backups.** PostgreSQL is the only state that changes after cutover. Take a nightly `pg_dump` (for example `docker compose -f docker-compose.prod.yaml exec -T postgres pg_dump -U drbrain -Fc drbrain`), keep a copy off the host, and prove a restore before relying on it. The file directories are frozen rollback copies, and the Docker volume alone is not a backup.
+**Backups.** PostgreSQL is the only state that changes after cutover. Take a nightly `pg_dump` (for example `docker compose -f deploy/docker-compose.postgres.yaml exec -T postgres pg_dump -U drbrain -Fc drbrain`), keep a copy off the host, and prove a restore before relying on it. The file directories are frozen rollback copies, and the Docker volume alone is not a backup.
 
 ## Maintaining the project
 

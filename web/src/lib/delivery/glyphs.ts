@@ -23,7 +23,7 @@ const STYLES: Record<string, GlyphStyle> = {
 	K: { cls: 'bg-[var(--color-kitchen)]', label: 'Kitchen — pickup', passable: true },
 	H: { cls: 'bg-[var(--color-customer)]', label: 'Customer — waiting for a delivery', passable: true },
 	h: { cls: 'bg-[var(--color-customer)]/20', label: 'House — nobody waiting right now', passable: true },
-	'?': { cls: 'bg-surface-muted border border-dashed border-edge-faint', label: 'Unexplored — impassable', passable: false }
+	'?': { cls: '', label: 'Unexplored — impassable', passable: false }
 };
 
 /** Unknown glyphs are treated as impassable scenery rather than guessed at. */

@@ -1,6 +1,6 @@
 # Tesla Road Trip Game - MCP Tools Reference
 
-MCP is served over Streamable HTTP at `POST /mcp` (stdio is not supported). Most tools return **TOON format** (Token-Oriented Object Notation) text with snake_case fields. Exceptions: `update_map` and `delete_map` return plain text (`map "name" updated|deleted`); `create_map` returns TOON (it includes the one-time `edit_key`); `list_maps` returns a plain list of map names followed by a TOON table.
+MCP is served over Streamable HTTP at `POST /tesla/mcp` (stdio is not supported). Most tools return **TOON format** (Token-Oriented Object Notation) text with snake_case fields. Exceptions: `update_map` and `delete_map` return plain text (`map "name" updated|deleted`); `create_map` returns TOON (it includes the one-time `edit_key`); `list_maps` returns a plain list of map names followed by a TOON table.
 
 With the bundled `mcp.json` the server is named `tesla-game`, so Claude Code exposes tools as `mcp__tesla-game__<tool>`.
 

@@ -26,40 +26,99 @@ export interface Mutation {
 
 export interface Subscription {
 	/** Every state change of one session, pushed as it happens.  Emitted once per tick while the clock runs, and once per mutation otherwise (a manual step, a queued move, a speed change, a purchase). Sessions start paused, so a client that subscribed only to the clock would never see a hand-played game move.  This replaces polling: the payload is the same Snapshot the query returns, except that finished orders are trimmed to the most recent few. Order history is ~96% of a late-game snapshot and never shrinks, so streaming all of it per tick would cost more than polling did.  Coalesced, not queued: if the client cannot keep up, it receives the next snapshot once it can, rather than a backlog of every intermediate tick. */
-	deliverySession: (args: { id: string }) => Delivery_Snapshot;
+	deliverySession: Delivery_Snapshot;
 	/** Emits the current snapshot immediately, then every change. */
-	mazesSessionUpdated: (args: { sessionID: string }) => Mazes_SessionUpdate;
+	mazesSessionUpdated: Mazes_SessionUpdate;
 	/** Emits the current snapshot immediately, then every change. Like the session query, the payload's program is null unless the caller may change the program (ownerToken or the owning login). */
-	motorProgrammingSessionUpdated: (args: { sessionID: string; ownerToken?: string | null }) => Motor_SessionUpdate;
-	teslaSessionUpdated: (args: { sessionID: string }) => Tesla_GameState;
+	motorProgrammingSessionUpdated: Motor_SessionUpdate;
+	/** The full game state of one session, emitted on every accepted move or tick. The session must be readable by the caller. */
+	teslaSessionUpdated: Tesla_GameState;
+	/** Lobby-wide state broadcasts for the session list; emits the latest visible session state as it changes. */
 	teslaLobbyUpdated: Tesla_GameState;
-	musicSessionUpdated: (args: { sessionID: string }) => Music_SessionUpdate;
+	/** Every change to one music session: the new session and the change that caused it. */
+	musicSessionUpdated: Music_SessionUpdate;
 }
 
+/**
+ * Cumulative operational series available from metricHistory.
+ */
+export type Delivery_AnalyticsMetric = 'DELIVERIES' | 'LATE_DELIVERIES' | 'EXPIRED_ORDERS' | 'ORDERS_CREATED' | 'DELIVERY_INCOME' | 'ORDER_FINES' | 'UPKEEP_SPEND' | 'CHARGING_SPEND' | 'TOW_SPEND';
+
+/**
+ * What a car is doing right now.
+ */
 export type Delivery_CarState = 'IDLE' | 'CARRYING' | 'CHARGING' | 'STRANDED';
 
+/**
+ * Economic bucket used by the monthly report. Income buckets are positive;
+ * expense buckets are negative.
+ */
 export type Delivery_CashCategory = 'OPENING' | 'DELIVERY_INCOME' | 'REWARDS' | 'ORDER_FINES' | 'UPKEEP' | 'CHARGING' | 'TOWS' | 'CAR_PURCHASES' | 'BUILDS' | 'OTHER';
 
+/**
+ * Specific reason for a checking-account movement. The category groups these for
+ * the monthly report.
+ */
 export type Delivery_CashKind = 'OPENING' | 'DELIVERY' | 'LATE_DELIVERY' | 'ORDER_FINE' | 'UPKEEP' | 'CHARGING' | 'TOW' | 'CAR_PURCHASE' | 'BUILD' | 'GRANT';
 
+/**
+ * Lifecycle of a city: a draft is private to its owner, a published city is
+ * selectable by everyone.
+ */
 export type Delivery_CityStatus = 'DRAFT' | 'PUBLISHED';
 
+/**
+ * Outcome of asking to attach a guest save to the signed-in account.
+ */
 export type Delivery_ClaimStatus = 'ATTACHED' | 'ALREADY_YOURS' | 'REJECTED';
 
+/**
+ * One grid step. Coordinates are x to the right, y downward, matching
+ * `grid[y][x]`.
+ */
 export type Delivery_Direction = 'NORTH' | 'SOUTH' | 'EAST' | 'WEST';
 
+/**
+ * Order lifecycle. Live states can still be assigned and delivered.
+ */
 export type Delivery_OrderState = 'PENDING' | 'ASSIGNED' | 'PICKED_UP' | 'DONE' | 'EXPIRED';
 
+/**
+ * Why the engine rejected a queued move. A rejection does not advance the clock;
+ * the car stays where it is. Checks run in a fixed order and the first failure is
+ * reported.
+ */
 export type Delivery_RejectReason = 'BAD_DIRECTION' | 'OFF_GRID' | 'BLOCKED' | 'NO_BATTERY' | 'CLOSED' | 'OCCUPIED';
 
+/**
+ * How to order the session list.
+ */
+export type Delivery_SessionSort = 'CREATED_AT' | 'TICK' | 'MONEY';
+
+/**
+ * A step direction. UP decreases y, RIGHT increases x, DOWN increases y, LEFT
+ * decreases x.
+ */
 export type Mazes_Direction = 'UP' | 'RIGHT' | 'DOWN' | 'LEFT';
 
+/**
+ * Why a session ended in LOST.
+ */
 export type Mazes_LossReason = 'MOVE_LIMIT';
 
+/**
+ * Lifecycle of a community map: a draft is private to its owner.
+ */
 export type Mazes_MapStatus = 'DRAFT' | 'PUBLISHED';
 
+/**
+ * How to order the session list.
+ */
 export type Mazes_SessionSort = 'RECENT' | 'CREATED';
 
+/**
+ * Session play state.
+ */
 export type Mazes_Status = 'READY' | 'PLAYING' | 'WON' | 'LOST';
 
 /**
@@ -67,52 +126,132 @@ export type Mazes_Status = 'READY' | 'PLAYING' | 'WON' | 'LOST';
  */
 export type Mazes_Via = 'NONE' | 'WALK' | 'STAIRS_UP' | 'STAIRS_DOWN' | 'PORTAL';
 
+/**
+ * Outcome of asking to attach a guest session to the signed-in account.
+ */
 export type Motor_ClaimStatus = 'ATTACHED' | 'ALREADY_YOURS' | 'REJECTED';
 
+/**
+ * Direction the robot is facing. UP decreases y, RIGHT increases x, DOWN
+ * increases y, LEFT decreases x.
+ */
 export type Motor_Facing = 'UP' | 'RIGHT' | 'DOWN' | 'LEFT';
 
+/**
+ * One tape slot. EMPTY is a no-op that still spends a step.
+ */
 export type Motor_Instruction = 'EMPTY' | 'TURN_LEFT' | 'TURN_RIGHT' | 'MOVE_FORWARD' | 'CALL_SUB_1' | 'CALL_SUB_2' | 'CALL_SUB_3' | 'CALL_SUB_4' | 'CALL_SUB_5' | 'CALL_SUB_6' | 'CALL_SUB_7' | 'CALL_SUB_8' | 'CALL_SUB_9' | 'CALL_SUB_10';
 
+/**
+ * How to rank the winning sessions of a map.
+ */
 export type Motor_LeaderboardOrder = 'SLOTS' | 'STEPS';
 
+/**
+ * Why a run ended in LOST.
+ */
 export type Motor_LossReason = 'STEP_LIMIT' | 'CALL_DEPTH' | 'PROGRAM_ENDED';
 
+/**
+ * Lifecycle of a community map: a draft is private to its owner.
+ */
 export type Motor_MapStatus = 'DRAFT' | 'PUBLISHED';
 
+/**
+ * How to order the session list.
+ */
 export type Motor_SessionSort = 'RECENT' | 'CREATED';
 
+/**
+ * Run state of the robot.
+ */
 export type Motor_Status = 'READY' | 'RUNNING' | 'WON' | 'LOST';
 
+/**
+ * Challenge level. Higher difficulties flip more bars, and each win rewards a
+ * larger share of the excerpt.
+ */
 export type Music_Difficulty = 'NOVICE' | 'EXPERT' | 'GENIUS';
 
+/**
+ * One grid step. UP decreases y, DOWN increases y, LEFT decreases x, RIGHT
+ * increases x.
+ */
 export type Tesla_Direction = 'UP' | 'DOWN' | 'LEFT' | 'RIGHT';
 
+/**
+ * Lifecycle of a community map: a draft is private to its owner.
+ */
 export type Tesla_MapStatus = 'DRAFT' | 'PUBLISHED';
 
+/**
+ * How to order the session list.
+ */
 export type Tesla_SessionSort = 'CREATED' | 'ACTION';
 
+/**
+ * Sort direction for lists and history.
+ */
 export type Tesla_SortOrder = 'ASC' | 'DESC';
 
+/**
+ * One purchasable vehicle class, with this session's unlock and affordability
+ * flags.
+ */
 export interface Delivery_CarClassView {
+	/** Class name accepted by buyCar. */
 	className: string;
+	/** Purchase price in dollars. */
 	price: number;
 	/** Hold size in boxes. */
 	capacity: number;
+	/** Charge capacity of this class. */
 	maxBattery: number;
+	/** Battery spent per road step for this class; ground tiles add the city's ground surcharge. */
 	stepCost: number;
 	/** True once a build has granted this class, or it never needed one. */
 	unlocked: boolean;
+	/** True when the current balance covers the price. */
 	affordable: boolean;
 }
 
+/**
+ * One car's income, expenses and net for a window of the statement.
+ */
+export interface Delivery_CarLedgerView {
+	/** Car id these totals are attributed to. */
+	carId: string;
+	/** Car display name. */
+	carName: string;
+	/** Positive magnitude of money in attributed to this car. */
+	income: number;
+	/** Positive magnitude of money out attributed to this car. */
+	expenses: number;
+	/** income minus expenses. */
+	net: number;
+	/** Statement rows behind these totals. */
+	rows: number;
+}
+
+/**
+ * One vehicle in the fleet: position, charge, hold and what it is doing.
+ */
 export interface Delivery_CarView {
+	/** Stable car id, used by every car mutation. */
 	id: string;
+	/** Display name. */
 	name: string;
+	/** Vehicle class: scooter, van or truck. */
 	className: string;
+	/** Column on the grid (right is +x). */
 	x: number;
+	/** Row on the grid (down is +y). */
 	y: number;
+	/** Current battery charge. */
 	battery: number;
+	/** Charge capacity of this class. */
 	maxBattery: number;
+	/** Charge as an integer percentage 0-100. */
 	batteryPct: number;
 	/** Hold size in boxes. */
 	capacity: number;
@@ -120,10 +259,14 @@ export interface Delivery_CarView {
 	load: number;
 	/** Boxes still free. */
 	freeBoxes: number;
+	/** Order ids whose boxes are in the hold. */
 	cargo: string[];
+	/** Coarse status shown by the UI. */
 	state: Delivery_CarState;
-	/** The move queued for the next tick, if any. */
+	/** The move queued for the next tick, if any. This is the head of the car's movement queue; steps after it are listed in `queuedMoves`. */
 	queuedMove: Delivery_Direction | null;
+	/** The full movement plan in execution order: the step for the next tick first, then the backlog. A car executes at most one step per tick, so a long list unfolds over several ticks. Empty when nothing is queued. */
+	queuedMoves: Delivery_Direction[];
 	/** Why the most recent move was rejected, if it was. */
 	lastReject: Delivery_RejectReason | null;
 	/** Unpaid balance of a charging session in progress, in dollars. Zero when the car is not charging or the session has already been billed. */
@@ -134,15 +277,21 @@ export interface Delivery_CarView {
  * A window of the city around one car, for cheap polling.
  */
 export interface Delivery_CarWindow {
+	/** The car at the centre of the window. */
 	car: Delivery_CarView;
+	/** Number of rows in the window (shrinks at map edges). */
 	rowSpan: number;
+	/** Number of glyph columns in the window (shrinks at map edges). */
 	colSpan: number;
 	/** Row-major glyph rows for the window only. */
 	rows: string[];
 	/** Origin of rows[0][0] in city coordinates. */
 	originX: number;
+	/** City row of rows[0]. */
 	originY: number;
+	/** Cars inside the window, including the centre car. */
 	visibleCars: Delivery_CarView[];
+	/** Orders whose kitchen or customer lies inside the window. */
 	nearbyOrders: Delivery_OrderView[];
 }
 
@@ -152,7 +301,9 @@ export interface Delivery_CarWindow {
 export interface Delivery_CashEntryView {
 	/** Stable, monotonic id within the session. Use it as the list key. */
 	seq: number;
+	/** World tick the movement was recorded at. */
 	tick: number;
+	/** What the movement is. */
 	kind: Delivery_CashKind;
 	/** Economic bucket used by the monthly report. */
 	category: Delivery_CashCategory;
@@ -162,7 +313,9 @@ export interface Delivery_CashEntryView {
 	balance: number;
 	/** The car this movement belongs to, when it belongs to one. */
 	carId: string | null;
+	/** Car display name when carId is set. */
 	carName: string | null;
+	/** Order this movement belongs to, for delivery income and fines. */
 	orderId: string | null;
 	/** Short human-readable detail, e.g. "pizza to Rosa's" or "fleet upkeep". */
 	memo: string;
@@ -172,8 +325,11 @@ export interface Delivery_CashEntryView {
  * One entry in the city catalogue: a published city or the caller's own draft.
  */
 export interface Delivery_CityInfo {
+	/** City id used by `city`, `cityConfig` and `createSession(cityId:)`. */
 	id: string;
+	/** Display name. */
 	name: string;
+	/** Width and height of the square grid. */
 	gridSize: number;
 	/** DRAFT cities are visible only to their owner. The owner may play and publish a draft; another player can neither see nor select it. */
 	status: Delivery_CityStatus;
@@ -190,14 +346,24 @@ export interface Delivery_CityInfo {
  * full publication gate (the same validation the server runs at startup) accepts it.
  */
 export interface Delivery_CityValidationResult {
+	/** True when the JSON parses into a city config. */
 	valid: boolean;
+	/** True when the full publication gate (grid, districts, orders, reachability) accepts the city. */
 	publishable: boolean;
+	/** Human-readable validation failures; empty when publishable. */
 	issues: string[];
 }
 
+/**
+ * The city as one session sees it: explored districts, waiting customers and the
+ * static facilities.
+ */
 export interface Delivery_CityView {
+	/** City id. */
 	id: string;
+	/** Display name. */
 	name: string;
+	/** Width and height of the square grid. */
 	gridSize: number;
 	/** DRAFT cities are visible only to their owner. The owner may play a draft; another player can neither see nor select it. */
 	status: Delivery_CityStatus;
@@ -211,10 +377,13 @@ export interface Delivery_CityView {
 	rows: string[];
 	/** Tiles still unexplored. Always 0 on the static city query, which reveals all. */
 	hiddenTiles: number;
+	/** Pickup points (restaurants). */
 	kitchens: Delivery_PointView[];
 	/** Customers currently waiting for a delivery. A customer appears when it raises an order and leaves once that order is delivered or expires; a house with nobody waiting is not listed. Empty on the static city query, which shows authored houses as 'h' and carries no session state. */
 	customers: Delivery_PointView[];
+	/** Depots: the only place cars can be bought and where charging is fastest. */
 	depots: Delivery_PointView[];
+	/** Standalone charging points (slower than a depot). */
 	chargers: Delivery_PointView[];
 }
 
@@ -222,9 +391,13 @@ export interface Delivery_CityView {
  * A stretch of street closed for works.
  */
 export interface Delivery_ClosureView {
+	/** Closure id, used by events and the UI. */
 	id: string;
+	/** Why the street is closed, e.g. "street works". */
 	reason: string;
+	/** Tick the closure begins. */
 	startTick: number;
+	/** Tick the closure ends (reopens at this tick). */
 	endTick: number;
 	/** Ticks until it reopens; negative when it has already ended. */
 	ticksLeft: number;
@@ -232,8 +405,11 @@ export interface Delivery_ClosureView {
 	tiles: Delivery_PointView[];
 	/** Bounding box of the closed tiles, for camera moves. */
 	minX: number;
+	/** Top row of the closure. */
 	minY: number;
+	/** Rightmost column of the closure. */
 	maxX: number;
+	/** Bottom row of the closure. */
 	maxY: number;
 }
 
@@ -244,40 +420,83 @@ export interface Delivery_ClosureView {
  * alone stays enough to read it.
  */
 export interface Delivery_CreateSessionResult {
+	/** The new session's first snapshot. */
 	session: Delivery_Snapshot;
 	/** Secret that proves you created this session; keep it private. */
 	ownerToken: string;
 }
 
+/**
+ * The retained event feed with the metadata a poller needs to tell a quiet
+ * stretch from a gap it missed.
+ */
+export interface Delivery_EventFeed {
+	/** Matching events, oldest first, capped at the requested limit (newest kept). */
+	events: Delivery_EventView[];
+	/** Tick of the oldest retained event, or the current tick when the feed is empty. */
+	oldestTick: number;
+	/** True when the requested sinceTick predates the retained feed, so events before oldestTick are gone rather than absent. */
+	truncated: boolean;
+	/** How many events the feed can retain (the city's max_events). */
+	capacity: number;
+}
+
+/**
+ * One entry in the session's retained activity feed.
+ */
 export interface Delivery_EventView {
+	/** Tick the event was recorded at. */
 	tick: number;
 	/** One of the car_* / order_* / city_growth / closure_* names the engine emits. */
 	type: string;
+	/** Human-readable description of what happened. */
 	message: string;
 	/** Null for world events (spawns, builds, closures); set for anything a car caused. */
 	carId: string | null;
 	/** Position of the event, or 0,0 when it has none — non-null, so 0,0 is ambiguous. */
 	x: number;
+	/** Row of the event, 0 when it has no position. */
 	y: number;
 }
 
+/**
+ * One scheduled city-growth stage.
+ */
 export interface Delivery_GrowthView {
+	/** Stage id, stable within a city. */
 	id: string;
+	/** Tick at which the stage applies. */
 	tick: number;
+	/** Short name, e.g. "Harbour Gate". */
 	title: string;
+	/** What the stage changes: districts revealed, kitchens/customers added, chargers or depot bays built. */
 	description: string;
+	/** True once the stage has applied. */
 	done: boolean;
 }
 
+/**
+ * Liveness of the delivery subsystem inside the process.
+ */
 export interface Delivery_Health {
+	/** "ok" while sessions can be created and served. */
 	status: string;
 }
 
+/**
+ * Delivered orders for one item, counted as orders rather than boxes.
+ */
 export interface Delivery_ItemCount {
+	/** Item code. */
 	item: string;
+	/** Orders delivered for this item. */
 	count: number;
 }
 
+/**
+ * The checking account and its report: balance, reputation, lifetime counters and
+ * the newest statement window.
+ */
 export interface Delivery_LedgerView {
 	/** Spendable balance. Buying a car or build reduces it. */
 	money: number;
@@ -287,12 +506,15 @@ export interface Delivery_LedgerView {
 	reputation: number;
 	/** On-time deliveries only. A late delivery increments lateDeliveries instead. */
 	deliveries: number;
+	/** Deliveries completed after their deadline. */
 	lateDeliveries: number;
+	/** Orders that expired before delivery. */
 	expiredOrders: number;
 	/** Every order ever raised, including the ones that later expired. */
 	ordersSpawned: number;
 	/** Consecutive on-time deliveries. Both a late delivery and an expiry reset it to 0. */
 	onTimeStreak: number;
+	/** Tows paid for. */
 	tows: number;
 	/** Delivered ORDERS per item, not boxes: a two-box delivery adds 1. */
 	deliveriesByItem: Delivery_ItemCount[];
@@ -302,15 +524,48 @@ export interface Delivery_LedgerView {
 	towFees: number;
 	/** What the fleet would be charged on the next upkeep interval, given where the cars are standing right now. A car on a depot tile contributes zero. Lets a client show the drain before it lands rather than only after. */
 	upkeepDue: number;
-	/** Checking-account statement, newest first: every movement of money with the car it belongs to when the movement is car-specific. Snapshots carry the most recent rows; the engine retains the full statement with the save. The live subscription carries fewer rows than a query. */
+	/** Share of a quoted reward the fleet is actually paid, from its standing: 1.0 at 4.90+, then 0.9, 0.8 … per half point down to 0.1 at 0.50. Below 0.50 the ladder floors at 0.1 — any standing above zero still earns a tenth, so a collapsed fleet can work its way back. Only an exactly-zero standing pays nothing. A session opens at the map's max_reputation (5.0 on the shipped city), so early deliveries pay in full; missed orders spend the ladder. */
+	payMultiplier: number;
+	/** Checking-account statement, newest first: every movement of money with the car it belongs to when the movement is car-specific. Snapshots carry the rows of the newest three months; the engine retains the full statement with the save, and these arguments read further back on demand. The query and the live subscription carry the same window and rows.  `month` is the 1-based accounting month (month 1 covers ticks 0 through ticksPerMonth-1) and overrides the tick window with that month's bounds. `fromTick`/`toTick` are inclusive tick bounds and intersect with `month` when both are given. `category` keeps one economic bucket. `carId` keeps rows attributed to that car. `limit` caps the rows, newest first, and defaults to the snapshot window. */
 	cashEntries: Delivery_CashEntryView[];
 	/** Length of one accounting month in simulation ticks. */
 	ticksPerMonth: number;
-	/** Monthly income/expense report, newest first. Snapshots carry at most 12 months; quiet months are included as zero rows so month numbers do not skip. */
+	/** Monthly income/expense report, newest first. Quiet months are included as zero rows so month numbers do not skip. The default window is the newest three months; `month` selects one month, and `fromTick`/`toTick` select the months intersecting that range. `category` keeps one bucket and recomputes the month's income, expenses and net from it, so a filtered row reads as that bucket's own report. */
 	months: Delivery_MonthView[];
+	/** Per-car profit and loss for the requested window, highest row count first. Same filters as cashEntries minus carId, because this is the aggregate of every car. Rows that belong to no car (upkeep, world costs) are not included, so the entries here never sum to the whole month; add un-attributed rows to reconcile against months. */
+	cars: Delivery_CarLedgerView[];
 }
 
+/**
+ * A session's money-by-tick series, read from the indexed delivery history
+ * projection. Points are downsampled to at most the requested maxPoints; when the
+ * window reaches the session's current tick, the last point is its current
+ * balance.
+ */
+export interface Delivery_MoneyHistory {
+	/** Session the series belongs to. */
+	sessionId: string;
+	/** City the session was created from. */
+	cityId: string;
+	/** Sampled balances, oldest first. */
+	points: Delivery_MoneyPoint[];
+}
+
+/**
+ * One balance point in a session's money-by-tick curve.
+ */
+export interface Delivery_MoneyPoint {
+	/** Tick of the sampled balance. */
+	tick: number;
+	/** Balance at that tick, in dollars. */
+	money: number;
+}
+
+/**
+ * One economic bucket's totals within a month.
+ */
 export interface Delivery_MonthCategoryView {
+	/** Bucket this row describes. */
 	category: Delivery_CashCategory;
 	/** Positive magnitude in this category, or zero. */
 	income: number;
@@ -324,7 +579,9 @@ export interface Delivery_MonthCategoryView {
 export interface Delivery_MonthView {
 	/** One-based month number. Month 1 covers ticks 0 through ticksPerMonth-1. */
 	index: number;
+	/** First tick in the month (inclusive). */
 	startTick: number;
+	/** Last tick in the month (inclusive). */
 	endTick: number;
 	/** Positive magnitude of money in. */
 	income: number;
@@ -332,59 +589,84 @@ export interface Delivery_MonthView {
 	expenses: number;
 	/** income minus expenses. */
 	net: number;
+	/** Per-bucket totals for the month, in category order. */
 	categories: Delivery_MonthCategoryView[];
 }
 
+/**
+ * Delivery writes and lifecycle. Every session mutation requires the creator's
+ * owner token or the owning account; reads stay public.
+ */
 export interface Delivery_Mutation {
-	/** Start a new city. Both fields optional; a seed makes it reproducible, and an omitted id is generated. cityId selects the city config to snapshot (omitted = the default city); the session keeps that snapshot, so later city edits never change a running game. A signed-in creator's session belongs to their account. The response carries the secret ownerToken, needed to change the session later, so keep it. */
-	createSession: (args: { id?: string | null; seed?: number | null; cityId?: string | null }) => Delivery_CreateSessionResult;
-	/** Queue one step for one car. Does NOT advance the clock. Only the session's creator may change it: pass the ownerToken from createSession, or be signed in to the account that owns the session (FORBIDDEN otherwise). Sessions created before owner tokens stay open. */
-	moveCar: (args: { id: string; carId: string; direction: Delivery_Direction; ownerToken?: string | null }) => Delivery_Snapshot;
+	/** Start a new city. Every argument is optional; a seed makes it reproducible, and an omitted id is generated. cityId selects the city config to snapshot (omitted = the default city); the session keeps that snapshot, so later city edits never change a running game. A signed-in creator's session belongs to their account. The response carries the secret ownerToken, needed to change the session later, so keep it. */
+	createSession: Delivery_CreateSessionResult;
+	/** Queue one step for one car by appending it to that car's movement queue. Does NOT advance the clock: queued steps run one per tick, in order, so a client can preload a route and then call tick. A rejected step (wall, battery, closure, traffic) is spent, not retried. At most 64 steps may be queued per car; the overflow is LIMIT_REACHED. Only the session's creator may change it: pass the ownerToken from createSession, or be signed in to the account that owns the session (FORBIDDEN otherwise). Sessions created before owner tokens stay open. */
+	moveCar: Delivery_Snapshot;
+	/** Drop a car's entire movement queue, including the step for the next tick. Use it to replan: a preloaded route must not keep steering after traffic or closures change. Creator-only, as moveCar. */
+	clearMoves: Delivery_Snapshot;
 	/** Advance the world manually. Useful when paused. Creator-only, as moveCar. */
-	tick: (args: { id: string; count?: number; ownerToken?: string | null }) => Delivery_Snapshot;
+	tick: Delivery_Snapshot;
+	/** Wait for the running clock to reach a target tick, then return that snapshot. Pass exactly one of `tick` (an absolute tick in the future) or `ticks` (a count from the tick when the call starts, at most 1000). The clock must be running: a paused session never advances, so the call fails with INVALID_ARGUMENT instead of hanging, and pausing while it waits ends it the same way. Creator-only, as moveCar. */
+	waitUntil: Delivery_Snapshot;
 	/** Set the clock multiplier. 0 pauses. Creator-only, as moveCar. */
-	setSpeed: (args: { id: string; speed: number; ownerToken?: string | null }) => Delivery_Snapshot;
+	setSpeed: Delivery_Snapshot;
 	/** Point an order at a car; refreshes its deadline from that car's position. Creator-only, as moveCar. */
-	assignOrder: (args: { id: string; orderId: string; carId: string; ownerToken?: string | null }) => Delivery_Snapshot;
-	unassignOrder: (args: { id: string; orderId: string; ownerToken?: string | null }) => Delivery_Snapshot;
+	assignOrder: Delivery_Snapshot;
+	/** Remove the car from an order, returning it to PENDING. Creator-only, as moveCar. */
+	unassignOrder: Delivery_Snapshot;
 	/** Buy a vehicle at a depot. Creator-only, as moveCar. */
-	buyCar: (args: { id: string; className: string; depotId?: string; ownerToken?: string | null }) => Delivery_Snapshot;
+	buyCar: Delivery_Snapshot;
 	/** Return a stranded car to its nearest depot for a fee. Creator-only, as moveCar. */
-	towCar: (args: { id: string; carId: string; ownerToken?: string | null }) => Delivery_Snapshot;
-	/** Write the save to disk. Creator-only, as moveCar. */
-	saveSession: (args: { id: string; ownerToken?: string | null }) => Delivery_Snapshot;
+	towCar: Delivery_Snapshot;
+	/** Persist the save to PostgreSQL now. Creator-only, as moveCar. */
+	saveSession: Delivery_Snapshot;
+	/** Name this save for the player. Creator-only, as moveCar. A blank name clears it and every view falls back to the city name. Persisted immediately, so the name survives a restart and shows in the session list before the save loads. */
+	renameSession: Delivery_Snapshot;
 	/** Save, then drop from memory. The next read rehydrates. Creator-only: evicting someone else's session would stop their clock. */
-	evictSession: (args: { id: string; ownerToken?: string | null }) => boolean;
-	/** Delete the save file permanently. Needs the ownerToken (or the owning account) even for a guest session; only a save created before owner tokens is open. */
-	deleteSession: (args: { id: string; ownerToken?: string | null }) => boolean;
+	evictSession: boolean;
+	/** Delete the save row permanently. Needs the ownerToken (or the owning account) even for a guest session; only a save created before owner tokens is open. */
+	deleteSession: boolean;
 	/** Attaches guest sessions of this browser to the signed-in account; each needs its owner token (up to 100 per call). UNAUTHENTICATED when not signed in. */
-	claimSessions: (args: { claims: Delivery_SessionClaimInput[] }) => Delivery_SessionClaimResult[];
+	claimSessions: Delivery_SessionClaimResult[];
 	/** Saves a new DRAFT city owned by the signed-in player (UNAUTHENTICATED otherwise). config is the raw city JSON; it is stored as written, so validateCity and publishCity can report every problem. */
-	createCity: (args: { id: string; config: string }) => Delivery_CityView;
+	createCity: Delivery_CityView;
 	/** Replaces the caller's own city and puts it back into DRAFT. Only the owner may edit a community city; shipped and legacy unowned cities need X-Admin-Key. */
-	updateCity: (args: { id: string; config: string }) => Delivery_CityView;
+	updateCity: Delivery_CityView;
 	/** Publishes a draft after the full startup validation (grid, districts, orders and reachability). Only the owner may do it, and an invalid city is refused with INVALID_ARGUMENT. */
-	publishCity: (args: { id: string }) => Delivery_CityView;
+	publishCity: Delivery_CityView;
 	/** Removes a city. Community cities need their owner; shipped and legacy unowned cities need X-Admin-Key. Sessions already started keep their snapshot. */
-	deleteCity: (args: { id: string }) => boolean;
+	deleteCity: boolean;
 	/** Checks raw city JSON and stores nothing. Signed-in players only. valid means it parses into a city; publishable means publishCity would accept it. */
-	validateCity: (args: { config: string }) => Delivery_CityValidationResult;
+	validateCity: Delivery_CityValidationResult;
 }
 
+/**
+ * One delivery job: what was ordered, where it goes, its deadline and pay.
+ */
 export interface Delivery_OrderView {
+	/** Order id used by assignOrder/unassignOrder. */
 	id: string;
+	/** Item code the customer ordered (e.g. "pizza"). */
 	item: string;
+	/** Item display name. */
 	itemName: string;
 	/** How many boxes the customer asked for. */
 	quantity: number;
+	/** Kitchen that supplies it. */
 	kitchenId: string;
+	/** Kitchen display name. */
 	kitchenName: string;
+	/** Customer that placed it. */
 	customerId: string;
+	/** Customer display name. */
 	customerName: string;
+	/** Lifecycle state; PENDING/ASSIGNED/PICKED_UP are live, DONE/EXPIRED are settled. */
 	state: Delivery_OrderState;
 	/** The car holding or holding-to-be. Kept after DONE, so read it as history once state is terminal. */
 	assignedCar: string | null;
+	/** Tick the customer raised the order. */
 	createdTick: number;
+	/** Tick by which the delivery must be completed. */
 	deadlineTick: number;
 	/** Ticks until the deadline. Signed: negative means already past it but not yet swept. */
 	ticksLeft: number;
@@ -396,47 +678,85 @@ export interface Delivery_OrderView {
 	late: boolean;
 }
 
+/**
+ * A named location on the grid: kitchen, depot, charger or waiting customer.
+ */
 export interface Delivery_PointView {
+	/** Stable id used by orders, builds and assignments. */
 	id: string;
+	/** Display name. */
 	name: string;
+	/** Column on the grid (right is +x). */
 	x: number;
+	/** Row on the grid (down is +y). */
 	y: number;
 }
 
+/**
+ * Delivery reads: cities, saves, live snapshots, event deltas and money history.
+ * Reads are public; mutations are creator-only.
+ */
 export interface Delivery_Query {
 	/** Liveness probe. */
 	health: Delivery_Health;
 	/** Published cities plus the signed-in caller's own drafts. Another player's draft is never listed. */
 	cities: Delivery_CityInfo[];
 	/** The static city with every district revealed. An omitted id selects the default city; a published city or the caller's own draft is visible, another player's draft is null. */
-	city: (args: { id?: string | null }) => Delivery_CityView | null;
+	city: Delivery_CityView | null;
 	/** The exact city JSON document for a published city or the caller's own draft. Another player's draft and a missing city return null. Built-in cities are readable by everyone. This is the authoring document: it carries the decoded, defaulted config with the same key names players write. */
-	cityConfig: (args: { id: string }) => string | null;
-	/** Every save on disk, newest first. */
+	cityConfig: string | null;
+	/** Saved sessions, ordered by sort. A save's row is described from its stored counters, so a bounded list does not decode the save payloads; saves written before counters existed are decoded only when they survive the filter and the limit. mine = true requires a signed-in viewer and keeps that account's saves. */
 	sessions: Delivery_SessionSummary[];
-	/** One session's full state. Rehydrates from disk when not in memory. */
-	session: (args: { id: string }) => Delivery_Snapshot;
-	/** A window of the city around one car, for cheap agent polling. */
-	carView: (args: { id: string; carId: string; radius?: number }) => Delivery_CarWindow;
-	/** Events newer than a tick, so a client can poll for deltas. */
-	events: (args: { id: string; sinceTick?: number }) => Delivery_EventView[];
+	/** Money-by-tick series for up to 20 delivery sessions, read from the indexed delivery history projection rather than from live sessions or Prometheus.  Omitted ids select the most recently created sessions. cityId narrows the set. fromTick/toTick are inclusive; an omitted toTick runs to each session's current tick. maxPoints downsamples each series into tick buckets and keeps the last balance in each bucket, so a long session stays bounded. */
+	moneyHistory: Delivery_MoneyHistory[];
+	/** Cumulative boxes delivered at each tick, from done orders in the indexed delivery history projection. Expired and open orders do not contribute. Same window and downsampling contract as moneyHistory. */
+	itemsHistory: Delivery_ValueSeries[];
+	/** Recorded reputation at each tick. Sessions saved before the reputation ledger existed return one current point until their next reputation change. Same window and downsampling contract as moneyHistory. */
+	reputationHistory: Delivery_ValueSeries[];
+	/** Cumulative operational metrics at each tick, read from the indexed delivery history projection. Every metric is monotonic from tick 0 except the spending series, which accumulate spend as a positive magnitude. Same window and downsampling contract as moneyHistory. */
+	metricHistory: Delivery_ValueSeries[];
+	/** One session's full state. Loads the PostgreSQL row when not in memory. */
+	session: Delivery_Snapshot;
+	/** A window of the city around one car, for cheap agent polling.  radius is the half-width in tiles and is clamped to 10; a larger value returns the same window as 10. */
+	carView: Delivery_CarWindow;
+	/** Events newer than a tick, so a client can poll for deltas.  The returned feed says whether the request reached further back than the retained ring: truncated = true means events before oldestTick are gone, not absent. limit keeps the newest matching events, capped at the feed capacity. */
+	events: Delivery_EventFeed;
 	/** Whether this caller may change the session: true for the session's creator (by owner token or signed-in owning account) and for a session created before owner tokens, false for everyone else. Never an error: an unknown session is false. Reads stay public, so this decides between playing and spectating. */
-	canPlaySession: (args: { id: string; ownerToken?: string | null }) => boolean;
+	canPlaySession: boolean;
 }
 
+/**
+ * Per-claim outcome; claims are answered independently.
+ */
 export interface Delivery_SessionClaimResult {
+	/** The session id from the request. */
 	sessionID: string;
+	/** Whether the save now belongs to the caller. */
 	status: Delivery_ClaimStatus;
 }
 
+/**
+ * One row in a save picker. Counters come from the stored metadata, so listing
+ * does not decode every session payload.
+ */
 export interface Delivery_SessionSummary {
+	/** Session id; also the save's primary key. */
 	id: string;
+	/** When the save was created (UTC). */
 	createdAt: string;
+	/** The player's name for this save; empty when unnamed, in which case a client shows the city name. */
+	displayName: string;
+	/** World tick the save was last written at. */
 	tick: number;
+	/** Clock multiplier for a loaded session. An unloaded save reports 0 (paused), because a stored save has no running clock. */
 	speed: number;
+	/** Spendable balance in dollars. */
 	money: number;
+	/** Lifetime reputation, 0-5. */
 	reputation: number;
+	/** On-time deliveries completed. */
 	deliveries: number;
+	/** True when the session is currently held in memory; false means it will be loaded from PostgreSQL on the next read. */
 	loaded: boolean;
 	/** The owning player's public name: an account's display name, "Private player" when its profile is private, or "Guest" for a session with no account. */
 	ownerDisplayName: string;
@@ -444,38 +764,79 @@ export interface Delivery_SessionSummary {
 	ownerHandle: string | null;
 	/** True when the session belongs to the signed-in viewer's account. */
 	mine: boolean;
+	/** Opaque cursor naming this row's position in the requested sort order. Pass the last row's cursor as `sessions(cursor:)` to fetch the next page without skipping or repeating rows that share a sort value. */
+	cursor: string;
 }
 
 /**
  * The full client view of a session at one tick.
  */
 export interface Delivery_Snapshot {
+	/** Session id. */
 	id: string;
+	/** When the save was created (UTC). */
 	createdAt: string;
+	/** The player's name for this save; empty when unnamed, in which case a client shows the city name. */
+	displayName: string;
+	/** World tick, monotonically increasing. */
 	tick: number;
 	/** Clock multiplier: 0 paused, 1/2/4 running. */
 	speed: number;
+	/** True when the clock is stopped (speed 0). */
 	paused: boolean;
 	/** Wall-clock length of one tick at 1x, from the city config. */
 	tickMs: number;
+	/** The city as this session sees it: explored districts revealed, closed tiles marked, and waiting customers listed. */
 	city: Delivery_CityView;
+	/** Every car in the fleet, in stable id order. */
 	cars: Delivery_CarView[];
+	/** Delivery jobs, newest created first. With no arguments this is the history up to the 2000-row default cap, which is what a replay or an audit usually wants; `limit` cannot exceed 2000. A live client should ask for openOrders or filter instead. Finished history is ~96% of a long save and never shrinks, so selecting it per frame is the difference between a small and a multi-megabyte payload. */
 	orders: Delivery_OrderView[];
+	/** Every unfinished job (PENDING, ASSIGNED, PICKED_UP), newest created first. This is the list a player acts on and the cheapest useful order read. */
+	openOrders: Delivery_OrderView[];
+	/** Money, reputation and the newest statement window. */
 	ledger: Delivery_LedgerView;
 	/** The purchasable catalogue with per-session unlock and affordability flags, cheapest first. */
 	carClasses: Delivery_CarClassView[];
 	/** The city's scheduled expansion: stages in tick order, each with its fire tick and whether it has already applied. Read-only — the city grows on its own timeline, not through purchases. */
 	growth: Delivery_GrowthView[];
+	/** The retained event feed, oldest first. Bounded by the city's max_events; see eventCapacity and the events query for the truncation flag. */
 	events: Delivery_EventView[];
+	/** How many events the retained feed can hold. A poller that asks for events older than the oldest retained row has lost those events, and only the events query can say so. */
+	eventCapacity: number;
 	/** Street works currently closing part of the map. */
 	closures: Delivery_ClosureView[];
+}
+
+/**
+ * One value at a tick in a non-money analytics series.
+ */
+export interface Delivery_ValuePoint {
+	/** Tick of the sample. */
+	tick: number;
+	/** Sample value: cumulative boxes for itemsHistory, reputation for reputationHistory. */
+	value: number;
+}
+
+/**
+ * One session's downsampled items-or-reputation series.
+ */
+export interface Delivery_ValueSeries {
+	/** Session the series belongs to. */
+	sessionId: string;
+	/** City the session was created from. */
+	cityId: string;
+	/** Sampled values, oldest first. */
+	points: Delivery_ValuePoint[];
 }
 
 /**
  * A way to sign in, enabled on this server. Sign in by navigating to /auth/<id>/login.
  */
 export interface Global_AuthProvider {
+	/** Provider id used in the login URL, e.g. "google", "github", "dev" or "password". */
 	id: string;
+	/** Human-readable provider name for the sign-in button. */
 	name: string;
 }
 
@@ -486,44 +847,58 @@ export interface Global_AuthProvider {
  * client stores it and signs in again when it expires.
  */
 export interface Global_AuthSession {
+	/** Bearer token. Send it as `Authorization: Bearer <token>`; keep it private. */
 	token: string;
+	/** When the token stops being accepted (UTC). */
 	expiresAt: string;
+	/** The player the token belongs to. */
 	user: Global_User;
 }
 
+/**
+ * Account, sign-in and profile mutations. Password sign-in and OAuth hand-off are
+ * same-origin only; tokens are stateless Bearer JWTs.
+ */
 export interface Global_Mutation {
 	/** Sign-out counterpart for clients: tokens are stateless, so the server has nothing to revoke and the client must discard its token. Always true. */
 	logout: boolean;
 	/** Creates a username/password account and returns a bearer token for it. The username is the public handle. Refused cross-site, so another site cannot create accounts through a victim's browser. Errors: INVALID_ARGUMENT (bad handle, weak or taken password), LIMIT_REACHED, FORBIDDEN (password sign-in is off, or the call is not an HTTP request). */
-	registerWithPassword: (args: { handle: string; password: string }) => Global_AuthSession;
+	registerWithPassword: Global_AuthSession;
 	/** Signs in with a username and password and returns a bearer token. Refused cross-site. An unknown username and a wrong password are answered identically (UNAUTHENTICATED). Repeated failures lock the (address, username) pair and then the username: LIMIT_REACHED, refused before any hashing. FORBIDDEN when password sign-in is off or the call is not an HTTP request. */
-	logInWithPassword: (args: { handle: string; password: string }) => Global_AuthSession;
+	logInWithPassword: Global_AuthSession;
 	/** Changes the signed-in player's handle, display name or profile visibility. */
-	updateAccount: (args: { input: Global_AccountInput }) => Global_User;
+	updateAccount: Global_User;
 	/** Changes the password of a username/password account. Access tokens already issued stay valid until they expire (they are stateless). There is no email, so there is no password reset. */
-	changePassword: (args: { currentPassword: string; newPassword: string }) => boolean;
+	changePassword: boolean;
 	/** Permanently deletes the account. confirmHandle must equal the current handle. Its runs stay on the boards as guest entries, and its tokens stop resolving immediately. */
-	deleteAccount: (args: { confirmHandle: string }) => boolean;
+	deleteAccount: boolean;
 }
 
 /**
  * A player's public identity page. Game-specific statistics live under that game.
  */
 export interface Global_Profile {
+	/** Public handle; the profile lives at /u/<handle>. */
 	handle: string;
+	/** Public display name; empty means the handle is shown. */
 	displayName: string;
+	/** When the account was created (UTC). */
 	createdAt: string;
 	/** True when the viewer is this player (a private profile is visible only to its owner). */
 	isMine: boolean;
 }
 
+/**
+ * Account and sign-in operations shared by every game. Read `me` to identify the
+ * viewer; mutations require the Bearer token returned by the sign-in mutations.
+ */
 export interface Global_Query {
 	/** The signed-in player, or null. */
 	me: Global_User | null;
 	/** Sign-in providers enabled on this server; empty means sign-in is off. */
 	authProviders: Global_AuthProvider[];
 	/** A player's public profile; null when the handle is unknown or the profile is private (unless it is yours). */
-	profile: (args: { handle: string }) => Global_Profile | null;
+	profile: Global_Profile | null;
 }
 
 /**
@@ -533,9 +908,11 @@ export interface Global_Query {
 export interface Global_User {
 	/** Unique public name, 3-20 of a-z 0-9 _; the profile lives at /u/<handle>. */
 	handle: string;
+	/** Public name shown on boards and profiles; an empty value falls back to the handle. */
 	displayName: string;
 	/** When false the profile page is hidden and board entries read "Private player". */
 	profilePublic: boolean;
+	/** When the account was created (UTC). */
 	createdAt: string;
 	/** When the handle may be changed again; null when it can be changed now. */
 	handleChangeableAt: string | null;
@@ -547,21 +924,35 @@ export interface Global_User {
  * Full map for the editor (admin only).
  */
 export interface Mazes_AdminMap {
+	/** Map id used by createSession and updateMap. */
 	id: string;
+	/** Display name. */
 	name: string;
+	/** One-line description. */
 	description: string;
+	/** Difficulty label shown on the map card. */
 	difficulty: string;
+	/** Number of columns per level. */
 	width: number;
+	/** Number of rows per level. */
 	height: number;
+	/** Number of levels in the tower. */
 	levelCount: number;
 	/** Layout glyphs per level (index 0 = bottom), each a list of rows. . void, o stone, S start, F finish, U stairs up, D stairs down, 1-9 portal holes. */
 	levels: string[][];
+	/** Start tile (always on level 0). */
 	start: Mazes_Position;
+	/** Finish tile (always on the top level). */
 	finish: Mazes_Position;
+	/** Numbered holes linking two tiles on the same level. */
 	portals: Mazes_Portal[];
+	/** Move limit; running out loses the run. */
 	maxMoves: number;
+	/** Shortest winning route length; null when unreachable. */
 	parMoves: number | null;
+	/** Fewest stairs a winning route needs; null when unreachable. */
 	minLevelChanges: number | null;
+	/** Fewest down stairs a winning route needs; null when unreachable. */
 	forcedDescents: number | null;
 	/** DRAFT maps are visible only to their owner and cannot be played or published by anyone else. Every shipped map is PUBLISHED. */
 	status: Mazes_MapStatus;
@@ -575,16 +966,23 @@ export interface Mazes_AdminMap {
  * id alone stays enough to read it.
  */
 export interface Mazes_CreateSessionResult {
+	/** The new session's first snapshot. */
 	session: Mazes_Session;
 	/** Secret that proves you created this session; keep it private. */
 	ownerToken: string;
 }
 
+/**
+ * The current run's observable state.
+ */
 export interface Mazes_GameState {
+	/** Where the player is now. */
 	pos: Mazes_Position;
 	/** Counted moves so far (blocked attempts are free). */
 	moves: number;
+	/** Session play state after the last move. */
 	status: Mazes_Status;
+	/** Why the run is LOST; null while playing or after a win. */
 	lossReason: Mazes_LossReason | null;
 	/** Every tile entered, in order, starting with the start tile. Stairs and portal moves add the tile stepped on and the landing tile. */
 	path: Mazes_Position[];
@@ -598,8 +996,11 @@ export interface Mazes_GameState {
 export interface Mazes_LevelView {
 	/** The level the player is on (0 = bottom). */
 	level: number;
+	/** Number of levels in the tower, for the tower diagram. */
 	levelCount: number;
+	/** Glyph rows of this level only (the fog the player sees). */
 	rows: string[];
+	/** Portals with an end on this level. */
 	portals: Mazes_Portal[];
 }
 
@@ -608,15 +1009,23 @@ export interface Mazes_LevelView {
  * (levelCount - 1). Layouts of other levels are hidden: players discover them by playing.
  */
 export interface Mazes_Map {
+	/** Map id used by createSession. */
 	id: string;
+	/** Display name. */
 	name: string;
+	/** One-line description. */
 	description: string;
+	/** Difficulty label shown on the map card. */
 	difficulty: string;
+	/** Number of columns per level. */
 	width: number;
+	/** Number of rows per level. */
 	height: number;
+	/** Number of levels in the tower. */
 	levelCount: number;
 	/** Glyph rows of level 0, the level every game starts on. */
 	preview: string[];
+	/** Move limit; running out loses the run. */
 	maxMoves: number;
 	/** Length of the shortest winning route; null if the finish is unreachable. */
 	parMoves: number | null;
@@ -630,57 +1039,85 @@ export interface Mazes_Map {
 	ownedByMe: boolean;
 }
 
+/**
+ * One problem found by validateMap.
+ */
 export interface Mazes_MapValidationIssue {
+	/** Human-readable failure, with the level and coordinate when relevant. */
 	message: string;
 }
 
+/**
+ * Outcome of validateMap: whether the map parses and is playable, plus its
+ * computed par values.
+ */
 export interface Mazes_MapValidationResult {
+	/** True when the map parses into a playable map. */
 	valid: boolean;
+	/** Problems found; empty when valid. */
 	issues: Mazes_MapValidationIssue[];
 	/** Set when the map parses but the finish cannot be reached from the start. */
 	finishReachable: boolean;
+	/** Shortest winning route length; null when unreachable. */
 	parMoves: number | null;
+	/** Fewest stairs a winning route needs; null when unreachable. */
 	minLevelChanges: number | null;
+	/** Fewest down stairs a winning route needs; null when unreachable. */
 	forcedDescents: number | null;
 }
 
+/**
+ * One attempted move and its result, including blocked attempts.
+ */
 export interface Mazes_MoveEvent {
 	/** Counted-move index after this attempt (unchanged when blocked). */
 	move: number;
+	/** Direction attempted. */
 	direction: Mazes_Direction;
+	/** Position before the attempt. */
 	from: Mazes_Position;
 	/** The tile entered by the step; equals from when blocked. */
 	stepped: Mazes_Position;
 	/** Final position after stairs/portal; equals from when blocked. */
 	to: Mazes_Position;
+	/** True when the attempt was rejected; nothing moved and no move was counted. */
 	blocked: boolean;
+	/** How the move changed the position. */
 	via: Mazes_Via;
+	/** Status after the attempt. */
 	status: Mazes_Status;
+	/** Loss reason when this attempt ended the run. */
 	lossReason: Mazes_LossReason | null;
 }
 
+/**
+ * Mazes writes: play moves and map authoring. Session mutations require the
+ * creator's owner token or owning account; map writes require ownership or the
+ * admin key.
+ */
 export interface Mazes_Mutation {
 	/** Start a new game on a map. A signed-in creator's session belongs to their account; the response also carries the secret ownerToken needed to change it later, so keep it. */
-	createSession: (args: { mapID: string; displayName?: string | null }) => Mazes_CreateSessionResult;
+	createSession: Mazes_CreateSessionResult;
 	/** Delete a session. Creator-only: pass the ownerToken from createSession or be signed in to the owning account (FORBIDDEN otherwise). Sessions created before owner tokens stay open. */
-	deleteSession: (args: { id: string; ownerToken?: string | null }) => boolean;
-	renameSession: (args: { id: string; displayName: string; ownerToken?: string | null }) => Mazes_Session;
+	deleteSession: boolean;
+	/** Rename the save. Creator-only, as deleteSession. */
+	renameSession: Mazes_Session;
 	/** One move. A blocked attempt succeeds but changes nothing (lastEvent.blocked). Creator-only, as deleteSession. */
-	move: (args: { sessionID: string; direction: Mazes_Direction; ownerToken?: string | null }) => Mazes_Session;
+	move: Mazes_Session;
 	/** Several moves in order; stops early once the game is WON or LOST. With stopOnBlocked (the default) it also stops at the first blocked attempt, so a wrong plan cannot keep running from the wrong tile: check lastEvent.blocked and state.pos, then send a corrected plan. Pass stopOnBlocked: false to skip blocked moves and carry on. Creator-only, as deleteSession. */
-	bulkMove: (args: { sessionID: string; directions: Mazes_Direction[]; stopOnBlocked?: boolean | null; ownerToken?: string | null }) => Mazes_Session;
+	bulkMove: Mazes_Session;
 	/** Back to the start of the same map; keeps attempts and bestMoves. Creator-only, as deleteSession. */
-	reset: (args: { sessionID: string; ownerToken?: string | null }) => Mazes_Session;
+	reset: Mazes_Session;
 	/** Creates a DRAFT map owned by the signed-in player (UNAUTHENTICATED otherwise). A draft may be saved while invalid; publishMap requires the finish to be reachable. */
-	createMap: (args: { map: Mazes_MapInput }) => Mazes_AdminMap;
+	createMap: Mazes_AdminMap;
 	/** Replaces the caller's community map and puts it back into DRAFT. Only the owner may edit a community map; shipped and legacy unowned maps need X-Admin-Key. */
-	updateMap: (args: { map: Mazes_MapInput }) => Mazes_AdminMap;
+	updateMap: Mazes_AdminMap;
 	/** Publishes a draft. Only its owner may do it, and a map whose finish is unreachable is refused with INVALID_ARGUMENT. */
-	publishMap: (args: { id: string }) => Mazes_AdminMap;
+	publishMap: Mazes_AdminMap;
 	/** Removes a map. Community maps need their owner; shipped and legacy unowned maps need X-Admin-Key. */
-	deleteMap: (args: { id: string }) => boolean;
+	deleteMap: boolean;
 	/** Checks a map and stores nothing. Signed-in players only. finishReachable is the publication gate: a map is publishable when it is structurally valid and the finish can be reached. */
-	validateMap: (args: { map: Mazes_MapInput }) => Mazes_MapValidationResult;
+	validateMap: Mazes_MapValidationResult;
 }
 
 /**
@@ -689,8 +1126,11 @@ export interface Mazes_Mutation {
  * `b` is set only when the twin is on the same level (otherwise the twin's location is hidden).
  */
 export interface Mazes_Portal {
+	/** Digit glyph '1'-'9' marking both ends. */
 	glyph: string;
+	/** The end on the viewed level. */
 	a: Mazes_Position;
+	/** The twin, when it is on the same level; null when it is hidden. */
 	b: Mazes_Position | null;
 }
 
@@ -698,63 +1138,98 @@ export interface Mazes_Portal {
  * A tile coordinate in the tower. level 0 is the bottom; x = column, y = row (row 0 on top).
  */
 export interface Mazes_Position {
+	/** Tower level, 0 = bottom. */
 	level: number;
+	/** Column (0 = left). */
 	x: number;
+	/** Row (0 = top). */
 	y: number;
 }
 
+/**
+ * Mazes reads: catalogue, one session and the save list. Reads are public.
+ */
 export interface Mazes_Query {
 	/** Public catalog: published maps plus the signed-in caller's own drafts. Another player's draft is never listed. Never exposes layouts beyond the start level (see Map.preview). */
 	maps: Mazes_Map[];
 	/** One map. Another player's draft is hidden and null, exactly like an unknown id. */
-	map: (args: { id: string }) => Mazes_Map | null;
+	map: Mazes_Map | null;
 	/** Full layout of every level, for the map editor. The signed-in owner may load their own community map, draft or published; a shipped map still needs X-Admin-Key. Another player's map is hidden and null. */
-	adminMap: (args: { id: string }) => Mazes_AdminMap | null;
+	adminMap: Mazes_AdminMap | null;
 	/** Public read: anyone with the id may watch a session. */
-	session: (args: { id: string }) => Mazes_Session | null;
-	sessions: (args: { sort?: Mazes_SessionSort | null; limit?: number | null; mapId?: string | null }) => Mazes_Session[];
+	session: Mazes_Session | null;
+	/** Saved sessions in the requested order, newest first by default. `mapId` keeps one map; `limit` is capped by the game. */
+	sessions: Mazes_Session[];
 	/** Whether this caller may change the session (and so is its player rather than a spectator): its creator by owner token or owning account, or anyone for a session created before owner tokens. Reads stay public, so this decides between playing and spectating. Never errors: an unknown id is simply false. */
-	canPlaySession: (args: { id: string; ownerToken?: string | null }) => boolean;
+	canPlaySession: boolean;
 }
 
+/**
+ * One play-through: the map snapshot, the player's current level, the run state
+ * and its counters.
+ */
 export interface Mazes_Session {
+	/** Session id; public enough to watch. */
 	id: string;
+	/** The player's name for this run; empty falls back to the map name. */
 	displayName: string;
+	/** Map this session plays. */
 	mapId: string;
 	/** Catalog entry of the map this session plays. Reveals nothing beyond the start level. */
 	map: Mazes_Map;
 	/** Fog: the only part of the map a player can see, the level the player stands on right now. */
 	view: Mazes_LevelView;
+	/** Current run state: position, moves and status. */
 	state: Mazes_GameState;
 	/** Increments on every state change; clients ignore updates with seq <= last seen. */
 	seq: number;
+	/** When the session was created (UTC). */
 	createdAt: string;
+	/** When the session last changed (UTC). */
 	lastActionAt: string;
 	/** Games finished (won or lost) in this session. */
 	attempts: number;
 	/** Fewest moves in a won game of this session. */
 	bestMoves: number | null;
+	/** The most recent move attempt, or null before the first move. */
 	lastEvent: Mazes_MoveEvent | null;
 }
 
+/**
+ * One subscription frame: the new snapshot plus the move that caused it.
+ */
 export interface Mazes_SessionUpdate {
+	/** Monotonic sequence of this snapshot. */
 	seq: number;
+	/** Full current snapshot. */
 	session: Mazes_Session;
+	/** The move that produced this frame; null for non-move changes. */
 	event: Mazes_MoveEvent | null;
 }
 
+/**
+ * A one-way tile: moving onto it carries the robot one extra cell.
+ */
 export interface Motor_Conveyor {
+	/** Tile occupied by the belt. */
 	pos: Motor_Position;
 	/** Direction the robot is carried after moving onto this tile. */
 	dir: Motor_Facing;
 }
 
+/**
+ * A door, impassable until its key is collected.
+ */
 export interface Motor_DoorTile {
+	/** Tile occupied by the door. */
 	pos: Motor_Position;
 	/** Upper-case door letter ('A'..'C'). */
 	letter: string;
 }
 
+/**
+ * One entry on the call stack.
+ */
 export interface Motor_Frame {
 	/** Tape index; -1 is the main tape. */
 	tape: number;
@@ -762,7 +1237,11 @@ export interface Motor_Frame {
 	pc: number;
 }
 
+/**
+ * A collectable key that opens every matching door.
+ */
 export interface Motor_KeyTile {
+	/** Tile occupied by the key. */
 	pos: Motor_Position;
 	/** Lower-case key letter ('a'..'c'). */
 	letter: string;
@@ -774,10 +1253,13 @@ export interface Motor_KeyTile {
  * Only sessions that played the map's current rules count.
  */
 export interface Motor_Leaderboard {
+	/** Map this board ranks. */
 	mapId: string;
+	/** Order the rows are ranked by. */
 	order: Motor_LeaderboardOrder;
 	/** Ranked sessions on this board, not just the rows returned. */
 	total: number;
+	/** The returned rows, best first. */
 	entries: Motor_LeaderboardEntry[];
 	/** The signed-in viewer's entry, else the entry of the requested sessionId, even beyond the returned rows; null when it has not won. */
 	yours: Motor_LeaderboardEntry | null;
@@ -805,10 +1287,17 @@ export interface Motor_LeaderboardEntry {
 	achievedAt: string;
 }
 
+/**
+ * One map, with the tape sizes and terrain the player must work with.
+ */
 export interface Motor_Map {
+	/** Map id used by createSession. */
 	id: string;
+	/** Display name. */
 	name: string;
+	/** One-line description. */
 	description: string;
+	/** Difficulty label shown on the map card. */
 	difficulty: string;
 	/** True for a map shipped with the game: only an admin may change or delete it. */
 	builtin: boolean;
@@ -816,12 +1305,19 @@ export interface Motor_Map {
 	status: Motor_MapStatus;
 	/** True when the signed-in caller created this community map. */
 	ownedByMe: boolean;
+	/** Number of columns. */
 	width: number;
+	/** Number of rows. */
 	height: number;
+	/** Glyph rows: '.' floor, '#' rock, '*' treat, '^>v<' robot start and initial facing, 'U/D/L/R' conveyors, '/' and '\\' mirrors, 'a'-'c' keys, 'A'-'C' doors, '1'-'9' portals. */
 	layout: string[];
+	/** Robot start tile. */
 	start: Motor_Position;
+	/** Direction the robot faces at the start. */
 	startFacing: Motor_Facing;
+	/** Impassable rock tiles. */
 	rocks: Motor_Position[];
+	/** Collectable treats; collecting every one wins. */
 	treats: Motor_Position[];
 	/** One-way tiles: a move onto one is carried one extra cell in Conveyor.dir. */
 	conveyors: Motor_Conveyor[];
@@ -833,57 +1329,78 @@ export interface Motor_Map {
 	doors: Motor_DoorTile[];
 	/** Portal pairs ('1'..'9'); arriving on one teleports to the other. */
 	portals: Motor_Portal[];
+	/** Slot count of the main tape. */
 	mainTapeLength: number;
+	/** Slot count of each subroutine tape, in CALL_SUB order. */
 	subTapeLengths: number[];
+	/** Step limit for one run. */
 	maxSteps: number;
+	/** Maximum subroutine nesting depth. */
 	maxCallDepth: number;
+	/** True when a subroutine may call itself (directly or through a cycle). */
 	allowRecursion: boolean;
 }
 
+/**
+ * One problem found by validateMap.
+ */
 export interface Motor_MapValidationIssue {
+	/** Human-readable failure, with the coordinate when relevant. */
 	message: string;
 }
 
+/**
+ * Outcome of validateMap.
+ */
 export interface Motor_MapValidationResult {
+	/** True when the map parses and is structurally playable. */
 	valid: boolean;
+	/** Problems found; empty when valid. */
 	issues: Motor_MapValidationIssue[];
 	/** Cells reachable check result: treats unreachable from start. */
 	unreachableTreats: Motor_Position[];
 }
 
+/**
+ * A mirror: arriving on it turns the robot 90 degrees.
+ */
 export interface Motor_Mirror {
+	/** Tile occupied by the mirror. */
 	pos: Motor_Position;
 	/** True for '/', false for '\\'. */
 	slash: boolean;
 }
 
+/**
+ * Motor writes: play a program, manage sessions and author maps.
+ */
 export interface Motor_Mutation {
 	/** Starts a session. The response carries the secret `ownerToken`: it is needed to play the session (setProgram, run, step, pause, reset) and to delete or claim it, so keep it. */
-	createSession: (args: { mapID: string }) => Motor_Session;
+	createSession: Motor_Session;
 	/** Deletes a session. A guest session can be deleted by anyone who knows its id. A session that belongs to a signed-in player can only be deleted by that player's signed-in browser, or by passing the ownerToken that createSession returned (FORBIDDEN otherwise). */
-	deleteSession: (args: { id: string; ownerToken?: string | null }) => boolean;
+	deleteSession: boolean;
 	/** Stores the program and resets the robot. Only the session's creator may do it: pass the ownerToken that createSession returned, or be signed in to the account that owns the session (FORBIDDEN otherwise). Sessions created before owner tokens stay open. The program is private, so watching a run never grants this. */
-	setProgram: (args: { sessionID: string; program: Motor_ProgramInput; ownerToken?: string | null }) => Motor_Session;
+	setProgram: Motor_Session;
 	/** Starts the program. Anyone who knows the session id may drive playback — that is what a /watch link is for — and the response carries the program only for a caller who may change it. */
-	run: (args: { sessionID: string; speedMs?: number | null; ownerToken?: string | null }) => Motor_Session;
+	run: Motor_Session;
 	/** Pauses playback. Open to anyone who knows the session id; the program stays hidden from spectators. */
-	pause: (args: { sessionID: string; ownerToken?: string | null }) => Motor_Session;
+	pause: Motor_Session;
 	/** Executes one step. Open to anyone who knows the session id; the program stays hidden from spectators. */
-	step: (args: { sessionID: string; ownerToken?: string | null }) => Motor_Session;
+	step: Motor_Session;
 	/** Puts the robot back at the start. Open to anyone who knows the session id; the program stays hidden from spectators. */
-	reset: (args: { sessionID: string; ownerToken?: string | null }) => Motor_Session;
+	reset: Motor_Session;
 	/** Attaches guest sessions of this browser to the signed-in account; each needs its owner token (up to 100 per call). */
-	claimSessions: (args: { claims: Motor_SessionClaimInput[] }) => Motor_SessionClaimResult[];
+	claimSessions: Motor_SessionClaimResult[];
 	/** Creates a DRAFT map owned by the signed-in player (UNAUTHENTICATED otherwise). The map is saved even when it is not valid yet; publishMap checks it. Use validateMap to preview problems. */
-	createMap: (args: { map: Motor_MapInput }) => Motor_Map;
+	createMap: Motor_Map;
 	/** Checks a map definition and stores nothing. Signed-in players only. */
-	validateMap: (args: { map: Motor_MapInput }) => Motor_MapValidationResult;
+	validateMap: Motor_MapValidationResult;
 	/** Replaces the caller's community map and puts it back into DRAFT. Only the owner may edit a community map; shipped and legacy unowned maps need X-Admin-Key. */
-	updateMap: (args: { map: Motor_MapInput }) => Motor_Map;
+	updateMap: Motor_Map;
 	/** Publishes a valid draft. Only its owner may do it, and an invalid map (unreachable treats, bad layout) is refused with INVALID_ARGUMENT. */
-	publishMap: (args: { id: string }) => Motor_Map;
+	publishMap: Motor_Map;
 	/** Removes a map. Community maps need their owner; shipped and legacy unowned maps need X-Admin-Key. */
-	deleteMap: (args: { id: string }) => boolean;
+	deleteMap: boolean;
 }
 
 /**
@@ -891,6 +1408,7 @@ export interface Motor_Mutation {
  * and where it ranks there.
  */
 export interface Motor_PlayerRun {
+	/** Map the run was played on. */
 	mapId: string;
 	/** Ranked sessions on that map's SLOTS board. */
 	total: number;
@@ -898,81 +1416,136 @@ export interface Motor_PlayerRun {
 	entry: Motor_LeaderboardEntry;
 }
 
+/**
+ * A portal: arriving on one end teleports the robot to the other.
+ */
 export interface Motor_Portal {
+	/** Tile occupied by this end. */
 	pos: Motor_Position;
 	/** Digit shared by the two ends of the pair. */
 	pair: string;
 }
 
+/**
+ * A tile coordinate: x = column, y = row (0,0 is the top-left).
+ */
 export interface Motor_Position {
+	/** Column (0 = left). */
 	x: number;
+	/** Row (0 = top). */
 	y: number;
 }
 
+/**
+ * The robot's program: the main tape and one tape per subroutine.
+ */
 export interface Motor_Program {
+	/** Main tape, exactly mainTapeLength slots. */
 	main: Motor_Instruction[];
+	/** Subroutine tapes, each exactly its map's subTapeLengths slot count. */
 	subs: Motor_Instruction[][];
 }
 
+/**
+ * Motor reads: maps, sessions, leaderboards and a player's runs.
+ */
 export interface Motor_Query {
 	/** Published maps plus the signed-in caller's own drafts. Another player's draft is never listed. */
 	maps: Motor_Map[];
 	/** One map. Another player's draft is null, exactly like an unknown id. */
-	map: (args: { id: string }) => Motor_Map | null;
+	map: Motor_Map | null;
 	/** One session. The program is included only for a caller who may change it; pass the ownerToken (or be signed in as the owning account) to read it. */
-	session: (args: { id: string; ownerToken?: string | null }) => Motor_Session | null;
+	session: Motor_Session | null;
 	/** Whether this caller may change the session's program (setProgram) and read it back: true when they created it — a signed-in owner by their login, anyone else by passing the ownerToken — or when the session predates owner tokens. False for a spectator, even though the public id is enough to drive playback at /watch; a play page uses it to decide between editing and a read-only view. */
-	canPlaySession: (args: { id: string; ownerToken?: string | null }) => boolean;
-	sessions: (args: { sort?: Motor_SessionSort | null; limit?: number | null; mapId?: string | null }) => Motor_Session[];
+	canPlaySession: boolean;
+	/** Saved sessions in the requested order, newest first by default. `mapId` keeps one map; `limit` is capped by the game. Programs are omitted unless the caller may see them. */
+	sessions: Motor_Session[];
 	/** Ranks the winning sessions of a map (limit defaults to 20, at most 100). Null when the map does not exist. */
-	leaderboard: (args: { mapId: string; order?: Motor_LeaderboardOrder | null; limit?: number | null; sessionId?: string | null }) => Motor_Leaderboard | null;
+	leaderboard: Motor_Leaderboard | null;
 	/** A player's best run per map they have won (maps never won are absent), ordered by map id. Session ids select exact guest sessions (up to 200); when signed in, the account's own runs are included too, and sessionIds may be left out for just the account's runs. */
-	playerRuns: (args: { sessionIds?: string[] | null }) => Motor_PlayerRun[];
+	playerRuns: Motor_PlayerRun[];
 	/** A player's best run per map they have won, looked up by account handle. Empty when the handle is unknown; game-specific statistics stay with the game. */
-	playerRunsFor: (args: { handle: string }) => Motor_PlayerRun[];
+	playerRunsFor: Motor_PlayerRun[];
 }
 
+/**
+ * One session: the map snapshot, the run state, the player's program (when the
+ * caller may see it) and the run counters.
+ */
 export interface Motor_Session {
+	/** Session id; public enough to watch. */
 	id: string;
+	/** Map this session plays. */
 	mapId: string;
 	/** Snapshot of the map taken when the session was created. */
 	map: Motor_Map;
 	/** The robot's program. Only a caller who may change it sees it: the ownerToken holder or the owning account's login. Spectators — a shared /watch link, the session lists — get null, so a program is never a public answer key. Driving playback (run, step, pause, reset) does not reveal it either. */
 	program: Motor_Program | null;
+	/** Robot state after the latest step. */
 	vm: Motor_VMState;
+	/** True while the program is running on the server clock. */
 	playing: boolean;
+	/** Delay between steps in milliseconds. */
 	speedMs: number;
 	/** Increments on every state change; clients ignore updates with seq <= last seen. */
 	seq: number;
+	/** When the session was created (UTC). */
 	createdAt: string;
+	/** When the session last changed (UTC). */
 	lastActionAt: string;
+	/** Finished runs (won or lost) in this session. */
 	attempts: number;
+	/** Fewest steps in a won run; null until the first win. */
 	bestSteps: number | null;
+	/** The most recent executed step, or null before the first step. */
 	lastEvent: Motor_StepEvent | null;
 	/** Secret that proves the caller created this session; keep it private. Returned only by the createSession response that made the session and null everywhere else (queries, lists, subscriptions). It is the credential for playing the session (pass it to setProgram, run, step, pause and reset) and for changing or attaching it (deleteSession, claimSessions). Sharing it is how a session is handed to a second person or an AI agent. Optional: clients that never select it are unaffected. */
 	ownerToken: string | null;
 }
 
+/**
+ * Per-claim outcome; claims are answered independently.
+ */
 export interface Motor_SessionClaimResult {
+	/** The session id from the request. */
 	sessionID: string;
+	/** Whether the session now belongs to the caller. */
 	status: Motor_ClaimStatus;
 }
 
+/**
+ * One subscription frame: the new session snapshot plus the step that caused it.
+ */
 export interface Motor_SessionUpdate {
+	/** Monotonic sequence of this snapshot. */
 	seq: number;
+	/** Full current session. */
 	session: Motor_Session;
+	/** The step that produced this frame; null for non-step changes. */
 	event: Motor_StepEvent | null;
 }
 
+/**
+ * One executed instruction and everything it changed.
+ */
 export interface Motor_StepEvent {
+	/** 1-based step number in the run. */
 	step: number;
+	/** Instruction that ran. */
 	instruction: Motor_Instruction;
+	/** Tape index: -1 for main, 0-9 for a subroutine. */
 	tapeIndex: number;
+	/** Slot index on that tape. */
 	slotIndex: number;
+	/** Position before the step. */
 	from: Motor_Position;
+	/** Position after the step (before conveyor/portal effects when applicable). */
 	to: Motor_Position;
+	/** Facing before the instruction. */
 	facingBefore: Motor_Facing;
+	/** Facing after the instruction. */
 	facingAfter: Motor_Facing;
+	/** True when a MOVE_FORWARD was blocked by a rock, door or the edge. */
 	blocked: boolean;
 	/** True when a CALL_SUB_k was ignored because the map has allowRecursion: false and that sub is already on the call stack. The step is still spent. */
 	callBlocked: boolean;
@@ -986,172 +1559,330 @@ export interface Motor_StepEvent {
 	collectedKey: string | null;
 	/** Portal destination when the arrival tile was a portal. */
 	teleported: Motor_Position | null;
+	/** Treat collected on this step, or null. */
 	collected: Motor_Position | null;
+	/** Call stack after the step; the last frame is the active tape. */
 	callStack: Motor_Frame[];
+	/** Run state after the step. */
 	status: Motor_Status;
+	/** Loss reason when this step ended the run. */
 	lossReason: Motor_LossReason | null;
 }
 
+/**
+ * The robot's observable state after the latest step.
+ */
 export interface Motor_VMState {
+	/** Robot tile. */
 	pos: Motor_Position;
+	/** Direction the robot faces. */
 	facing: Motor_Facing;
+	/** Treats not yet collected. */
 	treatsRemaining: Motor_Position[];
 	/** Bottom frame is main; the last frame is the active tape. */
 	callStack: Motor_Frame[];
+	/** Steps spent in the current run. */
 	steps: number;
+	/** Run state. */
 	status: Motor_Status;
+	/** Why the run is LOST; null while playing or after a win. */
 	lossReason: Motor_LossReason | null;
+	/** Tiles the robot has entered, in order. */
 	visited: Motor_Position[];
 	/** Lower-case letters of the doors this run has opened. */
 	openDoors: string[];
 }
 
+/**
+ * One excerpt: metadata, its bars and the original note sequence.
+ */
 export interface Music_Excerpt {
+	/** Excerpt id used by createSession. */
 	id: string;
+	/** Title. */
 	title: string;
+	/** Composer. */
 	composer: string;
+	/** Tempo in beats per minute. */
 	tempoBPM: number;
+	/** Time signature, e.g. "4/4". */
 	timeSig: string;
+	/** Key signature, e.g. "C major". */
 	key: string;
+	/** Clef the arrangement is drawn in. */
 	clef: string;
+	/** Vertical axis used when inverting pitches. */
 	axis: number;
 	/** The piece's bars in performance order. Every Music Region piece is at most 6 bars, and every difficulty challenges the whole piece, so this is also the number of slots in a session. */
 	measures: Music_Measure[];
+	/** Every note of the excerpt in performance order, for preview rendering. */
 	notes: Music_Note[];
 }
 
+/**
+ * The last change made to a session, for highlighting the modified bars.
+ */
 export interface Music_LastChange {
+	/** Mutation kind: SWITCH, TRANSFORM, ARRANGE, RESET or SOLVE. */
 	kind: string;
+	/** First affected slot; 0 for changes that are not slot-specific. */
 	a: number;
+	/** Second affected slot for SWITCH; 0 when not applicable. */
 	b: number;
 }
 
+/**
+ * One bar of the excerpt.
+ */
 export interface Music_Measure {
+	/** Bar id used by slots and arrangement inputs. */
 	id: string;
+	/** Bar length in ticks. */
 	len: number;
+	/** Notes in the bar, in time order. */
 	notes: Music_Note[];
 }
 
+/**
+ * Music writes: start a session and rearrange its bars.
+ */
 export interface Music_Mutation {
-	createSession: (args: { excerptID: string; difficulty: Music_Difficulty; displayName?: string | null; seed?: number | null }) => Music_Session;
-	switchMeasures: (args: { sessionID: string; a: number; b: number }) => Music_Session;
-	transformMeasure: (args: { sessionID: string; position: number; flipH: boolean; flipV: boolean }) => Music_Session;
-	setArrangement: (args: { sessionID: string; slots: Music_PlacementInput[] }) => Music_Session;
-	resetArrangement: (args: { sessionID: string }) => Music_Session;
-	deleteSession: (args: { id: string }) => boolean;
-	renameSession: (args: { id: string; displayName: string }) => Music_Session;
+	/** Start a session on an excerpt; `seed` makes the scramble reproducible. */
+	createSession: Music_Session;
+	/** Swap two slots. */
+	switchMeasures: Music_Session;
+	/** Toggle horizontal and/or vertical flips on one slot. */
+	transformMeasure: Music_Session;
+	/** Replace the whole arrangement in one call. */
+	setArrangement: Music_Session;
+	/** Restore the scrambled starting arrangement. */
+	resetArrangement: Music_Session;
+	/** Delete a session. */
+	deleteSession: boolean;
+	/** Rename the save. */
+	renameSession: Music_Session;
 }
 
+/**
+ * One sounding note.
+ */
 export interface Music_Note {
+	/** Start position in ticks from the start of the measure. */
 	at: number;
+	/** Duration in ticks. */
 	dur: number;
+	/** MIDI pitch number. */
 	pitch: number;
 }
 
+/**
+ * Music reads: excerpts and sessions.
+ */
 export interface Music_Query {
+	/** Every available excerpt. */
 	excerpts: Music_Excerpt[];
-	excerpt: (args: { id: string }) => Music_Excerpt | null;
-	session: (args: { id: string }) => Music_Session | null;
-	sessions: (args: { limit?: number | null }) => Music_Session[];
+	/** One excerpt, or null when the id is unknown. */
+	excerpt: Music_Excerpt | null;
+	/** One session, or null when the id is unknown. */
+	session: Music_Session | null;
+	/** Saved sessions, newest first, limited by `limit` (default 50). */
+	sessions: Music_Session[];
 }
 
+/**
+ * One play-through: the excerpt, the current arrangement and its progress.
+ */
 export interface Music_Session {
+	/** Session id. */
 	id: string;
+	/** The player's name for this save; null/empty falls back to the excerpt title. */
 	displayName: string | null;
+	/** Difficulty the session was created at. */
 	difficulty: Music_Difficulty;
+	/** The excerpt being restored. */
 	excerpt: Music_Excerpt;
+	/** Current arrangement, one slot per excerpt bar. */
 	slots: Music_Slot[];
+	/** True when every bar is back in place and unflipped. */
 	solved: boolean;
+	/** Monotonic sequence of this snapshot. */
 	seq: number;
+	/** Wins recorded on this save. */
 	wins: number;
+	/** Percent of the excerpt's reward granted per win at this difficulty. */
 	percentPerWin: number;
+	/** When the session was created (RFC3339 UTC). */
 	createdAt: string;
+	/** When the session last changed (RFC3339 UTC). */
 	lastActionAt: string;
+	/** The most recent change, or null before the first one. */
 	lastChange: Music_LastChange | null;
 }
 
+/**
+ * One subscription frame: the new session and the change that caused it.
+ */
 export interface Music_SessionUpdate {
+	/** Full current session. */
 	session: Music_Session;
+	/** The change that produced this frame, or null. */
 	lastChange: Music_LastChange | null;
 }
 
+/**
+ * One output position in the arrangement: which bar sits there and whether it is
+ * flipped.
+ */
 export interface Music_Slot {
+	/** 0-based position in the excerpt. */
 	position: number;
+	/** Bar placed at this position. */
 	measureID: string;
+	/** True when the bar is reversed (retrograde). */
 	flipH: boolean;
+	/** True when the bar's pitches are inverted. */
 	flipV: boolean;
 }
 
+/**
+ * The target a rejected move tried to enter.
+ */
 export interface Tesla_AttemptInfo {
+	/** Column attempted. */
 	x: number;
+	/** Row attempted. */
 	y: number;
+	/** Glyph at that tile. */
 	tileChar: string;
+	/** Cell type at that tile. */
 	tileType: string;
+	/** Whether the tile itself is passable (the rejection may be directional). */
 	passable: boolean;
 }
 
+/**
+ * Result of bulkMove: how far the batch got and the resulting state.
+ */
 export interface Tesla_BulkMoveResult {
+	/** Number of moves actually executed. */
 	movesExecuted: number;
+	/** Total moves taken in the run after this call. */
 	totalMoves: number;
+	/** Number of moves requested. */
 	requestedMoves: number;
+	/** False when the whole batch was rejected before the first move. */
 	success: boolean;
+	/** State after the batch. */
 	gameState: Tesla_GameState;
+	/** Events raised by the batch. */
 	events: Tesla_GameEvent[];
+	/** Human-readable reason the batch stopped early; empty when it ran to completion. */
 	stoppedReason: string;
+	/** Machine-readable stop reason code. */
 	stopReasonCode: string;
+	/** 1-based index of the move that stopped the batch, 0 when none did. */
 	stoppedOnMove: number;
+	/** True when the batch hit the per-call move cap. */
 	truncated: boolean;
+	/** Per-call move cap. */
 	limit: number;
+	/** Position before the batch. */
 	startPos: Tesla_Position;
+	/** Position after the batch. */
 	endPos: Tesla_Position;
+	/** Battery before the batch. */
 	startBattery: number;
+	/** Battery after the batch. */
 	endBattery: number;
+	/** Score change over the batch. */
 	scoreDelta: number;
+	/** Per-move summaries for this call only. */
 	steps: Tesla_StepInfo[];
+	/** The attempted target when the batch stopped on a rejected move. */
 	attemptedTo: Tesla_AttemptInfo | null;
+	/** True when the run ended during the batch. */
 	gameOver: boolean;
+	/** Machine-readable game-over reason, empty when still playing. */
 	gameOverCode: string;
+	/** Status line for the player. */
 	message: string;
+	/** Directions that are legal from the end position, walls and battery considered. */
 	possibleMoves: string[];
+	/** SAFE, LOW, CAUTION, DANGER, CRITICAL, WARNING or UNKNOWN. */
 	batteryRisk: string;
 }
 
+/**
+ * One map cell as the client sees it.
+ */
 export interface Tesla_Cell {
 	/** Column of this cell on the map (RIGHT = x+1). Negative or >= map width for off-map nearbyGrid cells. */
 	x: number;
 	/** Row of this cell on the map (DOWN = y+1). Negative or >= map height for off-map nearbyGrid cells. */
 	y: number;
+	/** Cell kind: road, home, park, supercharger, water, building, etc. */
 	type: string;
+	/** True when the player has already entered this cell. */
 	visited: boolean;
+	/** Stable cell id, or empty for off-map cells. */
 	id: string;
+	/** Directions this cell permits; empty means every direction. */
 	allowedDirections: string[];
 }
 
+/**
+ * Per-glyph behaviour override.
+ */
 export interface Tesla_CellConfigEntry {
+	/** Single layout character. */
 	key: string;
+	/** Cell type this glyph resolves to (road, building, home, ...). */
 	type: string;
+	/** Directions this cell permits; empty means every direction. */
 	allowedDirections: string[];
 }
 
+/**
+ * Outcome of deleteSession.
+ */
 export interface Tesla_DeleteSessionResult {
+	/** Human-readable confirmation or reason the delete failed. */
 	message: string;
 }
 
+/**
+ * One notable thing that happened during a move or batch.
+ */
 export interface Tesla_GameEvent {
+	/** Event kind (park_visited, charged, blocked, ...). */
 	type: string;
+	/** Human-readable description. */
 	message: string;
+	/** RFC3339 wall-clock time of the event. */
 	timestamp: string;
+	/** Where it happened. */
 	position: Tesla_Position;
 }
 
+/**
+ * One map: geometry, battery budget, legend and per-cell overrides.
+ */
 export interface Tesla_GameMap {
+	/** Display name (also the map's lookup key). */
 	name: string;
+	/** One-line description. */
 	description: string;
+	/** Width and height of the square grid. */
 	gridSize: number;
+	/** Battery capacity. */
 	maxBattery: number;
+	/** Battery the car starts with. */
 	startingBattery: number;
-	layout: (args: { password?: string | null }) => string[];
+	/** Glyph rows of the map (fog sessions hide it behind the password). */
+	layout: string[];
+	/** Glyph-to-meaning legend for the layout characters. */
 	legend: Tesla_LegendEntry[];
+	/** Per-glyph overrides, e.g. one-way cells and cell types. */
 	cellConfigs: Tesla_CellConfigEntry[];
 	/** True for maps shipped with the server; only an admin key may change them. */
 	builtin: boolean;
@@ -1163,51 +1894,99 @@ export interface Tesla_GameMap {
 	editKey: string | null;
 }
 
+/**
+ * Everything a client needs to render and reason about one session.
+ */
 export interface Tesla_GameState {
-	grid: (args: { password?: string | null }) => Tesla_Cell[][];
+	/** Full row-major map (`grid[y][x]`). In fog sessions this requires the grid password; a won run is revealed without it until reset. */
+	grid: Tesla_Cell[][];
+	/** The Tesla's tile. */
 	playerPos: Tesla_Position;
+	/** Current battery charge. */
 	battery: number;
+	/** Battery capacity of the map. */
 	maxBattery: number;
+	/** Parks visited, scored by the map's rules. */
 	score: number;
+	/** Number of parks on the map. */
 	totalParks: number;
+	/** Parks and whether they are visited. */
 	visitedParks: Tesla_VisitedPark[];
+	/** Status line for the human player. */
 	message: string;
+	/** True when the run is over, whether won or lost. */
 	gameOver: boolean;
+	/** True when every park was visited. */
 	victory: boolean;
+	/** Map name. */
 	mapName: string;
+	/** Every move this run, in order. */
 	moveHistory: Tesla_MoveHistoryEntry[];
+	/** Total moves taken in the run. */
 	totalMoves: number;
+	/** How many times the run has been reset. */
 	resetCount: number;
+	/** The visible window around the player: `(2fogRadius+1)` square cells. */
 	nearbyGrid: Tesla_Cell[][];
+	/** Moves made in the current attempt (after the last reset). */
 	currentMoves: Tesla_MoveHistoryEntry[];
+	/** Count of currentMoves. */
 	currentMovesCount: number;
+	/** SAFE, LOW, CAUTION, DANGER, CRITICAL, WARNING (no charger) or UNKNOWN. */
 	batteryRisk: string;
+	/** True when the session was created with fog. */
 	fogEnabled: boolean;
+	/** Radius of the visible window, in tiles. */
 	fogRadius: number;
+	/** Per-step delay configured for the session, in milliseconds. */
 	moveDelayMs: number;
 }
 
+/**
+ * One page of a session's move history.
+ */
 export interface Tesla_HistoryResponse {
+	/** Moves on this page. */
 	moves: Tesla_MoveHistoryEntry[];
+	/** Total moves in the run. */
 	totalMoves: number;
+	/** 1-based page number. */
 	page: number;
+	/** Page size. */
 	pageSize: number;
+	/** Total number of pages. */
 	totalPages: number;
+	/** True when a newer page exists. */
 	hasNext: boolean;
+	/** True when an older page exists. */
 	hasPrevious: boolean;
 }
 
+/**
+ * One glyph and what it means on the map.
+ */
 export interface Tesla_LegendEntry {
+	/** Single layout character. */
 	key: string;
+	/** Human-readable meaning. */
 	value: string;
 }
 
+/**
+ * One row in the map catalogue.
+ */
 export interface Tesla_MapInfo {
+	/** Conventional file name (`<name>.json`). Community rows use the same naming convention but are stored in PostgreSQL. */
 	filename: string;
+	/** Map id used by createSession (the map's `name`). */
 	mapId: string;
+	/** Display name. */
 	name: string;
+	/** One-line description. */
 	description: string;
+	/** Width and height of the square grid. */
 	gridSize: number;
+	/** Battery capacity. */
 	maxBattery: number;
 	/** True for maps shipped with the server. */
 	builtin: boolean;
@@ -1217,125 +1996,229 @@ export interface Tesla_MapInfo {
 	ownedByMe: boolean;
 }
 
+/**
+ * Outcome of validateMap.
+ */
 export interface Tesla_MapValidationResult {
+	/** True when the map parses. */
 	valid: boolean;
+	/** True when every park is reachable without stranding the car. */
 	winnable: boolean;
+	/** Human-readable summary. */
 	message: string;
+	/** Validation failure detail, when any. */
 	error: string | null;
 }
 
+/**
+ * One move in the run's history.
+ */
 export interface Tesla_MoveHistoryEntry {
+	/** Action label ("move", "reset", ...). */
 	action: string;
+	/** Position before the move. */
 	fromPosition: Tesla_Position;
+	/** Position after the move. */
 	toPosition: Tesla_Position;
+	/** Battery after the move. */
 	battery: number;
+	/** Wall-clock Unix timestamp in seconds. */
 	timestamp: number;
+	/** False when the move was rejected. */
 	success: boolean;
+	/** 1-based move number within the run. */
 	moveNumber: number;
 }
 
+/**
+ * Result of one move.
+ */
 export interface Tesla_MoveResult {
+	/** False when the move was rejected. A collision also ends the run (`gameOver` becomes true), so read the state rather than assuming nothing changed. */
 	success: boolean;
+	/** State after the attempt. */
 	gameState: Tesla_GameState;
+	/** Status line for the player. */
 	message: string;
+	/** Events raised by the step. */
 	events: Tesla_GameEvent[];
+	/** Compact summary of the step, when available. */
 	step: Tesla_StepInfo | null;
+	/** The attempted target, set when the move was rejected and the reason is positional. */
 	attemptedTo: Tesla_AttemptInfo | null;
 }
 
+/**
+ * Tesla writes: play, manage sessions and author maps. Map writes require
+ * ownership or the admin key.
+ */
 export interface Tesla_Mutation {
-	createSession: (args: { mapID?: string | null; mapName?: string | null; fogEnabled?: boolean | null; fogRadius?: number | null; gridPassword?: string | null; moveDelayMs?: number | null }) => Tesla_Session;
-	deleteSession: (args: { id: string }) => Tesla_DeleteSessionResult;
-	updateSession: (args: { id: string; displayName: string }) => Tesla_Session;
-	move: (args: { sessionID: string; direction: Tesla_Direction; reset?: boolean | null }) => Tesla_MoveResult;
-	bulkMove: (args: { sessionID: string; moves: Tesla_Direction[]; reset?: boolean | null }) => Tesla_BulkMoveResult;
-	reset: (args: { sessionID: string }) => Tesla_GameState;
+	/** Start a session on a map. `mapID` (or the legacy `mapName`) selects the map; fog and its radius are opt-in. Move speed is per session. */
+	createSession: Tesla_Session;
+	/** Delete a session. */
+	deleteSession: Tesla_DeleteSessionResult;
+	/** Rename the save. */
+	updateSession: Tesla_Session;
+	/** One step. `reset` restarts the run before moving. */
+	move: Tesla_MoveResult;
+	/** Several steps in order (at most 50 per call), stopping early on game over. */
+	bulkMove: Tesla_BulkMoveResult;
+	/** Restart the run. */
+	reset: Tesla_GameState;
 	/** Creates a DRAFT map owned by the signed-in player (UNAUTHENTICATED otherwise). Update it until it wins, then publishMap. */
-	createMap: (args: { name: string; map: Tesla_GameMapInput }) => Tesla_GameMap;
+	createMap: Tesla_GameMap;
 	/** Replaces the caller's own map and puts it back into DRAFT. Only the owner may edit a community map; shipped and legacy unowned maps need X-Admin-Key. editKey is accepted only for legacy unowned maps, never as a substitute for ownership. */
-	updateMap: (args: { name: string; patch: Tesla_GameMapPatchInput; editKey?: string | null }) => Tesla_GameMap;
+	updateMap: Tesla_GameMap;
 	/** Publishes a valid draft. Only its owner may do it; a map whose parks cannot all be visited is refused with INVALID_ARGUMENT. */
-	publishMap: (args: { name: string }) => Tesla_GameMap;
+	publishMap: Tesla_GameMap;
 	/** Attaches a legacy unowned map to the signed-in player using the editKey it was created with. */
-	claimMap: (args: { name: string; editKey: string }) => Tesla_GameMap;
+	claimMap: Tesla_GameMap;
 	/** Removes a map. The owner may delete their own community map; shipped and legacy unowned maps need X-Admin-Key. editKey is accepted only for legacy unowned maps. */
-	deleteMap: (args: { name: string; editKey?: string | null }) => Tesla_DeleteSessionResult;
-	validateMap: (args: { map: Tesla_GameMapInput }) => Tesla_MapValidationResult;
+	deleteMap: Tesla_DeleteSessionResult;
+	/** Validates a map definition without saving it. */
+	validateMap: Tesla_MapValidationResult;
 }
 
+/**
+ * A tile coordinate: x = column, y = row.
+ */
 export interface Tesla_Position {
+	/** Column (0 = left). */
 	x: number;
+	/** Row (0 = top). */
 	y: number;
 }
 
+/**
+ * Tesla reads: sessions, game state, history and map catalogue.
+ */
 export interface Tesla_Query {
-	session: (args: { id: string }) => Tesla_Session;
-	sessions: (args: { sort?: Tesla_SessionSort | null; order?: Tesla_SortOrder | null; limit?: number | null }) => Tesla_SessionList;
-	unifiedSessions: (args: { mapName?: string | null }) => Tesla_UnifiedSessions;
-	gameState: (args: { sessionID: string }) => Tesla_GameState;
-	history: (args: { sessionID: string; page?: number | null; limit?: number | null; order?: Tesla_SortOrder | null }) => Tesla_HistoryResponse;
+	/** One session, or an error when the id is unknown. */
+	session: Tesla_Session;
+	/** Saved sessions, paged by `limit`; `sort`/`order` control the ranking. */
+	sessions: Tesla_SessionList;
+	/** Sessions of one map (`mapName`; empty means every map) with full state. */
+	unifiedSessions: Tesla_UnifiedSessions;
+	/** One session's game state without the map document. */
+	gameState: Tesla_GameState;
+	/** One page of a session's move history. */
+	history: Tesla_HistoryResponse;
 	/** Published maps plus the signed-in caller's own drafts. Another player's draft is never listed. */
 	maps: Tesla_MapInfo[];
 	/** One map. Another player's draft is hidden and null, exactly like an unknown name. */
-	map: (args: { name: string; password?: string | null }) => Tesla_GameMap;
+	map: Tesla_GameMap;
 }
 
+/**
+ * One play-through: the session metadata, the current game state and the map.
+ */
 export interface Tesla_Session {
+	/** Session id; public enough to watch. */
 	id: string;
+	/** The player's name for this save; null/empty falls back to the map name. */
 	displayName: string | null;
+	/** Map the session plays. */
 	mapName: string;
+	/** When the session was created (RFC3339 with the server's zone offset). */
 	createdAt: string;
+	/** When the session last changed (RFC3339 with the server's zone offset). */
 	lastActionAt: string;
+	/** Current game state. */
 	gameState: Tesla_GameState;
+	/** Map the session plays, with its layout and legend. */
 	gameMap: Tesla_GameMap;
 	/** Only set in the createSession response, when fog is enabled and no gridPassword was supplied: the server-generated password for grid(password: ...). It is never returned again, so store it. Always null on every other query/mutation. */
 	generatedGridPassword: string | null;
 }
 
+/**
+ * One page of the session list.
+ */
 export interface Tesla_SessionList {
+	/** Rows in this page. */
 	count: number;
+	/** Rows matching the query before the limit. */
 	total: number;
+	/** The sessions themselves. */
 	sessions: Tesla_Session[];
+	/** Sort field used (for echoing back to the client). */
 	sort: string;
+	/** Sort order used. */
 	order: string;
 }
 
+/**
+ * Compact summary of one executed step.
+ */
 export interface Tesla_StepInfo {
+	/** 1-based step index in the run. */
 	idx: number;
+	/** Direction moved. */
 	dir: string;
+	/** Position before the step. */
 	from: Tesla_Position;
+	/** Position after the step. */
 	to: Tesla_Position;
+	/** Glyph of the entered tile. */
 	tileChar: string;
+	/** Cell type of the entered tile. */
 	tileType: string;
+	/** Battery before the step. */
 	batteryBefore: number;
+	/** Battery after the step. */
 	batteryAfter: number;
+	/** False when the step was rejected. */
 	success: boolean;
+	/** True when the step charged the battery. */
 	charged: boolean;
+	/** True when the step entered a park. */
 	park: boolean;
+	/** True when this step won the run. */
 	victory: boolean;
 }
 
+/**
+ * One lobby row: session metadata plus its full state and map.
+ */
 export interface Tesla_UnifiedSession {
+	/** Session id. */
 	sessionId: string;
+	/** When the session was created (RFC3339 with the server's zone offset). */
 	createdAt: string;
+	/** When the session last changed (RFC3339 with the server's zone offset). */
 	lastActionAt: string;
+	/** Current game state. */
 	gameState: Tesla_GameState;
+	/** Map the session plays. */
 	gameMap: Tesla_GameMap;
 }
 
+/**
+ * Sessions of one map, with full state, used by the lobby.
+ */
 export interface Tesla_UnifiedSessions {
+	/** Map the sessions belong to. */
 	mapName: string;
+	/** Number of sessions returned. */
 	count: number;
+	/** The sessions with their game state. */
 	sessions: Tesla_UnifiedSession[];
 }
 
+/**
+ * One park and whether this run has visited it.
+ */
 export interface Tesla_VisitedPark {
+	/** Park id from the map. */
 	id: string;
+	/** True once the Tesla has entered the park. */
 	visited: boolean;
 }
 
 export interface Delivery_SessionClaimInput {
+	/** Session id to attach. */
 	sessionID: string;
+	/** The secret createSession returned for that session. */
 	ownerToken: string;
 }
 
@@ -1357,64 +2240,108 @@ export interface Mazes_MapInput {
 }
 
 export interface Motor_MapInput {
+	/** Map id (also the URL and save key). */
 	id: string;
+	/** Display name. */
 	name: string;
+	/** One-line description. */
 	description: string | null;
+	/** Difficulty label. */
 	difficulty: string | null;
+	/** Glyph rows of the map. */
 	layout: string[];
+	/** Main tape slot count. */
 	mainTapeLength: number | null;
+	/** Slot count of each subroutine tape. */
 	subTapeLengths: number[] | null;
+	/** Step limit for one run. */
 	maxSteps: number | null;
+	/** Maximum subroutine nesting depth. */
 	maxCallDepth: number | null;
+	/** Whether subroutines may recurse. */
 	allowRecursion: boolean | null;
 }
 
+/**
+ * Program input for setProgram; tape lengths must match the map exactly.
+ */
 export interface Motor_ProgramInput {
+	/** Main tape slots. */
 	main: Motor_Instruction[];
+	/** Subroutine tapes. */
 	subs: Motor_Instruction[][];
 }
 
 export interface Motor_SessionClaimInput {
+	/** Session id to attach. */
 	sessionID: string;
+	/** The secret createSession returned for that session. */
 	ownerToken: string;
 }
 
+/**
+ * One slot in a setArrangement call.
+ */
 export interface Music_PlacementInput {
+	/** Bar to place. */
 	measureID: string;
+	/** Reverse the bar. */
 	flipH: boolean;
+	/** Invert the bar's pitches. */
 	flipV: boolean;
 }
 
 export interface Tesla_CellConfigEntryInput {
+	/** Single layout character. */
 	key: string;
+	/** Cell type this glyph resolves to. */
 	type: string;
+	/** Directions this cell permits; empty means every direction. */
 	allowedDirections: string[];
 }
 
 export interface Tesla_GameMapInput {
+	/** Map name (the lookup key). */
 	name: string;
+	/** One-line description. */
 	description: string;
+	/** Width and height of the square grid. */
 	gridSize: number;
+	/** Battery capacity. */
 	maxBattery: number;
+	/** Battery the car starts with. */
 	startingBattery: number;
+	/** Glyph rows of the map. */
 	layout: string[];
+	/** Legend for the glyphs. */
 	legend: Tesla_LegendEntryInput[];
+	/** Optional per-glyph overrides. */
 	cellConfigs: Tesla_CellConfigEntryInput[] | null;
 }
 
 export interface Tesla_GameMapPatchInput {
+	/** New name, when changing it. */
 	name: string | null;
+	/** New description, when changing it. */
 	description: string | null;
+	/** New grid size, when changing it. */
 	gridSize: number | null;
+	/** New battery capacity, when changing it. */
 	maxBattery: number | null;
+	/** New starting battery, when changing it. */
 	startingBattery: number | null;
+	/** Replacement glyph rows, when changing them. */
 	layout: string[] | null;
+	/** Replacement legend, when changing it. */
 	legend: Tesla_LegendEntryInput[] | null;
+	/** Replacement cell overrides, when changing them. */
 	cellConfigs: Tesla_CellConfigEntryInput[] | null;
 }
 
 export interface Tesla_LegendEntryInput {
+	/** Single layout character. */
 	key: string;
+	/** Human-readable meaning. */
 	value: string;
 }
 

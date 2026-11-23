@@ -1,6 +1,6 @@
 // Package account owns player accounts and logins for every game: the model,
-// the file and PostgreSQL stores, password hashing, handles and the account
-// service the GraphQL API and auth flows call.
+// the PostgreSQL store, password hashing, handles and the account service the
+// GraphQL API and auth flows call.
 package account
 
 import (

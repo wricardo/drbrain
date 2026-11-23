@@ -200,3 +200,26 @@ describe('delivery city api', () => {
 		await expect(api.cities()).rejects.toBeInstanceOf(ApiError);
 	});
 });
+
+describe('delivery analytics metrics', () => {
+	it('fetches every cumulative metric in one aliased request', async () => {
+		mockFetch({
+			deliveries: [{ sessionId: 's1', cityId: 'city', points: [{ tick: 0, value: 0 }] }],
+			lateDeliveries: [],
+			expiredOrders: [],
+			ordersCreated: [],
+			deliveryIncome: [],
+			orderFines: [],
+			upkeepSpend: [],
+			chargingSpend: [],
+			towSpend: []
+		});
+		const out = await api.metricsHistory(['s1'], { maxPoints: 200 });
+		expect(calls).toHaveLength(1);
+		expect(calls[0].query).toContain('metricHistory(metric: DELIVERIES');
+		expect(calls[0].query).toContain('metricHistory(metric: TOW_SPEND');
+		expect(calls[0].variables).toMatchObject({ ids: ['s1'], maxPoints: 200 });
+		expect(out.DELIVERIES[0].sessionId).toBe('s1');
+		expect(out.UPKEEP_SPEND).toEqual([]);
+	});
+});

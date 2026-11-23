@@ -18,6 +18,8 @@
 		title: string;
 		/** Right-aligned badge, e.g. "3 vehicles". Rendered in both states. */
 		summary?: string;
+		/** Extra classes on the summary text, e.g. a warning colour. */
+		summaryClass?: string;
 		/**
 		 * Stable key for the remembered state. Defaults to the title, which is
 		 * fine because titles are unique on this screen — pass one explicitly if
@@ -37,6 +39,7 @@
 	let {
 		title,
 		summary = '',
+		summaryClass = '',
 		storeKey = title,
 		defaultOpen = true,
 		class: className = '',
@@ -105,7 +108,7 @@
 			<span class="flex items-baseline gap-2">
 				<span class="text-xs font-semibold tracking-wide text-muted uppercase">{title}</span>
 				{#if summary}
-					<span class="text-xs font-normal text-faint">{summary}</span>
+					<span class="text-xs font-normal text-faint {summaryClass}">{summary}</span>
 				{/if}
 			</span>
 			<span

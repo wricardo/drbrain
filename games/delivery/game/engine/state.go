@@ -17,6 +17,10 @@ package engine
 // stage due by the saved tick, so there is exactly one description of what a
 // stage does: the city config.
 
+// legacyEventMoved is the event type movement used to be stored under. It is no
+// longer emitted; ImportState drops it from saves written before that change.
+const legacyEventMoved = "car_moved"
+
 // SavedState is the restartable half of a World: everything that is not derived
 // from the city file.
 type SavedState struct {
@@ -109,6 +113,16 @@ func (w *World) ImportState(s SavedState) error {
 			w.Ledger.NextCashSeq = e.Seq + 1
 		}
 	}
+	// Saves written before the reputation ledger existed have no
+	// NextReputationSeq. Start at 1 and step past any seq already present.
+	if w.Ledger.NextReputationSeq < 1 {
+		w.Ledger.NextReputationSeq = 1
+	}
+	for _, e := range w.Ledger.ReputationEntries {
+		if e.Seq >= w.Ledger.NextReputationSeq {
+			w.Ledger.NextReputationSeq = e.Seq + 1
+		}
+	}
 	// Monthly summaries are derived, not saved. Rebuilding from Cash also
 	// backfills sessions written before the report existed.
 	w.Ledger.rebuildCashMonths(w.ticksPerMonth)
@@ -140,6 +154,17 @@ func (w *World) ImportState(s SavedState) error {
 	// here is what keeps it derived state rather than a second source of truth
 	// that a reload could silently disagree with.
 	for _, c := range w.Cars {
+		// A queue is a head plus a tail; a save can only be written between
+		// ticks, so an empty head with a non-empty tail means the file was
+		// hand-edited. Promote rather than run a route with no head.
+		if c.QueuedMove == "" && len(c.MoveQueue) > 0 {
+			c.QueuedMove = c.MoveQueue[0]
+			c.MoveQueue = c.MoveQueue[1:]
+		}
+		if len(c.MoveQueue) > MaxQueuedMoves-1 {
+			c.MoveQueue = c.MoveQueue[:MaxQueuedMoves-1]
+		}
+
 		c.cargoBoxes = 0
 		for _, id := range c.Cargo {
 			if o, ok := w.Order(id); ok {
@@ -149,7 +174,18 @@ func (w *World) ImportState(s SavedState) error {
 	}
 
 	if s.Events != nil {
-		w.Events = s.Events
+		// Movement used to enter the feed, one entry per car per tick. It
+		// drowned the events a player can act on and is redundant with the car
+		// positions, so it is no longer emitted; drop the rows older saves
+		// still carry rather than displaying them forever.
+		kept := make([]Event, 0, len(s.Events))
+		for _, e := range s.Events {
+			if e.Type == legacyEventMoved {
+				continue
+			}
+			kept = append(kept, e)
+		}
+		w.Events = kept
 	}
 
 	// Street works are derived from (seed, tick, chapter) rather than stored, so
@@ -179,6 +215,7 @@ func (l *Ledger) Clone() Ledger {
 		out.DeliveriesByItem[k] = v
 	}
 	out.Cash = append([]CashEntry(nil), l.Cash...)
+	out.ReputationEntries = append([]ReputationEntry(nil), l.ReputationEntries...)
 	out.Months = make([]MonthSummary, len(l.Months))
 	for i := range l.Months {
 		out.Months[i] = l.Months[i]

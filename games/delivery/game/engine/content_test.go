@@ -61,6 +61,20 @@ func TestShippedCarClassesAreMoneyOnly(t *testing.T) {
 	}
 }
 
+// TestShippedCarClassesCostMoney pins that the starting fleet is the only free
+// car. A free class lets a player spawn an unlimited fleet for $0, which makes
+// the money gate on fleet size meaningless and skips the whole "buy a second
+// vehicle" decision.
+func TestShippedCarClassesCostMoney(t *testing.T) {
+	_, cfg := shippedCity(t)
+	for class, cc := range cfg.CarClasses {
+		if cc.Price <= 0 {
+			t.Errorf("shipped car class %q costs $%d; every class beyond the initial fleet must cost money",
+				class, cc.Price)
+		}
+	}
+}
+
 // TestShippedTruckIsBuyableFromTheStart pins the no-gate decision: the truck
 // costs money and depot space, not a license. It must be purchasable before any
 // growth stage has applied.
@@ -314,14 +328,14 @@ func TestEveryKitchenIsReachableOnAStarterCar(t *testing.T) {
 	w.applyGrowth()
 
 	var starter int
-	for class, cc := range cfg.CarClasses {
-		if cc.Price == 0 {
+	for _, ic := range cfg.InitialCars {
+		if cc, ok := cfg.CarClasses[ic.Class]; ok {
 			starter = cc.MaxBattery
-			_ = class
+			break
 		}
 	}
 	if starter == 0 {
-		t.Skip("no free starter car class")
+		t.Skip("initial_cars names no known car class")
 	}
 
 	for _, k := range w.City.Kitchens {

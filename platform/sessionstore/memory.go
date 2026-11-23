@@ -11,6 +11,7 @@ import (
 // nothing in the binary can select this backend.
 type memoryStore struct {
 	mu    sync.Mutex
+	game  string
 	max   int
 	evict bool
 	mem   map[string]entry
@@ -21,13 +22,27 @@ var _ Store = (*memoryStore)(nil)
 // NewMemory returns an in-memory Store with the same limits as Open. Tests use
 // it when they do not exercise durability.
 func NewMemory(opts Options) Store {
-	return &memoryStore{max: opts.MaxSessions, evict: opts.Evict, mem: make(map[string]entry)}
+	return &memoryStore{game: opts.Game, max: opts.MaxSessions, evict: opts.Evict, mem: make(map[string]entry)}
+}
+
+// owns reports whether meta belongs to this store's game; an unscoped store
+// owns every row.
+func (s *memoryStore) owns(meta Meta) bool {
+	return s.game == "" || meta.Game == s.game
+}
+
+// stamp forces the owning game onto a meta about to be written.
+func (s *memoryStore) stamp(meta *Meta) {
+	if s.game != "" {
+		meta.Game = s.game
+	}
 }
 
 func (s *memoryStore) Put(meta Meta, payload []byte) error {
 	if err := validID(meta.ID); err != nil {
 		return err
 	}
+	s.stamp(&meta)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.mem[meta.ID]; !ok {
@@ -44,13 +59,22 @@ func (s *memoryStore) Get(id string) (Meta, []byte, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	e, ok := s.mem[id]
-	return e.meta, e.payload, ok
+	if !ok || !s.owns(e.meta) {
+		return Meta{}, nil, false
+	}
+	return e.meta, e.payload, true
 }
 
 func (s *memoryStore) Count() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return len(s.mem)
+	n := 0
+	for _, e := range s.mem {
+		if s.owns(e.meta) {
+			n++
+		}
+	}
+	return n
 }
 
 func (s *memoryStore) Delete(id string) error {
@@ -59,7 +83,8 @@ func (s *memoryStore) Delete(id string) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.mem[id]; !ok {
+	e, ok := s.mem[id]
+	if !ok || !s.owns(e.meta) {
 		return ErrNotFound
 	}
 	delete(s.mem, id)
@@ -71,6 +96,9 @@ func (s *memoryStore) List() ([]Meta, error) {
 	defer s.mu.Unlock()
 	byID := make(map[string]Meta, len(s.mem))
 	for id, e := range s.mem {
+		if !s.owns(e.meta) {
+			continue
+		}
 		m := e.meta
 		m.Loaded = true
 		byID[id] = m
@@ -85,6 +113,7 @@ func (s *memoryStore) Persist(meta Meta, payload []byte) error {
 	if len(payload) == 0 || !json.Valid(payload) {
 		return fmt.Errorf("%w: payload for %s is not JSON", ErrInvalid, meta.ID)
 	}
+	s.stamp(&meta)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.mem[meta.ID]; !ok {
@@ -104,7 +133,7 @@ func (s *memoryStore) Load(id string) (Meta, []byte, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	e, ok := s.mem[id]
-	if !ok {
+	if !ok || !s.owns(e.meta) {
 		return Meta{}, nil, ErrNotFound
 	}
 	return e.meta, e.payload, nil

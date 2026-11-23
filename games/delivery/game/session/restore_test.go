@@ -92,7 +92,7 @@ func TestGrowthRevealedDistrictsSurviveReload(t *testing.T) {
 	// The harbour charger is the concrete proof the district is in play.
 	found := false
 	for _, ch := range after.City.Chargers {
-		if ch.ID == "ch_harbour_gate" {
+		if ch.ID == "ch_bridgehead" {
 			found = true
 		}
 	}

@@ -197,7 +197,7 @@ func cityJSON(name string, withDepot bool) string {
 	}
 	if withDepot {
 		cfg.Depots = []engine.DepotConfig{
-			{ID: "home", Pos: engine.Position{X: 2, Y: 2}, Capacity: 4},
+			{ID: "home", Pos: engine.Position{X: 2, Y: 2}},
 		}
 	}
 	raw, err := json.Marshal(cfg)
@@ -772,7 +772,7 @@ func TestDraftCitySessionVisibility(t *testing.T) {
 		}
 		for _, q := range []string{
 			`query ($id: ID!) { carView(id: $id, carId: "car_1") { rowSpan } }`,
-			`query ($id: ID!) { events(id: $id) { tick } }`,
+			`query ($id: ID!) { events(id: $id) { oldestTick } }`,
 		} {
 			res := gqlAs(t, env.ts, account, q, map[string]any{"id": sid})
 			if !strings.Contains(errText(res), "not_found") {

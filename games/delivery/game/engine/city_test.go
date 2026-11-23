@@ -48,8 +48,8 @@ func TestLoadShippedCity(t *testing.T) {
 	if len(city.Depots) == 0 {
 		t.Fatal("no depots loaded")
 	}
-	if city.TickMS != 300 {
-		t.Errorf("tick_ms = %d, want 300", city.TickMS)
+	if city.TickMS != 600 {
+		t.Errorf("tick_ms = %d, want 600 (1x is 600 ms per tick)", city.TickMS)
 	}
 }
 
@@ -315,7 +315,7 @@ func TestValidateRejectsMismatchedLayoutRow(t *testing.T) {
 			"WWWWW", "WRRRW", "WRRRW", "WRRR", "WWWWW",
 		},
 		Legend: map[string]string{"W": "water", "R": "road"},
-		Depots: []DepotConfig{{ID: "d", Pos: Position{1, 1}, Capacity: 1}},
+		Depots: []DepotConfig{{ID: "d", Pos: Position{1, 1}}},
 	}
 	if _, err := NewCity(cfg); err == nil {
 		t.Fatal("expected short layout row to be rejected")
@@ -328,7 +328,7 @@ func TestValidateRejectsUnknownLegendChar(t *testing.T) {
 		GridSize: 5,
 		Layout:   []string{"WWWWW", "WRZRW", "WRRRW", "WRRRW", "WWWWW"},
 		Legend:   map[string]string{"W": "water", "R": "road"},
-		Depots:   []DepotConfig{{ID: "d", Pos: Position{1, 1}, Capacity: 1}},
+		Depots:   []DepotConfig{{ID: "d", Pos: Position{1, 1}}},
 	}
 	if _, err := NewCity(cfg); err == nil {
 		t.Fatal("expected unknown legend char to be rejected")
@@ -341,7 +341,7 @@ func TestValidateRejectsEntityOnWrongTerrain(t *testing.T) {
 		GridSize: 5,
 		Layout:   []string{"WWWWW", "WRRRW", "WRRRW", "WRRRW", "WWWWW"},
 		Legend:   map[string]string{"W": "water", "R": "road"},
-		Depots:   []DepotConfig{{ID: "d", Pos: Position{1, 1}, Capacity: 1}},
+		Depots:   []DepotConfig{{ID: "d", Pos: Position{1, 1}}},
 		Items:    map[string]string{"pizza": "Pizza"},
 		// Kitchen placed on road, not on a kitchen tile.
 		Kitchens: []KitchenConfig{

@@ -190,3 +190,57 @@ func TestPostgresBackend(t *testing.T) {
 		t.Errorf("Load after Delete = %v, want ErrNotFound", err)
 	}
 }
+
+// TestGameScopeHidesOtherGames pins the shared-table boundary: a scoped store
+// must not list, load or delete another game's row, and it stamps its own game
+// onto what it writes.
+func TestGameScopeHidesOtherGames(t *testing.T) {
+	check := func(t *testing.T, delivery, mazes Store) {
+		t.Helper()
+		p := payload{ID: "shared-1", Created: time.Unix(10, 0), Action: time.Unix(20, 0), Value: 3}
+		if err := delivery.Persist(metaFor(p), encode(p)); err != nil {
+			t.Fatal(err)
+		}
+		meta, _, err := delivery.Load("shared-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if meta.Game != "delivery" {
+			t.Fatalf("stored game = %q, want delivery", meta.Game)
+		}
+
+		if list, err := mazes.List(); err != nil {
+			t.Fatal(err)
+		} else if len(list) != 0 {
+			t.Fatalf("mazes List sees %+v", list)
+		}
+		if _, _, err := mazes.Load("shared-1"); err != ErrNotFound {
+			t.Fatalf("mazes Load = %v, want ErrNotFound", err)
+		}
+		if err := mazes.Delete("shared-1"); err != ErrNotFound {
+			t.Fatalf("mazes Delete = %v, want ErrNotFound", err)
+		}
+		// The delete attempt must not have removed delivery's row.
+		if _, _, err := delivery.Load("shared-1"); err != nil {
+			t.Fatalf("delivery row removed by another game: %v", err)
+		}
+	}
+
+	t.Run("memory", func(t *testing.T) {
+		check(t,
+			NewMemory(Options{Game: "delivery"}),
+			NewMemory(Options{Game: "mazes"}),
+		)
+	})
+	t.Run("postgres", func(t *testing.T) {
+		pool := pgtest.Pool(t)
+		open := func(game string) Store {
+			s, err := Open(Options{Pool: pool, Game: game})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return s
+		}
+		check(t, open("delivery"), open("mazes"))
+	})
+}

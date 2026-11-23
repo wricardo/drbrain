@@ -1,22 +1,79 @@
 # Code generated from graph/schema.graphqls by cmd/split-schema. DO NOT EDIT.
 
+"""
+One grid step. Coordinates are x to the right, y downward, matching
+`grid[y][x]`.
+"""
 enum Direction {
+	"""
+	One row up (y-1).
+	"""
 	NORTH
+	"""
+	One row down (y+1).
+	"""
 	SOUTH
+	"""
+	One column right (x+1).
+	"""
 	EAST
+	"""
+	One column left (x-1).
+	"""
 	WEST
 }
+"""
+Liveness of the delivery subsystem inside the process.
+"""
 type Health {
+	"""
+	"ok" while sessions can be created and served.
+	"""
 	status: String!
 }
+"""
+One row in a save picker. Counters come from the stored metadata, so listing
+does not decode every session payload.
+"""
 type SessionSummary {
+	"""
+	Session id; also the save's primary key.
+	"""
 	id: ID!
+	"""
+	When the save was created (UTC).
+	"""
 	createdAt: Time!
+	"""
+	The player's name for this save; empty when unnamed, in which case a client
+	shows the city name.
+	"""
+	displayName: String!
+	"""
+	World tick the save was last written at.
+	"""
 	tick: Int!
+	"""
+	Clock multiplier for a loaded session. An unloaded save reports 0
+	(paused), because a stored save has no running clock.
+	"""
 	speed: Int!
+	"""
+	Spendable balance in dollars.
+	"""
 	money: Int!
+	"""
+	Lifetime reputation, 0-5.
+	"""
 	reputation: Float!
+	"""
+	On-time deliveries completed.
+	"""
 	deliveries: Int!
+	"""
+	True when the session is currently held in memory; false means it will be
+	loaded from PostgreSQL on the next read.
+	"""
 	loaded: Boolean!
 	"""
 	The owning player's public name: an account's display name, "Private player"
@@ -32,6 +89,12 @@ type SessionSummary {
 	True when the session belongs to the signed-in viewer's account.
 	"""
 	mine: Boolean!
+	"""
+	Opaque cursor naming this row's position in the requested sort order. Pass
+	the last row's cursor as `sessions(cursor:)` to fetch the next page without
+	skipping or repeating rows that share a sort value.
+	"""
+	cursor: String!
 }
 """
 The result of createSession. The ownerToken is returned only here and never by a
@@ -40,12 +103,18 @@ change the session (and attach it to an account later), while the session id
 alone stays enough to read it.
 """
 type CreateSessionResult {
+	"""
+	The new session's first snapshot.
+	"""
 	session: Snapshot!
 	"""
 	Secret that proves you created this session; keep it private.
 	"""
 	ownerToken: String!
 }
+"""
+Outcome of asking to attach a guest save to the signed-in account.
+"""
 enum ClaimStatus {
 	"""
 	The session now belongs to your account.
@@ -62,32 +131,87 @@ enum ClaimStatus {
 	REJECTED
 }
 input SessionClaimInput {
+	"""
+	Session id to attach.
+	"""
 	sessionID: ID!
+	"""
+	The secret createSession returned for that session.
+	"""
 	ownerToken: String!
 }
+"""
+Per-claim outcome; claims are answered independently.
+"""
 type SessionClaimResult {
+	"""
+	The session id from the request.
+	"""
 	sessionID: ID!
+	"""
+	Whether the save now belongs to the caller.
+	"""
 	status: ClaimStatus!
 }
 """
 The full client view of a session at one tick.
 """
 type Snapshot {
+	"""
+	Session id.
+	"""
 	id: ID!
+	"""
+	When the save was created (UTC).
+	"""
 	createdAt: Time!
+	"""
+	The player's name for this save; empty when unnamed, in which case a client
+	shows the city name.
+	"""
+	displayName: String!
+	"""
+	World tick, monotonically increasing.
+	"""
 	tick: Int!
 	"""
 	Clock multiplier: 0 paused, 1/2/4 running.
 	"""
 	speed: Int!
+	"""
+	True when the clock is stopped (speed 0).
+	"""
 	paused: Boolean!
 	"""
 	Wall-clock length of one tick at 1x, from the city config.
 	"""
 	tickMs: Int!
+	"""
+	The city as this session sees it: explored districts revealed, closed tiles
+	marked, and waiting customers listed.
+	"""
 	city: CityView!
+	"""
+	Every car in the fleet, in stable id order.
+	"""
 	cars: [CarView!]!
-	orders: [OrderView!]!
+	"""
+	Delivery jobs, newest created first. With no arguments this is the history
+	up to the 2000-row default cap, which is what a replay or an audit usually
+	wants; `limit` cannot exceed 2000. A live client should ask for openOrders
+	or filter instead. Finished history is ~96% of a long save and never
+	shrinks, so selecting it per frame is the difference between a small and a
+	multi-megabyte payload.
+	"""
+	orders(state: [OrderState!], carId: ID, sinceTick: Int, includeFinished: Boolean = true, limit: Int = 2000): [OrderView!]!
+	"""
+	Every unfinished job (PENDING, ASSIGNED, PICKED_UP), newest created first.
+	This is the list a player acts on and the cheapest useful order read.
+	"""
+	openOrders: [OrderView!]!
+	"""
+	Money, reputation and the newest statement window.
+	"""
 	ledger: LedgerView!
 	"""
 	The purchasable catalogue with per-session unlock and affordability flags, cheapest first.
@@ -99,18 +223,78 @@ type Snapshot {
 	own timeline, not through purchases.
 	"""
 	growth: [GrowthView!]!
+	"""
+	The retained event feed, oldest first. Bounded by the city's max_events; see
+	eventCapacity and the events query for the truncation flag.
+	"""
 	events: [EventView!]!
+	"""
+	How many events the retained feed can hold. A poller that asks for events
+	older than the oldest retained row has lost those events, and only the
+	events query can say so.
+	"""
+	eventCapacity: Int!
 	"""
 	Street works currently closing part of the map.
 	"""
 	closures: [ClosureView!]!
 }
 """
+The retained event feed with the metadata a poller needs to tell a quiet
+stretch from a gap it missed.
+"""
+type EventFeed {
+	"""
+	Matching events, oldest first, capped at the requested limit (newest kept).
+	"""
+	events: [EventView!]!
+	"""
+	Tick of the oldest retained event, or the current tick when the feed is
+	empty.
+	"""
+	oldestTick: Int!
+	"""
+	True when the requested sinceTick predates the retained feed, so events
+	before oldestTick are gone rather than absent.
+	"""
+	truncated: Boolean!
+	"""
+	How many events the feed can retain (the city's max_events).
+	"""
+	capacity: Int!
+}
+"""
+How to order the session list.
+"""
+enum SessionSort {
+	"""
+	Newest save first. The default, and the only order that needs no counters.
+	"""
+	CREATED_AT
+	"""
+	Highest world tick first.
+	"""
+	TICK
+	"""
+	Highest spendable balance first.
+	"""
+	MONEY
+}
+"""
 A window of the city around one car, for cheap polling.
 """
 type CarWindow {
+	"""
+	The car at the centre of the window.
+	"""
 	car: CarView!
+	"""
+	Number of rows in the window (shrinks at map edges).
+	"""
 	rowSpan: Int!
+	"""
+	Number of glyph columns in the window (shrinks at map edges).
+	"""
 	colSpan: Int!
 	"""
 	Row-major glyph rows for the window only.
@@ -120,10 +304,23 @@ type CarWindow {
 	Origin of rows[0][0] in city coordinates.
 	"""
 	originX: Int!
+	"""
+	City row of rows[0].
+	"""
 	originY: Int!
+	"""
+	Cars inside the window, including the centre car.
+	"""
 	visibleCars: [CarView!]!
+	"""
+	Orders whose kitchen or customer lies inside the window.
+	"""
 	nearbyOrders: [OrderView!]!
 }
+"""
+Lifecycle of a city: a draft is private to its owner, a published city is
+selectable by everyone.
+"""
 enum CityStatus {
 	"""
 	A work in progress: only its owner can see, edit, play or publish it.
@@ -138,8 +335,17 @@ enum CityStatus {
 One entry in the city catalogue: a published city or the caller's own draft.
 """
 type CityInfo {
+	"""
+	City id used by `city`, `cityConfig` and `createSession(cityId:)`.
+	"""
 	id: ID!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	Width and height of the square grid.
+	"""
 	gridSize: Int!
 	"""
 	DRAFT cities are visible only to their owner. The owner may play and publish a draft;
@@ -160,9 +366,22 @@ type CityInfo {
 	"""
 	ownerless: Boolean!
 }
+"""
+The city as one session sees it: explored districts, waiting customers and the
+static facilities.
+"""
 type CityView {
+	"""
+	City id.
+	"""
 	id: ID!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	Width and height of the square grid.
+	"""
 	gridSize: Int!
 	"""
 	DRAFT cities are visible only to their owner. The owner may play a draft; another
@@ -192,6 +411,9 @@ type CityView {
 	Tiles still unexplored. Always 0 on the static city query, which reveals all.
 	"""
 	hiddenTiles: Int!
+	"""
+	Pickup points (restaurants).
+	"""
 	kitchens: [PointView!]!
 	"""
 	Customers currently waiting for a delivery. A customer appears when it
@@ -200,7 +422,13 @@ type CityView {
 	shows authored houses as 'h' and carries no session state.
 	"""
 	customers: [PointView!]!
+	"""
+	Depots: the only place cars can be bought and where charging is fastest.
+	"""
 	depots: [PointView!]!
+	"""
+	Standalone charging points (slower than a depot).
+	"""
 	chargers: [PointView!]!
 }
 """
@@ -208,24 +436,76 @@ The outcome of validateCity: valid means the JSON parses into a city; publishabl
 full publication gate (the same validation the server runs at startup) accepts it.
 """
 type CityValidationResult {
+	"""
+	True when the JSON parses into a city config.
+	"""
 	valid: Boolean!
+	"""
+	True when the full publication gate (grid, districts, orders, reachability)
+	accepts the city.
+	"""
 	publishable: Boolean!
+	"""
+	Human-readable validation failures; empty when publishable.
+	"""
 	issues: [String!]!
 }
+"""
+A named location on the grid: kitchen, depot, charger or waiting customer.
+"""
 type PointView {
+	"""
+	Stable id used by orders, builds and assignments.
+	"""
 	id: ID!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	Column on the grid (right is +x).
+	"""
 	x: Int!
+	"""
+	Row on the grid (down is +y).
+	"""
 	y: Int!
 }
+"""
+One vehicle in the fleet: position, charge, hold and what it is doing.
+"""
 type CarView {
+	"""
+	Stable car id, used by every car mutation.
+	"""
 	id: ID!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	Vehicle class: scooter, van or truck.
+	"""
 	className: String!
+	"""
+	Column on the grid (right is +x).
+	"""
 	x: Int!
+	"""
+	Row on the grid (down is +y).
+	"""
 	y: Int!
+	"""
+	Current battery charge.
+	"""
 	battery: Int!
+	"""
+	Charge capacity of this class.
+	"""
 	maxBattery: Int!
+	"""
+	Charge as an integer percentage 0-100.
+	"""
 	batteryPct: Int!
 	"""
 	Hold size in boxes.
@@ -239,12 +519,25 @@ type CarView {
 	Boxes still free.
 	"""
 	freeBoxes: Int!
+	"""
+	Order ids whose boxes are in the hold.
+	"""
 	cargo: [ID!]!
+	"""
+	Coarse status shown by the UI.
+	"""
 	state: CarState!
 	"""
-	The move queued for the next tick, if any.
+	The move queued for the next tick, if any. This is the head of the car's
+	movement queue; steps after it are listed in `queuedMoves`.
 	"""
 	queuedMove: Direction
+	"""
+	The full movement plan in execution order: the step for the next tick first,
+	then the backlog. A car executes at most one step per tick, so a long list
+	unfolds over several ticks. Empty when nothing is queued.
+	"""
+	queuedMoves: [Direction!]!
 	"""
 	Why the most recent move was rejected, if it was.
 	"""
@@ -255,19 +548,53 @@ type CarView {
 	"""
 	chargeDue: Int!
 }
+"""
+What a car is doing right now.
+"""
 enum CarState {
+	"""
+	Empty hold, not on a charger, with charge left.
+	"""
 	IDLE
+	"""
+	Carrying at least one box.
+	"""
 	CARRYING
+	"""
+	On a depot or charger with battery below full. Depot charging is free;
+	standalone chargers bill per tick.
+	"""
 	CHARGING
+	"""
+	Out of battery away from a charger; must be towed.
+	"""
 	STRANDED
 }
+"""
+Why the engine rejected a queued move. A rejection does not advance the clock;
+the car stays where it is. Checks run in a fixed order and the first failure is
+reported.
+"""
 enum RejectReason {
+	"""
+	The queued direction is not one of the four grid steps.
+	"""
 	BAD_DIRECTION
+	"""
+	The destination is outside the grid.
+	"""
 	OFF_GRID
+	"""
+	Water, building or an unexplored tile. A street closure reports CLOSED.
+	"""
 	BLOCKED
+	"""
+	The car has no charge left, or the step costs more than it has.
+	"""
 	NO_BATTERY
 	"""
-	The tile is closed for street works.
+	The tile is closed for street works. A car already standing on it may
+	still drive off.
 	"""
 	CLOSED
 	"""
@@ -275,39 +602,92 @@ enum RejectReason {
 	"""
 	OCCUPIED
 }
+"""
+One purchasable vehicle class, with this session's unlock and affordability
+flags.
+"""
 type CarClassView {
+	"""
+	Class name accepted by buyCar.
+	"""
 	className: String!
+	"""
+	Purchase price in dollars.
+	"""
 	price: Int!
 	"""
 	Hold size in boxes.
 	"""
 	capacity: Int!
+	"""
+	Charge capacity of this class.
+	"""
 	maxBattery: Int!
+	"""
+	Battery spent per road step for this class; ground tiles add the city's
+	ground surcharge.
+	"""
 	stepCost: Int!
 	"""
 	True once a build has granted this class, or it never needed one.
 	"""
 	unlocked: Boolean!
+	"""
+	True when the current balance covers the price.
+	"""
 	affordable: Boolean!
 }
+"""
+One delivery job: what was ordered, where it goes, its deadline and pay.
+"""
 type OrderView {
+	"""
+	Order id used by assignOrder/unassignOrder.
+	"""
 	id: ID!
+	"""
+	Item code the customer ordered (e.g. "pizza").
+	"""
 	item: String!
+	"""
+	Item display name.
+	"""
 	itemName: String!
 	"""
 	How many boxes the customer asked for.
 	"""
 	quantity: Int!
+	"""
+	Kitchen that supplies it.
+	"""
 	kitchenId: ID!
+	"""
+	Kitchen display name.
+	"""
 	kitchenName: String!
+	"""
+	Customer that placed it.
+	"""
 	customerId: ID!
+	"""
+	Customer display name.
+	"""
 	customerName: String!
+	"""
+	Lifecycle state; PENDING/ASSIGNED/PICKED_UP are live, DONE/EXPIRED are settled.
+	"""
 	state: OrderState!
 	"""
 	The car holding or holding-to-be. Kept after DONE, so read it as history once state is terminal.
 	"""
 	assignedCar: ID
+	"""
+	Tick the customer raised the order.
+	"""
 	createdTick: Int!
+	"""
+	Tick by which the delivery must be completed.
+	"""
 	deadlineTick: Int!
 	"""
 	Ticks until the deadline. Signed: negative means already past it but not yet swept.
@@ -326,13 +706,35 @@ type OrderView {
 	"""
 	late: Boolean!
 }
+"""
+Order lifecycle. Live states can still be assigned and delivered.
+"""
 enum OrderState {
+	"""
+	Raised by a customer, no car assigned.
+	"""
 	PENDING
+	"""
+	A car is assigned but the boxes are still at the kitchen.
+	"""
 	ASSIGNED
+	"""
+	The car picked the boxes up and is carrying them.
+	"""
 	PICKED_UP
+	"""
+	Delivered, on time or late.
+	"""
 	DONE
+	"""
+	The deadline passed before delivery.
+	"""
 	EXPIRED
 }
+"""
+The checking account and its report: balance, reputation, lifetime counters and
+the newest statement window.
+"""
 type LedgerView {
 	"""
 	Spendable balance. Buying a car or build reduces it.
@@ -350,7 +752,13 @@ type LedgerView {
 	On-time deliveries only. A late delivery increments lateDeliveries instead.
 	"""
 	deliveries: Int!
+	"""
+	Deliveries completed after their deadline.
+	"""
 	lateDeliveries: Int!
+	"""
+	Orders that expired before delivery.
+	"""
 	expiredOrders: Int!
 	"""
 	Every order ever raised, including the ones that later expired.
@@ -360,6 +768,9 @@ type LedgerView {
 	Consecutive on-time deliveries. Both a late delivery and an expiry reset it to 0.
 	"""
 	onTimeStreak: Int!
+	"""
+	Tows paid for.
+	"""
 	tows: Int!
 	"""
 	Delivered ORDERS per item, not boxes: a two-box delivery adds 1.
@@ -382,21 +793,79 @@ type LedgerView {
 	"""
 	upkeepDue: Int!
 	"""
+	Share of a quoted reward the fleet is actually paid, from its standing: 1.0
+	at 4.90+, then 0.9, 0.8 … per half point down to 0.1 at 0.50. Below 0.50 the
+	ladder floors at 0.1 — any standing above zero still earns a tenth, so a
+	collapsed fleet can work its way back. Only an exactly-zero standing pays
+	nothing. A session opens at the map's max_reputation (5.0 on the shipped
+	city), so early deliveries pay in full; missed orders spend the ladder.
+	"""
+	payMultiplier: Float!
+	"""
 	Checking-account statement, newest first: every movement of money with the
 	car it belongs to when the movement is car-specific. Snapshots carry the
-	most recent rows; the engine retains the full statement with the save. The
-	live subscription carries fewer rows than a query.
+	rows of the newest three months; the engine retains the full statement with
+	the save, and these arguments read further back on demand. The query and the
+	live subscription carry the same window and rows.
+	
+	`month` is the 1-based accounting month (month 1 covers ticks 0 through
+	ticksPerMonth-1) and overrides the tick window with that month's bounds.
+	`fromTick`/`toTick` are inclusive tick bounds and intersect with `month` when
+	both are given. `category` keeps one economic bucket. `carId` keeps rows
+	attributed to that car. `limit` caps the rows, newest first, and defaults to
+	the snapshot window.
 	"""
-	cashEntries: [CashEntryView!]!
+	cashEntries(month: Int, fromTick: Int, toTick: Int, category: CashCategory, carId: ID, limit: Int): [CashEntryView!]!
 	"""
 	Length of one accounting month in simulation ticks.
 	"""
 	ticksPerMonth: Int!
 	"""
-	Monthly income/expense report, newest first. Snapshots carry at most 12
-	months; quiet months are included as zero rows so month numbers do not skip.
+	Monthly income/expense report, newest first. Quiet months are included as
+	zero rows so month numbers do not skip. The default window is the newest
+	three months; `month` selects one month, and `fromTick`/`toTick` select the
+	months intersecting that range. `category` keeps one bucket and recomputes
+	the month's income, expenses and net from it, so a filtered row reads as that
+	bucket's own report.
 	"""
-	months: [MonthView!]!
+	months(month: Int, fromTick: Int, toTick: Int, category: CashCategory, limit: Int): [MonthView!]!
+	"""
+	Per-car profit and loss for the requested window, highest row count first.
+	Same filters as cashEntries minus carId, because this is the aggregate of
+	every car. Rows that belong to no car (upkeep, world costs) are not included,
+	so the entries here never sum to the whole month; add un-attributed rows to
+	reconcile against months.
+	"""
+	cars(month: Int, fromTick: Int, toTick: Int, limit: Int = 50): [CarLedgerView!]!
+}
+"""
+One car's income, expenses and net for a window of the statement.
+"""
+type CarLedgerView {
+	"""
+	Car id these totals are attributed to.
+	"""
+	carId: ID!
+	"""
+	Car display name.
+	"""
+	carName: String!
+	"""
+	Positive magnitude of money in attributed to this car.
+	"""
+	income: Int!
+	"""
+	Positive magnitude of money out attributed to this car.
+	"""
+	expenses: Int!
+	"""
+	income minus expenses.
+	"""
+	net: Int!
+	"""
+	Statement rows behind these totals.
+	"""
+	rows: Int!
 }
 """
 One movement through the player's checking account.
@@ -406,7 +875,13 @@ type CashEntryView {
 	Stable, monotonic id within the session. Use it as the list key.
 	"""
 	seq: Int!
+	"""
+	World tick the movement was recorded at.
+	"""
 	tick: Int!
+	"""
+	What the movement is.
+	"""
 	kind: CashKind!
 	"""
 	Economic bucket used by the monthly report.
@@ -426,35 +901,109 @@ type CashEntryView {
 	The car this movement belongs to, when it belongs to one.
 	"""
 	carId: ID
+	"""
+	Car display name when carId is set.
+	"""
 	carName: String
+	"""
+	Order this movement belongs to, for delivery income and fines.
+	"""
 	orderId: ID
 	"""
 	Short human-readable detail, e.g. "pizza to Rosa's" or "fleet upkeep".
 	"""
 	memo: String!
 }
+"""
+Specific reason for a checking-account movement. The category groups these for
+the monthly report.
+"""
 enum CashKind {
+	"""
+	Starting balance granted with the save.
+	"""
 	OPENING
+	"""
+	On-time delivery income.
+	"""
 	DELIVERY
+	"""
+	Late delivery income at the reduced multiplier.
+	"""
 	LATE_DELIVERY
+	"""
+	Fine for an expired order.
+	"""
 	ORDER_FINE
+	"""
+	Periodic fleet running cost.
+	"""
 	UPKEEP
+	"""
+	Paid charging on a charger or depot.
+	"""
 	CHARGING
+	"""
+	Tow back to a depot.
+	"""
 	TOW
+	"""
+	Vehicle purchase.
+	"""
 	CAR_PURCHASE
+	"""
+	Build or city upgrade purchase.
+	"""
 	BUILD
+	"""
+	Reward or grant (achievement, opening bonus).
+	"""
 	GRANT
 }
+"""
+Economic bucket used by the monthly report. Income buckets are positive;
+expense buckets are negative.
+"""
 enum CashCategory {
+	"""
+	Opening balance.
+	"""
 	OPENING
+	"""
+	Delivery income, on time or late.
+	"""
 	DELIVERY_INCOME
+	"""
+	Rewards and grants.
+	"""
 	REWARDS
+	"""
+	Fines for expired orders.
+	"""
 	ORDER_FINES
+	"""
+	Fleet running cost.
+	"""
 	UPKEEP
+	"""
+	Charging fees.
+	"""
 	CHARGING
+	"""
+	Tow fees.
+	"""
 	TOWS
+	"""
+	Vehicle purchases.
+	"""
 	CAR_PURCHASES
+	"""
+	Builds and city upgrades.
+	"""
 	BUILDS
+	"""
+	Anything that does not fit another bucket.
+	"""
 	OTHER
 }
 """
@@ -465,7 +1014,13 @@ type MonthView {
 	One-based month number. Month 1 covers ticks 0 through ticksPerMonth-1.
 	"""
 	index: Int!
+	"""
+	First tick in the month (inclusive).
+	"""
 	startTick: Int!
+	"""
+	Last tick in the month (inclusive).
+	"""
 	endTick: Int!
 	"""
 	Positive magnitude of money in.
@@ -479,9 +1034,18 @@ type MonthView {
 	income minus expenses.
 	"""
 	net: Int!
+	"""
+	Per-bucket totals for the month, in category order.
+	"""
 	categories: [MonthCategoryView!]!
 }
+"""
+One economic bucket's totals within a month.
+"""
 type MonthCategoryView {
+	"""
+	Bucket this row describes.
+	"""
 	category: CashCategory!
 	"""
 	Positive magnitude in this category, or zero.
@@ -492,23 +1056,165 @@ type MonthCategoryView {
 	"""
 	expenses: Int!
 }
+"""
+Delivered orders for one item, counted as orders rather than boxes.
+"""
 type ItemCount {
+	"""
+	Item code.
+	"""
 	item: String!
+	"""
+	Orders delivered for this item.
+	"""
 	count: Int!
 }
-type GrowthView {
-	id: ID!
+"""
+One balance point in a session's money-by-tick curve.
+"""
+type MoneyPoint {
+	"""
+	Tick of the sampled balance.
+	"""
 	tick: Int!
+	"""
+	Balance at that tick, in dollars.
+	"""
+	money: Int!
+}
+"""
+A session's money-by-tick series, read from the indexed delivery history
+projection. Points are downsampled to at most the requested maxPoints; when the
+window reaches the session's current tick, the last point is its current
+balance.
+"""
+type MoneyHistory {
+	"""
+	Session the series belongs to.
+	"""
+	sessionId: ID!
+	"""
+	City the session was created from.
+	"""
+	cityId: ID!
+	"""
+	Sampled balances, oldest first.
+	"""
+	points: [MoneyPoint!]!
+}
+"""
+One value at a tick in a non-money analytics series.
+"""
+type ValuePoint {
+	"""
+	Tick of the sample.
+	"""
+	tick: Int!
+	"""
+	Sample value: cumulative boxes for itemsHistory, reputation for
+	reputationHistory.
+	"""
+	value: Float!
+}
+"""
+One session's downsampled items-or-reputation series.
+"""
+type ValueSeries {
+	"""
+	Session the series belongs to.
+	"""
+	sessionId: ID!
+	"""
+	City the session was created from.
+	"""
+	cityId: ID!
+	"""
+	Sampled values, oldest first.
+	"""
+	points: [ValuePoint!]!
+}
+"""
+Cumulative operational series available from metricHistory.
+"""
+enum AnalyticsMetric {
+	"""
+	On-time orders completed, counted at delivery tick.
+	"""
+	DELIVERIES
+	"""
+	Orders completed after their deadline, counted at delivery tick.
+	"""
+	LATE_DELIVERIES
+	"""
+	Orders that expired undelivered, counted just after their deadline.
+	"""
+	EXPIRED_ORDERS
+	"""
+	Every order ever raised, counted at creation tick.
+	"""
+	ORDERS_CREATED
+	"""
+	Cash paid by completed orders (on time and late), counted at delivery tick.
+	"""
+	DELIVERY_INCOME
+	"""
+	Cash fined for expired orders, as a positive spend magnitude.
+	"""
+	ORDER_FINES
+	"""
+	Fleet upkeep paid, as a positive spend magnitude.
+	"""
+	UPKEEP_SPEND
+	"""
+	Charging fees paid, as a positive spend magnitude.
+	"""
+	CHARGING_SPEND
+	"""
+	Tow fees paid, as a positive spend magnitude.
+	"""
+	TOW_SPEND
+}
+"""
+One scheduled city-growth stage.
+"""
+type GrowthView {
+	"""
+	Stage id, stable within a city.
+	"""
+	id: ID!
+	"""
+	Tick at which the stage applies.
+	"""
+	tick: Int!
+	"""
+	Short name, e.g. "Harbour Gate".
+	"""
 	title: String!
+	"""
+	What the stage changes: districts revealed, kitchens/customers added,
+	chargers or depot bays built.
+	"""
 	description: String!
+	"""
+	True once the stage has applied.
+	"""
 	done: Boolean!
 }
+"""
+One entry in the session's retained activity feed.
+"""
 type EventView {
+	"""
+	Tick the event was recorded at.
+	"""
 	tick: Int!
 	"""
 	One of the car_* / order_* / city_growth / closure_* names the engine emits.
 	"""
 	type: String!
+	"""
+	Human-readable description of what happened.
+	"""
 	message: String!
 	"""
 	Null for world events (spawns, builds, closures); set for anything a car caused.
@@ -518,15 +1224,30 @@ type EventView {
 	Position of the event, or 0,0 when it has none — non-null, so 0,0 is ambiguous.
 	"""
 	x: Int!
+	"""
+	Row of the event, 0 when it has no position.
+	"""
 	y: Int!
 }
 """
 A stretch of street closed for works.
 """
 type ClosureView {
+	"""
+	Closure id, used by events and the UI.
+	"""
 	id: ID!
+	"""
+	Why the street is closed, e.g. "street works".
+	"""
 	reason: String!
+	"""
+	Tick the closure begins.
+	"""
 	startTick: Int!
+	"""
+	Tick the closure ends (reopens at this tick).
+	"""
 	endTick: Int!
 	"""
 	Ticks until it reopens; negative when it has already ended.
@@ -540,11 +1261,24 @@ type ClosureView {
 	Bounding box of the closed tiles, for camera moves.
 	"""
 	minX: Int!
+	"""
+	Top row of the closure.
+	"""
 	minY: Int!
+	"""
+	Rightmost column of the closure.
+	"""
 	maxX: Int!
+	"""
+	Bottom row of the closure.
+	"""
 	maxY: Int!
 }
 scalar Time
+"""
+Delivery reads: cities, saves, live snapshots, event deltas and money history.
+Reads are public; mutations are creator-only.
+"""
 type Query {
 	"""
 	Liveness probe.
@@ -567,21 +1301,86 @@ type Query {
 	"""
 	cityConfig(id: ID!): String
 	"""
-	Every save on disk, newest first.
+	Saved sessions, ordered by sort. A save's row is described from its stored
+	counters, so a bounded list does not decode the save payloads; saves written
+	before counters existed are decoded only when they survive the filter and
+	the limit. mine = true requires a signed-in viewer and keeps that account's
+	saves.
 	"""
-	sessions: [SessionSummary!]!
+	sessions(sort: SessionSort = CREATED_AT,
+		"""
+		Rows to return, capped at 500.
+		"""
+		limit: Int = 50
+
+		"""
+		Cursor: keep saves created strictly before this time. Valid only with
+		the default CREATED_AT sort and cannot be combined with `cursor`; the
+		time alone cannot break ties between equal timestamps.
+		"""
+		before: Time
+
+		"""
+		Opaque page cursor: the `cursor` of the last row of the previous page.
+		It encodes the requested sort's key and the row id, so paging is exact
+		for every sort, including equal values. Must match `sort`; cannot be
+		combined with `before`.
+		"""
+		cursor: String
+
+		"""
+		Keep only the signed-in viewer's saves. UNAUTHENTICATED when signed out.
+		"""
+		mine: Boolean
+	): [SessionSummary!]!
 	"""
-	One session's full state. Rehydrates from disk when not in memory.
+	Money-by-tick series for up to 20 delivery sessions, read from the indexed
+	delivery history projection rather than from live sessions or Prometheus.
+	
+	Omitted ids select the most recently created sessions. cityId narrows the
+	set. fromTick/toTick are inclusive; an omitted toTick runs to each session's
+	current tick. maxPoints downsamples each series into tick buckets and keeps
+	the last balance in each bucket, so a long session stays bounded.
+	"""
+	moneyHistory(ids: [ID!], cityId: ID, fromTick: Int, toTick: Int, maxPoints: Int = 500): [MoneyHistory!]!
+	"""
+	Cumulative boxes delivered at each tick, from done orders in the indexed
+	delivery history projection. Expired and open orders do not contribute.
+	Same window and downsampling contract as moneyHistory.
+	"""
+	itemsHistory(ids: [ID!], cityId: ID, fromTick: Int, toTick: Int, maxPoints: Int = 500): [ValueSeries!]!
+	"""
+	Recorded reputation at each tick. Sessions saved before the reputation
+	ledger existed return one current point until their next reputation change.
+	Same window and downsampling contract as moneyHistory.
+	"""
+	reputationHistory(ids: [ID!], cityId: ID, fromTick: Int, toTick: Int, maxPoints: Int = 500): [ValueSeries!]!
+	"""
+	Cumulative operational metrics at each tick, read from the indexed delivery
+	history projection. Every metric is monotonic from tick 0 except the
+	spending series, which accumulate spend as a positive magnitude.
+	Same window and downsampling contract as moneyHistory.
+	"""
+	metricHistory(metric: AnalyticsMetric!, ids: [ID!], cityId: ID, fromTick: Int, toTick: Int, maxPoints: Int = 500): [ValueSeries!]!
+	"""
+	One session's full state. Loads the PostgreSQL row when not in memory.
 	"""
 	session(id: ID!): Snapshot!
 	"""
 	A window of the city around one car, for cheap agent polling.
+	
+	radius is the half-width in tiles and is clamped to 10; a larger value
+	returns the same window as 10.
 	"""
 	carView(id: ID!, carId: ID!, radius: Int! = 2): CarWindow!
 	"""
 	Events newer than a tick, so a client can poll for deltas.
+	
+	The returned feed says whether the request reached further back than the
+	retained ring: truncated = true means events before oldestTick are gone, not
+	absent. limit keeps the newest matching events, capped at the feed capacity.
 	"""
-	events(id: ID!, sinceTick: Int! = 0): [EventView!]!
+	events(id: ID!, sinceTick: Int! = 0, limit: Int = 200): EventFeed!
 	"""
 	Whether this caller may change the session: true for the session's creator
 	(by owner token or signed-in owning account) and for a session created before
@@ -590,9 +1389,13 @@ type Query {
 	"""
 	canPlaySession(id: ID!, ownerToken: String): Boolean!
 }
+"""
+Delivery writes and lifecycle. Every session mutation requires the creator's
+owner token or the owning account; reads stay public.
+"""
 type Mutation {
 	"""
-	Start a new city. Both fields optional; a seed makes it reproducible, and an omitted id is
+	Start a new city. Every argument is optional; a seed makes it reproducible, and an omitted id is
 	generated. cityId selects the city config to snapshot (omitted = the default city); the
 	session keeps that snapshot, so later city edits never change a running game. A signed-in
 	creator's session belongs to their account. The response carries the secret ownerToken,
@@ -600,16 +1403,35 @@ type Mutation {
 	"""
 	createSession(id: ID, seed: Int, cityId: ID): CreateSessionResult!
 	"""
-	Queue one step for one car. Does NOT advance the clock. Only the session's
+	Queue one step for one car by appending it to that car's movement queue.
+	Does NOT advance the clock: queued steps run one per tick, in order, so a
+	client can preload a route and then call tick. A rejected step (wall,
+	battery, closure, traffic) is spent, not retried. At most 64 steps may be
+	queued per car; the overflow is LIMIT_REACHED. Only the session's
 	creator may change it: pass the ownerToken from createSession, or be signed in
 	to the account that owns the session (FORBIDDEN otherwise). Sessions created
 	before owner tokens stay open.
 	"""
 	moveCar(id: ID!, carId: ID!, direction: Direction!, ownerToken: String): Snapshot!
 	"""
+	Drop a car's entire movement queue, including the step for the next tick.
+	Use it to replan: a preloaded route must not keep steering after traffic or
+	closures change. Creator-only, as moveCar.
+	"""
+	clearMoves(id: ID!, carId: ID!, ownerToken: String): Snapshot!
+	"""
 	Advance the world manually. Useful when paused. Creator-only, as moveCar.
 	"""
 	tick(id: ID!, count: Int! = 1, ownerToken: String): Snapshot!
+	"""
+	Wait for the running clock to reach a target tick, then return that snapshot.
+	Pass exactly one of `tick` (an absolute tick in the future) or `ticks` (a
+	count from the tick when the call starts, at most 1000). The clock must be
+	running: a paused session never advances, so the call fails with
+	INVALID_ARGUMENT instead of hanging, and pausing while it waits ends it the
+	same way. Creator-only, as moveCar.
+	"""
+	waitUntil(id: ID!, tick: Int, ticks: Int, ownerToken: String): Snapshot!
 	"""
 	Set the clock multiplier. 0 pauses. Creator-only, as moveCar.
 	"""
@@ -619,6 +1441,9 @@ type Mutation {
 	Creator-only, as moveCar.
 	"""
 	assignOrder(id: ID!, orderId: ID!, carId: ID!, ownerToken: String): Snapshot!
+	"""
+	Remove the car from an order, returning it to PENDING. Creator-only, as moveCar.
+	"""
 	unassignOrder(id: ID!, orderId: ID!, ownerToken: String): Snapshot!
 	"""
 	Buy a vehicle at a depot. Creator-only, as moveCar.
@@ -629,16 +1454,22 @@ type Mutation {
 	"""
 	towCar(id: ID!, carId: ID!, ownerToken: String): Snapshot!
 	"""
-	Write the save to disk. Creator-only, as moveCar.
+	Persist the save to PostgreSQL now. Creator-only, as moveCar.
 	"""
 	saveSession(id: ID!, ownerToken: String): Snapshot!
+	"""
+	Name this save for the player. Creator-only, as moveCar. A blank name clears
+	it and every view falls back to the city name. Persisted immediately, so the
+	name survives a restart and shows in the session list before the save loads.
+	"""
+	renameSession(id: ID!, displayName: String!, ownerToken: String): Snapshot!
 	"""
 	Save, then drop from memory. The next read rehydrates. Creator-only: evicting
 	someone else's session would stop their clock.
 	"""
 	evictSession(id: ID!, ownerToken: String): Boolean!
 	"""
-	Delete the save file permanently. Needs the ownerToken (or the owning account)
+	Delete the save row permanently. Needs the ownerToken (or the owning account)
 	even for a guest session; only a save created before owner tokens is open.
 	"""
 	deleteSession(id: ID!, ownerToken: String): Boolean!

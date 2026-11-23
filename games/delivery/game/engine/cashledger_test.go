@@ -25,6 +25,9 @@ func checkCashChain(t *testing.T, w *World) {
 // and the order that paid.
 func TestCashLedgerDeliveryCarriesCarAndOrder(t *testing.T) {
 	w := orderWorld(t)
+	// Full standing, so the row is the quoted reward rather than a reputation
+	// discount; the ladder has its own test.
+	w.Ledger.Reputation = w.maxReputation
 	w.Advance()
 	o := firstOrder(t, w)
 	car := w.Cars[0]

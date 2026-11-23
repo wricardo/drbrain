@@ -9,123 +9,209 @@ import (
 	"strconv"
 )
 
+// The target a rejected move tried to enter.
 type AttemptInfo struct {
-	X        int    `json:"x"`
-	Y        int    `json:"y"`
+	// Column attempted.
+	X int `json:"x"`
+	// Row attempted.
+	Y int `json:"y"`
+	// Glyph at that tile.
 	TileChar string `json:"tileChar"`
+	// Cell type at that tile.
 	TileType string `json:"tileType"`
-	Passable bool   `json:"passable"`
+	// Whether the tile itself is passable (the rejection may be directional).
+	Passable bool `json:"passable"`
 }
 
+// Result of bulkMove: how far the batch got and the resulting state.
 type BulkMoveResult struct {
-	MovesExecuted  int          `json:"movesExecuted"`
-	TotalMoves     int          `json:"totalMoves"`
-	RequestedMoves int          `json:"requestedMoves"`
-	Success        bool         `json:"success"`
-	GameState      *GameState   `json:"gameState"`
-	Events         []*GameEvent `json:"events"`
-	StoppedReason  string       `json:"stoppedReason"`
-	StopReasonCode string       `json:"stopReasonCode"`
-	StoppedOnMove  int          `json:"stoppedOnMove"`
-	Truncated      bool         `json:"truncated"`
-	Limit          int          `json:"limit"`
-	StartPos       *Position    `json:"startPos"`
-	EndPos         *Position    `json:"endPos"`
-	StartBattery   int          `json:"startBattery"`
-	EndBattery     int          `json:"endBattery"`
-	ScoreDelta     int          `json:"scoreDelta"`
-	Steps          []*StepInfo  `json:"steps"`
-	AttemptedTo    *AttemptInfo `json:"attemptedTo,omitempty"`
-	GameOver       bool         `json:"gameOver"`
-	GameOverCode   string       `json:"gameOverCode"`
-	Message        string       `json:"message"`
-	PossibleMoves  []string     `json:"possibleMoves"`
-	BatteryRisk    string       `json:"batteryRisk"`
+	// Number of moves actually executed.
+	MovesExecuted int `json:"movesExecuted"`
+	// Total moves taken in the run after this call.
+	TotalMoves int `json:"totalMoves"`
+	// Number of moves requested.
+	RequestedMoves int `json:"requestedMoves"`
+	// False when the whole batch was rejected before the first move.
+	Success bool `json:"success"`
+	// State after the batch.
+	GameState *GameState `json:"gameState"`
+	// Events raised by the batch.
+	Events []*GameEvent `json:"events"`
+	// Human-readable reason the batch stopped early; empty when it ran to completion.
+	StoppedReason string `json:"stoppedReason"`
+	// Machine-readable stop reason code.
+	StopReasonCode string `json:"stopReasonCode"`
+	// 1-based index of the move that stopped the batch, 0 when none did.
+	StoppedOnMove int `json:"stoppedOnMove"`
+	// True when the batch hit the per-call move cap.
+	Truncated bool `json:"truncated"`
+	// Per-call move cap.
+	Limit int `json:"limit"`
+	// Position before the batch.
+	StartPos *Position `json:"startPos"`
+	// Position after the batch.
+	EndPos *Position `json:"endPos"`
+	// Battery before the batch.
+	StartBattery int `json:"startBattery"`
+	// Battery after the batch.
+	EndBattery int `json:"endBattery"`
+	// Score change over the batch.
+	ScoreDelta int `json:"scoreDelta"`
+	// Per-move summaries for this call only.
+	Steps []*StepInfo `json:"steps"`
+	// The attempted target when the batch stopped on a rejected move.
+	AttemptedTo *AttemptInfo `json:"attemptedTo,omitempty"`
+	// True when the run ended during the batch.
+	GameOver bool `json:"gameOver"`
+	// Machine-readable game-over reason, empty when still playing.
+	GameOverCode string `json:"gameOverCode"`
+	// Status line for the player.
+	Message string `json:"message"`
+	// Directions that are legal from the end position, walls and battery considered.
+	PossibleMoves []string `json:"possibleMoves"`
+	// SAFE, LOW, CAUTION, DANGER, CRITICAL, WARNING or UNKNOWN.
+	BatteryRisk string `json:"batteryRisk"`
 }
 
+// One map cell as the client sees it.
 type Cell struct {
 	// Column of this cell on the map (RIGHT = x+1). Negative or >= map width for off-map nearbyGrid cells.
 	X int `json:"x"`
 	// Row of this cell on the map (DOWN = y+1). Negative or >= map height for off-map nearbyGrid cells.
-	Y                 int      `json:"y"`
-	Type              string   `json:"type"`
-	Visited           bool     `json:"visited"`
-	ID                string   `json:"id"`
+	Y int `json:"y"`
+	// Cell kind: road, home, park, supercharger, water, building, etc.
+	Type string `json:"type"`
+	// True when the player has already entered this cell.
+	Visited bool `json:"visited"`
+	// Stable cell id, or empty for off-map cells.
+	ID string `json:"id"`
+	// Directions this cell permits; empty means every direction.
 	AllowedDirections []string `json:"allowedDirections"`
 }
 
+// Per-glyph behaviour override.
 type CellConfigEntry struct {
-	Key               string   `json:"key"`
-	Type              string   `json:"type"`
+	// Single layout character.
+	Key string `json:"key"`
+	// Cell type this glyph resolves to (road, building, home, ...).
+	Type string `json:"type"`
+	// Directions this cell permits; empty means every direction.
 	AllowedDirections []string `json:"allowedDirections"`
 }
 
 type CellConfigEntryInput struct {
-	Key               string   `json:"key"`
-	Type              string   `json:"type"`
+	// Single layout character.
+	Key string `json:"key"`
+	// Cell type this glyph resolves to.
+	Type string `json:"type"`
+	// Directions this cell permits; empty means every direction.
 	AllowedDirections []string `json:"allowedDirections"`
 }
 
+// Outcome of deleteSession.
 type DeleteSessionResult struct {
+	// Human-readable confirmation or reason the delete failed.
 	Message string `json:"message"`
 }
 
+// One notable thing that happened during a move or batch.
 type GameEvent struct {
-	Type      string    `json:"type"`
-	Message   string    `json:"message"`
-	Timestamp string    `json:"timestamp"`
-	Position  *Position `json:"position"`
+	// Event kind (park_visited, charged, blocked, ...).
+	Type string `json:"type"`
+	// Human-readable description.
+	Message string `json:"message"`
+	// RFC3339 wall-clock time of the event.
+	Timestamp string `json:"timestamp"`
+	// Where it happened.
+	Position *Position `json:"position"`
 }
 
 type GameMapInput struct {
-	Name            string                  `json:"name"`
-	Description     string                  `json:"description"`
-	GridSize        int                     `json:"gridSize"`
-	MaxBattery      int                     `json:"maxBattery"`
-	StartingBattery int                     `json:"startingBattery"`
-	Layout          []string                `json:"layout"`
-	Legend          []*LegendEntryInput     `json:"legend"`
-	CellConfigs     []*CellConfigEntryInput `json:"cellConfigs,omitempty"`
+	// Map name (the lookup key).
+	Name string `json:"name"`
+	// One-line description.
+	Description string `json:"description"`
+	// Width and height of the square grid.
+	GridSize int `json:"gridSize"`
+	// Battery capacity.
+	MaxBattery int `json:"maxBattery"`
+	// Battery the car starts with.
+	StartingBattery int `json:"startingBattery"`
+	// Glyph rows of the map.
+	Layout []string `json:"layout"`
+	// Legend for the glyphs.
+	Legend []*LegendEntryInput `json:"legend"`
+	// Optional per-glyph overrides.
+	CellConfigs []*CellConfigEntryInput `json:"cellConfigs,omitempty"`
 }
 
 type GameMapPatchInput struct {
-	Name            *string                 `json:"name,omitempty"`
-	Description     *string                 `json:"description,omitempty"`
-	GridSize        *int                    `json:"gridSize,omitempty"`
-	MaxBattery      *int                    `json:"maxBattery,omitempty"`
-	StartingBattery *int                    `json:"startingBattery,omitempty"`
-	Layout          []string                `json:"layout,omitempty"`
-	Legend          []*LegendEntryInput     `json:"legend,omitempty"`
-	CellConfigs     []*CellConfigEntryInput `json:"cellConfigs,omitempty"`
+	// New name, when changing it.
+	Name *string `json:"name,omitempty"`
+	// New description, when changing it.
+	Description *string `json:"description,omitempty"`
+	// New grid size, when changing it.
+	GridSize *int `json:"gridSize,omitempty"`
+	// New battery capacity, when changing it.
+	MaxBattery *int `json:"maxBattery,omitempty"`
+	// New starting battery, when changing it.
+	StartingBattery *int `json:"startingBattery,omitempty"`
+	// Replacement glyph rows, when changing them.
+	Layout []string `json:"layout,omitempty"`
+	// Replacement legend, when changing it.
+	Legend []*LegendEntryInput `json:"legend,omitempty"`
+	// Replacement cell overrides, when changing them.
+	CellConfigs []*CellConfigEntryInput `json:"cellConfigs,omitempty"`
 }
 
+// One page of a session's move history.
 type HistoryResponse struct {
-	Moves       []*MoveHistoryEntry `json:"moves"`
-	TotalMoves  int                 `json:"totalMoves"`
-	Page        int                 `json:"page"`
-	PageSize    int                 `json:"pageSize"`
-	TotalPages  int                 `json:"totalPages"`
-	HasNext     bool                `json:"hasNext"`
-	HasPrevious bool                `json:"hasPrevious"`
+	// Moves on this page.
+	Moves []*MoveHistoryEntry `json:"moves"`
+	// Total moves in the run.
+	TotalMoves int `json:"totalMoves"`
+	// 1-based page number.
+	Page int `json:"page"`
+	// Page size.
+	PageSize int `json:"pageSize"`
+	// Total number of pages.
+	TotalPages int `json:"totalPages"`
+	// True when a newer page exists.
+	HasNext bool `json:"hasNext"`
+	// True when an older page exists.
+	HasPrevious bool `json:"hasPrevious"`
 }
 
+// One glyph and what it means on the map.
 type LegendEntry struct {
-	Key   string `json:"key"`
+	// Single layout character.
+	Key string `json:"key"`
+	// Human-readable meaning.
 	Value string `json:"value"`
 }
 
 type LegendEntryInput struct {
-	Key   string `json:"key"`
+	// Single layout character.
+	Key string `json:"key"`
+	// Human-readable meaning.
 	Value string `json:"value"`
 }
 
+// One row in the map catalogue.
 type MapInfo struct {
-	Filename    string `json:"filename"`
-	MapID       string `json:"mapId"`
-	Name        string `json:"name"`
+	// Conventional file name (`<name>.json`). Community rows use the same naming
+	// convention but are stored in PostgreSQL.
+	Filename string `json:"filename"`
+	// Map id used by createSession (the map's `name`).
+	MapID string `json:"mapId"`
+	// Display name.
+	Name string `json:"name"`
+	// One-line description.
 	Description string `json:"description"`
-	GridSize    int    `json:"gridSize"`
-	MaxBattery  int    `json:"maxBattery"`
+	// Width and height of the square grid.
+	GridSize int `json:"gridSize"`
+	// Battery capacity.
+	MaxBattery int `json:"maxBattery"`
 	// True for maps shipped with the server.
 	Builtin bool `json:"builtin"`
 	// DRAFT maps are visible only to their owner and cannot be played or published by anyone else.
@@ -135,108 +221,182 @@ type MapInfo struct {
 	OwnedByMe bool `json:"ownedByMe"`
 }
 
+// Outcome of validateMap.
 type MapValidationResult struct {
-	Valid    bool    `json:"valid"`
-	Winnable bool    `json:"winnable"`
-	Message  string  `json:"message"`
-	Error    *string `json:"error,omitempty"`
+	// True when the map parses.
+	Valid bool `json:"valid"`
+	// True when every park is reachable without stranding the car.
+	Winnable bool `json:"winnable"`
+	// Human-readable summary.
+	Message string `json:"message"`
+	// Validation failure detail, when any.
+	Error *string `json:"error,omitempty"`
 }
 
+// One move in the run's history.
 type MoveHistoryEntry struct {
-	Action       string    `json:"action"`
+	// Action label ("move", "reset", ...).
+	Action string `json:"action"`
+	// Position before the move.
 	FromPosition *Position `json:"fromPosition"`
-	ToPosition   *Position `json:"toPosition"`
-	Battery      int       `json:"battery"`
-	Timestamp    int       `json:"timestamp"`
-	Success      bool      `json:"success"`
-	MoveNumber   int       `json:"moveNumber"`
+	// Position after the move.
+	ToPosition *Position `json:"toPosition"`
+	// Battery after the move.
+	Battery int `json:"battery"`
+	// Wall-clock Unix timestamp in seconds.
+	Timestamp int `json:"timestamp"`
+	// False when the move was rejected.
+	Success bool `json:"success"`
+	// 1-based move number within the run.
+	MoveNumber int `json:"moveNumber"`
 }
 
+// Result of one move.
 type MoveResult struct {
-	Success     bool         `json:"success"`
-	GameState   *GameState   `json:"gameState"`
-	Message     string       `json:"message"`
-	Events      []*GameEvent `json:"events"`
-	Step        *StepInfo    `json:"step,omitempty"`
+	// False when the move was rejected. A collision also ends the run
+	// (`gameOver` becomes true), so read the state rather than assuming nothing
+	// changed.
+	Success bool `json:"success"`
+	// State after the attempt.
+	GameState *GameState `json:"gameState"`
+	// Status line for the player.
+	Message string `json:"message"`
+	// Events raised by the step.
+	Events []*GameEvent `json:"events"`
+	// Compact summary of the step, when available.
+	Step *StepInfo `json:"step,omitempty"`
+	// The attempted target, set when the move was rejected and the reason is positional.
 	AttemptedTo *AttemptInfo `json:"attemptedTo,omitempty"`
 }
 
+// Tesla writes: play, manage sessions and author maps. Map writes require
+// ownership or the admin key.
 type Mutation struct {
 }
 
+// A tile coordinate: x = column, y = row.
 type Position struct {
+	// Column (0 = left).
 	X int `json:"x"`
+	// Row (0 = top).
 	Y int `json:"y"`
 }
 
+// Tesla reads: sessions, game state, history and map catalogue.
 type Query struct {
 }
 
+// One play-through: the session metadata, the current game state and the map.
 type Session struct {
-	ID           string     `json:"id"`
-	DisplayName  *string    `json:"displayName,omitempty"`
-	MapName      string     `json:"mapName"`
-	CreatedAt    string     `json:"createdAt"`
-	LastActionAt string     `json:"lastActionAt"`
-	GameState    *GameState `json:"gameState"`
-	GameMap      *GameMap   `json:"gameMap"`
+	// Session id; public enough to watch.
+	ID string `json:"id"`
+	// The player's name for this save; null/empty falls back to the map name.
+	DisplayName *string `json:"displayName,omitempty"`
+	// Map the session plays.
+	MapName string `json:"mapName"`
+	// When the session was created (RFC3339 with the server's zone offset).
+	CreatedAt string `json:"createdAt"`
+	// When the session last changed (RFC3339 with the server's zone offset).
+	LastActionAt string `json:"lastActionAt"`
+	// Current game state.
+	GameState *GameState `json:"gameState"`
+	// Map the session plays, with its layout and legend.
+	GameMap *GameMap `json:"gameMap"`
 	// Only set in the createSession response, when fog is enabled and no gridPassword
 	// was supplied: the server-generated password for grid(password: ...). It is never
 	// returned again, so store it. Always null on every other query/mutation.
 	GeneratedGridPassword *string `json:"generatedGridPassword,omitempty"`
 }
 
+// One page of the session list.
 type SessionList struct {
-	Count    int        `json:"count"`
-	Total    int        `json:"total"`
+	// Rows in this page.
+	Count int `json:"count"`
+	// Rows matching the query before the limit.
+	Total int `json:"total"`
+	// The sessions themselves.
 	Sessions []*Session `json:"sessions"`
-	Sort     string     `json:"sort"`
-	Order    string     `json:"order"`
+	// Sort field used (for echoing back to the client).
+	Sort string `json:"sort"`
+	// Sort order used.
+	Order string `json:"order"`
 }
 
+// Compact summary of one executed step.
 type StepInfo struct {
-	Idx           int       `json:"idx"`
-	Dir           string    `json:"dir"`
-	From          *Position `json:"from"`
-	To            *Position `json:"to"`
-	TileChar      string    `json:"tileChar"`
-	TileType      string    `json:"tileType"`
-	BatteryBefore int       `json:"batteryBefore"`
-	BatteryAfter  int       `json:"batteryAfter"`
-	Success       bool      `json:"success"`
-	Charged       bool      `json:"charged"`
-	Park          bool      `json:"park"`
-	Victory       bool      `json:"victory"`
+	// 1-based step index in the run.
+	Idx int `json:"idx"`
+	// Direction moved.
+	Dir string `json:"dir"`
+	// Position before the step.
+	From *Position `json:"from"`
+	// Position after the step.
+	To *Position `json:"to"`
+	// Glyph of the entered tile.
+	TileChar string `json:"tileChar"`
+	// Cell type of the entered tile.
+	TileType string `json:"tileType"`
+	// Battery before the step.
+	BatteryBefore int `json:"batteryBefore"`
+	// Battery after the step.
+	BatteryAfter int `json:"batteryAfter"`
+	// False when the step was rejected.
+	Success bool `json:"success"`
+	// True when the step charged the battery.
+	Charged bool `json:"charged"`
+	// True when the step entered a park.
+	Park bool `json:"park"`
+	// True when this step won the run.
+	Victory bool `json:"victory"`
 }
 
 type Subscription struct {
 }
 
+// One lobby row: session metadata plus its full state and map.
 type UnifiedSession struct {
-	SessionID    string     `json:"sessionId"`
-	CreatedAt    string     `json:"createdAt"`
-	LastActionAt string     `json:"lastActionAt"`
-	GameState    *GameState `json:"gameState"`
-	GameMap      *GameMap   `json:"gameMap"`
+	// Session id.
+	SessionID string `json:"sessionId"`
+	// When the session was created (RFC3339 with the server's zone offset).
+	CreatedAt string `json:"createdAt"`
+	// When the session last changed (RFC3339 with the server's zone offset).
+	LastActionAt string `json:"lastActionAt"`
+	// Current game state.
+	GameState *GameState `json:"gameState"`
+	// Map the session plays.
+	GameMap *GameMap `json:"gameMap"`
 }
 
+// Sessions of one map, with full state, used by the lobby.
 type UnifiedSessions struct {
-	MapName  string            `json:"mapName"`
-	Count    int               `json:"count"`
+	// Map the sessions belong to.
+	MapName string `json:"mapName"`
+	// Number of sessions returned.
+	Count int `json:"count"`
+	// The sessions with their game state.
 	Sessions []*UnifiedSession `json:"sessions"`
 }
 
+// One park and whether this run has visited it.
 type VisitedPark struct {
-	ID      string `json:"id"`
-	Visited bool   `json:"visited"`
+	// Park id from the map.
+	ID string `json:"id"`
+	// True once the Tesla has entered the park.
+	Visited bool `json:"visited"`
 }
 
+// One grid step. UP decreases y, DOWN increases y, LEFT decreases x, RIGHT
+// increases x.
 type Direction string
 
 const (
-	DirectionUp    Direction = "UP"
-	DirectionDown  Direction = "DOWN"
-	DirectionLeft  Direction = "LEFT"
+	// One row up (y-1).
+	DirectionUp Direction = "UP"
+	// One row down (y+1).
+	DirectionDown Direction = "DOWN"
+	// One column left (x-1).
+	DirectionLeft Direction = "LEFT"
+	// One column right (x+1).
 	DirectionRight Direction = "RIGHT"
 )
 
@@ -290,6 +450,7 @@ func (e Direction) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// Lifecycle of a community map: a draft is private to its owner.
 type MapStatus string
 
 const (
@@ -347,11 +508,14 @@ func (e MapStatus) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// How to order the session list.
 type SessionSort string
 
 const (
+	// Newest save first.
 	SessionSortCreated SessionSort = "CREATED"
-	SessionSortAction  SessionSort = "ACTION"
+	// Most recent action first. The default.
+	SessionSortAction SessionSort = "ACTION"
 )
 
 var AllSessionSort = []SessionSort{
@@ -402,10 +566,13 @@ func (e SessionSort) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// Sort direction for lists and history.
 type SortOrder string
 
 const (
-	SortOrderAsc  SortOrder = "ASC"
+	// Ascending (oldest/smallest first).
+	SortOrderAsc SortOrder = "ASC"
+	// Descending (newest/largest first).
 	SortOrderDesc SortOrder = "DESC"
 )
 

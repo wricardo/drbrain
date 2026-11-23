@@ -438,11 +438,17 @@ type User {
 	Unique public name, 3-20 of a-z 0-9 _; the profile lives at /u/<handle>.
 	"""
 	handle: String!
+	"""
+	Public name shown on boards and profiles; an empty value falls back to the handle.
+	"""
 	displayName: String!
 	"""
 	When false the profile page is hidden and board entries read "Private player".
 	"""
 	profilePublic: Boolean!
+	"""
+	When the account was created (UTC).
+	"""
 	createdAt: Time!
 	"""
 	When the handle may be changed again; null when it can be changed now.
@@ -457,7 +463,13 @@ type User {
 A way to sign in, enabled on this server. Sign in by navigating to /auth/<id>/login.
 """
 type AuthProvider {
+	"""
+	Provider id used in the login URL, e.g. "google", "github", "dev" or "password".
+	"""
 	id: ID!
+	"""
+	Human-readable provider name for the sign-in button.
+	"""
 	name: String!
 }
 """
@@ -467,16 +479,34 @@ player it belongs to. Tokens last 24 hours; there is no refresh token, so a
 client stores it and signs in again when it expires.
 """
 type AuthSession {
+	"""
+	Bearer token. Send it as ` + "`" + `Authorization: Bearer <token>` + "`" + `; keep it private.
+	"""
 	token: String!
+	"""
+	When the token stops being accepted (UTC).
+	"""
 	expiresAt: Time!
+	"""
+	The player the token belongs to.
+	"""
 	user: User!
 }
 """
 A player's public identity page. Game-specific statistics live under that game.
 """
 type Profile {
+	"""
+	Public handle; the profile lives at /u/<handle>.
+	"""
 	handle: String!
+	"""
+	Public display name; empty means the handle is shown.
+	"""
 	displayName: String!
+	"""
+	When the account was created (UTC).
+	"""
 	createdAt: Time!
 	"""
 	True when the viewer is this player (a private profile is visible only to its owner).
@@ -495,6 +525,10 @@ input AccountInput {
 	profilePublic: Boolean
 }
 scalar Time
+"""
+Account and sign-in operations shared by every game. Read ` + "`" + `me` + "`" + ` to identify the
+viewer; mutations require the Bearer token returned by the sign-in mutations.
+"""
 type Query {
 	"""
 	The signed-in player, or null.
@@ -509,6 +543,10 @@ type Query {
 	"""
 	profile(handle: String!): Profile
 }
+"""
+Account, sign-in and profile mutations. Password sign-in and OAuth hand-off are
+same-origin only; tokens are stateless Bearer JWTs.
+"""
 type Mutation {
 	"""
 	Sign-out counterpart for clients: tokens are stateless, so the server has

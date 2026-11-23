@@ -179,26 +179,12 @@ func fieldLine(f *ast.FieldDefinition) string {
 	if f.Description != "" {
 		b.WriteString("\t/** " + strings.ReplaceAll(strings.TrimSpace(f.Description), "\n", " ") + " */\n")
 	}
-	ts := tsType(f.Type)
-	if len(f.Arguments) > 0 {
-		var args []string
-		for _, a := range f.Arguments {
-			optional := true
-			if a.Type != nil && a.Type.NonNull && a.DefaultValue == nil {
-				optional = false
-			}
-			name := a.Name
-			if optional {
-				name += "?"
-			}
-			args = append(args, name+": "+tsType(a.Type))
-		}
-		ts = fmt.Sprintf("(args: { %s }) => %s", strings.Join(args, "; "), ts)
-	}
-	if f.DefaultValue != nil {
-		ts = tsType(f.Type)
-	}
-	b.WriteString(fmt.Sprintf("\t%s: %s;\n", f.Name, ts))
+	// Arguments are a document concern, not a response shape: a GraphQL
+	// response holds the field's value, never a callable. Typing an
+	// argument-taking field as (args) => T would make the client call a plain
+	// array at runtime, so the type stays the value type and the query document
+	// carries whichever arguments it wants.
+	b.WriteString(fmt.Sprintf("\t%s: %s;\n", f.Name, tsType(f.Type)))
 	return b.String()
 }
 

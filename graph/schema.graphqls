@@ -10,11 +10,17 @@ type Global_User {
 	Unique public name, 3-20 of a-z 0-9 _; the profile lives at /u/<handle>.
 	"""
 	handle: String!
+	"""
+	Public name shown on boards and profiles; an empty value falls back to the handle.
+	"""
 	displayName: String!
 	"""
 	When false the profile page is hidden and board entries read "Private player".
 	"""
 	profilePublic: Boolean!
+	"""
+	When the account was created (UTC).
+	"""
 	createdAt: Time!
 	"""
 	When the handle may be changed again; null when it can be changed now.
@@ -29,7 +35,13 @@ type Global_User {
 A way to sign in, enabled on this server. Sign in by navigating to /auth/<id>/login.
 """
 type Global_AuthProvider {
+	"""
+	Provider id used in the login URL, e.g. "google", "github", "dev" or "password".
+	"""
 	id: ID!
+	"""
+	Human-readable provider name for the sign-in button.
+	"""
 	name: String!
 }
 """
@@ -39,16 +51,34 @@ player it belongs to. Tokens last 24 hours; there is no refresh token, so a
 client stores it and signs in again when it expires.
 """
 type Global_AuthSession {
+	"""
+	Bearer token. Send it as `Authorization: Bearer <token>`; keep it private.
+	"""
 	token: String!
+	"""
+	When the token stops being accepted (UTC).
+	"""
 	expiresAt: Time!
+	"""
+	The player the token belongs to.
+	"""
 	user: Global_User!
 }
 """
 A player's public identity page. Game-specific statistics live under that game.
 """
 type Global_Profile {
+	"""
+	Public handle; the profile lives at /u/<handle>.
+	"""
 	handle: String!
+	"""
+	Public display name; empty means the handle is shown.
+	"""
 	displayName: String!
+	"""
+	When the account was created (UTC).
+	"""
 	createdAt: Time!
 	"""
 	True when the viewer is this player (a private profile is visible only to its owner).
@@ -66,6 +96,10 @@ input Global_AccountInput {
 	displayName: String
 	profilePublic: Boolean
 }
+"""
+Account and sign-in operations shared by every game. Read `me` to identify the
+viewer; mutations require the Bearer token returned by the sign-in mutations.
+"""
 type Global_Query {
 	"""
 	The signed-in player, or null.
@@ -80,6 +114,10 @@ type Global_Query {
 	"""
 	profile(handle: String!): Global_Profile
 }
+"""
+Account, sign-in and profile mutations. Password sign-in and OAuth hand-off are
+same-origin only; tokens are stateless Bearer JWTs.
+"""
 type Global_Mutation {
 	"""
 	Sign-out counterpart for clients: tokens are stateless, so the server has
@@ -114,23 +152,80 @@ type Global_Mutation {
 	"""
 	deleteAccount(confirmHandle: String!): Boolean!
 }
+"""
+One grid step. Coordinates are x to the right, y downward, matching
+`grid[y][x]`.
+"""
 enum Delivery_Direction {
+	"""
+	One row up (y-1).
+	"""
 	NORTH
+	"""
+	One row down (y+1).
+	"""
 	SOUTH
+	"""
+	One column right (x+1).
+	"""
 	EAST
+	"""
+	One column left (x-1).
+	"""
 	WEST
 }
+"""
+Liveness of the delivery subsystem inside the process.
+"""
 type Delivery_Health {
+	"""
+	"ok" while sessions can be created and served.
+	"""
 	status: String!
 }
+"""
+One row in a save picker. Counters come from the stored metadata, so listing
+does not decode every session payload.
+"""
 type Delivery_SessionSummary {
+	"""
+	Session id; also the save's primary key.
+	"""
 	id: ID!
+	"""
+	When the save was created (UTC).
+	"""
 	createdAt: Time!
+	"""
+	The player's name for this save; empty when unnamed, in which case a client
+	shows the city name.
+	"""
+	displayName: String!
+	"""
+	World tick the save was last written at.
+	"""
 	tick: Int!
+	"""
+	Clock multiplier for a loaded session. An unloaded save reports 0
+	(paused), because a stored save has no running clock.
+	"""
 	speed: Int!
+	"""
+	Spendable balance in dollars.
+	"""
 	money: Int!
+	"""
+	Lifetime reputation, 0-5.
+	"""
 	reputation: Float!
+	"""
+	On-time deliveries completed.
+	"""
 	deliveries: Int!
+	"""
+	True when the session is currently held in memory; false means it will be
+	loaded from PostgreSQL on the next read.
+	"""
 	loaded: Boolean!
 	"""
 	The owning player's public name: an account's display name, "Private player"
@@ -146,6 +241,12 @@ type Delivery_SessionSummary {
 	True when the session belongs to the signed-in viewer's account.
 	"""
 	mine: Boolean!
+	"""
+	Opaque cursor naming this row's position in the requested sort order. Pass
+	the last row's cursor as `sessions(cursor:)` to fetch the next page without
+	skipping or repeating rows that share a sort value.
+	"""
+	cursor: String!
 }
 """
 The result of createSession. The ownerToken is returned only here and never by a
@@ -154,12 +255,18 @@ change the session (and attach it to an account later), while the session id
 alone stays enough to read it.
 """
 type Delivery_CreateSessionResult {
+	"""
+	The new session's first snapshot.
+	"""
 	session: Delivery_Snapshot!
 	"""
 	Secret that proves you created this session; keep it private.
 	"""
 	ownerToken: String!
 }
+"""
+Outcome of asking to attach a guest save to the signed-in account.
+"""
 enum Delivery_ClaimStatus {
 	"""
 	The session now belongs to your account.
@@ -176,32 +283,87 @@ enum Delivery_ClaimStatus {
 	REJECTED
 }
 input Delivery_SessionClaimInput {
+	"""
+	Session id to attach.
+	"""
 	sessionID: ID!
+	"""
+	The secret createSession returned for that session.
+	"""
 	ownerToken: String!
 }
+"""
+Per-claim outcome; claims are answered independently.
+"""
 type Delivery_SessionClaimResult {
+	"""
+	The session id from the request.
+	"""
 	sessionID: ID!
+	"""
+	Whether the save now belongs to the caller.
+	"""
 	status: Delivery_ClaimStatus!
 }
 """
 The full client view of a session at one tick.
 """
 type Delivery_Snapshot {
+	"""
+	Session id.
+	"""
 	id: ID!
+	"""
+	When the save was created (UTC).
+	"""
 	createdAt: Time!
+	"""
+	The player's name for this save; empty when unnamed, in which case a client
+	shows the city name.
+	"""
+	displayName: String!
+	"""
+	World tick, monotonically increasing.
+	"""
 	tick: Int!
 	"""
 	Clock multiplier: 0 paused, 1/2/4 running.
 	"""
 	speed: Int!
+	"""
+	True when the clock is stopped (speed 0).
+	"""
 	paused: Boolean!
 	"""
 	Wall-clock length of one tick at 1x, from the city config.
 	"""
 	tickMs: Int!
+	"""
+	The city as this session sees it: explored districts revealed, closed tiles
+	marked, and waiting customers listed.
+	"""
 	city: Delivery_CityView!
+	"""
+	Every car in the fleet, in stable id order.
+	"""
 	cars: [Delivery_CarView!]!
-	orders: [Delivery_OrderView!]!
+	"""
+	Delivery jobs, newest created first. With no arguments this is the history
+	up to the 2000-row default cap, which is what a replay or an audit usually
+	wants; `limit` cannot exceed 2000. A live client should ask for openOrders
+	or filter instead. Finished history is ~96% of a long save and never
+	shrinks, so selecting it per frame is the difference between a small and a
+	multi-megabyte payload.
+	"""
+	orders(state: [Delivery_OrderState!], carId: ID, sinceTick: Int, includeFinished: Boolean = true, limit: Int = 2000): [Delivery_OrderView!]!
+	"""
+	Every unfinished job (PENDING, ASSIGNED, PICKED_UP), newest created first.
+	This is the list a player acts on and the cheapest useful order read.
+	"""
+	openOrders: [Delivery_OrderView!]!
+	"""
+	Money, reputation and the newest statement window.
+	"""
 	ledger: Delivery_LedgerView!
 	"""
 	The purchasable catalogue with per-session unlock and affordability flags, cheapest first.
@@ -213,18 +375,78 @@ type Delivery_Snapshot {
 	own timeline, not through purchases.
 	"""
 	growth: [Delivery_GrowthView!]!
+	"""
+	The retained event feed, oldest first. Bounded by the city's max_events; see
+	eventCapacity and the events query for the truncation flag.
+	"""
 	events: [Delivery_EventView!]!
+	"""
+	How many events the retained feed can hold. A poller that asks for events
+	older than the oldest retained row has lost those events, and only the
+	events query can say so.
+	"""
+	eventCapacity: Int!
 	"""
 	Street works currently closing part of the map.
 	"""
 	closures: [Delivery_ClosureView!]!
 }
 """
+The retained event feed with the metadata a poller needs to tell a quiet
+stretch from a gap it missed.
+"""
+type Delivery_EventFeed {
+	"""
+	Matching events, oldest first, capped at the requested limit (newest kept).
+	"""
+	events: [Delivery_EventView!]!
+	"""
+	Tick of the oldest retained event, or the current tick when the feed is
+	empty.
+	"""
+	oldestTick: Int!
+	"""
+	True when the requested sinceTick predates the retained feed, so events
+	before oldestTick are gone rather than absent.
+	"""
+	truncated: Boolean!
+	"""
+	How many events the feed can retain (the city's max_events).
+	"""
+	capacity: Int!
+}
+"""
+How to order the session list.
+"""
+enum Delivery_SessionSort {
+	"""
+	Newest save first. The default, and the only order that needs no counters.
+	"""
+	CREATED_AT
+	"""
+	Highest world tick first.
+	"""
+	TICK
+	"""
+	Highest spendable balance first.
+	"""
+	MONEY
+}
+"""
 A window of the city around one car, for cheap polling.
 """
 type Delivery_CarWindow {
+	"""
+	The car at the centre of the window.
+	"""
 	car: Delivery_CarView!
+	"""
+	Number of rows in the window (shrinks at map edges).
+	"""
 	rowSpan: Int!
+	"""
+	Number of glyph columns in the window (shrinks at map edges).
+	"""
 	colSpan: Int!
 	"""
 	Row-major glyph rows for the window only.
@@ -234,10 +456,23 @@ type Delivery_CarWindow {
 	Origin of rows[0][0] in city coordinates.
 	"""
 	originX: Int!
+	"""
+	City row of rows[0].
+	"""
 	originY: Int!
+	"""
+	Cars inside the window, including the centre car.
+	"""
 	visibleCars: [Delivery_CarView!]!
+	"""
+	Orders whose kitchen or customer lies inside the window.
+	"""
 	nearbyOrders: [Delivery_OrderView!]!
 }
+"""
+Lifecycle of a city: a draft is private to its owner, a published city is
+selectable by everyone.
+"""
 enum Delivery_CityStatus {
 	"""
 	A work in progress: only its owner can see, edit, play or publish it.
@@ -252,8 +487,17 @@ enum Delivery_CityStatus {
 One entry in the city catalogue: a published city or the caller's own draft.
 """
 type Delivery_CityInfo {
+	"""
+	City id used by `city`, `cityConfig` and `createSession(cityId:)`.
+	"""
 	id: ID!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	Width and height of the square grid.
+	"""
 	gridSize: Int!
 	"""
 	DRAFT cities are visible only to their owner. The owner may play and publish a draft;
@@ -274,9 +518,22 @@ type Delivery_CityInfo {
 	"""
 	ownerless: Boolean!
 }
+"""
+The city as one session sees it: explored districts, waiting customers and the
+static facilities.
+"""
 type Delivery_CityView {
+	"""
+	City id.
+	"""
 	id: ID!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	Width and height of the square grid.
+	"""
 	gridSize: Int!
 	"""
 	DRAFT cities are visible only to their owner. The owner may play a draft; another
@@ -306,6 +563,9 @@ type Delivery_CityView {
 	Tiles still unexplored. Always 0 on the static city query, which reveals all.
 	"""
 	hiddenTiles: Int!
+	"""
+	Pickup points (restaurants).
+	"""
 	kitchens: [Delivery_PointView!]!
 	"""
 	Customers currently waiting for a delivery. A customer appears when it
@@ -314,7 +574,13 @@ type Delivery_CityView {
 	shows authored houses as 'h' and carries no session state.
 	"""
 	customers: [Delivery_PointView!]!
+	"""
+	Depots: the only place cars can be bought and where charging is fastest.
+	"""
 	depots: [Delivery_PointView!]!
+	"""
+	Standalone charging points (slower than a depot).
+	"""
 	chargers: [Delivery_PointView!]!
 }
 """
@@ -322,24 +588,76 @@ The outcome of validateCity: valid means the JSON parses into a city; publishabl
 full publication gate (the same validation the server runs at startup) accepts it.
 """
 type Delivery_CityValidationResult {
+	"""
+	True when the JSON parses into a city config.
+	"""
 	valid: Boolean!
+	"""
+	True when the full publication gate (grid, districts, orders, reachability)
+	accepts the city.
+	"""
 	publishable: Boolean!
+	"""
+	Human-readable validation failures; empty when publishable.
+	"""
 	issues: [String!]!
 }
+"""
+A named location on the grid: kitchen, depot, charger or waiting customer.
+"""
 type Delivery_PointView {
+	"""
+	Stable id used by orders, builds and assignments.
+	"""
 	id: ID!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	Column on the grid (right is +x).
+	"""
 	x: Int!
+	"""
+	Row on the grid (down is +y).
+	"""
 	y: Int!
 }
+"""
+One vehicle in the fleet: position, charge, hold and what it is doing.
+"""
 type Delivery_CarView {
+	"""
+	Stable car id, used by every car mutation.
+	"""
 	id: ID!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	Vehicle class: scooter, van or truck.
+	"""
 	className: String!
+	"""
+	Column on the grid (right is +x).
+	"""
 	x: Int!
+	"""
+	Row on the grid (down is +y).
+	"""
 	y: Int!
+	"""
+	Current battery charge.
+	"""
 	battery: Int!
+	"""
+	Charge capacity of this class.
+	"""
 	maxBattery: Int!
+	"""
+	Charge as an integer percentage 0-100.
+	"""
 	batteryPct: Int!
 	"""
 	Hold size in boxes.
@@ -353,12 +671,25 @@ type Delivery_CarView {
 	Boxes still free.
 	"""
 	freeBoxes: Int!
+	"""
+	Order ids whose boxes are in the hold.
+	"""
 	cargo: [ID!]!
+	"""
+	Coarse status shown by the UI.
+	"""
 	state: Delivery_CarState!
 	"""
-	The move queued for the next tick, if any.
+	The move queued for the next tick, if any. This is the head of the car's
+	movement queue; steps after it are listed in `queuedMoves`.
 	"""
 	queuedMove: Delivery_Direction
+	"""
+	The full movement plan in execution order: the step for the next tick first,
+	then the backlog. A car executes at most one step per tick, so a long list
+	unfolds over several ticks. Empty when nothing is queued.
+	"""
+	queuedMoves: [Delivery_Direction!]!
 	"""
 	Why the most recent move was rejected, if it was.
 	"""
@@ -369,19 +700,53 @@ type Delivery_CarView {
 	"""
 	chargeDue: Int!
 }
+"""
+What a car is doing right now.
+"""
 enum Delivery_CarState {
+	"""
+	Empty hold, not on a charger, with charge left.
+	"""
 	IDLE
+	"""
+	Carrying at least one box.
+	"""
 	CARRYING
+	"""
+	On a depot or charger with battery below full. Depot charging is free;
+	standalone chargers bill per tick.
+	"""
 	CHARGING
+	"""
+	Out of battery away from a charger; must be towed.
+	"""
 	STRANDED
 }
+"""
+Why the engine rejected a queued move. A rejection does not advance the clock;
+the car stays where it is. Checks run in a fixed order and the first failure is
+reported.
+"""
 enum Delivery_RejectReason {
+	"""
+	The queued direction is not one of the four grid steps.
+	"""
 	BAD_DIRECTION
+	"""
+	The destination is outside the grid.
+	"""
 	OFF_GRID
+	"""
+	Water, building or an unexplored tile. A street closure reports CLOSED.
+	"""
 	BLOCKED
+	"""
+	The car has no charge left, or the step costs more than it has.
+	"""
 	NO_BATTERY
 	"""
-	The tile is closed for street works.
+	The tile is closed for street works. A car already standing on it may
+	still drive off.
 	"""
 	CLOSED
 	"""
@@ -389,39 +754,92 @@ enum Delivery_RejectReason {
 	"""
 	OCCUPIED
 }
+"""
+One purchasable vehicle class, with this session's unlock and affordability
+flags.
+"""
 type Delivery_CarClassView {
+	"""
+	Class name accepted by buyCar.
+	"""
 	className: String!
+	"""
+	Purchase price in dollars.
+	"""
 	price: Int!
 	"""
 	Hold size in boxes.
 	"""
 	capacity: Int!
+	"""
+	Charge capacity of this class.
+	"""
 	maxBattery: Int!
+	"""
+	Battery spent per road step for this class; ground tiles add the city's
+	ground surcharge.
+	"""
 	stepCost: Int!
 	"""
 	True once a build has granted this class, or it never needed one.
 	"""
 	unlocked: Boolean!
+	"""
+	True when the current balance covers the price.
+	"""
 	affordable: Boolean!
 }
+"""
+One delivery job: what was ordered, where it goes, its deadline and pay.
+"""
 type Delivery_OrderView {
+	"""
+	Order id used by assignOrder/unassignOrder.
+	"""
 	id: ID!
+	"""
+	Item code the customer ordered (e.g. "pizza").
+	"""
 	item: String!
+	"""
+	Item display name.
+	"""
 	itemName: String!
 	"""
 	How many boxes the customer asked for.
 	"""
 	quantity: Int!
+	"""
+	Kitchen that supplies it.
+	"""
 	kitchenId: ID!
+	"""
+	Kitchen display name.
+	"""
 	kitchenName: String!
+	"""
+	Customer that placed it.
+	"""
 	customerId: ID!
+	"""
+	Customer display name.
+	"""
 	customerName: String!
+	"""
+	Lifecycle state; PENDING/ASSIGNED/PICKED_UP are live, DONE/EXPIRED are settled.
+	"""
 	state: Delivery_OrderState!
 	"""
 	The car holding or holding-to-be. Kept after DONE, so read it as history once state is terminal.
 	"""
 	assignedCar: ID
+	"""
+	Tick the customer raised the order.
+	"""
 	createdTick: Int!
+	"""
+	Tick by which the delivery must be completed.
+	"""
 	deadlineTick: Int!
 	"""
 	Ticks until the deadline. Signed: negative means already past it but not yet swept.
@@ -440,13 +858,35 @@ type Delivery_OrderView {
 	"""
 	late: Boolean!
 }
+"""
+Order lifecycle. Live states can still be assigned and delivered.
+"""
 enum Delivery_OrderState {
+	"""
+	Raised by a customer, no car assigned.
+	"""
 	PENDING
+	"""
+	A car is assigned but the boxes are still at the kitchen.
+	"""
 	ASSIGNED
+	"""
+	The car picked the boxes up and is carrying them.
+	"""
 	PICKED_UP
+	"""
+	Delivered, on time or late.
+	"""
 	DONE
+	"""
+	The deadline passed before delivery.
+	"""
 	EXPIRED
 }
+"""
+The checking account and its report: balance, reputation, lifetime counters and
+the newest statement window.
+"""
 type Delivery_LedgerView {
 	"""
 	Spendable balance. Buying a car or build reduces it.
@@ -464,7 +904,13 @@ type Delivery_LedgerView {
 	On-time deliveries only. A late delivery increments lateDeliveries instead.
 	"""
 	deliveries: Int!
+	"""
+	Deliveries completed after their deadline.
+	"""
 	lateDeliveries: Int!
+	"""
+	Orders that expired before delivery.
+	"""
 	expiredOrders: Int!
 	"""
 	Every order ever raised, including the ones that later expired.
@@ -474,6 +920,9 @@ type Delivery_LedgerView {
 	Consecutive on-time deliveries. Both a late delivery and an expiry reset it to 0.
 	"""
 	onTimeStreak: Int!
+	"""
+	Tows paid for.
+	"""
 	tows: Int!
 	"""
 	Delivered ORDERS per item, not boxes: a two-box delivery adds 1.
@@ -496,21 +945,79 @@ type Delivery_LedgerView {
 	"""
 	upkeepDue: Int!
 	"""
+	Share of a quoted reward the fleet is actually paid, from its standing: 1.0
+	at 4.90+, then 0.9, 0.8 … per half point down to 0.1 at 0.50. Below 0.50 the
+	ladder floors at 0.1 — any standing above zero still earns a tenth, so a
+	collapsed fleet can work its way back. Only an exactly-zero standing pays
+	nothing. A session opens at the map's max_reputation (5.0 on the shipped
+	city), so early deliveries pay in full; missed orders spend the ladder.
+	"""
+	payMultiplier: Float!
+	"""
 	Checking-account statement, newest first: every movement of money with the
 	car it belongs to when the movement is car-specific. Snapshots carry the
-	most recent rows; the engine retains the full statement with the save. The
-	live subscription carries fewer rows than a query.
+	rows of the newest three months; the engine retains the full statement with
+	the save, and these arguments read further back on demand. The query and the
+	live subscription carry the same window and rows.
+	
+	`month` is the 1-based accounting month (month 1 covers ticks 0 through
+	ticksPerMonth-1) and overrides the tick window with that month's bounds.
+	`fromTick`/`toTick` are inclusive tick bounds and intersect with `month` when
+	both are given. `category` keeps one economic bucket. `carId` keeps rows
+	attributed to that car. `limit` caps the rows, newest first, and defaults to
+	the snapshot window.
 	"""
-	cashEntries: [Delivery_CashEntryView!]!
+	cashEntries(month: Int, fromTick: Int, toTick: Int, category: Delivery_CashCategory, carId: ID, limit: Int): [Delivery_CashEntryView!]!
 	"""
 	Length of one accounting month in simulation ticks.
 	"""
 	ticksPerMonth: Int!
 	"""
-	Monthly income/expense report, newest first. Snapshots carry at most 12
-	months; quiet months are included as zero rows so month numbers do not skip.
+	Monthly income/expense report, newest first. Quiet months are included as
+	zero rows so month numbers do not skip. The default window is the newest
+	three months; `month` selects one month, and `fromTick`/`toTick` select the
+	months intersecting that range. `category` keeps one bucket and recomputes
+	the month's income, expenses and net from it, so a filtered row reads as that
+	bucket's own report.
 	"""
-	months: [Delivery_MonthView!]!
+	months(month: Int, fromTick: Int, toTick: Int, category: Delivery_CashCategory, limit: Int): [Delivery_MonthView!]!
+	"""
+	Per-car profit and loss for the requested window, highest row count first.
+	Same filters as cashEntries minus carId, because this is the aggregate of
+	every car. Rows that belong to no car (upkeep, world costs) are not included,
+	so the entries here never sum to the whole month; add un-attributed rows to
+	reconcile against months.
+	"""
+	cars(month: Int, fromTick: Int, toTick: Int, limit: Int = 50): [Delivery_CarLedgerView!]!
+}
+"""
+One car's income, expenses and net for a window of the statement.
+"""
+type Delivery_CarLedgerView {
+	"""
+	Car id these totals are attributed to.
+	"""
+	carId: ID!
+	"""
+	Car display name.
+	"""
+	carName: String!
+	"""
+	Positive magnitude of money in attributed to this car.
+	"""
+	income: Int!
+	"""
+	Positive magnitude of money out attributed to this car.
+	"""
+	expenses: Int!
+	"""
+	income minus expenses.
+	"""
+	net: Int!
+	"""
+	Statement rows behind these totals.
+	"""
+	rows: Int!
 }
 """
 One movement through the player's checking account.
@@ -520,7 +1027,13 @@ type Delivery_CashEntryView {
 	Stable, monotonic id within the session. Use it as the list key.
 	"""
 	seq: Int!
+	"""
+	World tick the movement was recorded at.
+	"""
 	tick: Int!
+	"""
+	What the movement is.
+	"""
 	kind: Delivery_CashKind!
 	"""
 	Economic bucket used by the monthly report.
@@ -540,35 +1053,109 @@ type Delivery_CashEntryView {
 	The car this movement belongs to, when it belongs to one.
 	"""
 	carId: ID
+	"""
+	Car display name when carId is set.
+	"""
 	carName: String
+	"""
+	Order this movement belongs to, for delivery income and fines.
+	"""
 	orderId: ID
 	"""
 	Short human-readable detail, e.g. "pizza to Rosa's" or "fleet upkeep".
 	"""
 	memo: String!
 }
+"""
+Specific reason for a checking-account movement. The category groups these for
+the monthly report.
+"""
 enum Delivery_CashKind {
+	"""
+	Starting balance granted with the save.
+	"""
 	OPENING
+	"""
+	On-time delivery income.
+	"""
 	DELIVERY
+	"""
+	Late delivery income at the reduced multiplier.
+	"""
 	LATE_DELIVERY
+	"""
+	Fine for an expired order.
+	"""
 	ORDER_FINE
+	"""
+	Periodic fleet running cost.
+	"""
 	UPKEEP
+	"""
+	Paid charging on a charger or depot.
+	"""
 	CHARGING
+	"""
+	Tow back to a depot.
+	"""
 	TOW
+	"""
+	Vehicle purchase.
+	"""
 	CAR_PURCHASE
+	"""
+	Build or city upgrade purchase.
+	"""
 	BUILD
+	"""
+	Reward or grant (achievement, opening bonus).
+	"""
 	GRANT
 }
+"""
+Economic bucket used by the monthly report. Income buckets are positive;
+expense buckets are negative.
+"""
 enum Delivery_CashCategory {
+	"""
+	Opening balance.
+	"""
 	OPENING
+	"""
+	Delivery income, on time or late.
+	"""
 	DELIVERY_INCOME
+	"""
+	Rewards and grants.
+	"""
 	REWARDS
+	"""
+	Fines for expired orders.
+	"""
 	ORDER_FINES
+	"""
+	Fleet running cost.
+	"""
 	UPKEEP
+	"""
+	Charging fees.
+	"""
 	CHARGING
+	"""
+	Tow fees.
+	"""
 	TOWS
+	"""
+	Vehicle purchases.
+	"""
 	CAR_PURCHASES
+	"""
+	Builds and city upgrades.
+	"""
 	BUILDS
+	"""
+	Anything that does not fit another bucket.
+	"""
 	OTHER
 }
 """
@@ -579,7 +1166,13 @@ type Delivery_MonthView {
 	One-based month number. Month 1 covers ticks 0 through ticksPerMonth-1.
 	"""
 	index: Int!
+	"""
+	First tick in the month (inclusive).
+	"""
 	startTick: Int!
+	"""
+	Last tick in the month (inclusive).
+	"""
 	endTick: Int!
 	"""
 	Positive magnitude of money in.
@@ -593,9 +1186,18 @@ type Delivery_MonthView {
 	income minus expenses.
 	"""
 	net: Int!
+	"""
+	Per-bucket totals for the month, in category order.
+	"""
 	categories: [Delivery_MonthCategoryView!]!
 }
+"""
+One economic bucket's totals within a month.
+"""
 type Delivery_MonthCategoryView {
+	"""
+	Bucket this row describes.
+	"""
 	category: Delivery_CashCategory!
 	"""
 	Positive magnitude in this category, or zero.
@@ -606,23 +1208,165 @@ type Delivery_MonthCategoryView {
 	"""
 	expenses: Int!
 }
+"""
+Delivered orders for one item, counted as orders rather than boxes.
+"""
 type Delivery_ItemCount {
+	"""
+	Item code.
+	"""
 	item: String!
+	"""
+	Orders delivered for this item.
+	"""
 	count: Int!
 }
-type Delivery_GrowthView {
-	id: ID!
+"""
+One balance point in a session's money-by-tick curve.
+"""
+type Delivery_MoneyPoint {
+	"""
+	Tick of the sampled balance.
+	"""
 	tick: Int!
+	"""
+	Balance at that tick, in dollars.
+	"""
+	money: Int!
+}
+"""
+A session's money-by-tick series, read from the indexed delivery history
+projection. Points are downsampled to at most the requested maxPoints; when the
+window reaches the session's current tick, the last point is its current
+balance.
+"""
+type Delivery_MoneyHistory {
+	"""
+	Session the series belongs to.
+	"""
+	sessionId: ID!
+	"""
+	City the session was created from.
+	"""
+	cityId: ID!
+	"""
+	Sampled balances, oldest first.
+	"""
+	points: [Delivery_MoneyPoint!]!
+}
+"""
+One value at a tick in a non-money analytics series.
+"""
+type Delivery_ValuePoint {
+	"""
+	Tick of the sample.
+	"""
+	tick: Int!
+	"""
+	Sample value: cumulative boxes for itemsHistory, reputation for
+	reputationHistory.
+	"""
+	value: Float!
+}
+"""
+One session's downsampled items-or-reputation series.
+"""
+type Delivery_ValueSeries {
+	"""
+	Session the series belongs to.
+	"""
+	sessionId: ID!
+	"""
+	City the session was created from.
+	"""
+	cityId: ID!
+	"""
+	Sampled values, oldest first.
+	"""
+	points: [Delivery_ValuePoint!]!
+}
+"""
+Cumulative operational series available from metricHistory.
+"""
+enum Delivery_AnalyticsMetric {
+	"""
+	On-time orders completed, counted at delivery tick.
+	"""
+	DELIVERIES
+	"""
+	Orders completed after their deadline, counted at delivery tick.
+	"""
+	LATE_DELIVERIES
+	"""
+	Orders that expired undelivered, counted just after their deadline.
+	"""
+	EXPIRED_ORDERS
+	"""
+	Every order ever raised, counted at creation tick.
+	"""
+	ORDERS_CREATED
+	"""
+	Cash paid by completed orders (on time and late), counted at delivery tick.
+	"""
+	DELIVERY_INCOME
+	"""
+	Cash fined for expired orders, as a positive spend magnitude.
+	"""
+	ORDER_FINES
+	"""
+	Fleet upkeep paid, as a positive spend magnitude.
+	"""
+	UPKEEP_SPEND
+	"""
+	Charging fees paid, as a positive spend magnitude.
+	"""
+	CHARGING_SPEND
+	"""
+	Tow fees paid, as a positive spend magnitude.
+	"""
+	TOW_SPEND
+}
+"""
+One scheduled city-growth stage.
+"""
+type Delivery_GrowthView {
+	"""
+	Stage id, stable within a city.
+	"""
+	id: ID!
+	"""
+	Tick at which the stage applies.
+	"""
+	tick: Int!
+	"""
+	Short name, e.g. "Harbour Gate".
+	"""
 	title: String!
+	"""
+	What the stage changes: districts revealed, kitchens/customers added,
+	chargers or depot bays built.
+	"""
 	description: String!
+	"""
+	True once the stage has applied.
+	"""
 	done: Boolean!
 }
+"""
+One entry in the session's retained activity feed.
+"""
 type Delivery_EventView {
+	"""
+	Tick the event was recorded at.
+	"""
 	tick: Int!
 	"""
 	One of the car_* / order_* / city_growth / closure_* names the engine emits.
 	"""
 	type: String!
+	"""
+	Human-readable description of what happened.
+	"""
 	message: String!
 	"""
 	Null for world events (spawns, builds, closures); set for anything a car caused.
@@ -632,15 +1376,30 @@ type Delivery_EventView {
 	Position of the event, or 0,0 when it has none — non-null, so 0,0 is ambiguous.
 	"""
 	x: Int!
+	"""
+	Row of the event, 0 when it has no position.
+	"""
 	y: Int!
 }
 """
 A stretch of street closed for works.
 """
 type Delivery_ClosureView {
+	"""
+	Closure id, used by events and the UI.
+	"""
 	id: ID!
+	"""
+	Why the street is closed, e.g. "street works".
+	"""
 	reason: String!
+	"""
+	Tick the closure begins.
+	"""
 	startTick: Int!
+	"""
+	Tick the closure ends (reopens at this tick).
+	"""
 	endTick: Int!
 	"""
 	Ticks until it reopens; negative when it has already ended.
@@ -654,10 +1413,23 @@ type Delivery_ClosureView {
 	Bounding box of the closed tiles, for camera moves.
 	"""
 	minX: Int!
+	"""
+	Top row of the closure.
+	"""
 	minY: Int!
+	"""
+	Rightmost column of the closure.
+	"""
 	maxX: Int!
+	"""
+	Bottom row of the closure.
+	"""
 	maxY: Int!
 }
+"""
+Delivery reads: cities, saves, live snapshots, event deltas and money history.
+Reads are public; mutations are creator-only.
+"""
 type Delivery_Query {
 	"""
 	Liveness probe.
@@ -680,21 +1452,86 @@ type Delivery_Query {
 	"""
 	cityConfig(id: ID!): String
 	"""
-	Every save on disk, newest first.
+	Saved sessions, ordered by sort. A save's row is described from its stored
+	counters, so a bounded list does not decode the save payloads; saves written
+	before counters existed are decoded only when they survive the filter and
+	the limit. mine = true requires a signed-in viewer and keeps that account's
+	saves.
 	"""
-	sessions: [Delivery_SessionSummary!]!
+	sessions(sort: Delivery_SessionSort = CREATED_AT,
+		"""
+		Rows to return, capped at 500.
+		"""
+		limit: Int = 50
+
+		"""
+		Cursor: keep saves created strictly before this time. Valid only with
+		the default CREATED_AT sort and cannot be combined with `cursor`; the
+		time alone cannot break ties between equal timestamps.
+		"""
+		before: Time
+
+		"""
+		Opaque page cursor: the `cursor` of the last row of the previous page.
+		It encodes the requested sort's key and the row id, so paging is exact
+		for every sort, including equal values. Must match `sort`; cannot be
+		combined with `before`.
+		"""
+		cursor: String
+
+		"""
+		Keep only the signed-in viewer's saves. UNAUTHENTICATED when signed out.
+		"""
+		mine: Boolean
+	): [Delivery_SessionSummary!]!
 	"""
-	One session's full state. Rehydrates from disk when not in memory.
+	Money-by-tick series for up to 20 delivery sessions, read from the indexed
+	delivery history projection rather than from live sessions or Prometheus.
+	
+	Omitted ids select the most recently created sessions. cityId narrows the
+	set. fromTick/toTick are inclusive; an omitted toTick runs to each session's
+	current tick. maxPoints downsamples each series into tick buckets and keeps
+	the last balance in each bucket, so a long session stays bounded.
+	"""
+	moneyHistory(ids: [ID!], cityId: ID, fromTick: Int, toTick: Int, maxPoints: Int = 500): [Delivery_MoneyHistory!]!
+	"""
+	Cumulative boxes delivered at each tick, from done orders in the indexed
+	delivery history projection. Expired and open orders do not contribute.
+	Same window and downsampling contract as moneyHistory.
+	"""
+	itemsHistory(ids: [ID!], cityId: ID, fromTick: Int, toTick: Int, maxPoints: Int = 500): [Delivery_ValueSeries!]!
+	"""
+	Recorded reputation at each tick. Sessions saved before the reputation
+	ledger existed return one current point until their next reputation change.
+	Same window and downsampling contract as moneyHistory.
+	"""
+	reputationHistory(ids: [ID!], cityId: ID, fromTick: Int, toTick: Int, maxPoints: Int = 500): [Delivery_ValueSeries!]!
+	"""
+	Cumulative operational metrics at each tick, read from the indexed delivery
+	history projection. Every metric is monotonic from tick 0 except the
+	spending series, which accumulate spend as a positive magnitude.
+	Same window and downsampling contract as moneyHistory.
+	"""
+	metricHistory(metric: Delivery_AnalyticsMetric!, ids: [ID!], cityId: ID, fromTick: Int, toTick: Int, maxPoints: Int = 500): [Delivery_ValueSeries!]!
+	"""
+	One session's full state. Loads the PostgreSQL row when not in memory.
 	"""
 	session(id: ID!): Delivery_Snapshot!
 	"""
 	A window of the city around one car, for cheap agent polling.
+	
+	radius is the half-width in tiles and is clamped to 10; a larger value
+	returns the same window as 10.
 	"""
 	carView(id: ID!, carId: ID!, radius: Int! = 2): Delivery_CarWindow!
 	"""
 	Events newer than a tick, so a client can poll for deltas.
+	
+	The returned feed says whether the request reached further back than the
+	retained ring: truncated = true means events before oldestTick are gone, not
+	absent. limit keeps the newest matching events, capped at the feed capacity.
 	"""
-	events(id: ID!, sinceTick: Int! = 0): [Delivery_EventView!]!
+	events(id: ID!, sinceTick: Int! = 0, limit: Int = 200): Delivery_EventFeed!
 	"""
 	Whether this caller may change the session: true for the session's creator
 	(by owner token or signed-in owning account) and for a session created before
@@ -703,9 +1540,13 @@ type Delivery_Query {
 	"""
 	canPlaySession(id: ID!, ownerToken: String): Boolean!
 }
+"""
+Delivery writes and lifecycle. Every session mutation requires the creator's
+owner token or the owning account; reads stay public.
+"""
 type Delivery_Mutation {
 	"""
-	Start a new city. Both fields optional; a seed makes it reproducible, and an omitted id is
+	Start a new city. Every argument is optional; a seed makes it reproducible, and an omitted id is
 	generated. cityId selects the city config to snapshot (omitted = the default city); the
 	session keeps that snapshot, so later city edits never change a running game. A signed-in
 	creator's session belongs to their account. The response carries the secret ownerToken,
@@ -713,16 +1554,35 @@ type Delivery_Mutation {
 	"""
 	createSession(id: ID, seed: Int, cityId: ID): Delivery_CreateSessionResult!
 	"""
-	Queue one step for one car. Does NOT advance the clock. Only the session's
+	Queue one step for one car by appending it to that car's movement queue.
+	Does NOT advance the clock: queued steps run one per tick, in order, so a
+	client can preload a route and then call tick. A rejected step (wall,
+	battery, closure, traffic) is spent, not retried. At most 64 steps may be
+	queued per car; the overflow is LIMIT_REACHED. Only the session's
 	creator may change it: pass the ownerToken from createSession, or be signed in
 	to the account that owns the session (FORBIDDEN otherwise). Sessions created
 	before owner tokens stay open.
 	"""
 	moveCar(id: ID!, carId: ID!, direction: Delivery_Direction!, ownerToken: String): Delivery_Snapshot!
 	"""
+	Drop a car's entire movement queue, including the step for the next tick.
+	Use it to replan: a preloaded route must not keep steering after traffic or
+	closures change. Creator-only, as moveCar.
+	"""
+	clearMoves(id: ID!, carId: ID!, ownerToken: String): Delivery_Snapshot!
+	"""
 	Advance the world manually. Useful when paused. Creator-only, as moveCar.
 	"""
 	tick(id: ID!, count: Int! = 1, ownerToken: String): Delivery_Snapshot!
+	"""
+	Wait for the running clock to reach a target tick, then return that snapshot.
+	Pass exactly one of `tick` (an absolute tick in the future) or `ticks` (a
+	count from the tick when the call starts, at most 1000). The clock must be
+	running: a paused session never advances, so the call fails with
+	INVALID_ARGUMENT instead of hanging, and pausing while it waits ends it the
+	same way. Creator-only, as moveCar.
+	"""
+	waitUntil(id: ID!, tick: Int, ticks: Int, ownerToken: String): Delivery_Snapshot!
 	"""
 	Set the clock multiplier. 0 pauses. Creator-only, as moveCar.
 	"""
@@ -732,6 +1592,9 @@ type Delivery_Mutation {
 	Creator-only, as moveCar.
 	"""
 	assignOrder(id: ID!, orderId: ID!, carId: ID!, ownerToken: String): Delivery_Snapshot!
+	"""
+	Remove the car from an order, returning it to PENDING. Creator-only, as moveCar.
+	"""
 	unassignOrder(id: ID!, orderId: ID!, ownerToken: String): Delivery_Snapshot!
 	"""
 	Buy a vehicle at a depot. Creator-only, as moveCar.
@@ -742,16 +1605,22 @@ type Delivery_Mutation {
 	"""
 	towCar(id: ID!, carId: ID!, ownerToken: String): Delivery_Snapshot!
 	"""
-	Write the save to disk. Creator-only, as moveCar.
+	Persist the save to PostgreSQL now. Creator-only, as moveCar.
 	"""
 	saveSession(id: ID!, ownerToken: String): Delivery_Snapshot!
+	"""
+	Name this save for the player. Creator-only, as moveCar. A blank name clears
+	it and every view falls back to the city name. Persisted immediately, so the
+	name survives a restart and shows in the session list before the save loads.
+	"""
+	renameSession(id: ID!, displayName: String!, ownerToken: String): Delivery_Snapshot!
 	"""
 	Save, then drop from memory. The next read rehydrates. Creator-only: evicting
 	someone else's session would stop their clock.
 	"""
 	evictSession(id: ID!, ownerToken: String): Boolean!
 	"""
-	Delete the save file permanently. Needs the ownerToken (or the owning account)
+	Delete the save row permanently. Needs the ownerToken (or the owning account)
 	even for a guest session; only a save created before owner tokens is open.
 	"""
 	deleteSession(id: ID!, ownerToken: String): Boolean!
@@ -788,19 +1657,56 @@ type Delivery_Mutation {
 	"""
 	validateCity(config: String!): Delivery_CityValidationResult!
 }
+"""
+A step direction. UP decreases y, RIGHT increases x, DOWN increases y, LEFT
+decreases x.
+"""
 enum Mazes_Direction {
+	"""
+	One row up (y-1).
+	"""
 	UP
+	"""
+	One column right (x+1).
+	"""
 	RIGHT
+	"""
+	One row down (y+1).
+	"""
 	DOWN
+	"""
+	One column left (x-1).
+	"""
 	LEFT
 }
+"""
+Session play state.
+"""
 enum Mazes_Status {
+	"""
+	Created but not moved yet.
+	"""
 	READY
+	"""
+	In progress.
+	"""
 	PLAYING
+	"""
+	The finish was reached.
+	"""
 	WON
+	"""
+	The move limit was exhausted.
+	"""
 	LOST
 }
+"""
+Why a session ended in LOST.
+"""
 enum Mazes_LossReason {
+	"""
+	No moves remain.
+	"""
 	MOVE_LIMIT
 }
 """
@@ -811,15 +1717,39 @@ enum Mazes_Via {
 	Blocked by void or the edge: nothing happened and the move is not counted.
 	"""
 	NONE
+	"""
+	An ordinary one-tile step.
+	"""
 	WALK
+	"""
+	A blue arrow: one level up.
+	"""
 	STAIRS_UP
+	"""
+	A red arrow: one level down.
+	"""
 	STAIRS_DOWN
+	"""
+	A numbered hole: teleported to its twin on the same level.
+	"""
 	PORTAL
 }
+"""
+How to order the session list.
+"""
 enum Mazes_SessionSort {
+	"""
+	Most recent action first. The default.
+	"""
 	RECENT
+	"""
+	Newest save first.
+	"""
 	CREATED
 }
+"""
+Lifecycle of a community map: a draft is private to its owner.
+"""
 enum Mazes_MapStatus {
 	"""
 	A work in progress: only its owner can see, edit, play or publish it.
@@ -834,8 +1764,17 @@ enum Mazes_MapStatus {
 A tile coordinate in the tower. level 0 is the bottom; x = column, y = row (row 0 on top).
 """
 type Mazes_Position {
+	"""
+	Tower level, 0 = bottom.
+	"""
 	level: Int!
+	"""
+	Column (0 = left).
+	"""
 	x: Int!
+	"""
+	Row (0 = top).
+	"""
 	y: Int!
 }
 """
@@ -844,8 +1783,17 @@ In a LevelView only the ends on that level are listed: `a` is always on the view
 `b` is set only when the twin is on the same level (otherwise the twin's location is hidden).
 """
 type Mazes_Portal {
+	"""
+	Digit glyph '1'-'9' marking both ends.
+	"""
 	glyph: String!
+	"""
+	The end on the viewed level.
+	"""
 	a: Mazes_Position!
+	"""
+	The twin, when it is on the same level; null when it is hidden.
+	"""
 	b: Mazes_Position
 }
 """
@@ -853,17 +1801,41 @@ Public catalog entry. The start is always on level 0 and the finish on the top l
 (levelCount - 1). Layouts of other levels are hidden: players discover them by playing.
 """
 type Mazes_Map {
+	"""
+	Map id used by createSession.
+	"""
 	id: ID!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	One-line description.
+	"""
 	description: String!
+	"""
+	Difficulty label shown on the map card.
+	"""
 	difficulty: String!
+	"""
+	Number of columns per level.
+	"""
 	width: Int!
+	"""
+	Number of rows per level.
+	"""
 	height: Int!
+	"""
+	Number of levels in the tower.
+	"""
 	levelCount: Int!
 	"""
 	Glyph rows of level 0, the level every game starts on.
 	"""
 	preview: [String!]!
+	"""
+	Move limit; running out loses the run.
+	"""
 	maxMoves: Int!
 	"""
 	Length of the shortest winning route; null if the finish is unreachable.
@@ -893,24 +1865,66 @@ type Mazes_Map {
 Full map for the editor (admin only).
 """
 type Mazes_AdminMap {
+	"""
+	Map id used by createSession and updateMap.
+	"""
 	id: ID!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	One-line description.
+	"""
 	description: String!
+	"""
+	Difficulty label shown on the map card.
+	"""
 	difficulty: String!
+	"""
+	Number of columns per level.
+	"""
 	width: Int!
+	"""
+	Number of rows per level.
+	"""
 	height: Int!
+	"""
+	Number of levels in the tower.
+	"""
 	levelCount: Int!
 	"""
 	Layout glyphs per level (index 0 = bottom), each a list of rows.
 	. void, o stone, S start, F finish, U stairs up, D stairs down, 1-9 portal holes.
 	"""
 	levels: [[String!]!]!
+	"""
+	Start tile (always on level 0).
+	"""
 	start: Mazes_Position!
+	"""
+	Finish tile (always on the top level).
+	"""
 	finish: Mazes_Position!
+	"""
+	Numbered holes linking two tiles on the same level.
+	"""
 	portals: [Mazes_Portal!]!
+	"""
+	Move limit; running out loses the run.
+	"""
 	maxMoves: Int!
+	"""
+	Shortest winning route length; null when unreachable.
+	"""
 	parMoves: Int
+	"""
+	Fewest stairs a winning route needs; null when unreachable.
+	"""
 	minLevelChanges: Int
+	"""
+	Fewest down stairs a winning route needs; null when unreachable.
+	"""
 	forcedDescents: Int
 	"""
 	DRAFT maps are visible only to their owner and cannot be played or published by anyone else.
@@ -932,29 +1946,59 @@ type Mazes_LevelView {
 	The level the player is on (0 = bottom).
 	"""
 	level: Int!
+	"""
+	Number of levels in the tower, for the tower diagram.
+	"""
 	levelCount: Int!
+	"""
+	Glyph rows of this level only (the fog the player sees).
+	"""
 	rows: [String!]!
+	"""
+	Portals with an end on this level.
+	"""
 	portals: [Mazes_Portal!]!
 }
+"""
+The current run's observable state.
+"""
 type Mazes_GameState {
+	"""
+	Where the player is now.
+	"""
 	pos: Mazes_Position!
 	"""
 	Counted moves so far (blocked attempts are free).
 	"""
 	moves: Int!
+	"""
+	Session play state after the last move.
+	"""
 	status: Mazes_Status!
+	"""
+	Why the run is LOST; null while playing or after a win.
+	"""
 	lossReason: Mazes_LossReason
 	"""
 	Every tile entered, in order, starting with the start tile. Stairs and portal moves add the tile stepped on and the landing tile.
 	"""
 	path: [Mazes_Position!]!
 }
+"""
+One attempted move and its result, including blocked attempts.
+"""
 type Mazes_MoveEvent {
 	"""
 	Counted-move index after this attempt (unchanged when blocked).
 	"""
 	move: Int!
+	"""
+	Direction attempted.
+	"""
 	direction: Mazes_Direction!
+	"""
+	Position before the attempt.
+	"""
 	from: Mazes_Position!
 	"""
 	The tile entered by the step; equals from when blocked.
@@ -964,14 +2008,39 @@ type Mazes_MoveEvent {
 	Final position after stairs/portal; equals from when blocked.
 	"""
 	to: Mazes_Position!
+	"""
+	True when the attempt was rejected; nothing moved and no move was counted.
+	"""
 	blocked: Boolean!
+	"""
+	How the move changed the position.
+	"""
 	via: Mazes_Via!
+	"""
+	Status after the attempt.
+	"""
 	status: Mazes_Status!
+	"""
+	Loss reason when this attempt ended the run.
+	"""
 	lossReason: Mazes_LossReason
 }
+"""
+One play-through: the map snapshot, the player's current level, the run state
+and its counters.
+"""
 type Mazes_Session {
+	"""
+	Session id; public enough to watch.
+	"""
 	id: ID!
+	"""
+	The player's name for this run; empty falls back to the map name.
+	"""
 	displayName: String!
+	"""
+	Map this session plays.
+	"""
 	mapId: ID!
 	"""
 	Catalog entry of the map this session plays. Reveals nothing beyond the start level.
@@ -981,12 +2050,21 @@ type Mazes_Session {
 	Fog: the only part of the map a player can see, the level the player stands on right now.
 	"""
 	view: Mazes_LevelView!
+	"""
+	Current run state: position, moves and status.
+	"""
 	state: Mazes_GameState!
 	"""
 	Increments on every state change; clients ignore updates with seq <= last seen.
 	"""
 	seq: Int!
+	"""
+	When the session was created (UTC).
+	"""
 	createdAt: Time!
+	"""
+	When the session last changed (UTC).
+	"""
 	lastActionAt: Time!
 	"""
 	Games finished (won or lost) in this session.
@@ -996,25 +2074,65 @@ type Mazes_Session {
 	Fewest moves in a won game of this session.
 	"""
 	bestMoves: Int
+	"""
+	The most recent move attempt, or null before the first move.
+	"""
 	lastEvent: Mazes_MoveEvent
 }
+"""
+One subscription frame: the new snapshot plus the move that caused it.
+"""
 type Mazes_SessionUpdate {
+	"""
+	Monotonic sequence of this snapshot.
+	"""
 	seq: Int!
+	"""
+	Full current snapshot.
+	"""
 	session: Mazes_Session!
+	"""
+	The move that produced this frame; null for non-move changes.
+	"""
 	event: Mazes_MoveEvent
 }
+"""
+One problem found by validateMap.
+"""
 type Mazes_MapValidationIssue {
+	"""
+	Human-readable failure, with the level and coordinate when relevant.
+	"""
 	message: String!
 }
+"""
+Outcome of validateMap: whether the map parses and is playable, plus its
+computed par values.
+"""
 type Mazes_MapValidationResult {
+	"""
+	True when the map parses into a playable map.
+	"""
 	valid: Boolean!
+	"""
+	Problems found; empty when valid.
+	"""
 	issues: [Mazes_MapValidationIssue!]!
 	"""
 	Set when the map parses but the finish cannot be reached from the start.
 	"""
 	finishReachable: Boolean!
+	"""
+	Shortest winning route length; null when unreachable.
+	"""
 	parMoves: Int
+	"""
+	Fewest stairs a winning route needs; null when unreachable.
+	"""
 	minLevelChanges: Int
+	"""
+	Fewest down stairs a winning route needs; null when unreachable.
+	"""
 	forcedDescents: Int
 }
 input Mazes_MapInput {
@@ -1031,12 +2149,18 @@ a subscription: it is the credential that lets this browser change the session, 
 id alone stays enough to read it.
 """
 type Mazes_CreateSessionResult {
+	"""
+	The new session's first snapshot.
+	"""
 	session: Mazes_Session!
 	"""
 	Secret that proves you created this session; keep it private.
 	"""
 	ownerToken: String!
 }
+"""
+Mazes reads: catalogue, one session and the save list. Reads are public.
+"""
 type Mazes_Query {
 	"""
 	Public catalog: published maps plus the signed-in caller's own drafts. Another player's draft
@@ -1057,6 +2181,10 @@ type Mazes_Query {
 	Public read: anyone with the id may watch a session.
 	"""
 	session(id: ID!): Mazes_Session
+	"""
+	Saved sessions in the requested order, newest first by default. `mapId` keeps
+	one map; `limit` is capped by the game.
+	"""
 	sessions(sort: Mazes_SessionSort = RECENT, limit: Int = 50, mapId: ID): [Mazes_Session!]!
 	"""
 	Whether this caller may change the session (and so is its player rather than a spectator):
@@ -1066,6 +2194,11 @@ type Mazes_Query {
 	"""
 	canPlaySession(id: ID!, ownerToken: String): Boolean!
 }
+"""
+Mazes writes: play moves and map authoring. Session mutations require the
+creator's owner token or owning account; map writes require ownership or the
+admin key.
+"""
 type Mazes_Mutation {
 	"""
 	Start a new game on a map. A signed-in creator's session belongs to their account; the
@@ -1077,6 +2210,9 @@ type Mazes_Mutation {
 	owning account (FORBIDDEN otherwise). Sessions created before owner tokens stay open.
 	"""
 	deleteSession(id: ID!, ownerToken: String): Boolean!
+	"""
+	Rename the save. Creator-only, as deleteSession.
+	"""
 	renameSession(id: ID!, displayName: String!, ownerToken: String): Mazes_Session!
 	"""
 	One move. A blocked attempt succeeds but changes nothing (lastEvent.blocked). Creator-only, as
@@ -1121,47 +2257,156 @@ type Mazes_Mutation {
 	"""
 	validateMap(map: Mazes_MapInput!): Mazes_MapValidationResult!
 }
+"""
+One tape slot. EMPTY is a no-op that still spends a step.
+"""
 enum Motor_Instruction {
+	"""
+	Skipped for free; does not spend a step.
+	"""
 	EMPTY
+	"""
+	Turn 90 degrees left in place.
+	"""
 	TURN_LEFT
+	"""
+	Turn 90 degrees right in place.
+	"""
 	TURN_RIGHT
+	"""
+	Step one tile in the facing direction.
+	"""
 	MOVE_FORWARD
+	"""
+	Call subroutine 1, then resume the next slot.
+	"""
 	CALL_SUB_1
+	"""
+	Call subroutine 2.
+	"""
 	CALL_SUB_2
+	"""
+	Call subroutine 3.
+	"""
 	CALL_SUB_3
+	"""
+	Call subroutine 4.
+	"""
 	CALL_SUB_4
+	"""
+	Call subroutine 5.
+	"""
 	CALL_SUB_5
+	"""
+	Call subroutine 6.
+	"""
 	CALL_SUB_6
+	"""
+	Call subroutine 7.
+	"""
 	CALL_SUB_7
+	"""
+	Call subroutine 8.
+	"""
 	CALL_SUB_8
+	"""
+	Call subroutine 9.
+	"""
 	CALL_SUB_9
+	"""
+	Call subroutine 10.
+	"""
 	CALL_SUB_10
 }
+"""
+Direction the robot is facing. UP decreases y, RIGHT increases x, DOWN
+increases y, LEFT decreases x.
+"""
 enum Motor_Facing {
+	"""
+	Facing up (y-1).
+	"""
 	UP
+	"""
+	Facing right (x+1).
+	"""
 	RIGHT
+	"""
+	Facing down (y+1).
+	"""
 	DOWN
+	"""
+	Facing left (x-1).
+	"""
 	LEFT
 }
+"""
+Run state of the robot.
+"""
 enum Motor_Status {
+	"""
+	Program loaded but not started.
+	"""
 	READY
+	"""
+	A run is in progress.
+	"""
 	RUNNING
+	"""
+	Every treat was collected.
+	"""
 	WON
+	"""
+	The run ended without collecting every treat.
+	"""
 	LOST
 }
+"""
+Why a run ended in LOST.
+"""
 enum Motor_LossReason {
+	"""
+	The map's step limit was reached.
+	"""
 	STEP_LIMIT
+	"""
+	Subroutine nesting exceeded maxCallDepth.
+	"""
 	CALL_DEPTH
+	"""
+	The main tape ran off its end without collecting every treat.
+	"""
 	PROGRAM_ENDED
 }
+"""
+How to order the session list.
+"""
 enum Motor_SessionSort {
+	"""
+	Most recent action first. The default.
+	"""
 	RECENT
+	"""
+	Newest save first.
+	"""
 	CREATED
 }
+"""
+A tile coordinate: x = column, y = row (0,0 is the top-left).
+"""
 type Motor_Position {
+	"""
+	Column (0 = left).
+	"""
 	x: Int!
+	"""
+	Row (0 = top).
+	"""
 	y: Int!
 }
+"""
+One entry on the call stack.
+"""
 type Motor_Frame {
 	"""
 	Tape index; -1 is the main tape.
@@ -1172,45 +2417,90 @@ type Motor_Frame {
 	"""
 	pc: Int!
 }
+"""
+A one-way tile: moving onto it carries the robot one extra cell.
+"""
 type Motor_Conveyor {
+	"""
+	Tile occupied by the belt.
+	"""
 	pos: Motor_Position!
 	"""
 	Direction the robot is carried after moving onto this tile.
 	"""
 	dir: Motor_Facing!
 }
+"""
+A mirror: arriving on it turns the robot 90 degrees.
+"""
 type Motor_Mirror {
+	"""
+	Tile occupied by the mirror.
+	"""
 	pos: Motor_Position!
 	"""
 	True for '/', false for '\\'.
 	"""
 	slash: Boolean!
 }
+"""
+A collectable key that opens every matching door.
+"""
 type Motor_KeyTile {
+	"""
+	Tile occupied by the key.
+	"""
 	pos: Motor_Position!
 	"""
 	Lower-case key letter ('a'..'c').
 	"""
 	letter: String!
 }
+"""
+A door, impassable until its key is collected.
+"""
 type Motor_DoorTile {
+	"""
+	Tile occupied by the door.
+	"""
 	pos: Motor_Position!
 	"""
 	Upper-case door letter ('A'..'C').
 	"""
 	letter: String!
 }
+"""
+A portal: arriving on one end teleports the robot to the other.
+"""
 type Motor_Portal {
+	"""
+	Tile occupied by this end.
+	"""
 	pos: Motor_Position!
 	"""
 	Digit shared by the two ends of the pair.
 	"""
 	pair: String!
 }
+"""
+One map, with the tape sizes and terrain the player must work with.
+"""
 type Motor_Map {
+	"""
+	Map id used by createSession.
+	"""
 	id: ID!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	One-line description.
+	"""
 	description: String!
+	"""
+	Difficulty label shown on the map card.
+	"""
 	difficulty: String!
 	"""
 	True for a map shipped with the game: only an admin may change or delete it.
@@ -1225,12 +2515,35 @@ type Motor_Map {
 	True when the signed-in caller created this community map.
 	"""
 	ownedByMe: Boolean!
+	"""
+	Number of columns.
+	"""
 	width: Int!
+	"""
+	Number of rows.
+	"""
 	height: Int!
+	"""
+	Glyph rows: '.' floor, '#' rock, '*' treat, '^>v<' robot start and initial
+	facing, 'U/D/L/R' conveyors, '/' and '\\' mirrors, 'a'-'c' keys, 'A'-'C'
+	doors, '1'-'9' portals.
+	"""
 	layout: [String!]!
+	"""
+	Robot start tile.
+	"""
 	start: Motor_Position!
+	"""
+	Direction the robot faces at the start.
+	"""
 	startFacing: Motor_Facing!
+	"""
+	Impassable rock tiles.
+	"""
 	rocks: [Motor_Position!]!
+	"""
+	Collectable treats; collecting every one wins.
+	"""
 	treats: [Motor_Position!]!
 	"""
 	One-way tiles: a move onto one is carried one extra cell in Conveyor.dir.
@@ -1252,46 +2565,133 @@ type Motor_Map {
 	Portal pairs ('1'..'9'); arriving on one teleports to the other.
 	"""
 	portals: [Motor_Portal!]!
+	"""
+	Slot count of the main tape.
+	"""
 	mainTapeLength: Int!
+	"""
+	Slot count of each subroutine tape, in CALL_SUB order.
+	"""
 	subTapeLengths: [Int!]!
+	"""
+	Step limit for one run.
+	"""
 	maxSteps: Int!
+	"""
+	Maximum subroutine nesting depth.
+	"""
 	maxCallDepth: Int!
+	"""
+	True when a subroutine may call itself (directly or through a cycle).
+	"""
 	allowRecursion: Boolean!
 }
+"""
+The robot's program: the main tape and one tape per subroutine.
+"""
 type Motor_Program {
+	"""
+	Main tape, exactly mainTapeLength slots.
+	"""
 	main: [Motor_Instruction!]!
+	"""
+	Subroutine tapes, each exactly its map's subTapeLengths slot count.
+	"""
 	subs: [[Motor_Instruction!]!]!
 }
+"""
+Program input for setProgram; tape lengths must match the map exactly.
+"""
 input Motor_ProgramInput {
+	"""
+	Main tape slots.
+	"""
 	main: [Motor_Instruction!]!
+	"""
+	Subroutine tapes.
+	"""
 	subs: [[Motor_Instruction!]!]!
 }
+"""
+The robot's observable state after the latest step.
+"""
 type Motor_VMState {
+	"""
+	Robot tile.
+	"""
 	pos: Motor_Position!
+	"""
+	Direction the robot faces.
+	"""
 	facing: Motor_Facing!
+	"""
+	Treats not yet collected.
+	"""
 	treatsRemaining: [Motor_Position!]!
 	"""
 	Bottom frame is main; the last frame is the active tape.
 	"""
 	callStack: [Motor_Frame!]!
+	"""
+	Steps spent in the current run.
+	"""
 	steps: Int!
+	"""
+	Run state.
+	"""
 	status: Motor_Status!
+	"""
+	Why the run is LOST; null while playing or after a win.
+	"""
 	lossReason: Motor_LossReason
+	"""
+	Tiles the robot has entered, in order.
+	"""
 	visited: [Motor_Position!]!
 	"""
 	Lower-case letters of the doors this run has opened.
 	"""
 	openDoors: [String!]!
 }
+"""
+One executed instruction and everything it changed.
+"""
 type Motor_StepEvent {
+	"""
+	1-based step number in the run.
+	"""
 	step: Int!
+	"""
+	Instruction that ran.
+	"""
 	instruction: Motor_Instruction!
+	"""
+	Tape index: -1 for main, 0-9 for a subroutine.
+	"""
 	tapeIndex: Int!
+	"""
+	Slot index on that tape.
+	"""
 	slotIndex: Int!
+	"""
+	Position before the step.
+	"""
 	from: Motor_Position!
+	"""
+	Position after the step (before conveyor/portal effects when applicable).
+	"""
 	to: Motor_Position!
+	"""
+	Facing before the instruction.
+	"""
 	facingBefore: Motor_Facing!
+	"""
+	Facing after the instruction.
+	"""
 	facingAfter: Motor_Facing!
+	"""
+	True when a MOVE_FORWARD was blocked by a rock, door or the edge.
+	"""
 	blocked: Boolean!
 	"""
 	True when a CALL_SUB_k was ignored because the map has allowRecursion: false and that sub is already on the call stack. The step is still spent.
@@ -1317,13 +2717,35 @@ type Motor_StepEvent {
 	Portal destination when the arrival tile was a portal.
 	"""
 	teleported: Motor_Position
+	"""
+	Treat collected on this step, or null.
+	"""
 	collected: Motor_Position
+	"""
+	Call stack after the step; the last frame is the active tape.
+	"""
 	callStack: [Motor_Frame!]!
+	"""
+	Run state after the step.
+	"""
 	status: Motor_Status!
+	"""
+	Loss reason when this step ended the run.
+	"""
 	lossReason: Motor_LossReason
 }
+"""
+One session: the map snapshot, the run state, the player's program (when the
+caller may see it) and the run counters.
+"""
 type Motor_Session {
+	"""
+	Session id; public enough to watch.
+	"""
 	id: ID!
+	"""
+	Map this session plays.
+	"""
 	mapId: ID!
 	"""
 	Snapshot of the map taken when the session was created.
@@ -1335,17 +2757,41 @@ type Motor_Session {
 	never a public answer key. Driving playback (run, step, pause, reset) does not reveal it either.
 	"""
 	program: Motor_Program
+	"""
+	Robot state after the latest step.
+	"""
 	vm: Motor_VMState!
+	"""
+	True while the program is running on the server clock.
+	"""
 	playing: Boolean!
+	"""
+	Delay between steps in milliseconds.
+	"""
 	speedMs: Int!
 	"""
 	Increments on every state change; clients ignore updates with seq <= last seen.
 	"""
 	seq: Int!
+	"""
+	When the session was created (UTC).
+	"""
 	createdAt: Time!
+	"""
+	When the session last changed (UTC).
+	"""
 	lastActionAt: Time!
+	"""
+	Finished runs (won or lost) in this session.
+	"""
 	attempts: Int!
+	"""
+	Fewest steps in a won run; null until the first win.
+	"""
 	bestSteps: Int
+	"""
+	The most recent executed step, or null before the first step.
+	"""
 	lastEvent: Motor_StepEvent
 	"""
 	Secret that proves the caller created this session; keep it private. Returned only by the
@@ -1357,22 +2803,52 @@ type Motor_Session {
 	"""
 	ownerToken: String
 }
+"""
+One subscription frame: the new session snapshot plus the step that caused it.
+"""
 type Motor_SessionUpdate {
+	"""
+	Monotonic sequence of this snapshot.
+	"""
 	seq: Int!
+	"""
+	Full current session.
+	"""
 	session: Motor_Session!
+	"""
+	The step that produced this frame; null for non-step changes.
+	"""
 	event: Motor_StepEvent
 }
+"""
+One problem found by validateMap.
+"""
 type Motor_MapValidationIssue {
+	"""
+	Human-readable failure, with the coordinate when relevant.
+	"""
 	message: String!
 }
+"""
+Outcome of validateMap.
+"""
 type Motor_MapValidationResult {
+	"""
+	True when the map parses and is structurally playable.
+	"""
 	valid: Boolean!
+	"""
+	Problems found; empty when valid.
+	"""
 	issues: [Motor_MapValidationIssue!]!
 	"""
 	Cells reachable check result: treats unreachable from start.
 	"""
 	unreachableTreats: [Motor_Position!]!
 }
+"""
+Lifecycle of a community map: a draft is private to its owner.
+"""
 enum Motor_MapStatus {
 	"""
 	A work in progress: only its owner can see, edit, play or publish it.
@@ -1384,17 +2860,50 @@ enum Motor_MapStatus {
 	PUBLISHED
 }
 input Motor_MapInput {
+	"""
+	Map id (also the URL and save key).
+	"""
 	id: ID!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	One-line description.
+	"""
 	description: String
+	"""
+	Difficulty label.
+	"""
 	difficulty: String
+	"""
+	Glyph rows of the map.
+	"""
 	layout: [String!]!
+	"""
+	Main tape slot count.
+	"""
 	mainTapeLength: Int
+	"""
+	Slot count of each subroutine tape.
+	"""
 	subTapeLengths: [Int!]
+	"""
+	Step limit for one run.
+	"""
 	maxSteps: Int
+	"""
+	Maximum subroutine nesting depth.
+	"""
 	maxCallDepth: Int
+	"""
+	Whether subroutines may recurse.
+	"""
 	allowRecursion: Boolean
 }
+"""
+How to rank the winning sessions of a map.
+"""
 enum Motor_LeaderboardOrder {
 	"""
 	Fewest slots used first; ties by fewest steps, then earliest. The default.
@@ -1449,12 +2958,21 @@ chosen order; the sessions of one account are collapsed into the account's singl
 Only sessions that played the map's current rules count.
 """
 type Motor_Leaderboard {
+	"""
+	Map this board ranks.
+	"""
 	mapId: ID!
+	"""
+	Order the rows are ranked by.
+	"""
 	order: Motor_LeaderboardOrder!
 	"""
 	Ranked sessions on this board, not just the rows returned.
 	"""
 	total: Int!
+	"""
+	The returned rows, best first.
+	"""
 	entries: [Motor_LeaderboardEntry!]!
 	"""
 	The signed-in viewer's entry, else the entry of the requested sessionId, even beyond the returned rows; null when it has not won.
@@ -1466,6 +2984,9 @@ A player's best result on one map: their best winning session on the SLOTS board
 and where it ranks there.
 """
 type Motor_PlayerRun {
+	"""
+	Map the run was played on.
+	"""
 	mapId: ID!
 	"""
 	Ranked sessions on that map's SLOTS board.
@@ -1476,6 +2997,9 @@ type Motor_PlayerRun {
 	"""
 	entry: Motor_LeaderboardEntry!
 }
+"""
+Outcome of asking to attach a guest session to the signed-in account.
+"""
 enum Motor_ClaimStatus {
 	"""
 	The session now belongs to your account.
@@ -1491,13 +3015,31 @@ enum Motor_ClaimStatus {
 	REJECTED
 }
 input Motor_SessionClaimInput {
+	"""
+	Session id to attach.
+	"""
 	sessionID: ID!
+	"""
+	The secret createSession returned for that session.
+	"""
 	ownerToken: String!
 }
+"""
+Per-claim outcome; claims are answered independently.
+"""
 type Motor_SessionClaimResult {
+	"""
+	The session id from the request.
+	"""
 	sessionID: ID!
+	"""
+	Whether the session now belongs to the caller.
+	"""
 	status: Motor_ClaimStatus!
 }
+"""
+Motor reads: maps, sessions, leaderboards and a player's runs.
+"""
 type Motor_Query {
 	"""
 	Published maps plus the signed-in caller's own drafts. Another player's draft is never listed.
@@ -1519,6 +3061,11 @@ type Motor_Query {
 	playback at /watch; a play page uses it to decide between editing and a read-only view.
 	"""
 	canPlaySession(id: ID!, ownerToken: String): Boolean!
+	"""
+	Saved sessions in the requested order, newest first by default. `mapId`
+	keeps one map; `limit` is capped by the game. Programs are omitted unless
+	the caller may see them.
+	"""
 	sessions(sort: Motor_SessionSort = RECENT, limit: Int = 50, mapId: ID): [Motor_Session!]!
 	"""
 	Ranks the winning sessions of a map (limit defaults to 20, at most 100). Null when the map does not exist.
@@ -1536,6 +3083,9 @@ type Motor_Query {
 	"""
 	playerRunsFor(handle: String!): [Motor_PlayerRun!]!
 }
+"""
+Motor writes: play a program, manage sessions and author maps.
+"""
 type Motor_Mutation {
 	"""
 	Starts a session. The response carries the secret `ownerToken`: it is needed to play the session
@@ -1600,20 +3150,57 @@ type Motor_Mutation {
 	"""
 	deleteMap(id: ID!): Boolean!
 }
+"""
+One grid step. UP decreases y, DOWN increases y, LEFT decreases x, RIGHT
+increases x.
+"""
 enum Tesla_Direction {
+	"""
+	One row up (y-1).
+	"""
 	UP
+	"""
+	One row down (y+1).
+	"""
 	DOWN
+	"""
+	One column left (x-1).
+	"""
 	LEFT
+	"""
+	One column right (x+1).
+	"""
 	RIGHT
 }
+"""
+Sort direction for lists and history.
+"""
 enum Tesla_SortOrder {
+	"""
+	Ascending (oldest/smallest first).
+	"""
 	ASC
+	"""
+	Descending (newest/largest first).
+	"""
 	DESC
 }
+"""
+How to order the session list.
+"""
 enum Tesla_SessionSort {
+	"""
+	Newest save first.
+	"""
 	CREATED
+	"""
+	Most recent action first. The default.
+	"""
 	ACTION
 }
+"""
+Lifecycle of a community map: a draft is private to its owner.
+"""
 enum Tesla_MapStatus {
 	"""
 	A work in progress: only its owner can see, edit, play or publish it.
@@ -1624,35 +3211,113 @@ enum Tesla_MapStatus {
 	"""
 	PUBLISHED
 }
+"""
+Outcome of deleteSession.
+"""
 type Tesla_DeleteSessionResult {
+	"""
+	Human-readable confirmation or reason the delete failed.
+	"""
 	message: String!
 }
+"""
+One page of the session list.
+"""
 type Tesla_SessionList {
+	"""
+	Rows in this page.
+	"""
 	count: Int!
+	"""
+	Rows matching the query before the limit.
+	"""
 	total: Int!
+	"""
+	The sessions themselves.
+	"""
 	sessions: [Tesla_Session!]!
+	"""
+	Sort field used (for echoing back to the client).
+	"""
 	sort: String!
+	"""
+	Sort order used.
+	"""
 	order: String!
 }
+"""
+Sessions of one map, with full state, used by the lobby.
+"""
 type Tesla_UnifiedSessions {
+	"""
+	Map the sessions belong to.
+	"""
 	mapName: String!
+	"""
+	Number of sessions returned.
+	"""
 	count: Int!
+	"""
+	The sessions with their game state.
+	"""
 	sessions: [Tesla_UnifiedSession!]!
 }
+"""
+One lobby row: session metadata plus its full state and map.
+"""
 type Tesla_UnifiedSession {
+	"""
+	Session id.
+	"""
 	sessionId: ID!
+	"""
+	When the session was created (RFC3339 with the server's zone offset).
+	"""
 	createdAt: String!
+	"""
+	When the session last changed (RFC3339 with the server's zone offset).
+	"""
 	lastActionAt: String!
+	"""
+	Current game state.
+	"""
 	gameState: Tesla_GameState!
+	"""
+	Map the session plays.
+	"""
 	gameMap: Tesla_GameMap!
 }
+"""
+One play-through: the session metadata, the current game state and the map.
+"""
 type Tesla_Session {
+	"""
+	Session id; public enough to watch.
+	"""
 	id: ID!
+	"""
+	The player's name for this save; null/empty falls back to the map name.
+	"""
 	displayName: String
+	"""
+	Map the session plays.
+	"""
 	mapName: String!
+	"""
+	When the session was created (RFC3339 with the server's zone offset).
+	"""
 	createdAt: String!
+	"""
+	When the session last changed (RFC3339 with the server's zone offset).
+	"""
 	lastActionAt: String!
+	"""
+	Current game state.
+	"""
 	gameState: Tesla_GameState!
+	"""
+	Map the session plays, with its layout and legend.
+	"""
 	gameMap: Tesla_GameMap!
 	"""
 	Only set in the createSession response, when fog is enabled and no gridPassword
@@ -1661,29 +3326,99 @@ type Tesla_Session {
 	"""
 	generatedGridPassword: String
 }
+"""
+Everything a client needs to render and reason about one session.
+"""
 type Tesla_GameState {
+	"""
+	Full row-major map (`grid[y][x]`). In fog sessions this requires the grid
+	password; a won run is revealed without it until reset.
+	"""
 	grid(password: String): [[Tesla_Cell!]!]!
+	"""
+	The Tesla's tile.
+	"""
 	playerPos: Tesla_Position!
+	"""
+	Current battery charge.
+	"""
 	battery: Int!
+	"""
+	Battery capacity of the map.
+	"""
 	maxBattery: Int!
+	"""
+	Parks visited, scored by the map's rules.
+	"""
 	score: Int!
+	"""
+	Number of parks on the map.
+	"""
 	totalParks: Int!
+	"""
+	Parks and whether they are visited.
+	"""
 	visitedParks: [Tesla_VisitedPark!]!
+	"""
+	Status line for the human player.
+	"""
 	message: String!
+	"""
+	True when the run is over, whether won or lost.
+	"""
 	gameOver: Boolean!
+	"""
+	True when every park was visited.
+	"""
 	victory: Boolean!
+	"""
+	Map name.
+	"""
 	mapName: String!
+	"""
+	Every move this run, in order.
+	"""
 	moveHistory: [Tesla_MoveHistoryEntry!]!
+	"""
+	Total moves taken in the run.
+	"""
 	totalMoves: Int!
+	"""
+	How many times the run has been reset.
+	"""
 	resetCount: Int!
+	"""
+	The visible window around the player: `(2fogRadius+1)` square cells.
+	"""
 	nearbyGrid: [[Tesla_Cell!]!]!
+	"""
+	Moves made in the current attempt (after the last reset).
+	"""
 	currentMoves: [Tesla_MoveHistoryEntry!]!
+	"""
+	Count of currentMoves.
+	"""
 	currentMovesCount: Int!
+	"""
+	SAFE, LOW, CAUTION, DANGER, CRITICAL, WARNING (no charger) or UNKNOWN.
+	"""
 	batteryRisk: String!
+	"""
+	True when the session was created with fog.
+	"""
 	fogEnabled: Boolean!
+	"""
+	Radius of the visible window, in tiles.
+	"""
 	fogRadius: Int!
+	"""
+	Per-step delay configured for the session, in milliseconds.
+	"""
 	moveDelayMs: Int!
 }
+"""
+One map cell as the client sees it.
+"""
 type Tesla_Cell {
 	"""
 	Column of this cell on the map (RIGHT = x+1). Negative or >= map width for off-map nearbyGrid cells.
@@ -1693,42 +3428,138 @@ type Tesla_Cell {
 	Row of this cell on the map (DOWN = y+1). Negative or >= map height for off-map nearbyGrid cells.
 	"""
 	y: Int!
+	"""
+	Cell kind: road, home, park, supercharger, water, building, etc.
+	"""
 	type: String!
+	"""
+	True when the player has already entered this cell.
+	"""
 	visited: Boolean!
+	"""
+	Stable cell id, or empty for off-map cells.
+	"""
 	id: String!
+	"""
+	Directions this cell permits; empty means every direction.
+	"""
 	allowedDirections: [String!]!
 }
+"""
+A tile coordinate: x = column, y = row.
+"""
 type Tesla_Position {
+	"""
+	Column (0 = left).
+	"""
 	x: Int!
+	"""
+	Row (0 = top).
+	"""
 	y: Int!
 }
+"""
+One park and whether this run has visited it.
+"""
 type Tesla_VisitedPark {
+	"""
+	Park id from the map.
+	"""
 	id: String!
+	"""
+	True once the Tesla has entered the park.
+	"""
 	visited: Boolean!
 }
+"""
+One move in the run's history.
+"""
 type Tesla_MoveHistoryEntry {
+	"""
+	Action label ("move", "reset", ...).
+	"""
 	action: String!
+	"""
+	Position before the move.
+	"""
 	fromPosition: Tesla_Position!
+	"""
+	Position after the move.
+	"""
 	toPosition: Tesla_Position!
+	"""
+	Battery after the move.
+	"""
 	battery: Int!
+	"""
+	Wall-clock Unix timestamp in seconds.
+	"""
 	timestamp: Int!
+	"""
+	False when the move was rejected.
+	"""
 	success: Boolean!
+	"""
+	1-based move number within the run.
+	"""
 	moveNumber: Int!
 }
+"""
+Outcome of validateMap.
+"""
 type Tesla_MapValidationResult {
+	"""
+	True when the map parses.
+	"""
 	valid: Boolean!
+	"""
+	True when every park is reachable without stranding the car.
+	"""
 	winnable: Boolean!
+	"""
+	Human-readable summary.
+	"""
 	message: String!
+	"""
+	Validation failure detail, when any.
+	"""
 	error: String
 }
+"""
+One map: geometry, battery budget, legend and per-cell overrides.
+"""
 type Tesla_GameMap {
+	"""
+	Display name (also the map's lookup key).
+	"""
 	name: String!
+	"""
+	One-line description.
+	"""
 	description: String!
+	"""
+	Width and height of the square grid.
+	"""
 	gridSize: Int!
+	"""
+	Battery capacity.
+	"""
 	maxBattery: Int!
+	"""
+	Battery the car starts with.
+	"""
 	startingBattery: Int!
+	"""
+	Glyph rows of the map (fog sessions hide it behind the password).
+	"""
 	layout(password: String): [String!]!
+	"""
+	Glyph-to-meaning legend for the layout characters.
+	"""
 	legend: [Tesla_LegendEntry!]!
+	"""
+	Per-glyph overrides, e.g. one-way cells and cell types.
+	"""
 	cellConfigs: [Tesla_CellConfigEntry!]!
 	"""
 	True for maps shipped with the server; only an admin key may change them.
@@ -1751,50 +3582,156 @@ type Tesla_GameMap {
 	"""
 	editKey: String
 }
+"""
+One glyph and what it means on the map.
+"""
 type Tesla_LegendEntry {
+	"""
+	Single layout character.
+	"""
 	key: String!
+	"""
+	Human-readable meaning.
+	"""
 	value: String!
 }
+"""
+Per-glyph behaviour override.
+"""
 type Tesla_CellConfigEntry {
+	"""
+	Single layout character.
+	"""
 	key: String!
+	"""
+	Cell type this glyph resolves to (road, building, home, ...).
+	"""
 	type: String!
+	"""
+	Directions this cell permits; empty means every direction.
+	"""
 	allowedDirections: [String!]!
 }
 input Tesla_GameMapInput {
+	"""
+	Map name (the lookup key).
+	"""
 	name: String!
+	"""
+	One-line description.
+	"""
 	description: String!
+	"""
+	Width and height of the square grid.
+	"""
 	gridSize: Int!
+	"""
+	Battery capacity.
+	"""
 	maxBattery: Int!
+	"""
+	Battery the car starts with.
+	"""
 	startingBattery: Int!
+	"""
+	Glyph rows of the map.
+	"""
 	layout: [String!]!
+	"""
+	Legend for the glyphs.
+	"""
 	legend: [Tesla_LegendEntryInput!]!
+	"""
+	Optional per-glyph overrides.
+	"""
 	cellConfigs: [Tesla_CellConfigEntryInput!] = []
 }
 input Tesla_LegendEntryInput {
+	"""
+	Single layout character.
+	"""
 	key: String!
+	"""
+	Human-readable meaning.
+	"""
 	value: String!
 }
 input Tesla_CellConfigEntryInput {
+	"""
+	Single layout character.
+	"""
 	key: String!
+	"""
+	Cell type this glyph resolves to.
+	"""
 	type: String!
+	"""
+	Directions this cell permits; empty means every direction.
+	"""
 	allowedDirections: [String!]!
 }
 input Tesla_GameMapPatchInput {
+	"""
+	New name, when changing it.
+	"""
 	name: String
+	"""
+	New description, when changing it.
+	"""
 	description: String
+	"""
+	New grid size, when changing it.
+	"""
 	gridSize: Int
+	"""
+	New battery capacity, when changing it.
+	"""
 	maxBattery: Int
+	"""
+	New starting battery, when changing it.
+	"""
 	startingBattery: Int
+	"""
+	Replacement glyph rows, when changing them.
+	"""
 	layout: [String!]
+	"""
+	Replacement legend, when changing it.
+	"""
 	legend: [Tesla_LegendEntryInput!]
+	"""
+	Replacement cell overrides, when changing them.
+	"""
 	cellConfigs: [Tesla_CellConfigEntryInput!]
 }
+"""
+One row in the map catalogue.
+"""
 type Tesla_MapInfo {
+	"""
+	Conventional file name (`<name>.json`). Community rows use the same naming
+	convention but are stored in PostgreSQL.
+	"""
 	filename: String!
+	"""
+	Map id used by createSession (the map's `name`).
+	"""
 	mapId: String!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	One-line description.
+	"""
 	description: String!
+	"""
+	Width and height of the square grid.
+	"""
 	gridSize: Int!
+	"""
+	Battery capacity.
+	"""
 	maxBattery: Int!
 	"""
 	True for maps shipped with the server.
@@ -1810,80 +3747,289 @@ type Tesla_MapInfo {
 	"""
 	ownedByMe: Boolean!
 }
+"""
+Result of one move.
+"""
 type Tesla_MoveResult {
+	"""
+	False when the move was rejected. A collision also ends the run
+	(`gameOver` becomes true), so read the state rather than assuming nothing
+	changed.
+	"""
 	success: Boolean!
+	"""
+	State after the attempt.
+	"""
 	gameState: Tesla_GameState!
+	"""
+	Status line for the player.
+	"""
 	message: String!
+	"""
+	Events raised by the step.
+	"""
 	events: [Tesla_GameEvent!]!
+	"""
+	Compact summary of the step, when available.
+	"""
 	step: Tesla_StepInfo
+	"""
+	The attempted target, set when the move was rejected and the reason is positional.
+	"""
 	attemptedTo: Tesla_AttemptInfo
 }
+"""
+Result of bulkMove: how far the batch got and the resulting state.
+"""
 type Tesla_BulkMoveResult {
+	"""
+	Number of moves actually executed.
+	"""
 	movesExecuted: Int!
+	"""
+	Total moves taken in the run after this call.
+	"""
 	totalMoves: Int!
+	"""
+	Number of moves requested.
+	"""
 	requestedMoves: Int!
+	"""
+	False when the whole batch was rejected before the first move.
+	"""
 	success: Boolean!
+	"""
+	State after the batch.
+	"""
 	gameState: Tesla_GameState!
+	"""
+	Events raised by the batch.
+	"""
 	events: [Tesla_GameEvent!]!
+	"""
+	Human-readable reason the batch stopped early; empty when it ran to completion.
+	"""
 	stoppedReason: String!
+	"""
+	Machine-readable stop reason code.
+	"""
 	stopReasonCode: String!
+	"""
+	1-based index of the move that stopped the batch, 0 when none did.
+	"""
 	stoppedOnMove: Int!
+	"""
+	True when the batch hit the per-call move cap.
+	"""
 	truncated: Boolean!
+	"""
+	Per-call move cap.
+	"""
 	limit: Int!
+	"""
+	Position before the batch.
+	"""
 	startPos: Tesla_Position!
+	"""
+	Position after the batch.
+	"""
 	endPos: Tesla_Position!
+	"""
+	Battery before the batch.
+	"""
 	startBattery: Int!
+	"""
+	Battery after the batch.
+	"""
 	endBattery: Int!
+	"""
+	Score change over the batch.
+	"""
 	scoreDelta: Int!
+	"""
+	Per-move summaries for this call only.
+	"""
 	steps: [Tesla_StepInfo!]!
+	"""
+	The attempted target when the batch stopped on a rejected move.
+	"""
 	attemptedTo: Tesla_AttemptInfo
+	"""
+	True when the run ended during the batch.
+	"""
 	gameOver: Boolean!
+	"""
+	Machine-readable game-over reason, empty when still playing.
+	"""
 	gameOverCode: String!
+	"""
+	Status line for the player.
+	"""
 	message: String!
+	"""
+	Directions that are legal from the end position, walls and battery considered.
+	"""
 	possibleMoves: [String!]!
+	"""
+	SAFE, LOW, CAUTION, DANGER, CRITICAL, WARNING or UNKNOWN.
+	"""
 	batteryRisk: String!
 }
+"""
+One notable thing that happened during a move or batch.
+"""
 type Tesla_GameEvent {
+	"""
+	Event kind (park_visited, charged, blocked, ...).
+	"""
 	type: String!
+	"""
+	Human-readable description.
+	"""
 	message: String!
+	"""
+	RFC3339 wall-clock time of the event.
+	"""
 	timestamp: String!
+	"""
+	Where it happened.
+	"""
 	position: Tesla_Position!
 }
+"""
+Compact summary of one executed step.
+"""
 type Tesla_StepInfo {
+	"""
+	1-based step index in the run.
+	"""
 	idx: Int!
+	"""
+	Direction moved.
+	"""
 	dir: String!
+	"""
+	Position before the step.
+	"""
 	from: Tesla_Position!
+	"""
+	Position after the step.
+	"""
 	to: Tesla_Position!
+	"""
+	Glyph of the entered tile.
+	"""
 	tileChar: String!
+	"""
+	Cell type of the entered tile.
+	"""
 	tileType: String!
+	"""
+	Battery before the step.
+	"""
 	batteryBefore: Int!
+	"""
+	Battery after the step.
+	"""
 	batteryAfter: Int!
+	"""
+	False when the step was rejected.
+	"""
 	success: Boolean!
+	"""
+	True when the step charged the battery.
+	"""
 	charged: Boolean!
+	"""
+	True when the step entered a park.
+	"""
 	park: Boolean!
+	"""
+	True when this step won the run.
+	"""
 	victory: Boolean!
 }
+"""
+The target a rejected move tried to enter.
+"""
 type Tesla_AttemptInfo {
+	"""
+	Column attempted.
+	"""
 	x: Int!
+	"""
+	Row attempted.
+	"""
 	y: Int!
+	"""
+	Glyph at that tile.
+	"""
 	tileChar: String!
+	"""
+	Cell type at that tile.
+	"""
 	tileType: String!
+	"""
+	Whether the tile itself is passable (the rejection may be directional).
+	"""
 	passable: Boolean!
 }
+"""
+One page of a session's move history.
+"""
 type Tesla_HistoryResponse {
+	"""
+	Moves on this page.
+	"""
 	moves: [Tesla_MoveHistoryEntry!]!
+	"""
+	Total moves in the run.
+	"""
 	totalMoves: Int!
+	"""
+	1-based page number.
+	"""
 	page: Int!
+	"""
+	Page size.
+	"""
 	pageSize: Int!
+	"""
+	Total number of pages.
+	"""
 	totalPages: Int!
+	"""
+	True when a newer page exists.
+	"""
 	hasNext: Boolean!
+	"""
+	True when an older page exists.
+	"""
 	hasPrevious: Boolean!
 }
+"""
+Tesla reads: sessions, game state, history and map catalogue.
+"""
 type Tesla_Query {
+	"""
+	One session, or an error when the id is unknown.
+	"""
 	session(id: ID!): Tesla_Session!
+	"""
+	Saved sessions, paged by `limit`; `sort`/`order` control the ranking.
+	"""
 	sessions(sort: Tesla_SessionSort = ACTION, order: Tesla_SortOrder = DESC, limit: Int): Tesla_SessionList!
+	"""
+	Sessions of one map (`mapName`; empty means every map) with full state.
+	"""
 	unifiedSessions(mapName: String): Tesla_UnifiedSessions!
+	"""
+	One session's game state without the map document.
+	"""
 	gameState(sessionID: ID!): Tesla_GameState!
+	"""
+	One page of a session's move history.
+	"""
 	history(sessionID: ID!, page: Int = 1, limit: Int = 50, order: Tesla_SortOrder = DESC): Tesla_HistoryResponse!
 	"""
 	Published maps plus the signed-in caller's own drafts. Another player's draft is never listed.
@@ -1894,12 +4040,35 @@ type Tesla_Query {
 	"""
 	map(name: String!, password: String): Tesla_GameMap!
 }
+"""
+Tesla writes: play, manage sessions and author maps. Map writes require
+ownership or the admin key.
+"""
 type Tesla_Mutation {
+	"""
+	Start a session on a map. `mapID` (or the legacy `mapName`) selects the map;
+	fog and its radius are opt-in. Move speed is per session.
+	"""
 	createSession(mapID: String, mapName: String, fogEnabled: Boolean = false, fogRadius: Int = 1, gridPassword: String, moveDelayMs: Int): Tesla_Session!
+	"""
+	Delete a session.
+	"""
 	deleteSession(id: ID!): Tesla_DeleteSessionResult!
+	"""
+	Rename the save.
+	"""
 	updateSession(id: ID!, displayName: String!): Tesla_Session!
+	"""
+	One step. `reset` restarts the run before moving.
+	"""
 	move(sessionID: ID!, direction: Tesla_Direction!, reset: Boolean = false): Tesla_MoveResult!
+	"""
+	Several steps in order (at most 50 per call), stopping early on game over.
+	"""
 	bulkMove(sessionID: ID!, moves: [Tesla_Direction!]!, reset: Boolean = false): Tesla_BulkMoveResult!
+	"""
+	Restart the run.
+	"""
 	reset(sessionID: ID!): Tesla_GameState!
 	"""
 	Creates a DRAFT map owned by the signed-in player (UNAUTHENTICATED otherwise). Update it
@@ -1926,8 +4095,15 @@ type Tesla_Mutation {
 	need X-Admin-Key. editKey is accepted only for legacy unowned maps.
 	"""
 	deleteMap(name: String!, editKey: String): Tesla_DeleteSessionResult!
+	"""
+	Validates a map definition without saving it.
+	"""
 	validateMap(map: Tesla_GameMapInput!): Tesla_MapValidationResult!
 }
+"""
+Challenge level. Higher difficulties flip more bars, and each win rewards a
+larger share of the excerpt.
+"""
 enum Music_Difficulty {
 	"""
 	Reorder the whole excerpt; no bar is flipped. Rewards 5% per win.
@@ -1942,35 +4118,114 @@ enum Music_Difficulty {
 	"""
 	GENIUS
 }
+"""
+One sounding note.
+"""
 type Music_Note {
+	"""
+	Start position in ticks from the start of the measure.
+	"""
 	at: Int!
+	"""
+	Duration in ticks.
+	"""
 	dur: Int!
+	"""
+	MIDI pitch number.
+	"""
 	pitch: Int!
 }
+"""
+One bar of the excerpt.
+"""
 type Music_Measure {
+	"""
+	Bar id used by slots and arrangement inputs.
+	"""
 	id: ID!
+	"""
+	Bar length in ticks.
+	"""
 	len: Int!
+	"""
+	Notes in the bar, in time order.
+	"""
 	notes: [Music_Note!]!
 }
+"""
+One output position in the arrangement: which bar sits there and whether it is
+flipped.
+"""
 type Music_Slot {
+	"""
+	0-based position in the excerpt.
+	"""
 	position: Int!
+	"""
+	Bar placed at this position.
+	"""
 	measureID: ID!
+	"""
+	True when the bar is reversed (retrograde).
+	"""
 	flipH: Boolean!
+	"""
+	True when the bar's pitches are inverted.
+	"""
 	flipV: Boolean!
 }
+"""
+One slot in a setArrangement call.
+"""
 input Music_PlacementInput {
+	"""
+	Bar to place.
+	"""
 	measureID: ID!
+	"""
+	Reverse the bar.
+	"""
 	flipH: Boolean!
+	"""
+	Invert the bar's pitches.
+	"""
 	flipV: Boolean!
 }
+"""
+One excerpt: metadata, its bars and the original note sequence.
+"""
 type Music_Excerpt {
+	"""
+	Excerpt id used by createSession.
+	"""
 	id: ID!
+	"""
+	Title.
+	"""
 	title: String!
+	"""
+	Composer.
+	"""
 	composer: String!
+	"""
+	Tempo in beats per minute.
+	"""
 	tempoBPM: Int!
+	"""
+	Time signature, e.g. "4/4".
+	"""
 	timeSig: String!
+	"""
+	Key signature, e.g. "C major".
+	"""
 	key: String!
+	"""
+	Clef the arrangement is drawn in.
+	"""
 	clef: String!
+	"""
+	Vertical axis used when inverting pitches.
+	"""
 	axis: Int!
 	"""
 	The piece's bars in performance order. Every Music Region piece is at most
@@ -1978,44 +4233,146 @@ type Music_Excerpt {
 	the number of slots in a session.
 	"""
 	measures: [Music_Measure!]!
+	"""
+	Every note of the excerpt in performance order, for preview rendering.
+	"""
 	notes: [Music_Note!]!
 }
+"""
+The last change made to a session, for highlighting the modified bars.
+"""
 type Music_LastChange {
+	"""
+	Mutation kind: SWITCH, TRANSFORM, ARRANGE, RESET or SOLVE.
+	"""
 	kind: String!
+	"""
+	First affected slot; 0 for changes that are not slot-specific.
+	"""
 	a: Int!
+	"""
+	Second affected slot for SWITCH; 0 when not applicable.
+	"""
 	b: Int!
 }
+"""
+One play-through: the excerpt, the current arrangement and its progress.
+"""
 type Music_Session {
+	"""
+	Session id.
+	"""
 	id: ID!
+	"""
+	The player's name for this save; null/empty falls back to the excerpt title.
+	"""
 	displayName: String
+	"""
+	Difficulty the session was created at.
+	"""
 	difficulty: Music_Difficulty!
+	"""
+	The excerpt being restored.
+	"""
 	excerpt: Music_Excerpt!
+	"""
+	Current arrangement, one slot per excerpt bar.
+	"""
 	slots: [Music_Slot!]!
+	"""
+	True when every bar is back in place and unflipped.
+	"""
 	solved: Boolean!
+	"""
+	Monotonic sequence of this snapshot.
+	"""
 	seq: Int!
+	"""
+	Wins recorded on this save.
+	"""
 	wins: Int!
+	"""
+	Percent of the excerpt's reward granted per win at this difficulty.
+	"""
 	percentPerWin: Int!
+	"""
+	When the session was created (RFC3339 UTC).
+	"""
 	createdAt: String!
+	"""
+	When the session last changed (RFC3339 UTC).
+	"""
 	lastActionAt: String!
+	"""
+	The most recent change, or null before the first one.
+	"""
 	lastChange: Music_LastChange
 }
+"""
+One subscription frame: the new session and the change that caused it.
+"""
 type Music_SessionUpdate {
+	"""
+	Full current session.
+	"""
 	session: Music_Session!
+	"""
+	The change that produced this frame, or null.
+	"""
 	lastChange: Music_LastChange
 }
+"""
+Music reads: excerpts and sessions.
+"""
 type Music_Query {
+	"""
+	Every available excerpt.
+	"""
 	excerpts: [Music_Excerpt!]!
+	"""
+	One excerpt, or null when the id is unknown.
+	"""
 	excerpt(id: ID!): Music_Excerpt
+	"""
+	One session, or null when the id is unknown.
+	"""
 	session(id: ID!): Music_Session
+	"""
+	Saved sessions, newest first, limited by `limit` (default 50).
+	"""
 	sessions(limit: Int = 50): [Music_Session!]!
 }
+"""
+Music writes: start a session and rearrange its bars.
+"""
 type Music_Mutation {
+	"""
+	Start a session on an excerpt; `seed` makes the scramble reproducible.
+	"""
 	createSession(excerptID: ID!, difficulty: Music_Difficulty!, displayName: String, seed: Int): Music_Session!
+	"""
+	Swap two slots.
+	"""
 	switchMeasures(sessionID: ID!, a: Int!, b: Int!): Music_Session!
+	"""
+	Toggle horizontal and/or vertical flips on one slot.
+	"""
 	transformMeasure(sessionID: ID!, position: Int!, flipH: Boolean!, flipV: Boolean!): Music_Session!
+	"""
+	Replace the whole arrangement in one call.
+	"""
 	setArrangement(sessionID: ID!, slots: [Music_PlacementInput!]!): Music_Session!
+	"""
+	Restore the scrambled starting arrangement.
+	"""
 	resetArrangement(sessionID: ID!): Music_Session!
+	"""
+	Delete a session.
+	"""
 	deleteSession(id: ID!): Boolean!
+	"""
+	Rename the save.
+	"""
 	renameSession(id: ID!, displayName: String!): Music_Session!
 }
 scalar Time
@@ -2062,7 +4419,19 @@ type Subscription {
 	program is null unless the caller may change the program (ownerToken or the owning login).
 	"""
 	motorProgrammingSessionUpdated(sessionID: ID!, ownerToken: String): Motor_SessionUpdate!
+	"""
+	The full game state of one session, emitted on every accepted move or tick.
+	The session must be readable by the caller.
+	"""
 	teslaSessionUpdated(sessionID: ID!): Tesla_GameState!
+	"""
+	Lobby-wide state broadcasts for the session list; emits the latest visible
+	session state as it changes.
+	"""
 	teslaLobbyUpdated: Tesla_GameState!
+	"""
+	Every change to one music session: the new session and the change that
+	caused it.
+	"""
 	musicSessionUpdated(sessionID: ID!): Music_SessionUpdate!
 }

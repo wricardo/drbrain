@@ -1,0 +1,23 @@
+# Perses for the local drbrain observability stack.
+#
+# Auth is intentionally off because the UI is published on 127.0.0.1 only.
+# Datasource proxy destinations are limited to the compose Prometheus service so
+# the unauthenticated proxy cannot be used as an SSRF primitive.
+database:
+  file:
+    folder: /perses
+    extension: json
+
+provisioning:
+  folders:
+    - /etc/perses/provisioning
+  # Apply file edits as they happen instead of waiting for the 1h reconcile.
+  enable_watch: true
+
+datasource:
+  proxy:
+    allowed_hosts:
+      - prometheus
+    http:
+      allowed_schemes:
+        - http

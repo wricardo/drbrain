@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/vektah/gqlparser/v2/gqlerror"
 
@@ -21,6 +22,7 @@ const (
 	codeNotFound        = "NOT_FOUND"
 	codeInvalidArgument = "INVALID_ARGUMENT"
 	codeLimitReached    = "LIMIT_REACHED"
+	codeConflict        = "CONFLICT"
 	codeInternal        = "INTERNAL"
 )
 
@@ -65,26 +67,112 @@ func gqlErr(code, msg string) error {
 }
 
 // errNotFound reports a missing entity or save.
-func errNotFound(msg string) error { return gqlErr("not_found", msg) }
+func errNotFound(msg string) error {
+	return prefixedCodedErr("not_found", codeNotFound, msg)
+}
 
 // errBadInput reports a malformed or out-of-range argument.
-func errBadInput(msg string) error { return gqlErr("bad_request", msg) }
+func errBadInput(msg string) error {
+	return prefixedCodedErr("bad_request", codeInvalidArgument, msg)
+}
 
 // errConflict reports a legal request in the wrong state: unaffordable, already
 // done, not unlocked.
-func errConflict(msg string) error { return gqlErr("conflict", msg) }
+func errConflict(msg string) error {
+	return prefixedCodedErr("conflict", codeConflict, msg)
+}
 
 // errForbidden reports a state-changing request from a caller that cannot prove
 // it created the session (wrong or missing owner token, another account).
-func errForbidden(msg string) error { return gqlErr("forbidden", msg) }
+func errForbidden(msg string) error {
+	return prefixedCodedErr("forbidden", codeForbidden, msg)
+}
+
+// errLimit reports a contract limit: a per-car queue or per-owner quota.
+func errLimit(msg string) error {
+	return prefixedCodedErr("limit_reached", codeLimitReached, msg)
+}
+
+// intOrZero dereferences an optional Int argument. A missing limit means the
+// resolver applies its own default downstream.
+func intOrZero(p *int) int {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
+
+// nonNilCashEntries and nonNilMonths keep the non-null list contract: a nil
+// slice would serialize as null and fail the field type, while an empty window
+// is a legal answer.
+func nonNilCashEntries(entries []*model.CashEntryView) []*model.CashEntryView {
+	if entries == nil {
+		return []*model.CashEntryView{}
+	}
+	return entries
+}
+
+func nonNilMonths(months []*model.MonthView) []*model.MonthView {
+	if months == nil {
+		return []*model.MonthView{}
+	}
+	return months
+}
+
+// Session-list bounds. The default matches the other games' list default; the
+// max caps one call, because every returned row costs a city-visibility lookup.
+const (
+	DefaultSessionListLimit = 50
+	MaxSessionListLimit     = 500
+)
+
+// sessionSortFrom maps the GraphQL order to the session package's key.
+func sessionSortFrom(s model.SessionSort) session.SessionSort {
+	switch s {
+	case model.SessionSortTick:
+		return session.SortTick
+	case model.SessionSortMoney:
+		return session.SortMoney
+	default:
+		return session.SortCreatedAt
+	}
+}
+
+// intPtrValue returns *p or fallback when p is nil.
+func intPtrValue(p *int, fallback int) int {
+	if p == nil {
+		return fallback
+	}
+	return *p
+}
+
+// DefaultEventFeedLimit bounds an events read when the caller names no limit.
+const DefaultEventFeedLimit = 200
+
+// Order-filter bounds. The default covers a long save's open jobs plus a useful
+// finished tail; the max caps what one operation may return.
+const (
+	DefaultOrderFilterLimit = 2000
+	MaxOrderFilterLimit     = 2000
+)
+
+// maxWaitTicks caps one waitUntil call, mirroring the tick mutation's cap so a
+// single request cannot hold a connection open for an unbounded stretch.
+const maxWaitTicks = 1000
 
 // loadRaw resolves a session without applying city visibility. Session
 // mutations use it so an owner-token holder can still play a draft-city session
 // without being signed in; read paths use load below.
 func (r *Resolver) loadRaw(id string) (*session.Session, error) {
+	if !session.ValidID(id) {
+		return nil, errBadInput(fmt.Sprintf("invalid session id %q", id))
+	}
 	sess, err := r.Mgr.GetOrLoad(id)
 	if err != nil {
 		if errors.Is(err, session.ErrNotFound) {
+			return nil, errNotFound(err.Error())
+		}
+		if errors.Is(err, session.ErrCityNotFound) {
 			return nil, errNotFound(err.Error())
 		}
 		return nil, err
@@ -138,4 +226,64 @@ func cityViewForEntry(entry cityconfig.Entry, viewerID string) (*model.CityView,
 		return nil, codedErr(codeInternal, err.Error())
 	}
 	return view, nil
+}
+
+// engineMutationError maps an engine state error to the documented codes:
+// a missing car/order/depot is NOT_FOUND, a malformed name is
+// INVALID_ARGUMENT, and everything else is a legal request in the wrong state
+// (unaffordable, already done, not unlocked) — CONFLICT.
+func engineMutationError(err error) error {
+	switch {
+	case errors.Is(err, engine.ErrNoCar),
+		errors.Is(err, engine.ErrNoOrder),
+		errors.Is(err, engine.ErrNoDepot):
+		return errNotFound(err.Error())
+	case errors.Is(err, engine.ErrMoveQueueFull):
+		return errLimit(err.Error())
+	case strings.HasPrefix(err.Error(), "unknown car class"),
+		strings.HasPrefix(err.Error(), "bad direction"):
+		return errBadInput(err.Error())
+	default:
+		return errConflict(err.Error())
+	}
+}
+
+// validateHistoryArgs rejects an analytics read the session layer would refuse
+// with an uncoded error: too many ids, or an id that cannot name a session.
+func validateHistoryArgs(ids []string) error {
+	if len(ids) > session.MaxHistorySessions {
+		return errBadInput(fmt.Sprintf("at most %d sessions per query", session.MaxHistorySessions))
+	}
+	for _, id := range ids {
+		if !session.ValidID(id) {
+			return errBadInput(fmt.Sprintf("invalid session id %q", id))
+		}
+	}
+	return nil
+}
+
+// seriesRequest maps the shared analytics arguments to the session reader.
+func (r *Resolver) seriesRequest(ctx context.Context, ids []string, cityID *string, fromTick, toTick, maxPoints *int) session.SeriesRequest {
+	req := session.SeriesRequest{IDs: ids}
+	if cityID != nil {
+		req.CityID = *cityID
+	}
+	if fromTick != nil {
+		v := int64(*fromTick)
+		req.FromTick = &v
+	}
+	if toTick != nil {
+		v := int64(*toTick)
+		req.ToTick = &v
+	}
+	if maxPoints != nil {
+		req.MaxPoints = *maxPoints
+	}
+	// Draft-city sessions inherit their city's privacy; analytics must not
+	// become a side channel that lists or plots them.
+	req.Visible = func(cityID string) bool {
+		visible, err := r.sessionCityVisible(ctx, cityID)
+		return err == nil && visible
+	}
+	return req
 }

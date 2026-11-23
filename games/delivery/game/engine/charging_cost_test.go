@@ -25,7 +25,7 @@ func paidChargerWorld(t *testing.T, rate, price, maxBattery int) *World {
 		Legend: map[string]string{"W": "water", "R": "road", "D": "depot", "C": "charger"},
 		Items:  map[string]string{},
 		Depots: []DepotConfig{{
-			ID: "d_main", Pos: Position{1, 1}, Capacity: 2, ChargeSlots: 2,
+			ID: "d_main", Pos: Position{1, 1}, ChargeSlots: 2,
 		}},
 		Chargers: []ChargerConfig{{
 			ID: "ch_paid", Pos: Position{2, 2}, Capacity: 1,
@@ -245,7 +245,7 @@ func TestChargerInheritsCityDefaults(t *testing.T) {
 			},
 			Legend: map[string]string{"W": "water", "R": "road", "D": "depot", "C": "charger"},
 			Items:  map[string]string{},
-			Depots: []DepotConfig{{ID: "d", Pos: Position{1, 1}, Capacity: 1}},
+			Depots: []DepotConfig{{ID: "d", Pos: Position{1, 1}}},
 			Chargers: []ChargerConfig{{
 				ID: "ch", Pos: Position{2, 2}, Capacity: 1, PricePerTick: price,
 			}},
@@ -283,7 +283,7 @@ func TestNegativeChargingPricesRejected(t *testing.T) {
 		Layout:   []string{"WWWWW", "WDRRW", "WRRRW", "WRRRW", "WWWWW"},
 		Legend:   map[string]string{"W": "water", "R": "road", "D": "depot"},
 		Items:    map[string]string{},
-		Depots:   []DepotConfig{{ID: "d", Pos: Position{1, 1}, Capacity: 1}},
+		Depots:   []DepotConfig{{ID: "d", Pos: Position{1, 1}}},
 		Charging: ChargingConfig{ChargerPricePerTick: -1},
 	}
 	if _, err := NewCity(badGlobal); err == nil {
@@ -296,7 +296,7 @@ func TestNegativeChargingPricesRejected(t *testing.T) {
 		Layout:   []string{"WWWWW", "WDRRW", "WRCRW", "WRRRW", "WWWWW"},
 		Legend:   map[string]string{"W": "water", "R": "road", "D": "depot", "C": "charger"},
 		Items:    map[string]string{},
-		Depots:   []DepotConfig{{ID: "d", Pos: Position{1, 1}, Capacity: 1}},
+		Depots:   []DepotConfig{{ID: "d", Pos: Position{1, 1}}},
 		Chargers: []ChargerConfig{{ID: "ch", Pos: Position{2, 2}, PricePerTick: &negative}},
 	}
 	if _, err := NewCity(badCharger); err == nil {
@@ -319,7 +319,7 @@ func TestBuiltChargerInheritsCityChargingDefaults(t *testing.T) {
 		},
 		Legend:   map[string]string{"W": "water", "R": "road", "D": "depot"},
 		Items:    map[string]string{},
-		Depots:   []DepotConfig{{ID: "d", Pos: Position{1, 1}, Capacity: 1}},
+		Depots:   []DepotConfig{{ID: "d", Pos: Position{1, 1}}},
 		Charging: ChargingConfig{DepotRate: 5, ChargerRate: 3, ChargerPricePerTick: 1},
 	}
 	city, err := NewCity(cfg)

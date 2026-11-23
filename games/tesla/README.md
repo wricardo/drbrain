@@ -1,136 +1,76 @@
-# Tesla Road Trip Game Server
+# Tesla Road Trip
 
-[![CI](https://github.com/wricardo/tesla-road-trip-game/actions/workflows/ci.yml/badge.svg)](https://github.com/wricardo/tesla-road-trip-game/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Go Report Card](https://goreportcard.com/badge/github.com/wricardo/tesla-road-trip-game)](https://goreportcard.com/report/github.com/wricardo/tesla-road-trip-game)
-
-Grid-based, multi-session game server. Players drive a Tesla around a map to visit every park without running out of battery. Go backend (GraphQL via gqlgen, MCP over Streamable HTTP, WebSocket updates) with a SvelteKit web UI and a terminal client.
+Grid-based, multi-session game: drive a Tesla around a fogged map to visit every
+park without running out of battery. It is one game in the Dr Brain monorepo,
+served by the shared `drbrain` binary (GraphQL via the unified executor, MCP
+over Streamable HTTP, and the SvelteKit app).
 
 ## Requirements
 
 | Tool | Version | Needed for |
 |------|---------|-----------|
-| Go | 1.25+ (see `go.mod`) | server, TUI, tests |
-| Node.js + npm | 20.19+ or 22.12+ | rebuilding the web UI (optional) |
-| just | 1.27+ (CI pins 1.59.0) | task runner for all commands below |
+| Go | 1.27.2 (see `go.mod`) | server, tests |
+| Node.js + npm | 22 (CI) | rebuilding the web app (optional) |
+| just | current | the root `justfile` recipes below |
 
-A prebuilt copy of the web UI is committed in `static/`, so Node is only needed if you change the frontend.
+The built web app is not committed; CI builds it, and `just restart` builds it
+locally into `web/build`.
 
-## Quick Start
+## Quick start
 
-```bash
-git clone https://github.com/wricardo/tesla-road-trip-game.git
-cd tesla-road-trip-game
-just build              # or: go build -o tesla-road-trip .
-./tesla-road-trip       # http://localhost:8000
-```
-
-Open http://localhost:8000 to play in the browser.
-
-The server must be started from the repo root: it reads maps from `./maps`, writes sessions to `./sessions`, and serves the UI from `./frontend/build` (if built) or `./static`.
-
-### Full setup (with frontend)
+Run from the repository root:
 
 ```bash
-just setup              # go mod download + npm ci in frontend/
-just run                # build frontend + server, run on :8000
+just restart       # regenerate schema, build web + binary, serve on :8181
+just stop          # stop the detached server
 ```
 
-### Development dependencies
+Open http://127.0.0.1:8181/tesla/ to play. `just port=8081 restart` changes the
+port.
 
-Install `just` first (`brew install just`, or the installer from
-[just.systems](https://just.systems/man/en/installation.html)), then the tools
-the quality and browser recipes need:
+## Environment
 
-```bash
-just tools              # goimports + golangci-lint
-```
-
-| Tool | Version | Needed for |
-|------|---------|-----------|
-| Go | 1.25+ (see `go.mod`) | build, test, vet, map validation |
-| Node.js + npm | 20.19+ or 22.12+ | `just build-frontend`, `just verify-ui` |
-| just | 1.27+ (CI pins 1.59.0) | every recipe |
-| goimports | latest | `just fmt`, `just verify` |
-| golangci-lint | latest | `just lint`, `just verify` |
-| Chrome or Chromium | current stable | `just verify-ui` (headless by default) |
-| claude CLI | optional | `just claude-game` (MCP client example) |
-| Python 3 | 3.10+ (optional) | `ml/` training harness (see [ml/README.md](ml/README.md)) |
-| gqlgen | v0.17.73 (pinned in `go.mod`) | regenerating GraphQL code after schema edits |
-
-### Server options
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `-port` | `8000` | HTTP port |
-| `-host` | `localhost` | Bind address (use `0.0.0.0` to expose on LAN) |
-| `-config-dir` | `$TESLA_CONFIG_DIR` or `maps` | Builtin map directory (env `TESLA_CONFIG_DIR`) |
-| `-public-url` | request host | Base URL rendered in `/llms.txt` |
-| `-debug` | `false` | Debug logging |
-
-Port 8000 is often taken. Check with `lsof -i :8000` and pass `-port 9191` if needed.
-
-### Environment (`.env`)
-
-The server loads `.env` from the working directory if present. See [.env.example](.env.example):
-
-```bash
-cp .env.example .env
-```
+Tesla settings are the `TESLA_*` section of the process environment; the rest of
+the process is configured by `DRBRAIN_*` (see the root README). `.env` is read
+from the working directory.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `TESLA_GRAPHQL_INTROSPECTION` | `true` | GraphQL schema introspection |
-| `TESLA_GRAPHQL_PLAYGROUND` | `true` | `/playground` UI |
-| `TESLA_MCP_ENABLED` | `true` | `/mcp` endpoint |
-| `TESLA_ADMIN_API_KEY` | unset | `X-Admin-Key` value for shipped and legacy ownerless maps |
-| `TESLA_ALLOW_UNAUTHENTICATED_ADMIN` | `false` | Local-only bypass: treat every request as admin |
+| `TESLA_CONFIG_DIR` | `games/tesla/maps` (root `justfile`; app default `maps`) | Builtin map directory |
 | `TESLA_MAX_USER_MAPS` | `200` | Cap on custom maps stored in `platform_maps` |
+| `TESLA_ADMIN_API_KEY` | unset | `X-Admin-Key` value for shipped and legacy ownerless maps |
+| `TESLA_ALLOW_UNAUTHENTICATED_ADMIN` | `false` | Local-only bypass; only the exact string `true` enables it |
+| `TESLA_MCP_ENABLED` | `true` | Mount `/tesla/mcp` |
 | `TESLA_ALLOWED_ORIGINS` | all | WebSocket origin allowlist (comma-separated; `*` or empty allows all) |
+| `TESLA_GRAPHQL_INTROSPECTION`, `TESLA_GRAPHQL_PLAYGROUND` | `true` | Reported in the mount log; the unified `/graphql` handler owns these switches now |
 
-`TESLA_CUSTOM_MAPS_DIR` is not a runtime setting. Existing custom maps are imported once with
-`drbrain import-maps --game=tesla --dir=<legacy dir>`; imported maps are `PUBLISHED` and
-ownerless, and an owner claims one with `claimMap` and its old edit key. `pg_dump` is the only
-backup for custom maps.
+`TESLA_CUSTOM_MAPS_DIR` is not a runtime setting. Existing custom maps are
+imported once with `drbrain import-maps --game=tesla --dir=<legacy dir>`;
+imported maps are `PUBLISHED` and ownerless, and an owner claims one with
+`claimMap` and its old edit key. `pg_dump` is the only backup for custom maps.
+Sessions and accounts live in PostgreSQL (`DRBRAIN_DATABASE_URL`).
 
 Every variable is declared once in `appconfig.Config` and loaded with
-[`kelseyhightower/envconfig`](https://github.com/kelseyhightower/envconfig) —
-that package is the only place environment parsing lives. Booleans accept
-`true`, `1`, or `yes`; any other value means off; empty keeps the default.
-`TESLA_ALLOW_UNAUTHENTICATED_ADMIN` is stricter: only the exact string `true` enables it.
-`-config-dir` overrides `TESLA_CONFIG_DIR`. Sessions live in PostgreSQL (`DRBRAIN_DATABASE_URL`).
-
-### Browser UI checks
-
-`just verify-ui` builds the frontend and server, starts a throwaway server on an
-unused port, and drives the real UI in headless Chrome over the DevTools Protocol
-(no Playwright, no npm dependencies). It covers the map gallery, the
-start-session modal and the shareable map pages, including the layout checks
-jsdom cannot do.
-
-```bash
-just verify-ui            # headless
-just verify-ui 1          # watch it run in a window
-```
+[`kelseyhightower/envconfig`](https://github.com/kelseyhightower/envconfig).
 
 ## Endpoints
 
 | Path | Purpose |
 |------|---------|
-| `/` | Web UI |
-| `/graphql` | GraphQL (HTTP + graphql-ws subscriptions) |
-| `/playground` | GraphQL playground |
-| `/mcp` | MCP server (Streamable HTTP) — tools in [MCP_TOOLS.md](MCP_TOOLS.md) |
-| `/llms.txt` | Guide for LLM agents |
-| `/api/sessions` | Legacy `GET` list / `POST` create (`{"map_name":"easy"}`) |
-| `/ws?session=<id>` | Legacy WebSocket state stream |
+| `/tesla/` | Web UI |
+| `/graphql` | GraphQL (HTTP + graphql-ws); select the `tesla` namespace |
+| `/graphql/playground` | GraphQL playground |
+| `/tesla/mcp` | MCP server (Streamable HTTP) — tools in [MCP_TOOLS.md](MCP_TOOLS.md) |
+| `/tesla/llms.txt` | Guide for LLM agents |
+| `/auth/...`, `/settings`, `/u/<handle>` | Global sign-in and accounts |
+
+The legacy REST `/api/sessions` and `/ws` routes are gone.
 
 ## Clients
 
-- **Web UI** — served at `/`.
-- **TUI** — `just build-tui && ./tesla-road-trip-tui -server http://localhost:8000` (add `-session <id>` to jump into a session).
-- **Claude Code / MCP** — with the server running on :8000, `just claude-game` starts Claude with [mcp.json](mcp.json). For other MCP clients, point them at `http://localhost:8000/mcp`.
-- **Any GraphQL client** — e.g. [gqlcli](https://github.com/wricardo/gqlcli), `curl`, or `/playground`.
+- **Web UI** — served at `/tesla/`.
+- **Claude Code / MCP** — point MCP clients at `http://127.0.0.1:8181/tesla/mcp`; `mcp.json` names the server `tesla-game`.
+- **Any GraphQL client** — e.g. [gqlcli](https://github.com/wricardo/gqlcli), `curl`, or `/graphql/playground`.
 
 ## 🎲 Game Rules
 
@@ -156,16 +96,18 @@ Navigate your Tesla to visit all parks (P) while managing battery life and avoid
 
 ## 📡 GraphQL API Reference
 
-GraphQL endpoint: `http://localhost:8000/graphql`  
-Interactive playground: `http://localhost:8000/playground`  
-Subscription WebSocket endpoint: `ws://localhost:8000/graphql`  
-LLM quick guide: `http://localhost:8000/llms.txt`
+GraphQL endpoint: `http://127.0.0.1:8181/graphql` (namespace `tesla`)  
+Interactive playground: `http://127.0.0.1:8181/graphql/playground`  
+Subscription WebSocket endpoint: `ws://127.0.0.1:8181/graphql`  
+LLM quick guide: `http://127.0.0.1:8181/tesla/llms.txt`
 
 List maps:
 
 ```graphql
 query {
-  maps { mapId name description gridSize maxBattery }
+  tesla {
+    maps { mapId name description gridSize maxBattery }
+  }
 }
 ```
 
@@ -173,10 +115,12 @@ Create a session:
 
 ```graphql
 mutation {
-  createSession(mapID: "easy") {
-    id
-    mapName
-    gameState { playerPos { x y } battery score message fogRadius nearbyGrid { x y type allowedDirections } }
+  tesla {
+    createSession(mapID: "easy") {
+      id
+      mapName
+      gameState { playerPos { x y } battery score message fogRadius nearbyGrid { x y type allowedDirections } }
+    }
   }
 }
 ```
@@ -185,19 +129,21 @@ Move:
 
 ```graphql
 mutation Move($sessionID: ID!) {
-  move(sessionID: $sessionID, direction: RIGHT) {
-    success
-    message
-    gameState { playerPos { x y } battery score victory gameOver }
+  tesla {
+    move(sessionID: $sessionID, direction: RIGHT) {
+      success
+      message
+      gameState { playerPos { x y } battery score victory gameOver }
+    }
   }
 }
 ```
 
-Subscribe to session updates:
+Subscribe to session updates (`teslaSessionUpdated` stays at the operation root):
 
 ```graphql
 subscription Watch($sessionID: ID!) {
-  sessionUpdated(sessionID: $sessionID) {
+  teslaSessionUpdated(sessionID: $sessionID) {
     playerPos { x y }
     battery
     score
@@ -237,61 +183,56 @@ Notes:
 
 ## Maps
 
-Builtin maps live in `maps/*.json` (schema: [map-schema.json](map-schema.json), docs: [docs/config-schema.md](docs/config-schema.md)); they are release-managed files. Custom maps are PostgreSQL `platform_maps` rows (owner, DRAFT/PUBLISHED, hashed legacy edit key), capped by `TESLA_MAX_USER_MAPS`, and backed up with `pg_dump`. List them at runtime with the `maps` GraphQL query (published maps plus the caller's drafts). Validate all builtin maps with:
+Builtin maps live in `games/tesla/maps/*.json` (schema: [map-schema.json](map-schema.json), docs: [docs/config-schema.md](docs/config-schema.md)); they are release-managed files. Custom maps are PostgreSQL `platform_maps` rows (owner, DRAFT/PUBLISHED, hashed legacy edit key), capped by `TESLA_MAX_USER_MAPS`, and backed up with `pg_dump`. List them at runtime with the `maps` GraphQL query (published maps plus the caller's drafts). Validate all builtin maps from the repository root with:
 
 ```bash
-just validate
+go run ./cmd/drbrain validate --game=tesla
 ```
 
-`cd cmd/analyze && go run .` prints heuristics (size, battery, parks, chargers, reachability) per map.
+`go run ./games/tesla/cmd/analyze` prints heuristics (size, battery, parks, chargers, reachability) per map.
 
 ## Development
 
-```bash
-just --list         # list recipes (groups: setup, build, run, test, quality)
-just test           # go test ./...
-just test-coverage  # coverage.html
-just verify         # gofmt check + go vet + golangci-lint (run `just tools` first)
-just fmt            # gofmt -s + goimports
-just dev-live       # backend :9090 + Vite frontend :5173 with live reload
-```
-
-Frontend only:
+From the repository root:
 
 ```bash
-cd frontend
-npm ci
-npm run dev:local   # proxies to backend on :9090
-npm test
-npm run build       # → frontend/build (served by the Go server when present)
+just restart       # regen + build web/binary + start detached on :8181
+just regen         # after any GraphQL schema edit
+go test ./...      # all Go tests
+go vet ./...
+npm --workspace web run check
+npm --workspace web run test
 ```
 
-After changing `graph/schema.graphqls`, regenerate with `go run github.com/99designs/gqlgen generate`. Do not edit `graph/generated/`.
+Frontend hot reload: `npm run dev` serves Vite on :5173 and proxies `/graphql`
+(including websockets) to the Go server.
 
-To update the committed UI fallback after frontend changes: `just build-frontend && rm -rf static && cp -R frontend/build static`.
+Schema changes start in `graph/schema.graphqls` at the repository root; run
+`go generate ./games/... ./graph`. Never edit `games/tesla/graph/schema.graphqls`
+or `graph/generated/` by hand.
 
 ### Layout
 
 ```
-main.go              entry point, flags, wiring
-api/                 HTTP routes, SPA serving, legacy REST
-game/config          map loading
+game.go              platform adapter (Mount, GraphQLResolver, MCP, validate)
+appconfig            TESLA_* environment
+game/config          map loading and the PostgreSQL map catalogue
 game/engine          game rules (movement, battery, victory)
 game/service         GameService facade used by all transports
-game/session         session lifecycle + file persistence
-graph/               GraphQL schema + resolvers (generated/ is gqlgen output)
+game/session         session lifecycle (PostgreSQL-backed)
+graph/               resolvers + generated SDL/model
 transport/mcp        MCP tools
 transport/websocket  WebSocket hub
 validate/            map winnability checks
-cmd/tui              terminal client
 cmd/analyze          map heuristics CLI
-cmd/wsdebug          WebSocket debugging tool
-bruteforcer/         standalone solver (own go.mod)
-frontend/            SvelteKit + Tailwind source
-static/              prebuilt UI fallback
+cmd/envcheck         environment/config checker
+cmd/rlenv            reinforcement-learning environment
+bruteforcer/         standalone solver (part of the main module)
 maps/                map JSON files
 docs/                additional docs (docs/archive is historical)
 ```
+
+The web UI lives in the shared app at `web/src/routes/tesla/` and `web/src/lib/tesla/`.
 
 ## Contributing
 

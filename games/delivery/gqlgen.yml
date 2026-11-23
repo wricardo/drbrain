@@ -51,3 +51,24 @@ models:
   Time:
     model:
       - github.com/99designs/gqlgen/graphql.Time
+  # Bound to the hand-written model so months/cashEntries can take filter
+  # arguments. gqlgen resolves those two fields through LedgerViewResolver and
+  # leaves the rest bound to the struct; see graph/model/ledger_view.go.
+  LedgerView:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.LedgerView
+    fields:
+      months:
+        resolver: true
+      cashEntries:
+        resolver: true
+      cars:
+        resolver: true
+  # Bound to the hand-written model for the same reason: orders and openOrders
+  # take arguments, so they resolve through SnapshotResolver.
+  Snapshot:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.Snapshot
+    fields:
+      orders:
+        resolver: true
+      openOrders:
+        resolver: true

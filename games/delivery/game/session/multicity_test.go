@@ -49,7 +49,7 @@ func multiCityConfig(name string) *engine.CityConfig {
 			"D": "depot",
 		},
 		Depots: []engine.DepotConfig{
-			{ID: "home", Pos: engine.Position{X: 2, Y: 2}, Capacity: 4},
+			{ID: "home", Pos: engine.Position{X: 2, Y: 2}},
 		},
 		Orders: engine.OrdersConfig{
 			MaxActiveOrders:          6,
@@ -257,7 +257,7 @@ func TestCustomCitySessionSnapshotAndPersistence(t *testing.T) {
 	}
 	// Listing a save whose city was deleted must still work for a save picker.
 	var listed bool
-	for _, sum := range mgr.List() {
+	for _, sum := range mgr.List(ListOptions{}) {
 		if sum.ID == "on-b" {
 			listed = true
 			if sum.CityID != "bravo" {

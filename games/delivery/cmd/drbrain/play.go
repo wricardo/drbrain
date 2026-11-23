@@ -83,7 +83,7 @@ func cmdPlay(args []string) int {
 				fmt.Printf("cannot queue: %v\n", err)
 				continue
 			}
-			fmt.Printf("%s queued %s (applies next tick)\n", car.Name, dir)
+			fmt.Printf("%s queued %s (%d pending)\n", car.Name, dir, len(car.PendingMoves()))
 
 		case line == "":
 			// ignore

@@ -57,15 +57,15 @@ There are two ways to get an AI to play.
 
 **1. Copy the prompt from the game (easiest).** Start a game in the browser and click **Play with an AI**. It copies a ready-made prompt with the session, the map and the API calls the AI needs. Paste it into an AI assistant that can make web requests (for example a coding agent like Claude Code). Then open the game's watch page and see if the AI can win.
 
-**2. Point an agent at the API.** The game publishes a guide written for AI agents at [/llms.txt](https://drbrain.wricardo.net/motor/llms.txt). It has the rules, the endpoints and examples for every call. Give your agent this link and ask it to beat a map.
+**2. Point an agent at the API.** The game publishes a guide written for AI agents at [/motor/llms.txt](https://drbrain.wricardo.net/motor/llms.txt). It has the rules, the endpoints and examples for every call. Give your agent this link and ask it to beat a map.
 
 The API is plain GraphQL at `https://drbrain.wricardo.net/graphql`, selecting the `motorProgramming` namespace. A game takes four calls:
 
 ```graphql
-query    { maps { id name difficulty layout mainTapeLength subTapeLengths } }   # 1. pick a map
-mutation { createSession(mapID: "straight_line") { id ownerToken } }            # 2. start a game (keep the token)
-mutation { setProgram(sessionID: "…", ownerToken: "…", program: { main: [MOVE_FORWARD, …], subs: [[…]] }) { id } }  # 3. load a program
-mutation { run(sessionID: "…", ownerToken: "…") { playing vm { status } } }      # 4. press Run
+query Maps      { motorProgramming { maps { id name difficulty layout mainTapeLength subTapeLengths } } }   # 1. pick a map
+mutation Start  { motorProgramming { createSession(mapID: "straight_line") { id ownerToken } } }            # 2. start a game (keep the token)
+mutation Load   { motorProgramming { setProgram(sessionID: "…", ownerToken: "…", program: { main: [MOVE_FORWARD], subs: [[]] }) { id } } }  # 3. load a program
+mutation Run    { motorProgramming { run(sessionID: "…", ownerToken: "…") { playing vm { status } } } }      # 4. press Run
 ```
 
 Playing needs the session's secret: the `ownerToken` that `createSession` returns (or, for a session

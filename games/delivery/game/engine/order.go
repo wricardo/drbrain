@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"math"
 	"sort"
 )
 
@@ -158,6 +159,19 @@ func (w *World) Order(id string) (*Order, bool) {
 	return nil, false
 }
 
+// reservedBoxes sums the hold space promised to orders assigned to carID but
+// not yet picked up. exceptOrderID lets AssignOrder re-check a car without
+// counting the order it is assigning.
+func (w *World) reservedBoxes(carID, exceptOrderID string) int {
+	total := 0
+	for _, o := range w.Orders {
+		if o.State == OrderAssigned && o.AssignedCar == carID && o.ID != exceptOrderID {
+			total += o.Boxes()
+		}
+	}
+	return total
+}
+
 // AssignOrder points an order at a car. Only PENDING orders can be assigned.
 //
 // Assignment refreshes the deadline. The spawn-time deadline assumes a free
@@ -166,14 +180,18 @@ func (w *World) Order(id string) (*Order, bool) {
 // spawner's timing rather than for their driving. Once a courier commits, the
 // clock restarts from a fresh route estimate. Orders still have a spawn
 // deadline, so they age out if nobody ever claims them.
+//
+// Capacity is enforced here as well as at pickup: the order must fit beside the
+// boxes the car already carries and the boxes promised to its other assigned
+// orders, so a car can be given several orders only while their total fits.
 func (w *World) AssignOrder(orderID, carID string) error {
 	o, ok := w.Order(orderID)
 	if !ok {
-		return fmt.Errorf("no order %q", orderID)
+		return fmt.Errorf("%w %q", ErrNoOrder, orderID)
 	}
 	car, ok := w.Car(carID)
 	if !ok {
-		return fmt.Errorf("no car %q", carID)
+		return fmt.Errorf("%w %q", ErrNoCar, carID)
 	}
 	switch o.State {
 	case OrderDone, OrderExpired:
@@ -186,9 +204,17 @@ func (w *World) AssignOrder(orderID, carID string) error {
 	if o.State == OrderAssigned && o.AssignedCar != carID {
 		return fmt.Errorf("order %q is assigned to %s", orderID, o.AssignedCar)
 	}
-	if !car.SpaceFor(o.Boxes()) && car.ID != o.AssignedCar {
-		return fmt.Errorf("%s cannot take %d boxes (%d/%d in use)",
-			car.Name, o.Boxes(), car.Load(), car.Class.Capacity)
+	// Capacity is reserved by assignment: boxes promised to orders already
+	// assigned to this car but not yet collected count against the hold, so a
+	// player cannot stack more work on a car than it could ever pick up and
+	// only find out at the kitchen. Re-assigning the same order to the same
+	// car is a no-op that must still succeed, hence the skip.
+	if car.ID != o.AssignedCar {
+		reserved := w.reservedBoxes(carID, orderID)
+		if car.FreeBoxes() < reserved+o.Boxes() {
+			return fmt.Errorf("%s cannot take %d boxes (%d carried, %d already assigned, %d capacity)",
+				car.Name, o.Boxes(), car.Load(), reserved, car.Class.Capacity)
+		}
 	}
 	o.AssignedCar = carID
 	o.State = OrderAssigned
@@ -220,7 +246,7 @@ func (w *World) AssignOrder(orderID, carID string) error {
 func (w *World) UnassignOrder(orderID string) error {
 	o, ok := w.Order(orderID)
 	if !ok {
-		return fmt.Errorf("no order %q", orderID)
+		return fmt.Errorf("%w %q", ErrNoOrder, orderID)
 	}
 	if o.State != OrderAssigned {
 		return fmt.Errorf("order %q is %s, not assigned", orderID, o.State)
@@ -282,6 +308,12 @@ func (w *World) resolveTileInteractions(car *Car) {
 }
 
 // completeOrder settles payment and counters for a delivered order.
+//
+// Pay is the reward, reduced when the dropoff was late, and then scaled by the
+// fleet's standing. Reputation is what customers pay for: a 5.0 fleet collects
+// the full reward, and every half point below that costs a tenth, down to zero
+// at 0.5. A player who let the standing collapse still earns reputation for
+// delivering (0.02 each), so free runs are the way back to a paid one.
 func (w *World) completeOrder(car *Car, o *Order, cu Customer) {
 	o.State = OrderDone
 	o.DeliveredTick = w.Tick
@@ -290,10 +322,11 @@ func (w *World) completeOrder(car *Car, o *Order, cu Customer) {
 	pay := o.Reward
 	kind := CashDelivery
 	if late {
-		pay = int(float64(o.Reward) * w.ordersCfg.LatePayMultiplier)
+		pay = int(math.Round(float64(o.Reward) * w.ordersCfg.LatePayMultiplier))
 		o.Late = true
 		kind = CashLateDelivery
 	}
+	pay = int(math.Round(float64(pay) * w.PayMultiplier()))
 	o.Paid = pay
 
 	w.recordCash(kind, pay, car, o.ID,
@@ -302,14 +335,15 @@ func (w *World) completeOrder(car *Car, o *Order, cu Customer) {
 	if late {
 		w.Ledger.LateDeliveries++
 		w.Ledger.OnTimeStreak = 0
-		w.Ledger.Reputation -= w.ordersCfg.ReputationPerLate
+		w.recordReputation(-w.ordersCfg.ReputationPerLate, ReputationLateDelivery, o.ID,
+			fmt.Sprintf("%s delivered late", w.itemLabel(o.Item)))
 	} else {
 		w.Ledger.Deliveries++
 		w.Ledger.OnTimeStreak++
-		w.Ledger.Reputation += w.ordersCfg.ReputationPerDelivery
+		w.recordReputation(w.ordersCfg.ReputationPerDelivery, ReputationDelivery, o.ID,
+			fmt.Sprintf("%s delivered", w.itemLabel(o.Item)))
 	}
 	w.Ledger.DeliveriesByItem[o.Item]++
-	w.clampReputation()
 
 	// The cooldown starts again when the customer leaves, not only when the
 	// order was raised. A slow delivery would otherwise leave the site eligible
@@ -336,6 +370,86 @@ func (w *World) clampReputation() {
 	if w.Ledger.Reputation < 0 {
 		w.Ledger.Reputation = 0
 	}
+}
+
+// ExpirePenalty is what one missed order costs in reputation at the current
+// standing: the configured maximum at 1.0 and above, scaled down linearly while
+// standing is below 1.0, and zero at zero.
+//
+// The scale exists because a flat penalty punishes a collapsed fleet harder than
+// it can recover: at 5:1 deliveries-to-expiries the standing holds, and a fleet
+// that fell to 0.2 could not out-deliver a 0.10 fine. At 0.2 a miss now costs
+// 0.02 — one delivery — so any ratio better than 1:1 climbs, while a standing
+// player still pays the full price for letting orders rot.
+func (w *World) ExpirePenalty() float64 {
+	penalty := w.ordersCfg.ExpirePenaltyReputation
+	if penalty <= 0 {
+		return 0
+	}
+	rep := w.Ledger.Reputation
+	if rep >= 1 {
+		return penalty
+	}
+	if rep <= 0 {
+		return 0
+	}
+	return penalty * rep
+}
+
+// PayMultiplier is the share of the quoted reward a customer actually pays the
+// fleet, set by its standing. It is the one thing reputation buys: at 5.0 the
+// fleet collects 100%, and each half point below costs a tenth.
+//
+//	>= 4.90  100%      >= 1.50   30%
+//	>= 4.50   90%      >= 1.00   20%
+//	>= 4.00   80%      >= 0.50   10%
+//	>= 3.50   70%      >  0.00   10% (floor)
+//	>= 3.00   60%      == 0.00    0%
+//	>= 2.50   50%
+//	>= 2.00   40%
+//
+// The bottom is a floor, not a cliff: any standing above zero still earns a
+// tenth of the reward, so a collapsed fleet can sell work, buy a truck and
+// climb back. A hard 0% band deadlocked the economy — zero income meant no new
+// capacity, which meant the expiries that kept the standing at zero (observed
+// on a 6k-tick run: pay 0%, 3 expiries per 100 ticks against 8 deliveries).
+// Only an exactly-zero standing earns nothing, and one delivery lifts it out.
+//
+// A session opens at the top of the scale (max_reputation), so the first
+// deliveries pay in full and the ladder is what you spend by letting orders
+// rot: reputation rises 0.02 per on-time delivery and falls 0.10 per expiry, so
+// holding a band takes five deliveries for each order you miss.
+//
+// The comparison carries an epsilon because reputation accumulates in 0.02 and
+// 0.10 steps on a float: a fleet sitting on exactly 4.5 must read 90%, not 80%
+// because the sum landed at 4.499999999.
+func (w *World) PayMultiplier() float64 {
+	const eps = 1e-9
+	bands := []struct {
+		at   float64
+		mult float64
+	}{
+		{4.90, 1.00},
+		{4.50, 0.90},
+		{4.00, 0.80},
+		{3.50, 0.70},
+		{3.00, 0.60},
+		{2.50, 0.50},
+		{2.00, 0.40},
+		{1.50, 0.30},
+		{1.00, 0.20},
+		{0.50, 0.10},
+	}
+	r := w.Ledger.Reputation
+	for _, b := range bands {
+		if r+eps >= b.at {
+			return b.mult
+		}
+	}
+	if r <= 0 {
+		return 0
+	}
+	return 0.10
 }
 
 // expireOrders marks overdue open orders EXPIRED and applies the penalty.
@@ -375,8 +489,8 @@ func (w *World) expireOrders() {
 			fmt.Sprintf("%s expired", w.itemLabel(o.Item)))
 		w.Ledger.ExpiredOrders++
 		w.Ledger.OnTimeStreak = 0
-		w.Ledger.Reputation -= w.ordersCfg.ExpirePenaltyReputation
-		w.clampReputation()
+		w.recordReputation(-w.ExpirePenalty(), ReputationExpired, o.ID,
+			fmt.Sprintf("%s expired", w.itemLabel(o.Item)))
 		// An expired order also makes the customer leave, so it rests for its
 		// interval before it can be seen again — the same rule as a delivery.
 		if cu, ok := w.customerByID(o.CustomerID); ok {

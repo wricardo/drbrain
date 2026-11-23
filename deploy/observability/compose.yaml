@@ -1,0 +1,42 @@
+# Prometheus for the drbrain host process. The game binary stays on the host;
+# this container scrapes its separate metrics listener.
+#
+#   docker compose up -d      # from this directory
+#   docker compose down       # keeps the TSDB volume
+#   docker compose down -v    # deletes stored samples
+name: drbrain-observability
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+    ports:
+      # 9090 is commonly taken (and used by other tunnels); 9091 by default.
+      - "127.0.0.1:${DRBRAIN_PROMETHEUS_PORT:-9091}:9090"
+    extra_hosts:
+      # Docker Desktop provides host.docker.internal already; host-gateway makes
+      # the same name resolve on Linux.
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+
+  perses:
+    image: persesdev/perses:v0.55.0
+    restart: unless-stopped
+    command:
+      - --config=/etc/perses/config.yaml
+    ports:
+      - "127.0.0.1:${DRBRAIN_PERSES_PORT:-9092}:8080"
+    volumes:
+      - ./perses/config.yaml:/etc/perses/config.yaml:ro
+      - ./perses/provisioning:/etc/perses/provisioning:ro
+      - perses-data:/perses
+
+volumes:
+  prometheus-data:
+  perses-data:

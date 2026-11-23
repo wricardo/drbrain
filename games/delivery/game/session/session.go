@@ -21,9 +21,12 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -79,17 +82,38 @@ type Session struct {
 	accountID string
 	ownerHash string
 
+	// displayName is the player's name for this save; "" falls back to the
+	// city name. Guarded by mu because rename may race a summary read.
+	displayName string
+
 	// lastSavedTick is the world tick of the newest autosave. Storing it before
 	// the write means a failing store costs one interval per attempt instead of
 	// retrying on every tick.
 	lastSavedTick atomic.Int64
-	// saveMu keeps autosaves from overlapping. TryLock means a store slower
-	// than the interval skips a save instead of building a backlog behind the
-	// tick loop.
+	// saveMu serialises every save, explicit or autosave, so the store and the
+	// history projection always reflect snapshots in order. Autosave uses
+	// TryLock: a slow store skips a background save rather than queueing behind
+	// the tick loop.
 	saveMu sync.Mutex
 	// saveRequested asks the loop to persist once on its next pass. The paused
 	// branch needs it because a paused world produces no ticks to count.
 	saveRequested atomic.Bool
+	// dirtyAt is when the last mutation ran, in Unix nanoseconds (0 = nothing
+	// unsaved). It lets a paused session flush same-tick work (a purchase, a
+	// tow) that never advances the tick autosave counts.
+	dirtyAt atomic.Int64
+
+	// history projects the ledger and orders into indexed tables after a save.
+	// It is nil for sessions built without a manager (unit tests). All fields
+	// below are guarded by saveMu, which serialises every save.
+	history      *historyWriter
+	historyReady bool
+	// historyCashSeq is the highest cash seq already projected (-1 = none).
+	historyCashSeq int
+	// historyReputationSeq is the highest reputation seq already projected.
+	historyReputationSeq int
+	// historyOrders is the last projected signature per order id.
+	historyOrders map[string]orderSignature
 }
 
 // Speed values accepted by SetSpeed.
@@ -99,6 +123,13 @@ const (
 	Speed2x     = 2
 	Speed4x     = 4
 )
+
+// ErrPaused reports that a wait cannot finish because the clock is stopped.
+// A paused session never advances, so waiting for a future tick would hang.
+var ErrPaused = errors.New("session is paused")
+
+// ErrClosed reports that the session ended while a caller was waiting on it.
+var ErrClosed = errors.New("session closed")
 
 // validID rejects anything that could not be a store key.
 var validID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
@@ -124,10 +155,13 @@ func (s *Session) Do(fn func(w *engine.World)) {
 		fn(s.world)
 		return s.world.Tick != before
 	}()
-	if changed {
-		// A paused clock never reaches the loop's autosave interval, so record
-		// that there is unsaved progress for the loop to pick up.
-		s.saveRequested.Store(true)
+	// A paused clock never reaches the loop's autosave interval, so record that
+	// there is unsaved progress for the loop to pick up. Same-tick work (a
+	// purchase, a tow, a queued move) never advances the tick that interval
+	// counts, so it also records when it happened.
+	s.saveRequested.Store(true)
+	if !changed {
+		s.dirtyAt.Store(time.Now().UnixNano())
 	}
 	// Every mutating entry point goes through here (the resolvers all do), so
 	// this is the one place that guarantees a subscriber hears about a manual
@@ -175,12 +209,40 @@ func newWithStore(id string, city *engine.City, cfg *engine.CityConfig, cityID s
 		done:  make(chan struct{}),
 		store: st,
 		hub:   newWatchHub(),
+		// -1 means "nothing projected yet"; the first save loads the real
+		// watermark from the history table.
+		historyCashSeq:       -1,
+		historyReputationSeq: -1,
 	}, nil
 }
 
 // CityID returns the catalogue id this session snapshotted at creation. It is
 // immutable after construction, so readers do not need the world lock.
 func (s *Session) CityID() string { return s.cityID }
+
+// DisplayName returns the player's name for this save ("" when unnamed).
+func (s *Session) DisplayName() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.displayName
+}
+
+// Rename sets the save's player-facing name. An empty name clears it, which
+// every view renders as the city name. The caller persists with Save; this only
+// mutates memory so a batch of renames costs one write.
+func (s *Session) Rename(name string) {
+	name = strings.TrimSpace(name)
+	if len(name) > MaxDisplayNameLen {
+		name = name[:MaxDisplayNameLen]
+	}
+	s.mu.Lock()
+	s.displayName = name
+	s.mu.Unlock()
+}
+
+// MaxDisplayNameLen bounds a session name. It matches the city name bound so a
+// picker never has to truncate two different kinds of title.
+const MaxDisplayNameLen = 80
 
 // TickInterval is the wall-clock gap between ticks at 1x, derived from the
 // city's tick_ms. At 2x or 4x the ticker fires proportionally faster; at paused
@@ -219,13 +281,24 @@ func (s *Session) loop() {
 		if speed == SpeedPaused {
 			// Manual play advances the world through Do, which marks the session
 			// dirty; a paused clock produces no tick cadence, so this is where a
-			// hand-played session gets its periodic save.
+			// hand-played session gets its periodic save. Same-tick work that
+			// never advances the tick is flushed after a short debounce instead,
+			// or it would wait for 60 further ticks that a paused session may
+			// never see.
 			if s.saveRequested.Load() {
-				tick := s.currentTick()
-				if tick-s.lastSavedTick.Load() >= s.world.AutosaveTicks() {
-					s.lastSavedTick.Store(tick)
+				tick := s.CurrentTick()
+				due := tick-s.lastSavedTick.Load() >= s.world.AutosaveTicks()
+				if at := s.dirtyAt.Load(); !due && at != 0 {
+					due = time.Since(time.Unix(0, at)) >= pausedSaveDebounce
+				}
+				if due {
 					s.saveRequested.Store(false)
-					s.autosave()
+					s.lastSavedTick.Store(tick)
+					s.dirtyAt.Store(0)
+					// Blocking: while the session is paused there is no clock to
+					// stall, and a TryLock skip here silently dropped the flush
+					// when an explicit save already held the lock.
+					s.flush()
 				}
 			}
 			select {
@@ -306,18 +379,55 @@ func (s *Session) SetSpeed(speed int) error {
 	s.notify()
 	if speed == SpeedPaused {
 		// Pausing is the natural end of a session, and a paused world produces
-		// no ticks for the autosave interval to count: flush here instead.
-		s.lastSavedTick.Store(s.currentTick())
-		s.autosave()
+		// no ticks for the autosave interval to count: flush here instead. Use
+		// the blocking flush so an explicit save in flight cannot make the
+		// pause drop its write.
+		s.saveRequested.Store(false)
+		tick := s.CurrentTick()
+		s.flush()
+		s.lastSavedTick.Store(tick)
+		s.dirtyAt.Store(0)
 	}
 	return nil
 }
 
-// currentTick is the world tick under the session lock.
-func (s *Session) currentTick() int64 {
+// CurrentTick is the world tick under the session lock.
+func (s *Session) CurrentTick() int64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.world.Tick
+}
+
+// WaitUntil blocks until the world reaches target, or ctx ends.
+//
+// It waits on the session's live clock rather than advancing it: callers that
+// want immediate progress use Do/tick. A paused session never reaches a future
+// tick, so this returns ErrPaused immediately (and if the caller pauses while
+// waiting) instead of blocking forever. Closing the session returns ErrClosed.
+// A target at or below the current tick returns at once.
+func (s *Session) WaitUntil(ctx context.Context, target int64) error {
+	watch := s.Watch()
+	defer s.Unwatch(watch)
+
+	for {
+		s.mu.Lock()
+		tick := s.world.Tick
+		paused := s.speed == SpeedPaused
+		s.mu.Unlock()
+
+		if tick >= target {
+			return nil
+		}
+		if paused {
+			return ErrPaused
+		}
+		if !watch.NextContext(ctx) {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			return ErrClosed
+		}
+	}
 }
 
 // Paused reports whether the clock is stopped; it is exactly Speed() ==
@@ -347,6 +457,28 @@ type persisted struct {
 	// byte-identical.
 	AccountID string `json:"account_id,omitempty"`
 	OwnerHash string `json:"owner_hash,omitempty"`
+	// DisplayName is the player's name for this save. "" falls back to the
+	// city name in every view, so old payloads keep working unchanged.
+	DisplayName string `json:"display_name,omitempty"`
+}
+
+// pausedSaveDebounce is how long a same-tick mutation waits before the paused
+// loop writes it. Long enough to coalesce a burst of clicks (a purchase and an
+// assignment), short enough that a crash costs seconds of manual work.
+const pausedSaveDebounce = time.Second
+
+// flush saves the session, waiting for any save already in flight.
+//
+// autosave must not queue behind an explicit save because it runs next to a
+// running tick clock; a paused session has no clock to stall, so dropping the
+// write there is never acceptable.
+func (s *Session) flush() {
+	if s.store == nil {
+		return
+	}
+	s.saveMu.Lock()
+	defer s.saveMu.Unlock()
+	_ = s.save()
 }
 
 // autosave persists the session without ever queueing behind another save.
@@ -364,28 +496,48 @@ func (s *Session) autosave() {
 		return
 	}
 	defer s.saveMu.Unlock()
-	_ = s.Save()
+	_ = s.save()
 }
 
-// Save persists the session through the manager's store.
+// Save persists the session through the manager's store and then projects the
+// derived history tables.
 //
-// The state is deep-copied under the session lock and marshalled outside it.
-// Marshalling in place was a data race: the ticker goroutine keeps mutating cars
-// and the event log while the encode is in progress.
+// Saves are serialised: an explicit save must not interleave with an autosave
+// and leave the projection reflecting an older snapshot. Autosave skips when a
+// save is already running; explicit saves wait for it.
 func (s *Session) Save() error {
+	if s.store == nil {
+		return nil
+	}
+	s.saveMu.Lock()
+	defer s.saveMu.Unlock()
+	return s.save()
+}
+
+// save is the body of Save. Callers must hold saveMu.
+func (s *Session) save() error {
 	if s.store == nil {
 		return nil
 	}
 
 	s.mu.Lock()
 	data := persisted{
-		ID:        s.ID,
-		CityID:    s.cityID,
-		CreatedAt: s.CreatedAt,
-		Speed:     s.speed,
-		World:     s.world.ExportState(),
-		AccountID: s.accountID,
-		OwnerHash: s.ownerHash,
+		ID:          s.ID,
+		CityID:      s.cityID,
+		CreatedAt:   s.CreatedAt,
+		Speed:       s.speed,
+		World:       s.world.ExportState(),
+		AccountID:   s.accountID,
+		OwnerHash:   s.ownerHash,
+		DisplayName: s.displayName,
+	}
+	counters := &sessionstore.Counters{
+		Tick: data.World.Tick,
+	}
+	if data.World.Ledger != nil {
+		counters.Money = data.World.Ledger.Money
+		counters.Reputation = data.World.Ledger.Reputation
+		counters.Deliveries = data.World.Ledger.Deliveries
 	}
 	s.mu.Unlock()
 
@@ -393,8 +545,13 @@ func (s *Session) Save() error {
 	if err != nil {
 		return fmt.Errorf("marshal session: %w", err)
 	}
-	return s.store.Persist(sessionstore.Meta{
-		ID: s.ID, MapID: s.cityID, CreatedAt: s.CreatedAt, LastActionAt: s.CreatedAt,
-		Seq: uint64(data.World.Tick),
-	}, blob)
+	if err := s.store.Persist(sessionstore.Meta{
+		ID: s.ID, MapID: s.cityID, CreatedAt: s.CreatedAt, LastActionAt: time.Now().UTC(),
+		Seq: uint64(data.World.Tick), DisplayName: data.DisplayName,
+		AccountID: data.AccountID, Counters: counters,
+	}, blob); err != nil {
+		return err
+	}
+	s.projectHistory(data)
+	return nil
 }

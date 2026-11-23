@@ -138,7 +138,6 @@ type Event struct {
 
 // Event type names.
 const (
-	EventMoved      = "car_moved"
 	EventBlocked    = "car_blocked"
 	EventCharged    = "car_charged"
 	EventStranded   = "car_stranded"
@@ -184,7 +183,7 @@ func NewWorldSeeded(city *City, cfg *CityConfig, seed uint64) (*World, error) {
 		City:           city,
 		Speed:          1,
 		carClasses:     cfg.CarClasses,
-		Ledger:         NewLedger(cfg.StartMoney),
+		Ledger:         newStartLedger(cfg),
 		Seed:           seed,
 		ordersCfg:      cfg.Orders,
 		closuresCfg:    *cfg.Closures,
@@ -230,8 +229,30 @@ func NewWorldSeeded(city *City, cfg *CityConfig, seed uint64) (*World, error) {
 	return w, nil
 }
 
+// newStartLedger is the opening ledger: the map's starting money and full
+// standing. A fleet starts at the top of the reputation scale
+// (max_reputation, 5 on the shipped maps), so the first deliveries pay in full
+// and every expiry or late dropoff spends the standing the pay ladder reads.
+func newStartLedger(cfg *CityConfig) *Ledger {
+	l := NewLedger(cfg.StartMoney)
+	l.Reputation = cfg.MaxReputation
+	l.ReputationEntries = append(l.ReputationEntries, ReputationEntry{
+		Seq:     0,
+		Tick:    0,
+		Delta:   l.Reputation,
+		Balance: l.Reputation,
+		Reason:  ReputationOpening,
+		Memo:    "opening standing",
+	})
+	return l
+}
+
 // TicksPerMonth returns the accounting month length from the map config.
 func (w *World) TicksPerMonth() int { return int(w.ticksPerMonth) }
+
+// MaxEvents is how many feed entries the world retains before it drops the
+// oldest. Clients use it to tell a gap from a quiet stretch.
+func (w *World) MaxEvents() int { return w.maxEvents }
 
 // AutosaveTicks returns how many world ticks may pass between background saves.
 func (w *World) AutosaveTicks() int64 { return w.autosaveTicks }
@@ -256,23 +277,50 @@ func (w *World) Car(id string) (*Car, bool) {
 	return nil, false
 }
 
-// QueueMove sets a car's queued direction. This is the manual driving command:
-// it does not move the car, it schedules exactly one step for the next tick.
+// MaxQueuedMoves bounds a car's movement backlog. A queued route is a plan,
+// not a lease: the cap keeps a runaway client from parking an unbounded slice
+// in every save while still allowing a full cross-map route.
+const MaxQueuedMoves = 64
+
+// QueueMove appends one step to a car's movement queue. This is the manual
+// driving command: it does not move the car, it schedules exactly one step per
+// queued command. Queued steps execute one per tick in order, so a client can
+// preload a route and then advance the clock, which is what lets an agent drive
+// at 2x/4x without missing a tick to a round trip.
 //
 // Queueing is deliberately not an error when the move would be illegal; the
 // rejection happens at tick time so the player sees the world's answer (and
 // so a wall does not silently swallow a command before the tick it applies
-// to). The one early exit is an unknown car or direction, which are caller
-// bugs rather than gameplay.
+// to). The two early exits are caller bugs or contract limits: an unknown car
+// or direction, and a full queue.
 func (w *World) QueueMove(carID string, dir Direction) error {
 	car, ok := w.Car(carID)
 	if !ok {
-		return fmt.Errorf("no car %q", carID)
+		return fmt.Errorf("%w %q", ErrNoCar, carID)
 	}
 	if !dir.Valid() {
 		return fmt.Errorf("bad direction %q", dir)
 	}
-	car.QueuedMove = dir
+	if car.pendingMoveCount() >= MaxQueuedMoves {
+		return fmt.Errorf("%w: %d steps already queued", ErrMoveQueueFull, MaxQueuedMoves)
+	}
+	if car.QueuedMove == "" {
+		car.QueuedMove = dir
+		return nil
+	}
+	car.MoveQueue = append(car.MoveQueue, dir)
+	return nil
+}
+
+// ClearMoves drops a car's entire movement plan, including the step queued for
+// the next tick. It is the replanning primitive: without it a client that
+// preloaded a route could not cancel it as traffic or closures change.
+func (w *World) ClearMoves(carID string) error {
+	car, ok := w.Car(carID)
+	if !ok {
+		return fmt.Errorf("%w %q", ErrNoCar, carID)
+	}
+	car.clearMoves()
 	return nil
 }
 
@@ -413,8 +461,7 @@ type plannedMove struct {
 // cars did this tick — which is what lets Advance decide the whole fleet's moves
 // before applying any of them.
 func (w *World) planMove(car *Car) (plannedMove, bool) {
-	dir := car.QueuedMove
-	car.QueuedMove = ""
+	dir := car.popMove()
 	if dir == "" {
 		return plannedMove{}, false
 	}
@@ -550,7 +597,6 @@ func (w *World) resolveMoves(plans []plannedMove) []*Car {
 		car.Battery -= mv.cost
 		car.StepsTaken++
 		car.LastReject = RejectNone
-		w.emit(EventMoved, car, fmt.Sprintf("%s moved %s", car.Name, mv.dir))
 
 		if car.Battery <= 0 && !w.City.ChargingAt(car.Pos) {
 			w.emit(EventStranded, car, fmt.Sprintf("%s is out of battery at %s", car.Name, car.Pos))
@@ -771,7 +817,7 @@ func (w *World) BuyCar(class, depotID string) (*Car, error) {
 	}
 	depot, ok := w.depot(depotID)
 	if !ok {
-		return nil, fmt.Errorf("no depot %q", depotID)
+		return nil, fmt.Errorf("%w %q", ErrNoDepot, depotID)
 	}
 	if w.Ledger.Money < cc.Price {
 		return nil, fmt.Errorf("%s costs $%d, you have $%d", class, cc.Price, w.Ledger.Money)
@@ -816,7 +862,7 @@ func (w *World) depot(id string) (Depot, bool) {
 func (w *World) Tow(carID string) error {
 	car, ok := w.Car(carID)
 	if !ok {
-		return fmt.Errorf("no car %q", carID)
+		return fmt.Errorf("%w %q", ErrNoCar, carID)
 	}
 	if len(w.City.Depots) == 0 {
 		return fmt.Errorf("no depot to tow to")
@@ -857,7 +903,7 @@ func (w *World) Tow(carID string) error {
 
 	car.Pos = dest.Pos
 	car.Battery = 1 // towed in, not repaired: it must charge up properly
-	car.QueuedMove = ""
+	car.clearMoves()
 	car.LastReject = RejectNone
 	w.Ledger.Tows++
 	if fee > 0 {

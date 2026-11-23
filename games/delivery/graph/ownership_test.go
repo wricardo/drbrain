@@ -210,13 +210,14 @@ func TestGatedMutationsRejectMissingAndWrongTokens(t *testing.T) {
 		query string
 	}{
 		{"moveCar", `mutation ($id: ID!, $t: String) { moveCar(id: $id, carId: "car_1", direction: SOUTH, ownerToken: $t) { id } }`},
+		{"clearMoves", `mutation ($id: ID!, $t: String) { clearMoves(id: $id, carId: "car_1", ownerToken: $t) { id } }`},
 		{"tick", `mutation ($id: ID!, $t: String) { tick(id: $id, count: 1, ownerToken: $t) { id } }`},
 		{"setSpeed", `mutation ($id: ID!, $t: String) { setSpeed(id: $id, speed: 1, ownerToken: $t) { id } }`},
 		{"assignOrder", `mutation ($id: ID!, $t: String) { assignOrder(id: $id, orderId: "o1", carId: "car_1", ownerToken: $t) { id } }`},
 		{"unassignOrder", `mutation ($id: ID!, $t: String) { unassignOrder(id: $id, orderId: "o1", ownerToken: $t) { id } }`},
 		{"buyCar", `mutation ($id: ID!, $t: String) { buyCar(id: $id, className: "van", ownerToken: $t) { id } }`},
 		{"towCar", `mutation ($id: ID!, $t: String) { towCar(id: $id, carId: "car_1", ownerToken: $t) { id } }`},
-		{"build", `mutation ($id: ID!, $t: String) { build(id: $id, buildId: "b01_corner_charger", ownerToken: $t) { id } }`},
+		{"renameSession", `mutation ($id: ID!, $t: String) { renameSession(id: $id, displayName: "x", ownerToken: $t) { id } }`},
 		{"saveSession", `mutation ($id: ID!, $t: String) { saveSession(id: $id, ownerToken: $t) { id } }`},
 		{"evictSession", `mutation ($id: ID!, $t: String) { evictSession(id: $id, ownerToken: $t) }`},
 		{"deleteSession", `mutation ($id: ID!, $t: String) { deleteSession(id: $id, ownerToken: $t) }`},

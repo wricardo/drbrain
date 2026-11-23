@@ -27,6 +27,10 @@ var ErrNotFound = errors.New("session not found")
 // it simply cannot be simulated without its city.
 var ErrCityNotFound = errors.New("city not found")
 
+// ErrExists reports a create colliding with an existing id (live or stored).
+// It is a client conflict, not an internal failure.
+var ErrExists = errors.New("session exists")
+
 // CityCatalog is the city source a manager reads. At product time it is the
 // delivery config.Manager (builtin files plus PostgreSQL rows); tests can pass
 // a small in-memory implementation.
@@ -42,6 +46,7 @@ type CityCatalog interface {
 type Manager struct {
 	catalog CityCatalog
 	store   sessionstore.Store
+	history *historyWriter
 
 	mu       sync.RWMutex
 	sessions map[string]*Session
@@ -54,13 +59,14 @@ func NewManager(catalog CityCatalog, pool *pgxpool.Pool) (*Manager, error) {
 	if catalog == nil {
 		return nil, fmt.Errorf("city catalog is required")
 	}
-	store, err := sessionstore.Open(sessionstore.Options{Pool: pool})
+	store, err := sessionstore.Open(sessionstore.Options{Pool: pool, Game: "delivery"})
 	if err != nil {
 		return nil, err
 	}
 	return &Manager{
 		catalog:  catalog,
 		store:    store,
+		history:  newHistoryWriter(pool),
 		sessions: map[string]*Session{},
 	}, nil
 }
@@ -85,15 +91,15 @@ func (m *Manager) Create(id string, seed uint64, accountID, cityID string) (*Ses
 		return nil, "", fmt.Errorf("invalid session id %q", id)
 	}
 	if _, exists := m.Get(id); exists {
-		return nil, "", fmt.Errorf("session %q already exists", id)
+		return nil, "", fmt.Errorf("session %q already exists: %w", id, ErrExists)
 	}
 	// A save already stored under this id must not be adopted by a new creator:
 	// its owner credentials live in that payload. A corrupt payload also blocks
 	// the id rather than being silently overwritten.
 	if _, _, err := m.store.Load(id); err == nil {
-		return nil, "", fmt.Errorf("session %q already exists", id)
+		return nil, "", fmt.Errorf("session %q already exists: %w", id, ErrExists)
 	} else if !errors.Is(err, sessionstore.ErrNotFound) {
-		return nil, "", fmt.Errorf("session %q already exists", id)
+		return nil, "", fmt.Errorf("session %q already exists: %w", id, ErrExists)
 	}
 
 	accountID = sanitizeAccountID(accountID)
@@ -113,6 +119,7 @@ func (m *Manager) Create(id string, seed uint64, accountID, cityID string) (*Ses
 	if err != nil {
 		return nil, "", err
 	}
+	s.history = m.history
 	m.mu.Lock()
 	m.sessions[id] = s
 	m.mu.Unlock()
@@ -232,7 +239,9 @@ func (m *Manager) load(id string) (*Session, error) {
 	if err != nil {
 		return nil, err
 	}
+	s.history = m.history
 	s.CreatedAt = p.CreatedAt
+	s.displayName = p.DisplayName
 	if err := s.world.ImportState(p.World); err != nil {
 		return nil, fmt.Errorf("restore session %s: %w", id, err)
 	}
@@ -324,11 +333,81 @@ func (m *Manager) resolvedCityID(p persisted) string {
 	return m.catalog.DefaultID()
 }
 
-// List returns every session in the store plus any live ones, newest first.
+// LiveSummaries describes only the sessions held in memory and never touches
+// the store. It exists for metrics scrapes: List is right for a save picker but
+// would read every stored payload, turning one scrape into a PostgreSQL scan.
+func (m *Manager) LiveSummaries() []Summary {
+	m.mu.RLock()
+	live := make([]*Session, 0, len(m.sessions))
+	for _, s := range m.sessions {
+		live = append(live, s)
+	}
+	m.mu.RUnlock()
+
+	out := make([]Summary, 0, len(live))
+	for _, s := range live {
+		out = append(out, s.Summary())
+	}
+	return out
+}
+
+// SessionSort selects the order List returns rows in.
+type SessionSort int
+
+const (
+	// SortCreatedAt is the default: newest save first.
+	SortCreatedAt SessionSort = iota
+	// SortTick orders by world tick, highest first.
+	SortTick
+	// SortMoney orders by spendable balance, highest first.
+	SortMoney
+)
+
+// ListOptions narrows List. The zero value returns every row, newest first —
+// which is exactly the pre-options behaviour, so callers that want the whole
+// catalogue keep it by passing the zero value.
+type ListOptions struct {
+	Sort SessionSort
+	// Limit caps the rows returned. 0 means no cap.
+	Limit int
+	// Before keeps saves created strictly before this time. Zero means no
+	// cursor.
+	Before time.Time
+	// AccountID keeps the saves owned by one account. "" means every owner,
+	// including guests.
+	AccountID string
+	// Visible, when set, drops rows the caller may not read (another player's
+	// draft city). It runs before Limit truncates, so the limit counts rows the
+	// caller can actually see; a false keeps the row hidden. It must not do
+	// I/O under a lock.
+	Visible func(Summary) bool
+	// Cursor pages strictly after an encoded position in opts.Sort's order,
+	// with the id as the tiebreak, so rows that share the sort value are not
+	// skipped or repeated. The transport decodes its opaque cursor into this.
+	Cursor *ListCursor
+}
+
+// ListCursor is one row's position in the requested sort order. Value is the
+// sort key (created-at unix nanos, tick, or money); ID breaks ties, matching
+// sortSummaries' ascending-id order.
+type ListCursor struct {
+	Value int64
+	ID    string
+}
+
+// List returns the sessions in the store plus any live ones, ordered by
+// opts.Sort.
+//
+// A stored row is described from its sessionstore.Meta when the game published
+// counters there, which is what every save written since counters existed does.
+// Saves from before that have no counters and are decoded from their payload —
+// but only when the row survives filtering and truncation, so a bounded list
+// does bounded work. Ordering by tick or money needs counters for every
+// candidate, so that sort decodes legacy rows before sorting.
 //
 // It never returns nil: an empty list must marshal as [] rather than null, or
 // every client has to special-case "no sessions" as a null check.
-func (m *Manager) List() []Summary {
+func (m *Manager) List(opts ListOptions) []Summary {
 	m.mu.RLock()
 	live := make(map[string]*Session, len(m.sessions))
 	for id, s := range m.sessions {
@@ -337,32 +416,157 @@ func (m *Manager) List() []Summary {
 	m.mu.RUnlock()
 
 	seen := map[string]bool{}
-	out := []Summary{}
-
+	out := make([]Summary, 0, len(live))
 	for id, s := range live {
 		seen[id] = true
-		out = append(out, s.Summary())
+		sum := s.Summary()
+		if opts.AccountID != "" && sum.AccountID != opts.AccountID {
+			continue
+		}
+		if !opts.Before.IsZero() && !sum.CreatedAt.Before(opts.Before) {
+			continue
+		}
+		if opts.Visible != nil && !opts.Visible(sum) {
+			continue
+		}
+		out = append(out, sum)
 	}
 
-	metas, err := m.store.List()
-	if err == nil {
+	// legacy holds the ids of stored rows whose counters are not published, so
+	// their payload still has to be decoded. It is keyed by id, not row index:
+	// sorting moves rows, and a stale index would overwrite another session.
+	legacy := map[string]bool{}
+	if metas, err := m.store.List(); err == nil {
 		for _, meta := range metas {
 			if seen[meta.ID] || !ValidID(meta.ID) {
 				continue
 			}
-			if sum, err := m.summaryFromDisk(meta.ID); err == nil {
-				out = append(out, sum)
+			if opts.AccountID != "" && meta.AccountID != opts.AccountID {
+				continue
+			}
+			if !opts.Before.IsZero() && !meta.CreatedAt.Before(opts.Before) {
+				continue
+			}
+			sum := m.summaryFromMeta(meta, false)
+			if opts.Visible != nil && !opts.Visible(sum) {
+				continue
+			}
+			out = append(out, sum)
+			if meta.Counters == nil {
+				legacy[meta.ID] = true
 			}
 		}
 	}
 
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].CreatedAt.Equal(out[j].CreatedAt) {
-			return out[i].ID < out[j].ID
-		}
-		return out[i].CreatedAt.After(out[j].CreatedAt)
-	})
+	// Tick and money ordering needs every candidate's numbers before it can
+	// sort, so legacy payloads are decoded up front. CreatedAt ordering needs
+	// none, so truncation happens first and only the surviving rows are
+	// resolved: a bounded list with the default sort decodes nothing.
+	if opts.Sort != SortCreatedAt {
+		m.resolveLegacy(out, legacy)
+	}
+	m.sortSummaries(out, opts.Sort)
+	if opts.Cursor != nil {
+		out = rowsAfterCursor(out, opts.Sort, *opts.Cursor)
+	}
+	out = truncateSummaries(out, opts.Limit)
+	if opts.Sort == SortCreatedAt {
+		m.resolveLegacy(out, legacy)
+	}
 	return out
+}
+
+// rowsAfterCursor keeps the rows strictly after cur in the requested order.
+// Ordering is key descending, id ascending, so the next page is a smaller key
+// or an equal key with a larger id.
+func rowsAfterCursor(rows []Summary, sort SessionSort, cur ListCursor) []Summary {
+	key := func(s Summary) int64 {
+		switch sort {
+		case SortTick:
+			return s.Tick
+		case SortMoney:
+			return int64(s.Money)
+		default:
+			return s.CreatedAt.UnixNano()
+		}
+	}
+	out := rows[:0]
+	for _, s := range rows {
+		k := key(s)
+		if k < cur.Value || (k == cur.Value && s.ID > cur.ID) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// resolveLegacy decodes the payload of rows without published counters, in
+// place. Rows are matched by id because sorting may have moved them since the
+// set was built. Rows that fail to decode keep the meta-only description (zero
+// counters) rather than vanishing from the list.
+func (m *Manager) resolveLegacy(rows []Summary, legacy map[string]bool) {
+	for i := range rows {
+		id := rows[i].ID
+		if !legacy[id] {
+			continue
+		}
+		if sum, err := m.summaryFromDisk(id); err == nil {
+			sum.DisplayName = rows[i].DisplayName
+			rows[i] = sum
+		}
+	}
+}
+
+// sortSummaries orders rows by opts.Sort, newest/highest first, with the id as
+// a stable tiebreak so two equal rows never swap between calls.
+func (m *Manager) sortSummaries(rows []Summary, key SessionSort) {
+	sort.Slice(rows, func(i, j int) bool {
+		a, b := rows[i], rows[j]
+		var less, equal bool
+		switch key {
+		case SortTick:
+			less, equal = a.Tick > b.Tick, a.Tick == b.Tick
+		case SortMoney:
+			less, equal = a.Money > b.Money, a.Money == b.Money
+		default:
+			less = a.CreatedAt.After(b.CreatedAt)
+			equal = a.CreatedAt.Equal(b.CreatedAt)
+		}
+		if equal {
+			return a.ID < b.ID
+		}
+		return less
+	})
+}
+
+// truncateSummaries applies a limit, preserving the no-cap behaviour for 0.
+func truncateSummaries(rows []Summary, limit int) []Summary {
+	if limit > 0 && len(rows) > limit {
+		return rows[:limit]
+	}
+	return rows
+}
+
+// summaryFromMeta describes a stored save without decoding its payload when the
+// game published counters. Speed is unknown for a row that is not loaded, which
+// is why it reads as paused: a stored save has no running clock.
+func (m *Manager) summaryFromMeta(meta sessionstore.Meta, loaded bool) Summary {
+	sum := Summary{
+		ID:          meta.ID,
+		DisplayName: meta.DisplayName,
+		CreatedAt:   meta.CreatedAt,
+		Loaded:      loaded,
+		CityID:      meta.MapID,
+		AccountID:   sanitizeAccountID(meta.AccountID),
+		Speed:       SpeedPaused,
+	}
+	if meta.Counters != nil {
+		sum.Tick = meta.Counters.Tick
+		sum.Money = meta.Counters.Money
+		sum.Reputation = meta.Counters.Reputation
+		sum.Deliveries = meta.Counters.Deliveries
+	}
+	return sum
 }
 
 // summaryFromDisk reads just enough of a stored payload to describe it without
@@ -377,7 +581,8 @@ func (m *Manager) summaryFromDisk(id string) (Summary, error) {
 		return Summary{}, err
 	}
 	sum := Summary{ID: id, CreatedAt: p.CreatedAt, Speed: p.Speed, Loaded: false,
-		AccountID: sanitizeAccountID(p.AccountID), CityID: m.resolvedCityID(p)}
+		AccountID: sanitizeAccountID(p.AccountID), CityID: m.resolvedCityID(p),
+		DisplayName: p.DisplayName}
 	if p.World.Ledger != nil {
 		sum.Money = p.World.Ledger.Money
 		sum.Reputation = p.World.Ledger.Reputation
@@ -428,6 +633,47 @@ func (m *Manager) Delete(id string) error {
 		return fmt.Errorf("delete save: %w", err)
 	}
 	return nil
+}
+
+// DeleteByCity destroys every delivery session created on cityID, live or
+// stored, and returns how many it removed.
+//
+// Deleting a city must not leave sessions behind: their city gate cannot be
+// evaluated once the catalogue row is gone, and a private draft's sessions
+// would silently become world-readable. The caller runs this before or after
+// the city delete; a missing session is not an error.
+func (m *Manager) DeleteByCity(cityID string) (int, error) {
+	if cityID == "" {
+		return 0, nil
+	}
+	ids := make(map[string]bool)
+	m.mu.RLock()
+	for id, s := range m.sessions {
+		if s.CityID() == cityID {
+			ids[id] = true
+		}
+	}
+	m.mu.RUnlock()
+	if metas, err := m.store.List(); err == nil {
+		for _, meta := range metas {
+			if meta.MapID == cityID {
+				ids[meta.ID] = true
+			}
+		}
+	} else {
+		return 0, fmt.Errorf("list sessions for city %s: %w", cityID, err)
+	}
+
+	deleted := 0
+	var errs []error
+	for id := range ids {
+		if err := m.Delete(id); err != nil && !errors.Is(err, ErrNotFound) {
+			errs = append(errs, fmt.Errorf("delete session %s: %w", id, err))
+			continue
+		}
+		deleted++
+	}
+	return deleted, errors.Join(errs...)
 }
 
 // SaveAll persists every session currently in memory, returning the first
@@ -483,6 +729,9 @@ type Summary struct {
 	Reputation float64   `json:"reputation"`
 	Deliveries int       `json:"deliveries"`
 	Loaded     bool      `json:"loaded"`
+	// DisplayName is the player's name for the save; "" means unnamed and the
+	// client shows the city name.
+	DisplayName string `json:"display_name,omitempty"`
 	// CityID is the catalogue id the session snapshotted at creation. It is
 	// informational here; the session already owns its city.
 	CityID string `json:"city_id,omitempty"`

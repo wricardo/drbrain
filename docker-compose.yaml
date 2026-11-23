@@ -1,0 +1,34 @@
+# Local PostgreSQL for the whole platform.
+#
+# Every game's sessions, global accounts, sign-in and custom maps/cities live
+# here; the Go binary runs on the host and connects over loopback. `just db-up`
+# starts it, `just db-down` stops it, and `just start`/`just restart` default to
+# this URL:
+#
+#   postgres://drbrain:drbrain@127.0.0.1:55432/drbrain?sslmode=disable
+#
+# Port 55432 keeps the dev database out of the way of a system/container
+# PostgreSQL on 5432. The credentials are development-only; never reuse them.
+# An older `docker run --name drbrain-postgres` container also binds 55432:
+# keep using it, or stop it (`docker rm -f drbrain-postgres`) before `just db-up`.
+name: drbrain
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: drbrain
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-drbrain}
+      POSTGRES_DB: drbrain
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-55432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U drbrain -d drbrain"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

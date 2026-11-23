@@ -10,7 +10,7 @@ import "testing"
 //  2. a head-on pair cannot swap through each other (they used to)
 //  3. a follower CAN enter a tile another car vacates this same tick, so a queue
 //     does not deadlock behind its leader
-//  4. a depot holds DepotConfig.Capacity cars, so parking still works
+//  4. a depot holds any number of cars, so parking still works
 //  5. authored initial_cars may not start overlapping
 
 // twoCars places a second car directly, bypassing BuyCar so the test is about
@@ -134,6 +134,76 @@ func TestDepotHasUnlimitedParking(t *testing.T) {
 	}
 }
 
+// TestCarMayEnterOccupiedDepot: unlimited parking must apply to movement, not
+// just to the capacity query and BuyCar. If resolveMoves ever stops consulting
+// City.CarCapacity, a car cannot drive home to a depot that already holds the
+// rest of the fleet.
+func TestCarMayEnterOccupiedDepot(t *testing.T) {
+	w := tinyWorld(t)
+	depot := w.City.Depots[0]
+	parked := w.Cars[0]
+	if parked.Pos != depot.Pos {
+		t.Fatalf("initial car at %s, want depot %s", parked.Pos, depot.Pos)
+	}
+	arriving := &Car{
+		ID: "car_2", Name: "S2", ClassName: parked.ClassName,
+		Class: parked.Class, Pos: Position{1, 2}, Battery: parked.Class.MaxBattery,
+	}
+	w.Cars = append(w.Cars, arriving)
+
+	if err := w.QueueMove(arriving.ID, North); err != nil {
+		t.Fatalf("queue: %v", err)
+	}
+	w.Advance()
+
+	if arriving.Pos != depot.Pos {
+		t.Fatalf("arriving car at %s, want depot %s (reject %q)",
+			arriving.Pos, depot.Pos, arriving.LastReject)
+	}
+	if arriving.LastReject != RejectNone {
+		t.Fatalf("arriving car LastReject = %q, want none", arriving.LastReject)
+	}
+	if got := w.CarsAt(depot.Pos); got != 2 {
+		t.Fatalf("cars on depot = %d, want 2", got)
+	}
+}
+
+func TestTwoCarsMayEnterDepotSameTick(t *testing.T) {
+	w := tinyWorld(t)
+	depot := w.City.Depots[0]
+	parked := w.Cars[0]
+	if parked.Pos != depot.Pos {
+		t.Fatalf("initial car at %s, want depot %s", parked.Pos, depot.Pos)
+	}
+	south := &Car{
+		ID: "car_2", Name: "S2", ClassName: parked.ClassName,
+		Class: parked.Class, Pos: Position{1, 2}, Battery: parked.Class.MaxBattery,
+	}
+	east := &Car{
+		ID: "car_3", Name: "S3", ClassName: parked.ClassName,
+		Class: parked.Class, Pos: Position{2, 1}, Battery: parked.Class.MaxBattery,
+	}
+	w.Cars = append(w.Cars, south, east)
+	if err := w.QueueMove(south.ID, North); err != nil {
+		t.Fatalf("queue south car: %v", err)
+	}
+	if err := w.QueueMove(east.ID, West); err != nil {
+		t.Fatalf("queue east car: %v", err)
+	}
+
+	w.Advance()
+
+	for _, car := range []*Car{south, east} {
+		if car.Pos != depot.Pos {
+			t.Errorf("%s at %s, want depot %s (reject %q)",
+				car.ID, car.Pos, depot.Pos, car.LastReject)
+		}
+	}
+	if got := w.CarsAt(depot.Pos); got != 3 {
+		t.Fatalf("cars on depot = %d, want 3", got)
+	}
+}
+
 func TestRoadTileHoldsExactlyOneCar(t *testing.T) {
 	if got := tinyWorld(t).City.CarCapacity(Position{3, 3}); got != 1 {
 		t.Fatalf("road capacity = %d, want 1", got)
@@ -152,7 +222,7 @@ func TestInitialCarsCannotStartOverlapping(t *testing.T) {
 		Name: "overlap", GridSize: 5,
 		Layout: rows,
 		Legend: map[string]string{"W": "water", "R": "road", "D": "depot"},
-		Depots: []DepotConfig{{ID: "d1", Pos: Position{1, 1}, Capacity: 4}},
+		Depots: []DepotConfig{{ID: "d1", Pos: Position{1, 1}}},
 		CarClasses: map[string]CarClassConfig{
 			"scooter": {Capacity: 1, MaxBattery: 10, StepCost: 1},
 		},
@@ -182,7 +252,7 @@ func TestInitialCarsMayShareADepot(t *testing.T) {
 		Name: "shared-depot", GridSize: 5,
 		Layout: rows,
 		Legend: map[string]string{"W": "water", "R": "road", "D": "depot"},
-		Depots: []DepotConfig{{ID: "d1", Pos: Position{1, 1}, Capacity: 4}},
+		Depots: []DepotConfig{{ID: "d1", Pos: Position{1, 1}}},
 		CarClasses: map[string]CarClassConfig{
 			"scooter": {Capacity: 1, MaxBattery: 10, StepCost: 1},
 		},
@@ -201,5 +271,160 @@ func TestInitialCarsMayShareADepot(t *testing.T) {
 	}
 	if got := w.CarsAt(Position{1, 1}); got != 2 {
 		t.Fatalf("cars at depot = %d, want 2", got)
+	}
+}
+
+// depotCrossWorld is one depot with a road on each side, so four cars can
+// contend for the depot tile in a single tick. Its depot is the only unlimited
+// tile; every approach is an ordinary capacity-1 road.
+func depotCrossWorld(t *testing.T) *World {
+	t.Helper()
+	cfg := completeConfig(&CityConfig{
+		Name: "depot-cross", GridSize: 5,
+		Layout: []string{
+			"WWWWW",
+			"WRRRW",
+			"WRDRW",
+			"WRRRW",
+			"WWWWW",
+		},
+		Legend: map[string]string{"W": "water", "R": "road", "D": "depot"},
+		Depots: []DepotConfig{{ID: "d1", Pos: Position{2, 2}}},
+		CarClasses: map[string]CarClassConfig{
+			"scooter": {Capacity: 4, MaxBattery: 10, StepCost: 1},
+		},
+	})
+	city, err := NewCity(cfg)
+	if err != nil {
+		t.Fatalf("city: %v", err)
+	}
+	w, err := NewWorld(city, cfg)
+	if err != nil {
+		t.Fatalf("world: %v", err)
+	}
+	return w
+}
+
+// addDepotCar places a car directly, bypassing BuyCar so the test is about
+// movement rather than the purchase rules.
+func addDepotCar(t *testing.T, w *World, id string, pos Position) *Car {
+	t.Helper()
+	car, err := NewCar(id, id, "scooter", pos, w.carClasses)
+	if err != nil {
+		t.Fatalf("car %s: %v", id, err)
+	}
+	w.Cars = append(w.Cars, car)
+	return car
+}
+
+// TestMultipleCarsEnterDepotOnSameTick is the depot's defining movement rule:
+// unlike a road, every car that drives at the depot in one tick is admitted.
+// With a capacity-1 destination the fixpoint would let only one through.
+func TestMultipleCarsEnterDepotOnSameTick(t *testing.T) {
+	w := depotCrossWorld(t)
+	depot := w.City.Depots[0].Pos
+
+	north := addDepotCar(t, w, "car_1", Position{2, 1})
+	south := addDepotCar(t, w, "car_2", Position{2, 3})
+	west := addDepotCar(t, w, "car_3", Position{1, 2})
+	east := addDepotCar(t, w, "car_4", Position{3, 2})
+	for _, q := range []struct {
+		car *Car
+		dir Direction
+	}{
+		{north, South}, {south, North}, {west, East}, {east, West},
+	} {
+		if err := w.QueueMove(q.car.ID, q.dir); err != nil {
+			t.Fatalf("queue %s: %v", q.car.ID, err)
+		}
+	}
+
+	w.Advance()
+
+	if got := w.CarsAt(depot); got != 4 {
+		t.Fatalf("cars at depot = %d, want 4: a depot admits every entrant on the tick", got)
+	}
+	for _, car := range []*Car{north, south, west, east} {
+		if car.Pos != depot {
+			t.Errorf("%s at %s, want the depot %s (reject %q)", car.ID, car.Pos, depot, car.LastReject)
+		}
+		if car.LastReject != RejectNone {
+			t.Errorf("%s reject = %q, want none", car.ID, car.LastReject)
+		}
+	}
+}
+
+// TestMultipleCarsLeaveDepotOnSameTick: several cars sharing the yard can all
+// drive out on the same tick to distinct tiles.
+func TestMultipleCarsLeaveDepotOnSameTick(t *testing.T) {
+	w := depotCrossWorld(t)
+	depot := w.City.Depots[0].Pos
+
+	north := addDepotCar(t, w, "car_1", depot)
+	south := addDepotCar(t, w, "car_2", depot)
+	west := addDepotCar(t, w, "car_3", depot)
+	east := addDepotCar(t, w, "car_4", depot)
+	cases := []struct {
+		car  *Car
+		dir  Direction
+		want Position
+	}{
+		{north, North, Position{2, 1}},
+		{south, South, Position{2, 3}},
+		{west, West, Position{1, 2}},
+		{east, East, Position{3, 2}},
+	}
+	for _, c := range cases {
+		if err := w.QueueMove(c.car.ID, c.dir); err != nil {
+			t.Fatalf("queue %s: %v", c.car.ID, err)
+		}
+	}
+
+	w.Advance()
+
+	if got := w.CarsAt(depot); got != 0 {
+		t.Fatalf("cars left in the depot = %d, want 0", got)
+	}
+	for _, c := range cases {
+		if c.car.Pos != c.want {
+			t.Errorf("%s at %s, want %s (reject %q)", c.car.ID, c.car.Pos, c.want, c.car.LastReject)
+		}
+	}
+}
+
+// TestDepotEntryAndExitInSameTick drives one car out while two others drive in:
+// a single tick must apply both directions, leaving exactly the two arrivals
+// parked.
+func TestDepotEntryAndExitInSameTick(t *testing.T) {
+	w := depotCrossWorld(t)
+	depot := w.City.Depots[0].Pos
+
+	leaving := addDepotCar(t, w, "car_1", depot)
+	fromWest := addDepotCar(t, w, "car_2", Position{1, 2})
+	fromNorth := addDepotCar(t, w, "car_3", Position{2, 1})
+	for _, q := range []struct {
+		car *Car
+		dir Direction
+	}{
+		{leaving, East},
+		{fromWest, East},
+		{fromNorth, South},
+	} {
+		if err := w.QueueMove(q.car.ID, q.dir); err != nil {
+			t.Fatalf("queue %s: %v", q.car.ID, err)
+		}
+	}
+
+	w.Advance()
+
+	if leaving.Pos != (Position{3, 2}) {
+		t.Errorf("the leaving car is at %s, want (3,2)", leaving.Pos)
+	}
+	if fromWest.Pos != depot || fromNorth.Pos != depot {
+		t.Errorf("arrivals at %s and %s, want both at the depot %s",
+			fromWest.Pos, fromNorth.Pos, depot)
+	}
+	if got := w.CarsAt(depot); got != 2 {
+		t.Fatalf("cars at depot after the exchange = %d, want 2", got)
 	}
 }

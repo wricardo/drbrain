@@ -22,7 +22,7 @@ type StorePersistence struct {
 // NewPostgresPersistence opens the PostgreSQL-backed store and keeps
 // configManager for rehydrating the engine on Load.
 func NewPostgresPersistence(pool *pgxpool.Pool, configManager service.ConfigManager, maxSessions int) (*StorePersistence, error) {
-	store, err := sessionstore.Open(sessionstore.Options{Pool: pool, MaxSessions: maxSessions})
+	store, err := sessionstore.Open(sessionstore.Options{Pool: pool, Game: "tesla", MaxSessions: maxSessions})
 	if err != nil {
 		return nil, err
 	}

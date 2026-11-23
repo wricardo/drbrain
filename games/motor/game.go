@@ -1,6 +1,8 @@
 //go:generate go run github.com/wricardo/drbrain/cmd/split-schema
 //go:generate go run github.com/99designs/gqlgen generate
 
+// Package motor is Dr Brain - Motor Programming as a platform game: players
+// write a tape program that drives a robot to collect every treat.
 package motor
 
 import (

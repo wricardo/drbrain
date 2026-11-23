@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -29,7 +31,7 @@ func tinyWorld(t *testing.T) *World {
 			"C": "charger", "G": "ground", "K": "kitchen", "H": "house",
 		},
 		Items:  map[string]string{"pizza": "Pizza"},
-		Depots: []DepotConfig{{ID: "d1", Pos: Position{1, 1}, Capacity: 4, ChargeSlots: 4}},
+		Depots: []DepotConfig{{ID: "d1", Pos: Position{1, 1}, ChargeSlots: 4}},
 		CarClasses: map[string]CarClassConfig{
 			"scooter": {Capacity: 1, MaxBattery: 10, StepCost: 1},
 			"van":     {Capacity: 3, MaxBattery: 20, StepCost: 1},
@@ -103,17 +105,153 @@ func TestQueuedMoveIsSingleShot(t *testing.T) {
 	}
 }
 
-func TestLatestCommandWinsWithinOneTick(t *testing.T) {
+func TestQueuedMovesRunInOrder(t *testing.T) {
 	w := tinyWorld(t)
 	car := w.Cars[0]
 	start := car.Pos
 
 	_ = w.QueueMove(car.ID, East)
-	_ = w.QueueMove(car.ID, South) // overwrites East before the tick
+	_ = w.QueueMove(car.ID, South) // backlog: East first, then South
+	if got := car.PendingMoves(); len(got) != 2 || got[0] != East || got[1] != South {
+		t.Fatalf("pending moves = %v, want [EAST SOUTH]", got)
+	}
+
+	w.Advance()
+	if want := (Position{start.X + 1, start.Y}); car.Pos != want {
+		t.Fatalf("first tick car at %s, want %s (first command first)", car.Pos, want)
+	}
+	w.Advance()
+	if want := (Position{start.X + 1, start.Y + 1}); car.Pos != want {
+		t.Fatalf("second tick car at %s, want %s (second command second)", car.Pos, want)
+	}
+	w.Advance()
+	if want := (Position{start.X + 1, start.Y + 1}); car.Pos != want {
+		t.Fatalf("third tick car at %s, want %s (queue drained)", car.Pos, want)
+	}
+}
+
+func TestMoveQueueCap(t *testing.T) {
+	w := tinyWorld(t)
+	car := w.Cars[0]
+
+	for range MaxQueuedMoves {
+		if err := w.QueueMove(car.ID, East); err != nil {
+			t.Fatalf("queue step %d: %v", len(car.PendingMoves()), err)
+		}
+	}
+	if err := w.QueueMove(car.ID, East); !errors.Is(err, ErrMoveQueueFull) {
+		t.Fatalf("queue past cap = %v, want ErrMoveQueueFull", err)
+	}
+
+	// Advancing frees a slot, so the cap bounds the plan, not the session.
+	w.Advance()
+	if err := w.QueueMove(car.ID, East); err != nil {
+		t.Fatalf("queue after one step drained: %v", err)
+	}
+}
+
+func TestRejectedStepIsSpentAndNextQueuedStepRuns(t *testing.T) {
+	w := tinyWorld(t)
+	car := w.Cars[0]
+	car.Pos = Position{1, 1}
+
+	_ = w.QueueMove(car.ID, North) // (1,0) is water: rejected
+	_ = w.QueueMove(car.ID, East)
+
+	w.Advance()
+	if car.LastReject != RejectBlocked {
+		t.Fatalf("LastReject = %q, want %q", car.LastReject, RejectBlocked)
+	}
+	if car.Pos != (Position{1, 1}) {
+		t.Fatalf("car moved on a rejected step: %s", car.Pos)
+	}
+	if got := car.PendingMoves(); len(got) != 1 || got[0] != East {
+		t.Fatalf("pending moves after rejection = %v, want [EAST]", got)
+	}
+
+	w.Advance()
+	if want := (Position{2, 1}); car.Pos != want {
+		t.Fatalf("car at %s after the next queued step, want %s", car.Pos, want)
+	}
+}
+
+func TestClearMovesDropsTheWholePlan(t *testing.T) {
+	w := tinyWorld(t)
+	car := w.Cars[0]
+	start := car.Pos
+
+	_ = w.QueueMove(car.ID, East)
+	_ = w.QueueMove(car.ID, South)
+	if err := w.ClearMoves(car.ID); err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	w.Advance()
 	w.Advance()
 
-	if want := (Position{start.X, start.Y + 1}); car.Pos != want {
-		t.Fatalf("car at %s, want %s (last command should win)", car.Pos, want)
+	if car.Pos != start {
+		t.Fatalf("car moved after its plan was cleared: %s -> %s", start, car.Pos)
+	}
+	if got := car.PendingMoves(); len(got) != 0 {
+		t.Fatalf("pending moves after clear = %v, want none", got)
+	}
+}
+
+func TestMoveQueueSurvivesSaveRoundTrip(t *testing.T) {
+	w := tinyWorld(t)
+	car := w.Cars[0]
+	_ = w.QueueMove(car.ID, East)
+	_ = w.QueueMove(car.ID, South)
+
+	blob, err := json.Marshal(w.ExportState())
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var saved SavedState
+	if err := json.Unmarshal(blob, &saved); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	restored := tinyWorld(t)
+	if err := restored.ImportState(saved); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	got := restored.Cars[0].PendingMoves()
+	if len(got) != 2 || got[0] != East || got[1] != South {
+		t.Fatalf("restored pending moves = %v, want [EAST SOUTH]", got)
+	}
+}
+
+// TestImportPromotesHeadlessQueue covers a hand-edited or truncated payload:
+// a queue must never be a tail with no head, or the route silently stops.
+func TestImportPromotesHeadlessQueue(t *testing.T) {
+	w := tinyWorld(t)
+	state := w.ExportState()
+	state.Cars[0].QueuedMove = ""
+	state.Cars[0].MoveQueue = []Direction{East, South}
+
+	restored := tinyWorld(t)
+	if err := restored.ImportState(state); err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	got := restored.Cars[0].PendingMoves()
+	if len(got) != 2 || got[0] != East || got[1] != South {
+		t.Fatalf("promoted pending moves = %v, want [EAST SOUTH]", got)
+	}
+}
+
+func TestTowClearsTheMoveQueue(t *testing.T) {
+	w := tinyWorld(t)
+	car := w.Cars[0]
+	car.Pos = Position{4, 4}
+	car.Battery = 0
+	_ = w.QueueMove(car.ID, East)
+	_ = w.QueueMove(car.ID, South)
+
+	if err := w.Tow(car.ID); err != nil {
+		t.Fatalf("tow: %v", err)
+	}
+	if got := car.PendingMoves(); len(got) != 0 {
+		t.Fatalf("pending moves after tow = %v, want none: a towed car must not keep driving the old plan", got)
 	}
 }
 
@@ -168,7 +306,7 @@ func TestGroundCostsExtraBattery(t *testing.T) {
 		Name: "g", GridSize: 7,
 		Layout: rows,
 		Legend: map[string]string{"W": "water", "R": "road", "D": "depot", "G": "ground"},
-		Depots: []DepotConfig{{ID: "d1", Pos: Position{1, 1}, Capacity: 1}},
+		Depots: []DepotConfig{{ID: "d1", Pos: Position{1, 1}}},
 		CarClasses: map[string]CarClassConfig{
 			"scooter": {Capacity: 1, MaxBattery: 10, StepCost: 1},
 		},
@@ -334,7 +472,7 @@ func TestBuyCarIsLimitedByMoneyNotSpace(t *testing.T) {
 	// Give the van a price so the second purchase exercises the money gate.
 	w.carClasses["van"] = CarClassConfig{Capacity: 3, MaxBattery: 20, StepCost: 1, Price: 100}
 	w.Ledger.Money = 10_000
-	// The depot has no fleet-size cap; buy well past its legacy capacity.
+	// The depot has no fleet-size cap; buy well past the old yard size.
 	for i := range 12 {
 		if _, err := w.BuyCar("scooter", "d1"); err != nil {
 			t.Fatalf("buy %d with money available: %v", i, err)
@@ -367,36 +505,56 @@ func TestQueueMoveRejectsUnknownCarAndDirection(t *testing.T) {
 }
 
 func TestTickOrderIsIndependentOfCarInsertionOrder(t *testing.T) {
-	// Two cars must resolve in id order, so the same commands produce the same
-	// events regardless of the order cars were added.
+	// The fleet resolves in id order, so the same commands produce the same
+	// feed regardless of the order cars were added.
 	//
-	// The two cars move apart (A east, B south), not into each other. Before the
-	// occupancy rule this test used a head-on pair, which was only ever "both
-	// move" because cars could pass through each other; a head-on pair is now
-	// exactly the case that must NOT resolve, and it is covered by
-	// TestHeadOnCarsCannotSwap.
+	// Successful moves no longer emit feed entries, so the observable here is a
+	// head-on pair: each destination is the other car's tile, neither move
+	// commits, and both blocked events must still be reported in car-id order.
 	w := tinyWorld(t)
 	c2, err := w.BuyCar("scooter", "d1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	w.Cars[0].Pos, c2.Pos = Position{2, 2}, Position{4, 2}
+	w.Cars[0].Pos, c2.Pos = Position{3, 2}, Position{4, 2}
 
-	_ = w.QueueMove(c2.ID, South)
 	_ = w.QueueMove(w.Cars[0].ID, East)
+	_ = w.QueueMove(c2.ID, West)
 	evs := w.Advance()
 
-	var moved []string
+	var blocked []string
 	for _, e := range evs {
-		if e.Type == EventMoved {
-			moved = append(moved, e.CarID)
+		if e.Type == EventBlocked {
+			blocked = append(blocked, e.CarID)
 		}
 	}
-	if len(moved) != 2 {
-		t.Fatalf("expected 2 move events, got %v", moved)
+	if len(blocked) != 2 {
+		t.Fatalf("expected 2 blocked events, got %v", blocked)
 	}
-	if !(moved[0] < moved[1]) {
-		t.Fatalf("events not in car-id order: %v", moved)
+	if !(blocked[0] < blocked[1]) {
+		t.Fatalf("events not in car-id order: %v", blocked)
+	}
+}
+
+func TestMovementDoesNotEnterTheFeed(t *testing.T) {
+	// Driving is the most frequent thing a session does, and one entry per car
+	// per tick filled the capped ring with noise. A move is visible on the map,
+	// so it must not be stored or returned as an event.
+	w := tinyWorld(t)
+	car := w.Cars[0]
+	car.Pos = Position{2, 2}
+
+	_ = w.QueueMove(car.ID, East)
+	evs := w.Advance()
+
+	if car.Pos != (Position{3, 2}) {
+		t.Fatalf("car at %s after moving east, want (3,2)", car.Pos)
+	}
+	if len(evs) != 0 {
+		t.Fatalf("a move returned %d events, want none", len(evs))
+	}
+	if len(w.Events) != 0 {
+		t.Fatalf("a move stored %d events, want none", len(w.Events))
 	}
 }
 
@@ -436,7 +594,7 @@ func TestNewWorldRejectsCarOnImpassableTile(t *testing.T) {
 		Name: "bad", GridSize: 5,
 		Layout: []string{"WWWWW", "WDRRW", "WRRRW", "WRRRW", "WWWWW"},
 		Legend: map[string]string{"W": "water", "R": "road", "D": "depot"},
-		Depots: []DepotConfig{{ID: "d1", Pos: Position{1, 1}, Capacity: 1}},
+		Depots: []DepotConfig{{ID: "d1", Pos: Position{1, 1}}},
 		CarClasses: map[string]CarClassConfig{
 			"scooter": {Capacity: 1, MaxBattery: 5, StepCost: 1},
 		},

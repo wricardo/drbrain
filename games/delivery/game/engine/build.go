@@ -112,7 +112,7 @@ func (c *City) applyEffect(e GrowthEffect) error {
 			}
 			c.RevealTile(d.Pos)
 			c.Depots = append(c.Depots, Depot{
-				ID: d.ID, Pos: d.Pos, Capacity: d.Capacity, ChargeSlots: d.ChargeSlots,
+				ID: d.ID, Pos: d.Pos, ChargeSlots: d.ChargeSlots,
 			})
 		}
 		return nil
@@ -121,9 +121,6 @@ func (c *City) applyEffect(e GrowthEffect) error {
 		for i := range c.Depots {
 			if c.Depots[i].ID != e.DepotID {
 				continue
-			}
-			if e.Capacity > 0 {
-				c.Depots[i].Capacity = e.Capacity
 			}
 			if e.Charge > 0 {
 				c.Depots[i].ChargeSlots = e.Charge

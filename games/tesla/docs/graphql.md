@@ -1,23 +1,30 @@
 # GraphQL API
 
-The Tesla Road Trip Game public game API is exposed by gqlgen at `/graphql`.
+> **Historical (standalone repository era).** Field-level details are still a
+> useful reference, but every operation now goes through the unified
+> `/graphql` endpoint under the `tesla` namespace:
+> `query { tesla { … } }`, `mutation { tesla { … } }`, and the flat
+> subscription root `teslaSessionUpdated(sessionID:)`. The legacy `/ws` route
+> and per-game `/playground` no longer exist. Current entry points:
+> [README](../README.md) and the canonical `graph/schema.graphqls`.
 
-- Playground: `GET /playground`
+The Tesla Road Trip public game API is exposed through the platform's unified
+gqlgen executor at `/graphql`.
+
+- Playground: `GET /graphql/playground`
 - GraphQL HTTP endpoint: `POST /graphql`
 - GraphQL WebSocket endpoint for subscriptions: `ws://<host>/graphql`
-- Introspection: enabled
-- LLM quick guide: `GET /llms.txt`
-
-The server also mounts a legacy UI WebSocket route at `/ws?session=<session_id>`, but new GraphQL clients should use subscriptions on `/graphql`.
+- Introspection: enabled unless the operator disabled it
+- LLM quick guide: `GET /tesla/llms.txt`
 
 ## Request format
 
 Send GraphQL documents as JSON:
 
 ```bash
-curl -s http://localhost:8000/graphql \
+curl -s http://127.0.0.1:8181/graphql \
   -H 'content-type: application/json' \
-  -d '{"query":"query { maps { mapId name description gridSize maxBattery } }"}'
+  -d '{"query":"query { tesla { maps { mapId name description gridSize maxBattery } } }"}'
 ```
 
 ## Core workflow
@@ -26,7 +33,7 @@ curl -s http://localhost:8000/graphql \
 2. Create a session with `createSession(mapID: "...")`.
 3. Read state with `gameState(sessionID: "...")`.
 4. Move with `move` or `bulkMove`.
-5. Watch live updates with `sessionUpdated(sessionID: "...")`.
+5. Watch live updates with `teslaSessionUpdated(sessionID: "...")`.
 
 ## Queries
 
@@ -63,14 +70,14 @@ Subscriptions use the GraphQL WebSocket transport on `/graphql`.
 
 | Subscription | Description |
 | --- | --- |
-| `sessionUpdated(sessionID: ID!): GameState!` | Emits the new state after `move`, `bulkMove`, or `reset` for the selected session. |
-| `lobbyUpdated: GameState!` | Emits lobby-wide state updates from the WebSocket hub. |
+| `teslaSessionUpdated(sessionID: ID!): Tesla_GameState!` | Emits the new state after `move`, `bulkMove`, or `reset` for the selected session. |
+| `teslaLobbyUpdated: Tesla_GameState!` | Emits lobby-wide state updates from the WebSocket hub. |
 
 Example:
 
 ```graphql
 subscription SessionUpdated($sessionID: ID!) {
-  sessionUpdated(sessionID: $sessionID) {
+  teslaSessionUpdated(sessionID: $sessionID) {
     playerPos { x y }
     battery
     score
@@ -181,7 +188,7 @@ Always select `allowedDirections` together with `type`. One-way rule: when the l
 ### Move once
 
 ```graphql
-mutation Move($sessionID: ID!, $direction: Direction!) {
+mutation Move($sessionID: ID!, $direction: Tesla_Direction!) {
   move(sessionID: $sessionID, direction: $direction) {
     success
     message
@@ -295,7 +302,7 @@ query SessionsAndHistory($sessionID: ID!) {
 ### Create a map
 
 ```graphql
-mutation CreateMap($name: String!, $map: GameMapInput!) {
+mutation CreateMap($name: String!, $map: Tesla_GameMapInput!) {
   createMap(name: $name, map: $map) {
     name
     description

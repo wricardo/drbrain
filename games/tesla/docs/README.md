@@ -1,121 +1,35 @@
-# Tesla Road Trip Game - Documentation
+# Tesla Road Trip — Documentation
 
-Comprehensive documentation for the Tesla Road Trip multi-session game server.
+Tesla is one game in the Dr Brain monorepo. The current developer entry points
+are:
 
-## 📚 Documentation Index
+- [Game README](../README.md) — rules, environment, routes, quick start
+- [MCP tools](../MCP_TOOLS.md) — tools exposed at `POST /tesla/mcp`
+- [Repository AGENTS guide](../../../AGENTS.md) — architecture, schema pipeline,
+  test commands
+- [Routing](../../../docs/routing.md) — one listener, one `/graphql`, per-game
+  prefixes
 
-### Core Documentation
+## Current reference
 
-- **[Architecture](architecture.md)** - System design, components, and data flow
-- **[GraphQL API](graphql.md)** - Queries, mutations, introspection, and Playground usage
-- **[Configuration Schema](config-schema.md)** - Game configuration format and validation
+- **[Configuration Schema](config-schema.md)** — builtin map JSON format and
+  validation
+- **[AI Strategy Guide](ai-strategy.md)** — gameplay heuristics for agents
+  (endpoint examples predate the unified namespace; see the banner in the file)
 
-### AI Strategy & Development
+## Historical (standalone repository era)
 
-- **[AI Strategy Guide](ai-strategy.md)** - Strategies for AI agents playing the game
-  - Character recognition (critical for success)
-  - Navigation algorithms
-  - Battery management
-  - Proven success patterns
+These documents describe the game as it existed before it was merged into the
+monorepo. Paths, commands, transports and storage in them are not current.
+They are kept for design history:
 
-### Planning & Design Documents
+- [GraphQL API reference](graphql.md)
+- [UI pages](ui-pages-description.md)
+- [Refactoring epic](epic-architectural-refactoring.md)
+- [Architecture refactoring diagram](architecture-refactoring-diagram.md)
+- [Stories](stories/)
+- [Archive](archive/)
 
-- **[Epic: Architectural Refactoring](epic-architectural-refactoring.md)** - Major refactoring epic
-- **[Architecture Refactoring Diagram](architecture-refactoring-diagram.md)** - Visual architecture diagrams
-
-### User Stories
-
-- **[Story 1: GameService Extraction](stories/story-1-gameservice-extraction.md)**
-
-### Historical Documents
-
-See [archive/](archive/) for historical documentation:
-- Migration guides
-- Refactoring completion notes
-- Integration points documentation
-- Old architecture documentation
-
-## 🚀 Quick Links
-
-### Getting Started
-- [Main README](../README.md) - Quick start, installation, and usage
-- [Contributing Guide](../CONTRIBUTING.md) - How to contribute to the project
-- [Claude Development Guide](../CLAUDE.md) - Development instructions for Claude Code
-
-### API & Integration
-- [GraphQL API](graphql.md) - AI assistant integration
-- [Configuration Schema](config-schema.md) - Creating custom game configs
-
-### Architecture & Design
-- [Architecture Overview](architecture.md) - Technical architecture
-- [Refactoring Epic](epic-architectural-refactoring.md) - Major design changes
-
-### AI Development
-- [AI Strategy Guide](ai-strategy.md) - Techniques for AI agents
-
-## 📖 Documentation Structure
-
-```
-docs/
-├── README.md                               # This file
-├── architecture.md                         # System architecture
-├── architecture-refactoring-diagram.md     # Architecture diagrams
-├── ai-strategy.md                          # AI agent strategies
-├── config-schema.md                        # Configuration format
-├── graphql.md                              # GraphQL API guide
-├── epic-architectural-refactoring.md       # Refactoring epic
-├── stories/                                # Development stories
-│   └── story-1-gameservice-extraction.md
-└── archive/                                # Historical documents
-    ├── ARCHITECTURE_FINAL.md
-    ├── INTEGRATION_POINTS.md
-    ├── REFACTORING_COMPLETE.md
-    └── migration_guide.md
-```
-
-## 🔧 Development Resources
-
-### Testing
-```bash
-just test              # Run all tests
-just test-coverage     # Run tests with coverage
-just validate          # Validate game configurations
-```
-
-### Building
-```bash
-just build             # Build binary
-just run               # Run server
-just dev-live          # Development mode with hot reload
-```
-
-### Code Quality
-```bash
-just fmt               # Format code
-just lint              # Run linter
-just vet               # Run go vet
-```
-
-## 📝 Contributing to Documentation
-
-When adding new documentation:
-
-1. **Place correctly**:
-   - Core technical docs → `docs/`
-   - Historical/archived docs → `docs/archive/`
-   - User-facing docs → Root README
-
-2. **Update this index** when adding new docs
-
-3. **Use clear headings** and table of contents for long docs
-
-4. **Include code examples** where applicable
-
-5. **Link between docs** to create a web of knowledge
-
-## 🤝 Need Help?
-
-- Check the [Main README](../README.md) for quick start
-- See [Contributing Guide](../CONTRIBUTING.md) for development setup
-- Review [Architecture](architecture.md) for system design
-- Read [AI Strategy](ai-strategy.md) for gameplay techniques
+For the current API, use the canonical schema at `graph/schema.graphqls` and the
+generated `games/tesla/graph/schema.graphqls`; every operation is under the
+`tesla` namespace, and the subscription root is `teslaSessionUpdated`.

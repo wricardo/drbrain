@@ -11,6 +11,7 @@ import { authHeaders } from '$lib/account/token';
 import { getAdminKey } from './admin';
 import { forgetOwnerTokens, ownerTokenFor, rememberSession } from './ownerTokens';
 import type {
+	Delivery_AnalyticsMetric as AnalyticsMetric,
 	Delivery_CarWindow as CarWindow,
 	Delivery_ClaimStatus as ClaimStatus,
 	Delivery_CityInfo as CityInfo,
@@ -18,14 +19,18 @@ import type {
 	Delivery_CityView as CityView,
 	Delivery_Direction as Direction,
 	Delivery_EventView as EventView,
+	Delivery_MoneyHistory as MoneyHistory,
 	Delivery_SessionSummary as SessionSummary,
-	Delivery_Snapshot as Snapshot
+	Delivery_Snapshot as Snapshot,
+	Delivery_ValuePoint as ValuePoint,
+	Delivery_ValueSeries as ValueSeries
 } from '../graphql-types';
 
 export * from '../graphql-types';
 
 // Keep the delivery-local names the UI already uses.
 export type {
+	Delivery_AnalyticsMetric as AnalyticsMetric,
 	Delivery_CarState as CarState,
 	Delivery_GrowthView as GrowthView,
 	Delivery_CarView as CarView,
@@ -42,8 +47,11 @@ export type {
 	Delivery_Direction as Direction,
 	Delivery_OrderState as OrderState,
 	Delivery_OrderView as OrderView,
+	Delivery_MoneyHistory as MoneyHistory,
 	Delivery_SessionSummary as SessionSummary,
-	Delivery_Snapshot as Snapshot
+	Delivery_Snapshot as Snapshot,
+	Delivery_ValuePoint as ValuePoint,
+	Delivery_ValueSeries as ValueSeries
 } from '../graphql-types';
 
 const ENDPOINT = '/graphql';
@@ -119,7 +127,7 @@ async function post<T>(query: string, variables?: Record<string, unknown>): Prom
 const CAR_FIELDS = `
 	id name className x y
 	battery maxBattery batteryPct capacity load freeBoxes
-	cargo state queuedMove lastReject
+	cargo state queuedMove queuedMoves lastReject
 	chargeDue
 `;
 
@@ -162,7 +170,7 @@ export const SNAPSHOT_FIELDS = `
 		money moneyEarned reputation
 		deliveries lateDeliveries expiredOrders ordersSpawned
 		onTimeStreak tows
-		upkeepPaid towFees upkeepDue
+		upkeepPaid towFees upkeepDue payMultiplier
 		ticksPerMonth
 		cashEntries { seq tick kind category amount balance carId carName orderId memo }
 		months {
@@ -226,6 +234,153 @@ export const api = {
 		return d.sessions ?? [];
 	},
 
+	/**
+	 * Money-by-tick series for up to 20 sessions, read from the indexed history
+	 * projection. Omitted ids select the newest sessions; maxPoints downsamples
+	 * each series into tick buckets.
+	 */
+	moneyHistory: async (
+		ids: string[],
+		options: { cityId?: string; fromTick?: number; toTick?: number; maxPoints?: number } = {}
+	): Promise<MoneyHistory[]> => {
+		const d = await post<{ moneyHistory: MoneyHistory[] }>(
+			`query ($ids: [ID!], $cityId: ID, $fromTick: Int, $toTick: Int, $maxPoints: Int) {
+				delivery {
+					moneyHistory(ids: $ids, cityId: $cityId, fromTick: $fromTick, toTick: $toTick, maxPoints: $maxPoints) {
+						sessionId cityId points { tick money }
+					}
+				}
+			}`,
+			{
+				ids,
+				cityId: options.cityId ?? null,
+				fromTick: options.fromTick ?? null,
+				toTick: options.toTick ?? null,
+				maxPoints: options.maxPoints ?? 500
+			}
+		);
+		return d.moneyHistory ?? [];
+	},
+
+	/** Cumulative boxes delivered by tick, from done orders. */
+	itemsHistory: async (
+		ids: string[],
+		options: { cityId?: string; fromTick?: number; toTick?: number; maxPoints?: number } = {}
+	): Promise<ValueSeries[]> => {
+		const d = await post<{ itemsHistory: ValueSeries[] }>(
+			`query ($ids: [ID!], $cityId: ID, $fromTick: Int, $toTick: Int, $maxPoints: Int) {
+				delivery {
+					itemsHistory(ids: $ids, cityId: $cityId, fromTick: $fromTick, toTick: $toTick, maxPoints: $maxPoints) {
+						sessionId cityId points { tick value }
+					}
+				}
+			}`,
+			{
+				ids,
+				cityId: options.cityId ?? null,
+				fromTick: options.fromTick ?? null,
+				toTick: options.toTick ?? null,
+				maxPoints: options.maxPoints ?? 500
+			}
+		);
+		return d.itemsHistory ?? [];
+	},
+
+	/** Recorded reputation by tick; pre-ledger saves expose one current point. */
+	reputationHistory: async (
+		ids: string[],
+		options: { cityId?: string; fromTick?: number; toTick?: number; maxPoints?: number } = {}
+	): Promise<ValueSeries[]> => {
+		const d = await post<{ reputationHistory: ValueSeries[] }>(
+			`query ($ids: [ID!], $cityId: ID, $fromTick: Int, $toTick: Int, $maxPoints: Int) {
+				delivery {
+					reputationHistory(ids: $ids, cityId: $cityId, fromTick: $fromTick, toTick: $toTick, maxPoints: $maxPoints) {
+						sessionId cityId points { tick value }
+					}
+				}
+			}`,
+			{
+				ids,
+				cityId: options.cityId ?? null,
+				fromTick: options.fromTick ?? null,
+				toTick: options.toTick ?? null,
+				maxPoints: options.maxPoints ?? 500
+			}
+		);
+		return d.reputationHistory ?? [];
+	},
+
+	/**
+	 * Cumulative operational series for the analytics page, fetched in one
+	 * request. Spending metrics return positive magnitudes.
+	 */
+	metricsHistory: async (
+		ids: string[],
+		options: { cityId?: string; fromTick?: number; toTick?: number; maxPoints?: number } = {}
+	): Promise<Record<AnalyticsMetric, ValueSeries[]>> => {
+		const d = await post<{
+			deliveries: ValueSeries[];
+			lateDeliveries: ValueSeries[];
+			expiredOrders: ValueSeries[];
+			ordersCreated: ValueSeries[];
+			deliveryIncome: ValueSeries[];
+			orderFines: ValueSeries[];
+			upkeepSpend: ValueSeries[];
+			chargingSpend: ValueSeries[];
+			towSpend: ValueSeries[];
+		}>(
+			`query ($ids: [ID!], $cityId: ID, $fromTick: Int, $toTick: Int, $maxPoints: Int) {
+				delivery {
+					deliveries: metricHistory(metric: DELIVERIES, ids: $ids, cityId: $cityId, fromTick: $fromTick, toTick: $toTick, maxPoints: $maxPoints) {
+						sessionId cityId points { tick value }
+					}
+					lateDeliveries: metricHistory(metric: LATE_DELIVERIES, ids: $ids, cityId: $cityId, fromTick: $fromTick, toTick: $toTick, maxPoints: $maxPoints) {
+						sessionId cityId points { tick value }
+					}
+					expiredOrders: metricHistory(metric: EXPIRED_ORDERS, ids: $ids, cityId: $cityId, fromTick: $fromTick, toTick: $toTick, maxPoints: $maxPoints) {
+						sessionId cityId points { tick value }
+					}
+					ordersCreated: metricHistory(metric: ORDERS_CREATED, ids: $ids, cityId: $cityId, fromTick: $fromTick, toTick: $toTick, maxPoints: $maxPoints) {
+						sessionId cityId points { tick value }
+					}
+					deliveryIncome: metricHistory(metric: DELIVERY_INCOME, ids: $ids, cityId: $cityId, fromTick: $fromTick, toTick: $toTick, maxPoints: $maxPoints) {
+						sessionId cityId points { tick value }
+					}
+					orderFines: metricHistory(metric: ORDER_FINES, ids: $ids, cityId: $cityId, fromTick: $fromTick, toTick: $toTick, maxPoints: $maxPoints) {
+						sessionId cityId points { tick value }
+					}
+					upkeepSpend: metricHistory(metric: UPKEEP_SPEND, ids: $ids, cityId: $cityId, fromTick: $fromTick, toTick: $toTick, maxPoints: $maxPoints) {
+						sessionId cityId points { tick value }
+					}
+					chargingSpend: metricHistory(metric: CHARGING_SPEND, ids: $ids, cityId: $cityId, fromTick: $fromTick, toTick: $toTick, maxPoints: $maxPoints) {
+						sessionId cityId points { tick value }
+					}
+					towSpend: metricHistory(metric: TOW_SPEND, ids: $ids, cityId: $cityId, fromTick: $fromTick, toTick: $toTick, maxPoints: $maxPoints) {
+						sessionId cityId points { tick value }
+					}
+				}
+			}`,
+			{
+				ids,
+				cityId: options.cityId ?? null,
+				fromTick: options.fromTick ?? null,
+				toTick: options.toTick ?? null,
+				maxPoints: options.maxPoints ?? 500
+			}
+		);
+		return {
+			DELIVERIES: d.deliveries ?? [],
+			LATE_DELIVERIES: d.lateDeliveries ?? [],
+			EXPIRED_ORDERS: d.expiredOrders ?? [],
+			ORDERS_CREATED: d.ordersCreated ?? [],
+			DELIVERY_INCOME: d.deliveryIncome ?? [],
+			ORDER_FINES: d.orderFines ?? [],
+			UPKEEP_SPEND: d.upkeepSpend ?? [],
+			CHARGING_SPEND: d.chargingSpend ?? [],
+			TOW_SPEND: d.towSpend ?? []
+		};
+	},
+
 	session: async (id: string): Promise<Snapshot> => {
 		const d = await post<{ session: Snapshot }>(
 			`query ($id: ID!) { delivery { session(id: $id) { ${SNAPSHOT_FIELDS} } } }`,
@@ -254,13 +409,13 @@ export const api = {
 
 	/** Events newer than a tick, for incremental polling. */
 	events: async (id: string, sinceTick = 0): Promise<EventView[]> => {
-		const d = await post<{ events: EventView[] }>(
+		const d = await post<{ events: { events: EventView[] } }>(
 			`query ($id: ID!, $sinceTick: Int!) {
-				delivery { events(id: $id, sinceTick: $sinceTick) { tick type message carId x y } }
+				delivery { events(id: $id, sinceTick: $sinceTick) { events { tick type message carId x y } } }
 			}`,
 			{ id, sinceTick }
 		);
-		return d.events ?? [];
+		return d.events?.events ?? [];
 	},
 
 	// --- mutations ---------------------------------------------------------
@@ -356,6 +511,17 @@ export const api = {
 			{ id, ownerToken: ownerTokenFor(id), speed }
 		);
 		return d.setSpeed;
+	},
+
+	/** Drop a car's queued steps so drive() can move it now, not through an old plan. */
+	clearMoves: async (id: string, carId: string): Promise<Snapshot> => {
+		const d = await post<{ clearMoves: Snapshot }>(
+			`mutation ($id: ID!, $ownerToken: String, $carId: ID!) {
+				delivery { clearMoves(id: $id, ownerToken: $ownerToken, carId: $carId) { ${SNAPSHOT_FIELDS} } }
+			}`,
+			{ id, ownerToken: ownerTokenFor(id), carId }
+		);
+		return d.clearMoves;
 	},
 
 	assignOrder: async (id: string, orderId: string, carId: string): Promise<Snapshot> => {

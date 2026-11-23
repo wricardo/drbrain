@@ -15,12 +15,13 @@ func TestAdvanceReturnsItsOwnEventsWhenTheLogIsFull(t *testing.T) {
 	w := tinyWorld(t)
 	car := w.Cars[0]
 
-	// Fill the retained log past its cap with real moves. A fixed iteration
+	// Fill the retained log past its cap with real events. A fixed iteration
 	// count is required: the log trims back to max_events, so waiting for it to
-	// exceed the cap would never finish.
-	dirs := []Direction{South, North}
-	for i := range w.maxEvents + 50 {
-		_ = w.QueueMove(car.ID, dirs[i%2])
+	// exceed the cap would never finish. A refused westward step off the depot
+	// emits exactly one blocked event per tick.
+	car.Pos = Position{1, 1}
+	for range w.maxEvents + 50 {
+		_ = w.QueueMove(car.ID, West)
 		w.Advance()
 	}
 	if len(w.Events) != w.maxEvents {
@@ -29,19 +30,42 @@ func TestAdvanceReturnsItsOwnEventsWhenTheLogIsFull(t *testing.T) {
 	}
 
 	evs := func() []Event {
-		_ = w.QueueMove(car.ID, South)
+		_ = w.QueueMove(car.ID, West)
 		return w.Advance()
 	}()
 
 	if len(evs) == 0 {
 		t.Fatal("Advance returned no events with a full log: the feed silently drops")
 	}
-	want := string(South)
-	if !strings.Contains(evs[0].Message, want) {
-		t.Errorf("first event = %q, want the move just applied", evs[0].Message)
+	if !strings.Contains(evs[0].Message, string(WaterTile)) {
+		t.Errorf("first event = %q, want the block just reported", evs[0].Message)
 	}
 	if len(w.Events) > w.maxEvents {
 		t.Errorf("retained log is %d events, over the %d cap", len(w.Events), w.maxEvents)
+	}
+}
+
+// TestImportDropsLegacyMovementEvents: sessions saved before movement left the
+// feed still carry car_moved rows. Reloading must not resurrect them in the
+// activity panel, while every event the player can act on survives.
+func TestImportDropsLegacyMovementEvents(t *testing.T) {
+	w := tinyWorld(t)
+	saved := w.ExportState()
+	saved.Events = []Event{
+		{Tick: 1, Type: legacyEventMoved, Message: "S1 moved S"},
+		{Tick: 2, Type: EventBlocked, Message: "S1 has no battery left"},
+	}
+
+	restored := tinyWorld(t)
+	if err := restored.ImportState(saved); err != nil {
+		t.Fatal(err)
+	}
+
+	if len(restored.Events) != 1 {
+		t.Fatalf("restored %d events, want the movement rows dropped", len(restored.Events))
+	}
+	if restored.Events[0].Type != EventBlocked {
+		t.Fatalf("kept event = %q, want the blocked event", restored.Events[0].Type)
 	}
 }
 

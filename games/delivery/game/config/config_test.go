@@ -60,7 +60,7 @@ func testCity(name string, withDepot bool) *engine.CityConfig {
 	}
 	if withDepot {
 		cfg.Depots = []engine.DepotConfig{
-			{ID: "home", Pos: engine.Position{X: 2, Y: 2}, Capacity: 4},
+			{ID: "home", Pos: engine.Position{X: 2, Y: 2}},
 		}
 	}
 	return cfg
@@ -68,13 +68,20 @@ func testCity(name string, withDepot bool) *engine.CityConfig {
 
 func writeBuiltin(t *testing.T, dir, id string, cfg *engine.CityConfig) {
 	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, id+".json"), []byte(cityJSON(t, cfg)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// cityJSON marshals a complete city document: DecodeCityConfig rejects rows
+// missing any required knob, so tests must not hand-roll partial payloads.
+func cityJSON(t *testing.T, cfg *engine.CityConfig) string {
+	t.Helper()
 	raw, err := json.Marshal(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, id+".json"), raw, 0o644); err != nil {
-		t.Fatal(err)
-	}
+	return string(raw)
 }
 
 func openCatalog(t *testing.T, dir, defaultID string, pool *pgxpool.Pool, max int) *Manager {
@@ -322,7 +329,7 @@ func TestCorruptCustomRowIsSkipped(t *testing.T) {
 	dir := t.TempDir()
 	writeBuiltin(t, dir, "city", testCity("Default City", true))
 	insertRow(t, pool, "corrupt", `{"name":"corrupt","bogus":1}`, "owner-a", "DRAFT")
-	insertRow(t, pool, "good", `{"name":"Good","grid_size":5,"layout":[".....","#####","##D##","#####","....."],"legend":{".":"road","#":"building","D":"depot"},"depots":[{"id":"home","pos":{"x":2,"y":2},"capacity":4}]}`, "owner-a", "PUBLISHED")
+	insertRow(t, pool, "good", cityJSON(t, testCity("Good", true)), "owner-a", "PUBLISHED")
 
 	m := openCatalog(t, dir, "city", pool, 0)
 	list, err := m.ListFor("")
@@ -344,7 +351,7 @@ func TestCustomRowCannotShadowBuiltin(t *testing.T) {
 	pool := pgtest.Pool(t)
 	dir := t.TempDir()
 	writeBuiltin(t, dir, "city", testCity("Default City", true))
-	raw := `{"name":"Shadow","grid_size":5,"layout":[".....","#####","##D##","#####","....."],"legend":{".":"road","#":"building","D":"depot"},"depots":[{"id":"home","pos":{"x":2,"y":2},"capacity":4}]}`
+	raw := cityJSON(t, testCity("Shadow", true))
 	insertRow(t, pool, "city", raw, "", "PUBLISHED")
 
 	m := openCatalog(t, dir, "city", pool, 0)

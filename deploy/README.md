@@ -26,6 +26,13 @@ and `.../maps-custom` directories may still exist from pre-cutover releases but
 are no longer read or written. **Never `rm -rf` `/var/lib/drbrain`**; keep those
 legacy directories as rollback backups until a later cleanup.
 
+`deploy/docker-compose.postgres.yaml` is the optional PostgreSQL container for a
+host that runs the database in Docker: project `drbrain`, volume `drbrain-pgdata`,
+loopback port 5432, and a required `POSTGRES_PASSWORD`. It is not part of the
+release artifact; copy it to `/opt/drbrain/` (or keep it in the checkout) and
+start it before `drbrain.service`. Local development uses the root
+`docker-compose.yaml` on `127.0.0.1:55432` instead (`just db-up`).
+
 - Back up custom maps/cities with `pg_dump` (they share the database with
   accounts and sessions). Back up the music score library as files. Builtin
   city files under `DELIVERY_CITIES_DIR` (and every other builtin map) are
@@ -90,6 +97,15 @@ its key is set (Tesla accepts only the exact string `true`).
 `CGO_ENABLED=0`, package, one SSH upload, one release swap + restart, remote smoke test
 (`/healthz` with five `ok` entries, one namespaced GraphQL query per game against
 `/graphql`, SPA shell).
+
+## Metrics
+
+`DRBRAIN_METRICS_ADDR` (default `127.0.0.1:9095`, empty disables) serves
+Prometheus metrics on a dedicated loopback listener. Keep it off
+`DRBRAIN_ADDR`: nginx proxies every public path, so `/metrics` would otherwise be
+public. `deploy/observability/` has a compose stack with Prometheus (15-day
+volume) and Perses dashboards provisioned from JSON under
+`deploy/observability/perses/provisioning/`.
 
 ### Music scores
 

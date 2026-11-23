@@ -1,19 +1,56 @@
 # Code generated from graph/schema.graphqls by cmd/split-schema. DO NOT EDIT.
 
+"""
+One grid step. UP decreases y, DOWN increases y, LEFT decreases x, RIGHT
+increases x.
+"""
 enum Direction {
+	"""
+	One row up (y-1).
+	"""
 	UP
+	"""
+	One row down (y+1).
+	"""
 	DOWN
+	"""
+	One column left (x-1).
+	"""
 	LEFT
+	"""
+	One column right (x+1).
+	"""
 	RIGHT
 }
+"""
+Sort direction for lists and history.
+"""
 enum SortOrder {
+	"""
+	Ascending (oldest/smallest first).
+	"""
 	ASC
+	"""
+	Descending (newest/largest first).
+	"""
 	DESC
 }
+"""
+How to order the session list.
+"""
 enum SessionSort {
+	"""
+	Newest save first.
+	"""
 	CREATED
+	"""
+	Most recent action first. The default.
+	"""
 	ACTION
 }
+"""
+Lifecycle of a community map: a draft is private to its owner.
+"""
 enum MapStatus {
 	"""
 	A work in progress: only its owner can see, edit, play or publish it.
@@ -24,35 +61,113 @@ enum MapStatus {
 	"""
 	PUBLISHED
 }
+"""
+Outcome of deleteSession.
+"""
 type DeleteSessionResult {
+	"""
+	Human-readable confirmation or reason the delete failed.
+	"""
 	message: String!
 }
+"""
+One page of the session list.
+"""
 type SessionList {
+	"""
+	Rows in this page.
+	"""
 	count: Int!
+	"""
+	Rows matching the query before the limit.
+	"""
 	total: Int!
+	"""
+	The sessions themselves.
+	"""
 	sessions: [Session!]!
+	"""
+	Sort field used (for echoing back to the client).
+	"""
 	sort: String!
+	"""
+	Sort order used.
+	"""
 	order: String!
 }
+"""
+Sessions of one map, with full state, used by the lobby.
+"""
 type UnifiedSessions {
+	"""
+	Map the sessions belong to.
+	"""
 	mapName: String!
+	"""
+	Number of sessions returned.
+	"""
 	count: Int!
+	"""
+	The sessions with their game state.
+	"""
 	sessions: [UnifiedSession!]!
 }
+"""
+One lobby row: session metadata plus its full state and map.
+"""
 type UnifiedSession {
+	"""
+	Session id.
+	"""
 	sessionId: ID!
+	"""
+	When the session was created (RFC3339 with the server's zone offset).
+	"""
 	createdAt: String!
+	"""
+	When the session last changed (RFC3339 with the server's zone offset).
+	"""
 	lastActionAt: String!
+	"""
+	Current game state.
+	"""
 	gameState: GameState!
+	"""
+	Map the session plays.
+	"""
 	gameMap: GameMap!
 }
+"""
+One play-through: the session metadata, the current game state and the map.
+"""
 type Session {
+	"""
+	Session id; public enough to watch.
+	"""
 	id: ID!
+	"""
+	The player's name for this save; null/empty falls back to the map name.
+	"""
 	displayName: String
+	"""
+	Map the session plays.
+	"""
 	mapName: String!
+	"""
+	When the session was created (RFC3339 with the server's zone offset).
+	"""
 	createdAt: String!
+	"""
+	When the session last changed (RFC3339 with the server's zone offset).
+	"""
 	lastActionAt: String!
+	"""
+	Current game state.
+	"""
 	gameState: GameState!
+	"""
+	Map the session plays, with its layout and legend.
+	"""
 	gameMap: GameMap!
 	"""
 	Only set in the createSession response, when fog is enabled and no gridPassword
@@ -61,29 +176,99 @@ type Session {
 	"""
 	generatedGridPassword: String
 }
+"""
+Everything a client needs to render and reason about one session.
+"""
 type GameState {
+	"""
+	Full row-major map (`grid[y][x]`). In fog sessions this requires the grid
+	password; a won run is revealed without it until reset.
+	"""
 	grid(password: String): [[Cell!]!]!
+	"""
+	The Tesla's tile.
+	"""
 	playerPos: Position!
+	"""
+	Current battery charge.
+	"""
 	battery: Int!
+	"""
+	Battery capacity of the map.
+	"""
 	maxBattery: Int!
+	"""
+	Parks visited, scored by the map's rules.
+	"""
 	score: Int!
+	"""
+	Number of parks on the map.
+	"""
 	totalParks: Int!
+	"""
+	Parks and whether they are visited.
+	"""
 	visitedParks: [VisitedPark!]!
+	"""
+	Status line for the human player.
+	"""
 	message: String!
+	"""
+	True when the run is over, whether won or lost.
+	"""
 	gameOver: Boolean!
+	"""
+	True when every park was visited.
+	"""
 	victory: Boolean!
+	"""
+	Map name.
+	"""
 	mapName: String!
+	"""
+	Every move this run, in order.
+	"""
 	moveHistory: [MoveHistoryEntry!]!
+	"""
+	Total moves taken in the run.
+	"""
 	totalMoves: Int!
+	"""
+	How many times the run has been reset.
+	"""
 	resetCount: Int!
+	"""
+	The visible window around the player: `(2fogRadius+1)` square cells.
+	"""
 	nearbyGrid: [[Cell!]!]!
+	"""
+	Moves made in the current attempt (after the last reset).
+	"""
 	currentMoves: [MoveHistoryEntry!]!
+	"""
+	Count of currentMoves.
+	"""
 	currentMovesCount: Int!
+	"""
+	SAFE, LOW, CAUTION, DANGER, CRITICAL, WARNING (no charger) or UNKNOWN.
+	"""
 	batteryRisk: String!
+	"""
+	True when the session was created with fog.
+	"""
 	fogEnabled: Boolean!
+	"""
+	Radius of the visible window, in tiles.
+	"""
 	fogRadius: Int!
+	"""
+	Per-step delay configured for the session, in milliseconds.
+	"""
 	moveDelayMs: Int!
 }
+"""
+One map cell as the client sees it.
+"""
 type Cell {
 	"""
 	Column of this cell on the map (RIGHT = x+1). Negative or >= map width for off-map nearbyGrid cells.
@@ -93,42 +278,138 @@ type Cell {
 	Row of this cell on the map (DOWN = y+1). Negative or >= map height for off-map nearbyGrid cells.
 	"""
 	y: Int!
+	"""
+	Cell kind: road, home, park, supercharger, water, building, etc.
+	"""
 	type: String!
+	"""
+	True when the player has already entered this cell.
+	"""
 	visited: Boolean!
+	"""
+	Stable cell id, or empty for off-map cells.
+	"""
 	id: String!
+	"""
+	Directions this cell permits; empty means every direction.
+	"""
 	allowedDirections: [String!]!
 }
+"""
+A tile coordinate: x = column, y = row.
+"""
 type Position {
+	"""
+	Column (0 = left).
+	"""
 	x: Int!
+	"""
+	Row (0 = top).
+	"""
 	y: Int!
 }
+"""
+One park and whether this run has visited it.
+"""
 type VisitedPark {
+	"""
+	Park id from the map.
+	"""
 	id: String!
+	"""
+	True once the Tesla has entered the park.
+	"""
 	visited: Boolean!
 }
+"""
+One move in the run's history.
+"""
 type MoveHistoryEntry {
+	"""
+	Action label ("move", "reset", ...).
+	"""
 	action: String!
+	"""
+	Position before the move.
+	"""
 	fromPosition: Position!
+	"""
+	Position after the move.
+	"""
 	toPosition: Position!
+	"""
+	Battery after the move.
+	"""
 	battery: Int!
+	"""
+	Wall-clock Unix timestamp in seconds.
+	"""
 	timestamp: Int!
+	"""
+	False when the move was rejected.
+	"""
 	success: Boolean!
+	"""
+	1-based move number within the run.
+	"""
 	moveNumber: Int!
 }
+"""
+Outcome of validateMap.
+"""
 type MapValidationResult {
+	"""
+	True when the map parses.
+	"""
 	valid: Boolean!
+	"""
+	True when every park is reachable without stranding the car.
+	"""
 	winnable: Boolean!
+	"""
+	Human-readable summary.
+	"""
 	message: String!
+	"""
+	Validation failure detail, when any.
+	"""
 	error: String
 }
+"""
+One map: geometry, battery budget, legend and per-cell overrides.
+"""
 type GameMap {
+	"""
+	Display name (also the map's lookup key).
+	"""
 	name: String!
+	"""
+	One-line description.
+	"""
 	description: String!
+	"""
+	Width and height of the square grid.
+	"""
 	gridSize: Int!
+	"""
+	Battery capacity.
+	"""
 	maxBattery: Int!
+	"""
+	Battery the car starts with.
+	"""
 	startingBattery: Int!
+	"""
+	Glyph rows of the map (fog sessions hide it behind the password).
+	"""
 	layout(password: String): [String!]!
+	"""
+	Glyph-to-meaning legend for the layout characters.
+	"""
 	legend: [LegendEntry!]!
+	"""
+	Per-glyph overrides, e.g. one-way cells and cell types.
+	"""
 	cellConfigs: [CellConfigEntry!]!
 	"""
 	True for maps shipped with the server; only an admin key may change them.
@@ -151,50 +432,156 @@ type GameMap {
 	"""
 	editKey: String
 }
+"""
+One glyph and what it means on the map.
+"""
 type LegendEntry {
+	"""
+	Single layout character.
+	"""
 	key: String!
+	"""
+	Human-readable meaning.
+	"""
 	value: String!
 }
+"""
+Per-glyph behaviour override.
+"""
 type CellConfigEntry {
+	"""
+	Single layout character.
+	"""
 	key: String!
+	"""
+	Cell type this glyph resolves to (road, building, home, ...).
+	"""
 	type: String!
+	"""
+	Directions this cell permits; empty means every direction.
+	"""
 	allowedDirections: [String!]!
 }
 input GameMapInput {
+	"""
+	Map name (the lookup key).
+	"""
 	name: String!
+	"""
+	One-line description.
+	"""
 	description: String!
+	"""
+	Width and height of the square grid.
+	"""
 	gridSize: Int!
+	"""
+	Battery capacity.
+	"""
 	maxBattery: Int!
+	"""
+	Battery the car starts with.
+	"""
 	startingBattery: Int!
+	"""
+	Glyph rows of the map.
+	"""
 	layout: [String!]!
+	"""
+	Legend for the glyphs.
+	"""
 	legend: [LegendEntryInput!]!
+	"""
+	Optional per-glyph overrides.
+	"""
 	cellConfigs: [CellConfigEntryInput!] = []
 }
 input LegendEntryInput {
+	"""
+	Single layout character.
+	"""
 	key: String!
+	"""
+	Human-readable meaning.
+	"""
 	value: String!
 }
 input CellConfigEntryInput {
+	"""
+	Single layout character.
+	"""
 	key: String!
+	"""
+	Cell type this glyph resolves to.
+	"""
 	type: String!
+	"""
+	Directions this cell permits; empty means every direction.
+	"""
 	allowedDirections: [String!]!
 }
 input GameMapPatchInput {
+	"""
+	New name, when changing it.
+	"""
 	name: String
+	"""
+	New description, when changing it.
+	"""
 	description: String
+	"""
+	New grid size, when changing it.
+	"""
 	gridSize: Int
+	"""
+	New battery capacity, when changing it.
+	"""
 	maxBattery: Int
+	"""
+	New starting battery, when changing it.
+	"""
 	startingBattery: Int
+	"""
+	Replacement glyph rows, when changing them.
+	"""
 	layout: [String!]
+	"""
+	Replacement legend, when changing it.
+	"""
 	legend: [LegendEntryInput!]
+	"""
+	Replacement cell overrides, when changing them.
+	"""
 	cellConfigs: [CellConfigEntryInput!]
 }
+"""
+One row in the map catalogue.
+"""
 type MapInfo {
+	"""
+	Conventional file name (`<name>.json`). Community rows use the same naming
+	convention but are stored in PostgreSQL.
+	"""
 	filename: String!
+	"""
+	Map id used by createSession (the map's `name`).
+	"""
 	mapId: String!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	One-line description.
+	"""
 	description: String!
+	"""
+	Width and height of the square grid.
+	"""
 	gridSize: Int!
+	"""
+	Battery capacity.
+	"""
 	maxBattery: Int!
 	"""
 	True for maps shipped with the server.
@@ -210,80 +597,289 @@ type MapInfo {
 	"""
 	ownedByMe: Boolean!
 }
+"""
+Result of one move.
+"""
 type MoveResult {
+	"""
+	False when the move was rejected. A collision also ends the run
+	(`gameOver` becomes true), so read the state rather than assuming nothing
+	changed.
+	"""
 	success: Boolean!
+	"""
+	State after the attempt.
+	"""
 	gameState: GameState!
+	"""
+	Status line for the player.
+	"""
 	message: String!
+	"""
+	Events raised by the step.
+	"""
 	events: [GameEvent!]!
+	"""
+	Compact summary of the step, when available.
+	"""
 	step: StepInfo
+	"""
+	The attempted target, set when the move was rejected and the reason is positional.
+	"""
 	attemptedTo: AttemptInfo
 }
+"""
+Result of bulkMove: how far the batch got and the resulting state.
+"""
 type BulkMoveResult {
+	"""
+	Number of moves actually executed.
+	"""
 	movesExecuted: Int!
+	"""
+	Total moves taken in the run after this call.
+	"""
 	totalMoves: Int!
+	"""
+	Number of moves requested.
+	"""
 	requestedMoves: Int!
+	"""
+	False when the whole batch was rejected before the first move.
+	"""
 	success: Boolean!
+	"""
+	State after the batch.
+	"""
 	gameState: GameState!
+	"""
+	Events raised by the batch.
+	"""
 	events: [GameEvent!]!
+	"""
+	Human-readable reason the batch stopped early; empty when it ran to completion.
+	"""
 	stoppedReason: String!
+	"""
+	Machine-readable stop reason code.
+	"""
 	stopReasonCode: String!
+	"""
+	1-based index of the move that stopped the batch, 0 when none did.
+	"""
 	stoppedOnMove: Int!
+	"""
+	True when the batch hit the per-call move cap.
+	"""
 	truncated: Boolean!
+	"""
+	Per-call move cap.
+	"""
 	limit: Int!
+	"""
+	Position before the batch.
+	"""
 	startPos: Position!
+	"""
+	Position after the batch.
+	"""
 	endPos: Position!
+	"""
+	Battery before the batch.
+	"""
 	startBattery: Int!
+	"""
+	Battery after the batch.
+	"""
 	endBattery: Int!
+	"""
+	Score change over the batch.
+	"""
 	scoreDelta: Int!
+	"""
+	Per-move summaries for this call only.
+	"""
 	steps: [StepInfo!]!
+	"""
+	The attempted target when the batch stopped on a rejected move.
+	"""
 	attemptedTo: AttemptInfo
+	"""
+	True when the run ended during the batch.
+	"""
 	gameOver: Boolean!
+	"""
+	Machine-readable game-over reason, empty when still playing.
+	"""
 	gameOverCode: String!
+	"""
+	Status line for the player.
+	"""
 	message: String!
+	"""
+	Directions that are legal from the end position, walls and battery considered.
+	"""
 	possibleMoves: [String!]!
+	"""
+	SAFE, LOW, CAUTION, DANGER, CRITICAL, WARNING or UNKNOWN.
+	"""
 	batteryRisk: String!
 }
+"""
+One notable thing that happened during a move or batch.
+"""
 type GameEvent {
+	"""
+	Event kind (park_visited, charged, blocked, ...).
+	"""
 	type: String!
+	"""
+	Human-readable description.
+	"""
 	message: String!
+	"""
+	RFC3339 wall-clock time of the event.
+	"""
 	timestamp: String!
+	"""
+	Where it happened.
+	"""
 	position: Position!
 }
+"""
+Compact summary of one executed step.
+"""
 type StepInfo {
+	"""
+	1-based step index in the run.
+	"""
 	idx: Int!
+	"""
+	Direction moved.
+	"""
 	dir: String!
+	"""
+	Position before the step.
+	"""
 	from: Position!
+	"""
+	Position after the step.
+	"""
 	to: Position!
+	"""
+	Glyph of the entered tile.
+	"""
 	tileChar: String!
+	"""
+	Cell type of the entered tile.
+	"""
 	tileType: String!
+	"""
+	Battery before the step.
+	"""
 	batteryBefore: Int!
+	"""
+	Battery after the step.
+	"""
 	batteryAfter: Int!
+	"""
+	False when the step was rejected.
+	"""
 	success: Boolean!
+	"""
+	True when the step charged the battery.
+	"""
 	charged: Boolean!
+	"""
+	True when the step entered a park.
+	"""
 	park: Boolean!
+	"""
+	True when this step won the run.
+	"""
 	victory: Boolean!
 }
+"""
+The target a rejected move tried to enter.
+"""
 type AttemptInfo {
+	"""
+	Column attempted.
+	"""
 	x: Int!
+	"""
+	Row attempted.
+	"""
 	y: Int!
+	"""
+	Glyph at that tile.
+	"""
 	tileChar: String!
+	"""
+	Cell type at that tile.
+	"""
 	tileType: String!
+	"""
+	Whether the tile itself is passable (the rejection may be directional).
+	"""
 	passable: Boolean!
 }
+"""
+One page of a session's move history.
+"""
 type HistoryResponse {
+	"""
+	Moves on this page.
+	"""
 	moves: [MoveHistoryEntry!]!
+	"""
+	Total moves in the run.
+	"""
 	totalMoves: Int!
+	"""
+	1-based page number.
+	"""
 	page: Int!
+	"""
+	Page size.
+	"""
 	pageSize: Int!
+	"""
+	Total number of pages.
+	"""
 	totalPages: Int!
+	"""
+	True when a newer page exists.
+	"""
 	hasNext: Boolean!
+	"""
+	True when an older page exists.
+	"""
 	hasPrevious: Boolean!
 }
+"""
+Tesla reads: sessions, game state, history and map catalogue.
+"""
 type Query {
+	"""
+	One session, or an error when the id is unknown.
+	"""
 	session(id: ID!): Session!
+	"""
+	Saved sessions, paged by `limit`; `sort`/`order` control the ranking.
+	"""
 	sessions(sort: SessionSort = ACTION, order: SortOrder = DESC, limit: Int): SessionList!
+	"""
+	Sessions of one map (`mapName`; empty means every map) with full state.
+	"""
 	unifiedSessions(mapName: String): UnifiedSessions!
+	"""
+	One session's game state without the map document.
+	"""
 	gameState(sessionID: ID!): GameState!
+	"""
+	One page of a session's move history.
+	"""
 	history(sessionID: ID!, page: Int = 1, limit: Int = 50, order: SortOrder = DESC): HistoryResponse!
 	"""
 	Published maps plus the signed-in caller's own drafts. Another player's draft is never listed.
@@ -294,12 +890,35 @@ type Query {
 	"""
 	map(name: String!, password: String): GameMap!
 }
+"""
+Tesla writes: play, manage sessions and author maps. Map writes require
+ownership or the admin key.
+"""
 type Mutation {
+	"""
+	Start a session on a map. `mapID` (or the legacy `mapName`) selects the map;
+	fog and its radius are opt-in. Move speed is per session.
+	"""
 	createSession(mapID: String, mapName: String, fogEnabled: Boolean = false, fogRadius: Int = 1, gridPassword: String, moveDelayMs: Int): Session!
+	"""
+	Delete a session.
+	"""
 	deleteSession(id: ID!): DeleteSessionResult!
+	"""
+	Rename the save.
+	"""
 	updateSession(id: ID!, displayName: String!): Session!
+	"""
+	One step. `reset` restarts the run before moving.
+	"""
 	move(sessionID: ID!, direction: Direction!, reset: Boolean = false): MoveResult!
+	"""
+	Several steps in order (at most 50 per call), stopping early on game over.
+	"""
 	bulkMove(sessionID: ID!, moves: [Direction!]!, reset: Boolean = false): BulkMoveResult!
+	"""
+	Restart the run.
+	"""
 	reset(sessionID: ID!): GameState!
 	"""
 	Creates a DRAFT map owned by the signed-in player (UNAUTHENTICATED otherwise). Update it
@@ -326,9 +945,20 @@ type Mutation {
 	need X-Admin-Key. editKey is accepted only for legacy unowned maps.
 	"""
 	deleteMap(name: String!, editKey: String): DeleteSessionResult!
+	"""
+	Validates a map definition without saving it.
+	"""
 	validateMap(map: GameMapInput!): MapValidationResult!
 }
 type Subscription {
+	"""
+	The full game state of one session, emitted on every accepted move or tick.
+	The session must be readable by the caller.
+	"""
 	sessionUpdated(sessionID: ID!): GameState!
+	"""
+	Lobby-wide state broadcasts for the session list; emits the latest visible
+	session state as it changes.
+	"""
 	lobbyUpdated: GameState!
 }

@@ -1,5 +1,9 @@
 # Code generated from graph/schema.graphqls by cmd/split-schema. DO NOT EDIT.
 
+"""
+Challenge level. Higher difficulties flip more bars, and each win rewards a
+larger share of the excerpt.
+"""
 enum Difficulty {
 	"""
 	Reorder the whole excerpt; no bar is flipped. Rewards 5% per win.
@@ -14,35 +18,114 @@ enum Difficulty {
 	"""
 	GENIUS
 }
+"""
+One sounding note.
+"""
 type Note {
+	"""
+	Start position in ticks from the start of the measure.
+	"""
 	at: Int!
+	"""
+	Duration in ticks.
+	"""
 	dur: Int!
+	"""
+	MIDI pitch number.
+	"""
 	pitch: Int!
 }
+"""
+One bar of the excerpt.
+"""
 type Measure {
+	"""
+	Bar id used by slots and arrangement inputs.
+	"""
 	id: ID!
+	"""
+	Bar length in ticks.
+	"""
 	len: Int!
+	"""
+	Notes in the bar, in time order.
+	"""
 	notes: [Note!]!
 }
+"""
+One output position in the arrangement: which bar sits there and whether it is
+flipped.
+"""
 type Slot {
+	"""
+	0-based position in the excerpt.
+	"""
 	position: Int!
+	"""
+	Bar placed at this position.
+	"""
 	measureID: ID!
+	"""
+	True when the bar is reversed (retrograde).
+	"""
 	flipH: Boolean!
+	"""
+	True when the bar's pitches are inverted.
+	"""
 	flipV: Boolean!
 }
+"""
+One slot in a setArrangement call.
+"""
 input PlacementInput {
+	"""
+	Bar to place.
+	"""
 	measureID: ID!
+	"""
+	Reverse the bar.
+	"""
 	flipH: Boolean!
+	"""
+	Invert the bar's pitches.
+	"""
 	flipV: Boolean!
 }
+"""
+One excerpt: metadata, its bars and the original note sequence.
+"""
 type Excerpt {
+	"""
+	Excerpt id used by createSession.
+	"""
 	id: ID!
+	"""
+	Title.
+	"""
 	title: String!
+	"""
+	Composer.
+	"""
 	composer: String!
+	"""
+	Tempo in beats per minute.
+	"""
 	tempoBPM: Int!
+	"""
+	Time signature, e.g. "4/4".
+	"""
 	timeSig: String!
+	"""
+	Key signature, e.g. "C major".
+	"""
 	key: String!
+	"""
+	Clef the arrangement is drawn in.
+	"""
 	clef: String!
+	"""
+	Vertical axis used when inverting pitches.
+	"""
 	axis: Int!
 	"""
 	The piece's bars in performance order. Every Music Region piece is at most
@@ -50,46 +133,152 @@ type Excerpt {
 	the number of slots in a session.
 	"""
 	measures: [Measure!]!
+	"""
+	Every note of the excerpt in performance order, for preview rendering.
+	"""
 	notes: [Note!]!
 }
+"""
+The last change made to a session, for highlighting the modified bars.
+"""
 type LastChange {
+	"""
+	Mutation kind: SWITCH, TRANSFORM, ARRANGE, RESET or SOLVE.
+	"""
 	kind: String!
+	"""
+	First affected slot; 0 for changes that are not slot-specific.
+	"""
 	a: Int!
+	"""
+	Second affected slot for SWITCH; 0 when not applicable.
+	"""
 	b: Int!
 }
+"""
+One play-through: the excerpt, the current arrangement and its progress.
+"""
 type Session {
+	"""
+	Session id.
+	"""
 	id: ID!
+	"""
+	The player's name for this save; null/empty falls back to the excerpt title.
+	"""
 	displayName: String
+	"""
+	Difficulty the session was created at.
+	"""
 	difficulty: Difficulty!
+	"""
+	The excerpt being restored.
+	"""
 	excerpt: Excerpt!
+	"""
+	Current arrangement, one slot per excerpt bar.
+	"""
 	slots: [Slot!]!
+	"""
+	True when every bar is back in place and unflipped.
+	"""
 	solved: Boolean!
+	"""
+	Monotonic sequence of this snapshot.
+	"""
 	seq: Int!
+	"""
+	Wins recorded on this save.
+	"""
 	wins: Int!
+	"""
+	Percent of the excerpt's reward granted per win at this difficulty.
+	"""
 	percentPerWin: Int!
+	"""
+	When the session was created (RFC3339 UTC).
+	"""
 	createdAt: String!
+	"""
+	When the session last changed (RFC3339 UTC).
+	"""
 	lastActionAt: String!
+	"""
+	The most recent change, or null before the first one.
+	"""
 	lastChange: LastChange
 }
+"""
+One subscription frame: the new session and the change that caused it.
+"""
 type SessionUpdate {
+	"""
+	Full current session.
+	"""
 	session: Session!
+	"""
+	The change that produced this frame, or null.
+	"""
 	lastChange: LastChange
 }
+"""
+Music reads: excerpts and sessions.
+"""
 type Query {
+	"""
+	Every available excerpt.
+	"""
 	excerpts: [Excerpt!]!
+	"""
+	One excerpt, or null when the id is unknown.
+	"""
 	excerpt(id: ID!): Excerpt
+	"""
+	One session, or null when the id is unknown.
+	"""
 	session(id: ID!): Session
+	"""
+	Saved sessions, newest first, limited by `limit` (default 50).
+	"""
 	sessions(limit: Int = 50): [Session!]!
 }
+"""
+Music writes: start a session and rearrange its bars.
+"""
 type Mutation {
+	"""
+	Start a session on an excerpt; `seed` makes the scramble reproducible.
+	"""
 	createSession(excerptID: ID!, difficulty: Difficulty!, displayName: String, seed: Int): Session!
+	"""
+	Swap two slots.
+	"""
 	switchMeasures(sessionID: ID!, a: Int!, b: Int!): Session!
+	"""
+	Toggle horizontal and/or vertical flips on one slot.
+	"""
 	transformMeasure(sessionID: ID!, position: Int!, flipH: Boolean!, flipV: Boolean!): Session!
+	"""
+	Replace the whole arrangement in one call.
+	"""
 	setArrangement(sessionID: ID!, slots: [PlacementInput!]!): Session!
+	"""
+	Restore the scrambled starting arrangement.
+	"""
 	resetArrangement(sessionID: ID!): Session!
+	"""
+	Delete a session.
+	"""
 	deleteSession(id: ID!): Boolean!
+	"""
+	Rename the save.
+	"""
 	renameSession(id: ID!, displayName: String!): Session!
 }
 type Subscription {
+	"""
+	Every change to one music session: the new session and the change that
+	caused it.
+	"""
 	sessionUpdated(sessionID: ID!): SessionUpdate!
 }

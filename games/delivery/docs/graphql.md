@@ -1,17 +1,19 @@
 # DrBrain Delivery — GraphQL API
 
-GraphQL is the **only** transport. There is no REST surface: the schema at
-`graph/schema.graphqls` is the contract, and both the Go server types and the
-TypeScript client types are generated from it.
+GraphQL is the **only** transport. There is no REST surface. The canonical schema
+is `graph/schema.graphqls` at the repository root; both the Go server types and
+the TypeScript client types are generated from it.
 
 - Endpoint: `POST /graphql`
+- Agent guide: `GET /delivery/llms.txt` (rendered by the platform from `llms.txt.tmpl`)
 - Playground: `GET /graphql/playground` (interactive query editor)
-- Schema: [`graph/schema.graphqls`](../graph/schema.graphqls)
+- Schema: [`graph/schema.graphqls`](../../../graph/schema.graphqls) (canonical);
+  `games/delivery/graph/schema.graphqls` is generated
 
 ```bash
-make serve     # → http://localhost:8080/graphql
-make types     # regenerate web/src/lib/delivery/api-types.ts from the schema
-make generate  # regenerate Go resolvers/types with gqlgen
+just restart       # regenerate schema, build web + binary, serve on :8181
+just regen         # after any schema edit
+go run ./cmd/gentypes -check   # TypeScript client types are current
 ```
 
 ## Generated types, both directions
@@ -19,18 +21,26 @@ make generate  # regenerate Go resolvers/types with gqlgen
 | Direction | Generator | Output |
 |---|---|---|
 | schema → Go | gqlgen | `graph/generated/`, `graph/model/` |
-| schema → TypeScript | `cmd/gentypes` | `web/src/lib/delivery/api-types.ts` |
+| schema → TypeScript | `cmd/gentypes` | `web/src/lib/graphql-types.ts` |
 
-Neither side hand-maintains a copy of the schema. `make check` fails if either
-is stale, so a schema change without regeneration breaks the build instead of
-silently shipping a lying client.
+Neither side hand-maintains a copy of the schema. `go run ./cmd/gentypes -check`
+and `go run ./cmd/split-schema -check` fail when generated output is stale, so a
+schema change without regeneration breaks the build instead of silently shipping
+a lying client.
+
+**Every operation goes through the `delivery` namespace.** The examples below
+show the delivery selection set; wrap a full operation in `delivery { … }`
+(`mutation { delivery { … } }`, `query { delivery { … } }`). Subscriptions stay
+flat at the operation root: `subscription { deliverySession(id: "…") { … } }`.
 
 ## Commands vs. the clock
 
-**A move does not move the car.** `moveCar` queues exactly one step for one car;
-the tick loop applies it. This is what makes driving several cars by hand
-unambiguous — each car has its own input slot, and nothing moves unless you say
-so.
+**A move does not move the car.** `moveCar` appends one step to a car's movement
+queue; the tick loop applies at most one queued step per car per tick. Each car
+has its own queue, so driving several cars by hand is unambiguous, and an agent
+can preload a route and then advance the clock. A car may hold up to 64 queued
+steps (`LIMIT_REACHED` beyond that); `clearMoves` empties the queue when traffic
+or a closure invalidates the plan. A rejected step is spent, not retried.
 
 **Every session starts paused, including a restored one.** This is a
 manual-driving game; a live clock would expire orders while the player was
@@ -38,7 +48,7 @@ reading the screen. Unpause with `setSpeed`, or step deterministically with
 `tick`.
 
 **CHANGED (was an asymmetry, now uniform):** loading a save used to restore the
-`speed` stored in the file and start ticking immediately. It now always comes
+`speed` stored in the save and start ticking immediately. It now always comes
 back **paused**, and the client opts in to the clock explicitly. Verified against
 a live server:
 
@@ -70,21 +80,23 @@ includes the tick's own work time, so a long run drifts slightly slower than
 when you need exact steps.
 
 **Saving is implicit in more places than the name suggests.** `saveSession` is
-the explicit one, but three others write to disk:
+the explicit one, autosave runs every `autosave_ticks` world ticks (60 on the
+shipped map), and two lifecycle actions persist too. Saves are
+`platform_sessions` rows in PostgreSQL; there is no file on disk:
 
 | action | writes a save? |
 |---|---|
 | `saveSession` | yes, obviously |
-| `evictSession` | **yes** — it saves, then unloads so the next read rehydrates |
+| autosave | **yes** — every `autosave_ticks` while the clock runs; also on pause and close |
+| `evictSession` | **yes** — it closes (and saves) the session, then unloads it; the next read rehydrates the row |
 | server SIGINT/SIGTERM | **yes** — `Manager.Close` → `SaveAll` before exit |
-| `deleteSession` | no; it removes the file |
-| ordinary ticking | no |
+| `deleteSession` | no; it deletes the row |
+| ordinary ticking | not on every tick: the autosave interval decides |
 
-Verified: created a session, ticked it to 5 without ever calling `saveSession`,
-called `evictSession`, and a reload came back at tick 5 with `s2.json` on disk.
+Verified: created a session, ticked it past the autosave interval without calling
+`saveSession`, called `evictSession`, and a reload came back at the same tick.
 So "evict to throw away my scratch game" does not work — use `deleteSession` for
-that. Conversely a hard kill (SIGKILL, crash) loses everything since the last
-save, because there is no periodic autosave.
+that. A crash still loses everything since the last autosave or explicit save.
 
 ## Query
 
@@ -92,29 +104,46 @@ save, because there is no periodic autosave.
 query {
   health { status }
 
-  "Published cities plus your own drafts; another player's draft is never listed."
+  # Published cities plus your own drafts; another player's draft is never listed.
   cities { id name gridSize status ownedByMe builtin ownerless }
 
-  "Static city with every district revealed; omit id for the default city."
+  # Static city with every district revealed; omit id for the default city.
   city(id: "city") { id name gridSize status ownedByMe builtin ownerless rows hiddenTiles kitchens { id name x y } }
 
-  "Exact authored city JSON (decoded/defaulted); null for missing or another player's draft."
+  # Exact authored city JSON (decoded/defaulted); null for missing or another player's draft.
   cityConfig(id: "city")
 
-  "Every save on disk, newest first."
-  sessions { id createdAt tick money reputation deliveries loaded }
+  # Saves plus live sessions. sort: CREATED_AT|TICK|MONEY; limit <= 500; before is a createdAt cursor; mine keeps the viewer's saves (UNAUTHENTICATED when signed out).
+  sessions(sort: CREATED_AT, limit: 50) { id createdAt displayName tick money reputation deliveries loaded ownerDisplayName mine }
 
-  "One session's full state. Rehydrates from disk when not in memory."
+  # Money by tick from the indexed delivery history projection. Up to 20 sessions; maxPoints downsamples each series.
+  moneyHistory(ids: ["demo"], fromTick: 0, toTick: 5000, maxPoints: 500) {
+    sessionId cityId points { tick money }
+  }
+
+  # Cumulative boxes from done orders; expired and open orders do not count.
+  itemsHistory(ids: ["demo"], maxPoints: 500) {
+    sessionId cityId points { tick value }
+  }
+
+  # Recorded standing; pre-ledger saves return one current point.
+  reputationHistory(ids: ["demo"], maxPoints: 500) {
+    sessionId cityId points { tick value }
+  }
+
+  # One session's full state. Loads from PostgreSQL when not in memory.
   session(id: "demo") {
-    tick paused tickMs
+    displayName tick paused tickMs eventCapacity
     city {
       name gridSize rows hiddenTiles
       kitchens { id name x y } customers { id name x y }
       depots { id name x y } chargers { id name x y }
     }
     cars { id className x y battery maxBattery batteryPct capacity load freeBoxes state cargo queuedMove lastReject chargeDue }
-    orders { id itemName quantity kitchenId kitchenName customerId customerName state reward ticksLeft paid late assignedCar createdTick deadlineTick }
-    ledger { money moneyEarned reputation deliveries lateDeliveries expiredOrders ordersSpawned onTimeStreak tows deliveriesByItem { item count } upkeepPaid towFees upkeepDue ticksPerMonth cashEntries { seq tick kind category amount balance carId carName orderId memo } months { index startTick endTick income expenses net categories { category income expenses } } }
+    # openOrders = PENDING|ASSIGNED|PICKED_UP. orders() filters the history, newest first.
+    openOrders { id itemName quantity kitchenId kitchenName customerId customerName state reward ticksLeft paid late assignedCar createdTick deadlineTick }
+    orders(state: [DONE], sinceTick: 0, limit: 50) { id state }
+    ledger { money moneyEarned reputation payMultiplier deliveries lateDeliveries expiredOrders ordersSpawned onTimeStreak tows deliveriesByItem { item count } upkeepPaid towFees upkeepDue ticksPerMonth cashEntries { seq tick kind category amount balance carId carName orderId memo } months { index startTick endTick income expenses net categories { category income expenses } } }
     carClasses { className price capacity maxBattery stepCost unlocked affordable }
     growth { id tick title description done }
     closures { id reason startTick endTick ticksLeft minX minY maxX maxY tiles { x y } }
@@ -132,12 +161,18 @@ tick it fires at, a title/description, and `done` once it has applied. Nothing
 in it is purchasable — the city opens districts, adds customers, kitchens and
 chargers, and adds depot charging bays on its own clock. Each stage that applies
 raises `Chapter()`, which drives reward and deadline tables; quantity bands and
-customer cooldowns scale by session tick as a percentage of `ramp_ticks`.
+customer cooldowns scale by session tick as a percentage of `ramp_ticks`. The
+scooter and van bands also carry a small early share from tick 0, so 1–3 and
+5–24 box work exists at every stage; a band's `from_progress` is where its
+share jumps. The 30–40 box truck band has no early share and starts at its
+gate, so it cannot appear before a truck is affordable.
 
 `capacity`, `load` and `freeBoxes` are measured in **boxes**, not orders. A
 customer can ask for forty pizzas; whether that fits is a property of the
-vehicle, so `assignOrder` rejects an order larger than the car's free hold with
-an error naming both numbers. `quantity` on an order is that box count.
+vehicle. `assignOrder` counts both the boxes the car carries and the boxes
+promised to its other `ASSIGNED` orders, so several orders fit on one car only
+while their total does; the error names the carried, assigned and capacity
+figures. `quantity` on an order is that box count.
 
 `chargeDue` is the unpaid balance of a charging session in progress, in
 dollars. It is zero when the car is not on a paid charger and after the session
@@ -156,25 +191,44 @@ is `DONE`.
 by the tick loop yet reports a negative value instead of clamping to zero, so
 "due this tick" and "already missed" stay distinguishable.
 
-### `lastReject` and `queuedMove` timing
+`openOrders` is the actionable list: every `PENDING`/`ASSIGNED`/`PICKED_UP` job,
+newest created first. `orders` takes filters and defaults to the **full**
+history, which is what a replay or audit wants:
 
-`moveCar` only queues; it does not touch `lastReject`. So immediately after
-`moveCar` you still see the *previous* rejection, and only a `tick` replaces it.
-Verified on the shipped map:
+```graphql
+session(id: "demo") {
+  openOrders { id state ticksLeft }
+  orders(state: [DONE, EXPIRED], carId: "car_1", sinceTick: 4000, includeFinished: false, limit: 50) { id state paid late }
+}
+```
+
+`limit` defaults to 2000 and is capped there; `sinceTick` compares against
+`createdTick`; `carId` matches `assignedCar` (a delivered order keeps its car).
+Finished history is roughly 96% of a long save and never shrinks, so selecting
+it per frame is the difference between a small and a multi-megabyte payload.
+
+### `lastReject`, `queuedMove` and `queuedMoves` timing
+
+`moveCar` only appends to the queue; it does not touch `lastReject`. So
+immediately after `moveCar` you still see the *previous* rejection, and only a
+`tick` replaces it. `queuedMove` is the head — the step for the next tick —
+while `queuedMoves` is the whole plan in execution order. Verified on the
+shipped map:
 
 ```
 car at (3,2), lastReject null
-moveCar WEST   -> lastReject null, queuedMove "WEST"   (unchanged so far)
-tick           -> lastReject "BLOCKED", queuedMove null
-moveCar SOUTH  -> lastReject "BLOCKED"                 (stale by one tick)
-tick           -> (3,3), lastReject null               (cleared on success)
+moveCar WEST   -> lastReject null, queuedMove "WEST", queuedMoves ["WEST"]
+moveCar SOUTH  -> lastReject null, queuedMove "WEST", queuedMoves ["WEST","SOUTH"]
+tick           -> lastReject "BLOCKED", queuedMove "SOUTH", queuedMoves ["SOUTH"]
+tick           -> (3,3), lastReject null, queuedMove null, queuedMoves []
 ```
 
 A client that wants to explain *this* refusal must read the snapshot returned by
 `tick`, not the one `moveCar` returned. `lastReject` is also sticky in a second
 sense: it stays set until a later tick either rejects again with the same reason
 or lets a step succeed, so it is "the most recent failure", not "the failure of
-the last command".
+the last command". A rejected step is consumed: the next tick tries the next
+queued step, so replan with `clearMoves` rather than assuming the head retries.
 
 ### Ledger counters
 
@@ -188,15 +242,59 @@ the last command".
 | `ordersSpawned` | every order ever raised, including expired ones |
 | `onTimeStreak` | consecutive on-time deliveries; late and expired both reset it |
 | `deliveriesByItem` | per-item **order** counts, not boxes — a two-box order adds 1 |
+| `payMultiplier` | share of a quoted reward the fleet collects, from its reputation (see below) |
 | `upkeepPaid` | lifetime fleet running cost paid; cumulative, **not** subtracted from `moneyEarned` |
 | `towFees` | lifetime spend on tows; cumulative |
 | `upkeepDue` | what the next upkeep interval would charge at the cars' current positions |
 | `ticksPerMonth` | length of one accounting month, currently 600 ticks |
-| `months` | monthly income/expense report, newest first, at most 12 rows |
+| `months` | monthly income/expense report, newest first; default window 3 months, filterable |
+| `cars` | per-car income/expenses/net/rows for a window; world costs excluded |
 
 `deliveries + lateDeliveries + expiredOrders` equals `ordersSpawned` minus the
 orders still live, so a client that wants "jobs that failed" must not read
 `deliveries` alone.
+
+### Reputation is the pay rate
+
+Reputation is clamped to `0..max_reputation` (5 on the shipped maps). It moves
+`+0.02` per on-time delivery, `-0.05` per late delivery, and up to `-0.10` per
+expired order — the expiry penalty scales with standing, so it is the full 0.10
+at 1.0 and above, half at 0.5, a fifth at 0.2, and nothing at 0. A collapse is
+therefore recoverable: at 0.2 a miss costs exactly one delivery's worth of
+standing, so any delivery advantage climbs. A growth stage can also grant it. What it buys is the multiplier
+customers pay:
+
+| reputation | payMultiplier |
+|---|---|
+| 4.90 – 5.00 | 1.0 |
+| 4.50 – 4.89 | 0.9 |
+| 4.00 – 4.49 | 0.8 |
+| 3.50 – 3.99 | 0.7 |
+| 3.00 – 3.49 | 0.6 |
+| 2.50 – 2.99 | 0.5 |
+| 2.00 – 2.49 | 0.4 |
+| 1.50 – 1.99 | 0.3 |
+| 1.00 – 1.49 | 0.2 |
+| 0.50 – 0.99 | 0.1 |
+| 0.01 – 0.49 | 0.1 (floor) |
+| exactly 0.00 | 0.0 |
+
+A new session opens at the top of the scale (`max_reputation`, 5.00), so its
+first deliveries pay in full; the ladder is what expiries and late dropoffs
+spend.
+
+The bottom of the ladder is a floor, not a cliff: any standing above zero still
+earns a tenth, so a fleet that let its reputation collapse can keep working,
+buy capacity and climb back. Only an exactly-zero standing pays nothing — and a
+single delivery lifts it off zero. (An earlier version paid 0% across the whole
+bottom band; on a 6k-tick run that deadlocked the economy, because zero income
+meant no new trucks, which meant the expiries that held the standing at zero.)
+
+An on-time delivery pays `round(reward × payMultiplier)`; a late one pays
+`round(reward × late_pay_multiplier × payMultiplier)`. A zero payout records no
+statement row (a movement of nothing is not a line), but the order still counts
+as a delivery and still adds `+0.02` reputation — free runs are the way back into
+a paid band. Holding a band costs five deliveries for every order let rot.
 
 ### Cash statement
 
@@ -227,11 +325,26 @@ records no row at all — the balance never goes negative. That keeps the
 statement chain self-consistent: each `balance` is the previous one plus
 `amount`.
 
-The engine keeps the full statement in the save. A snapshot carries at most the
-latest 200 rows, and the live `deliverySession` stream carries the latest 40:
-the statement is re-sent on every mutation and every streamed tick, and the
-panel only renders recent activity. Old rows stay in the save as the audit
-record.
+The engine keeps the full statement in the save. A snapshot carries the rows of
+the newest three accounting months, capped at 200, and the live `deliverySession`
+stream carries **the same window** — a subscriber never sees a narrower account
+than a reader. Old rows stay in the save and are reachable through the filters:
+
+```graphql
+ledger {
+  cashEntries(month: 2, fromTick: 600, toTick: 1199, category: TOWS, carId: "car_1", limit: 200) { seq tick amount balance memo }
+  months(month: 2) { index income expenses net categories { category income expenses } }
+  cars(month: 2) { carId carName income expenses net rows }
+}
+```
+
+`month` is 1-based and overrides the tick window; `fromTick`/`toTick` are
+inclusive and intersect `month`; `category` keeps one bucket; `carId` applies to
+statement rows only; `limit` caps the newest rows (1000 max). A month that has
+not started is an error (`bad_request: month 9 has not started (current month
+8)`), not an empty page. `cars` aggregates the same window per car and leaves
+out rows with no `carId` (upkeep, world costs), so its totals do not sum to the
+month's `net`.
 
 ### Monthly report
 
@@ -246,7 +359,10 @@ months {
 }
 ```
 
-Months are newest first and a snapshot carries at most 12. Quiet months are
+Months are newest first and a snapshot carries the newest three by default; the
+`month`, `fromTick`/`toTick` and `category` arguments read further back or narrow
+to one bucket (a category-filtered month recomputes its totals from that bucket).
+Quiet months are
 included with zero totals so month numbers do not skip. The first month starts
 at tick 0, so month 1 is `startTick: 0, endTick: 599`. Opening capital is
 excluded from monthly income; the statement row remains visible in
@@ -349,8 +465,8 @@ just the car's own tile.
 the car". It is every live order whose kitchen *or* customer sits inside the
 window rectangle — a spatial filter only. It ignores which car an order is
 assigned to, so it will list orders belonging to other cars, and it never
-includes `DONE` or `EXPIRED`. To find *this* car's work, read `session.orders`
-and match `assignedCar`.
+includes `DONE` or `EXPIRED`. To find *this* car's work, read
+`session.orders(carId: "car_1")` (or `openOrders` and match `assignedCar`).
 
 Proof by contradiction, run live: with `ord_1` assigned to `car_1` and `car_1`
 at (3,3), `carView(car_1, radius: 0)` returns `nearbyOrders: []` while
@@ -361,7 +477,12 @@ whether the kitchen/customer fell inside the window.
 ### `events` — incremental deltas
 
 ```graphql
-query { events(id: "demo", sinceTick: 42) { tick type message } }
+query {
+  events(id: "demo", sinceTick: 42, limit: 200) {
+    oldestTick truncated capacity
+    events { tick type message carId x y }
+  }
+}
 ```
 
 `sinceTick` is **inclusive**: `sinceTick: 9` returns every event stamped tick 9,
@@ -369,15 +490,23 @@ so a client that stores `lastTick` and re-polls with it will see the last tick's
 events twice. Poll with `lastTick + 1`, or dedupe on `(tick, type, message)`.
 
 The feed is a ring, not a log: it retains the most recent `max_events` events
-(500 on the shipped map) and drops the oldest silently. A client that falls
-further behind than that loses deltas with no error — resync from `session`
-instead of trusting an empty delta as "nothing happened".
+(500 on the shipped map, `session.eventCapacity`) and drops the oldest. The
+response now says when that happened instead of leaving a client to guess:
+
+| field | meaning |
+|---|---|
+| `oldestTick` | tick of the oldest retained event, or the current tick when the feed is empty |
+| `truncated` | `true` when the request reached past the retained ring, so events before `oldestTick` are gone rather than absent |
+| `capacity` | how many events the ring retains (`max_events`) |
+| `events` | matching events, oldest first; `limit` (default 200) keeps the newest when more match |
+
+A `truncated: true` means "resync from `session`"; `truncated: false` with an
+empty list honestly means nothing happened in that window.
 
 Event `type` values, all of which the engine emits:
 
 | type | when |
 |---|---|
-| `car_moved` | a queued step executed |
 | `car_blocked` | a step was refused; `lastReject` on the car says why |
 | `car_charged` | a tick of charging landed (also used for a completed tow) |
 | `car_stranded` | battery hit zero off a charging tile |
@@ -393,42 +522,59 @@ Every event carries `tick` and a human-readable `message`; `carId` is null for
 world events, and `x`/`y` are `0,0` when the event has no position — they are
 plain ints, so a client cannot distinguish "at the origin" from "no position".
 
+A successful step is **not** an event. Movement is the most frequent thing a
+session does and is visible on the map, so the feed stores outcomes and
+blockers only; read car coordinates from `session.cars`. Saves written before
+this rule are cleaned of their `car_moved` rows on load.
+
 ## Mutation
 
 Every state-changing mutation needs the session's **owner token** — the secret
 `createSession` returns. Reading is public; changing the world is not. A
 signed-in creator may use their login instead, and a save written before owner
 tokens stays open. A caller with neither gets `forbidden: ...`; an absent
-session is `not_found:` regardless of the credential.
+session is `not_found:` regardless of the credential. Session and statement
+errors keep those message prefixes **and** now carry `extensions.code`
+(`FORBIDDEN`, `NOT_FOUND`, `INVALID_ARGUMENT`, `CONFLICT`), so a client can
+branch on the code instead of matching text.
 
 ```graphql
 mutation {
-  "Returns the session AND the secret that proves you created it. Keep it. cityId picks the city snapshot; omit it for the default."
+  # Returns the session AND the secret that proves you created it. Keep it. cityId picks the city snapshot; omit it for the default.
   createSession(id: "demo", seed: 7, cityId: "city") {
     session { id tick paused }
     ownerToken
   }
 
-  "Queue one step. Does NOT advance the clock."
-  moveCar(id: "demo", carId: "car_1", direction: SOUTH, ownerToken: "…") { cars { x y queuedMove } }
+  # Append one step to the car's queue. Does NOT advance the clock.
+  moveCar(id: "demo", carId: "car_1", direction: SOUTH, ownerToken: "…") { cars { x y queuedMove queuedMoves } }
 
-  "Advance manually. count is capped at 1000."
+  # Drop the whole queue, including the next step.
+  clearMoves(id: "demo", carId: "car_1", ownerToken: "…") { cars { queuedMove queuedMoves } }
+
+  # Advance manually. count is capped at 1000.
   tick(id: "demo", count: 1, ownerToken: "…") { tick orders { id state } }
 
   setSpeed(id: "demo", speed: 0, ownerToken: "…") { paused }  # 0 pauses; 1/2/4 run
+
+  # Block until the running clock reaches a target. Exactly one of tick/ticks;
+  # ticks is capped at 1000. Paused -> INVALID_ARGUMENT, including mid-wait.
+  waitUntil(id: "demo", ticks: 5, ownerToken: "…") { tick paused }
 
   assignOrder(id: "demo", orderId: "ord_1", carId: "car_1", ownerToken: "…") { orders { state } }
   unassignOrder(id: "demo", orderId: "ord_1", ownerToken: "…") { orders { state } }
 
   buyCar(id: "demo", className: "van", depotId: "d_main", ownerToken: "…") { cars { id className } }
-  "Costs tow_fee_per_tile x route distance (min tow_fee_min), clamped to the balance."
+  # Costs tow_fee_per_tile x route distance (min tow_fee_min), clamped to the balance.
   towCar(id: "demo", carId: "car_1", ownerToken: "…") { ledger { money towFees } cars { state } }
 
   # The city grows on its own schedule: there is no build mutation.
 
   saveSession(id: "demo", ownerToken: "…") { tick }
+  # Name this save. Blank clears it; every view then falls back to the city name. Persisted immediately.
+  renameSession(id: "demo", displayName: "Fleet run", ownerToken: "…") { displayName }
   evictSession(id: "demo", ownerToken: "…")   # save, then drop from memory
-  deleteSession(id: "demo", ownerToken: "…")  # remove the save file
+  deleteSession(id: "demo", ownerToken: "…")  # remove the save row
 }
 ```
 
@@ -455,8 +601,9 @@ A draft is private to its owner: the owner may play and publish it, while anothe
 cannot see or select it. A session created on a draft city inherits that visibility — guests
 and other players get NOT_FOUND from `session`, `carView`, `events`, `canPlaySession` and the
 `deliverySession` subscription, and the save is omitted from `sessions`. Published and
-builtin-city sessions remain public. A city deleted after a session started leaves the
-existing reload error in place; a still-live session stays readable.
+builtin-city sessions remain public. Deleting a city deletes the sessions created on it
+(live and saved), so a draft's private saves can never become public through deletion;
+deleting an account deletes the sessions on that account's drafts before the drafts go.
 
 `Query.cityConfig(id)` returns the exact authored city JSON for a published city, a builtin,
 or the caller's own draft, and `null` for a missing city or another player's draft. It is the
@@ -470,19 +617,19 @@ cannot be started, played or published by anyone but its owner.
 
 ```graphql
 mutation {
-  "Signed-in only: stores a DRAFT owned by the caller. config is raw city JSON."
+  # Signed-in only: stores a DRAFT owned by the caller. config is raw city JSON.
   createCity(id: "harbour", config: "{ ...city JSON... }") { id name status ownedByMe }
 
-  "Owner-only; replaces the config and puts the city back into DRAFT."
+  # Owner-only; replaces the config and puts the city back into DRAFT.
   updateCity(id: "harbour", config: "{ ...city JSON... }") { id status }
 
-  "Owner-only; runs the full startup validation (grid, districts, orders, reachability)."
+  # Owner-only; runs the full startup validation (grid, districts, orders, reachability).
   publishCity(id: "harbour") { id status }
 
-  "Stores nothing; signed-in only."
+  # Stores nothing; signed-in only.
   validateCity(config: "{ ...city JSON... }") { valid publishable issues }
 
-  "Owner-only for community cities; shipped/legacy ownerless cities need X-Admin-Key."
+  # Owner-only for community cities; shipped/legacy ownerless cities need X-Admin-Key.
   deleteCity(id: "harbour")
 }
 ```
@@ -504,33 +651,81 @@ ownerless, so they remain admin-managed until the schema grows an ownership clai
 ### Ownership, claiming and the save list
 
 ```graphql
-query {
-  "Reads are public: anyone with the id may watch. canPlaySession says whether
-  "this caller may also change it."
-  canPlaySession(id: "demo", ownerToken: "…")
-  session(id: "demo") { tick cars { id x y } }
-  sessions { id ownerDisplayName ownerHandle mine loaded }
+query Saves {
+  delivery {
+    # Reads are public: anyone with the id may watch. canPlaySession says whether
+    # this caller may also change it.
+    canPlaySession(id: "demo", ownerToken: "…")
+    session(id: "demo") { tick cars { id x y } }
+    sessions(sort: TICK, limit: 20, mine: true) {
+      id displayName ownerDisplayName ownerHandle mine loaded tick money
+      cursor   # opaque page position; pass to the next call
+    }
+  }
 }
 
-mutation {
-  "Attach guest saves to the signed-in account. Each needs its own token."
-  claimSessions(claims: [{ sessionID: "demo", ownerToken: "…" }]) {
-    sessionID
-    status   # ATTACHED | ALREADY_YOURS | REJECTED
+mutation Claim {
+  delivery {
+    # Attach guest saves to the signed-in account. Each needs its own token.
+    claimSessions(claims: [{ sessionID: "demo", ownerToken: "…" }]) {
+      sessionID
+      status   # ATTACHED | ALREADY_YOURS | REJECTED
+    }
   }
 }
 ```
 
+`sessions` takes `sort` (`CREATED_AT` default, `TICK`, `MONEY`), `limit`
+(default 50, capped at 500), `cursor` and `mine` (`true` keeps the signed-in
+viewer's saves; signing out makes it `UNAUTHENTICATED`). Page with the `cursor`
+of the last row you saw:
+
+```graphql
+query NextPage($cursor: String) {
+  delivery { sessions(sort: TICK, limit: 20, cursor: $cursor) { id tick cursor } }
+}
+```
+
+A `cursor` encodes the sort and the row id, so it is exact for every sort and
+never skips or repeats rows that share a tick, money value or creation time;
+using it with a different `sort` is `INVALID_ARGUMENT`. The older `before: Time`
+argument still filters by creation time but is only valid with the default
+`CREATED_AT` sort (it cannot break ties), and cannot be combined with `cursor`.
+Each row comes from the save's stored counters, so a bounded list does not
+decode save payloads.
+
 `ownerDisplayName` is the owning account's display name, `Private player` when
-its profile is private, or `Guest` for a session with no account. `ownerHandle`
+its profile is private, or `Guest` for a session with no account. `displayName`
+is the player's own name for the save, empty when unnamed — clients fall back to
+the city name. `ownerHandle`
 is null for guests and private profiles, and `mine` is true when the row belongs
 to the signed-in viewer. A save made before owner tokens can never be claimed
 and has no display name beyond `Guest`; it stays open for anyone with its id.
 
+`moneyHistory` is the analytics read. It never rehydrates a session: it reads
+the indexed `delivery_sessions` / `delivery_cash_entries` projection, which the
+save and autosave paths maintain. Omitted `ids` selects the newest saves;
+`cityId` narrows the set; `fromTick`/`toTick` are inclusive. `maxPoints`
+(default 500, capped at 2000) buckets each series by tick and keeps the last
+balance in the bucket, and the session's current balance is appended when the
+window reaches its current tick.
+
+The analytics page has three charts sharing those controls:
+
+- `moneyHistory` — cash balance from every checking-account movement.
+- `itemsHistory` — cumulative boxes delivered from `done` orders in
+  `delivery_order_history`; expired and open orders do not count.
+- `reputationHistory` — recorded standing from
+  `delivery_reputation_entries`. Sessions saved before that ledger existed
+  return one current point until their next reputation change, because the old
+  history cannot be reconstructed from order outcomes alone.
+
+`/delivery/analytics` overlays up to six sessions on a shared tick axis.
+
 ## Subscription — live updates instead of polling
 
 ```graphql
-subscription { session(id: "demo") { tick paused cars { id x y } } }
+subscription { deliverySession(id: "demo") { tick paused cars { id x y } } }
 ```
 
 The UI opens this instead of polling. The server pushes one frame per tick while
@@ -559,21 +754,24 @@ client library to a dependency-free bundle.
 A `: ping` comment every 15 s keeps an idle stream alive — a paused city can
 legitimately go minutes without a change.
 
-**The payload is not the same as the query's.** `subscription.session` trims
-finished orders to the most recent 20 (`streamHistory` in
-`game/session/watch.go`); `query.session` keeps the full history. Order history
+**The order payload is not the same as the query's.** `deliverySession`
+trims finished orders to the most recent 20 (`streamHistory` in
+`game/session/watch.go`); the query path keeps the history (up to the orders
+default cap of 2000 rows). Order history
 is ~96% of a late-game snapshot and never shrinks — a 42k-tick session carries
-~4,500 orders, of which most are DONE or EXPIRED — so streaming all of it every
+~4,200 orders, of which most are DONE or EXPIRED — so streaming all of it every
 tick would cost more than polling did. Measured on that session: 1.4 MB on the
 query path versus 63 KB per stream frame.
 
 That asymmetry is deliberate and worth knowing before substituting one for the
 other: agents and the CLI treat `session(id:)` as the complete record, and a
-client that needs full order history must use the query, not the stream.
+client that needs full order history must use the query, not the stream. The
+statement is **not** asymmetric: both paths carry the same newest-three-months
+window.
 
-Streams are **not** gzipped. `graph/gzip.go` buffers the whole response so it can
-encode once, which a response that never ends can never satisfy; `isStreaming`
-routes SSE and WebSocket upgrades around the wrapper.
+Streams are **not** gzipped. `platform/httpserve/gzip.go` buffers the whole
+response so it can encode once, which a response that never ends can never
+satisfy; `isStreaming` routes SSE and WebSocket upgrades around the wrapper.
 
 ## Errors
 
@@ -582,14 +780,21 @@ Errors are GraphQL errors whose message begins with a machine-readable code:
 ```
 "not_found: session \"nope\": session not found"
 "bad_request: count must be <= 1000"
-"conflict: van costs $1000, you have $0"
+"conflict: van costs $600, you have $0"
 ```
 
-| code | meaning |
-|---|---|
-| `not_found` | no such session, car or order |
-| `bad_request` | malformed or out-of-range argument |
-| `conflict` | legal request, wrong state (unaffordable, locked, already done) |
+| message prefix | `extensions.code` | meaning |
+|---|---|---|
+| `not_found` | `NOT_FOUND` | no such session, car or order |
+| `bad_request` | `INVALID_ARGUMENT` | malformed or out-of-range argument (including a month that has not started) |
+| `conflict` | `CONFLICT` | legal request, wrong state (unaffordable, locked, already done) |
+| `limit_reached` | `LIMIT_REACHED` | a contract limit: more than 64 queued steps per car |
+| `forbidden` | `FORBIDDEN` | owner token missing or wrong, and not the owning account |
+
+Both forms are present on every session/statement error, so a client may keep
+matching the prefix it already matches or switch to `extensions.code`. City
+mutations have always carried `extensions.code` only (`UNAUTHENTICATED`,
+`LIMIT_REACHED`, `INTERNAL` included).
 
 ## Enums
 
@@ -638,21 +843,24 @@ the new case is handled.
 ## A complete delivery
 
 ```bash
-G=http://localhost:8080/graphql
-q() { curl -s -X POST $G -H 'Content-Type: application/json' -d "$1"; }
+G=http://127.0.0.1:8181/graphql
+q() { curl -s -X POST "$G" -H 'Content-Type: application/json' -d "$1"; }
 
-q '{"query":"mutation { createSession(id:\"demo\", seed:7) { id paused } }"}'
-q '{"query":"mutation { tick(id:\"demo\", count:1) { orders { id state } } }"}'
-q '{"query":"mutation { assignOrder(id:\"demo\", orderId:\"ord_1\", carId:\"car_1\") { orders { state } } }"}'
+# createSession returns the session and the ownerToken every later mutation needs.
+q '{"query":"mutation { delivery { createSession(id:\"demo\", seed:7) { session { id tick paused } ownerToken } } }"}'
+
+TOKEN=...  # ownerToken from the response above
+q "{\"query\":\"mutation { delivery { tick(id:\\\"demo\\\", count:1, ownerToken:\\\"$TOKEN\\\") { orders { id state } } } }\"}"
+q "{\"query\":\"mutation { delivery { assignOrder(id:\\\"demo\\\", orderId:\\\"ord_1\\\", carId:\\\"car_1\\\", ownerToken:\\\"$TOKEN\\\") { orders { state } } } }\"}"
 
 # East three times to Pizza Palace (x=6), then west three times and south
 # three times to Anna's Flat (3,6). Verified against the shipped 22x22 map.
 for d in EAST EAST EAST WEST WEST WEST SOUTH SOUTH SOUTH; do
-  q "{\"query\":\"mutation { moveCar(id:\\\"demo\\\", carId:\\\"car_1\\\", direction: $d) { tick } }\"}"
-  q '{"query":"mutation { tick(id:\"demo\", count:1) { tick } }"}'
+  q "{\"query\":\"mutation { delivery { moveCar(id:\\\"demo\\\", carId:\\\"car_1\\\", direction: $d, ownerToken:\\\"$TOKEN\\\") { tick } } }\"}"
+  q "{\"query\":\"mutation { delivery { tick(id:\\\"demo\\\", count:1, ownerToken:\\\"$TOKEN\\\") { tick } } }\"}"
 done
 
-q '{"query":"query { session(id:\"demo\") { ledger { money deliveries } orders { state paid } } }"}'
+q '{"query":"query { delivery { session(id:\"demo\") { ledger { money deliveries } orders { state paid } } } }"}'
 ```
 
 Note the quantities: the first order is not necessarily one box, so `reward`

@@ -18,9 +18,10 @@ ledger, achievements/unlocks/builds, pacing harness), P4 (GraphQL API, session
 persistence with rehydrate, per-session ticker), P6 (SvelteKit dashboard,
 save picker, D-pad).
 
-GraphQL only (no REST): `graph/schema.graphqls` is the single contract, with Go
-and TypeScript both generated from it. `make check` fails if either generated type
-file is stale. Frontend: 0 svelte-check errors/warnings, plus a headless-Chrome
+GraphQL only (no REST). The canonical schema is `graph/schema.graphqls` at the
+repository root; `games/delivery/graph/schema.graphqls` is generated from it and
+must not be edited. `go run ./cmd/gentypes -check` fails if the TypeScript client
+types are stale. Frontend: 0 svelte-check errors/warnings, plus a headless-Chrome
 test that verifies rendering, keyboard driving, and that nothing is clipped.
 
 Concurrency lives in `game/session`, not the engine: the engine is
@@ -33,8 +34,8 @@ Known defects, with the measurements that reproduce them, are recorded in
 `drbrain-delivery` beads board (`bd list`), not here — this README describes how
 the game works, not what is currently broken.
 
-Client types are generated from the Go DTOs (`make types`), so the TypeScript
-cannot drift from the server.
+Client types are generated from the schema by `cmd/gentypes`
+(`web/src/lib/graphql-types.ts`), so the TypeScript cannot drift from the server.
 
 **All content is intended to be reachable.** The shipped city is designed so one
 scooter and zero money can earn every build, every unlock and every tile;
@@ -60,8 +61,10 @@ starting blocks.
 | Night Market | 2400 | second harbour kitchen + **Night Flat** |
 
 Every vehicle is money-only, and fleet size is money-limited: the depot accepts
-any number of cars. The **van** ($1000, 24 boxes) is the natural second vehicle;
-the **truck** ($3500, 40 boxes) can be bought whenever the player can afford it.
+any number of cars. The run starts with one scooter; every additional vehicle,
+including a second scooter ($250), is bought. The **van** ($600, 24 boxes) is the
+natural upgrade; the **truck** ($2100, 40 boxes) can be bought whenever the player
+can afford it.
 The map has **eleven customers** spread across downtown, the harbour and the
 hills, and six kitchens once the growth schedule finishes. Early demand stays
 downtown; later homes and restaurants open in the districts instead of piling
@@ -69,20 +72,23 @@ everything onto the starting blocks.
 
 | Class | Hold | Price | Work it can carry |
 |---|---|---|---|
-| Scooter | 4 | free | 1–3 boxes |
-| Van | 24 | $1000 | 5–24 boxes |
-| Truck | 40 | $3500 | 30–40 boxes |
+| Scooter | 4 | $250 | 1–3 boxes |
+| Van | 24 | $600 | 5–10 and 13–24 boxes |
+| Truck | 40 | $2100 | 30–40 boxes |
 
 ## The UI
 
+The shared SvelteKit app lives in `web/`; the delivery routes are
+`web/src/routes/delivery/`. From the repository root:
+
 ```bash
-make build-frontend    # one-time: npm install + vite build
-make serve-ui          # build + serve API and UI on :8080 (PORT=... to change)
+just build-web     # npm run build -> web/build
+just restart       # regenerate schema, rebuild web + binary, serve detached
 ```
 
-Then open http://localhost:8080. If that port is taken by another project, run
-`make serve-ui PORT=8081` and open http://localhost:8081 — the server refuses to
-start on a port already in use rather than deferring to the process holding it.
+Then open http://127.0.0.1:8181/delivery/ (the root `justfile` defaults to port
+8181; `just port=8081 restart` changes it). The server refuses to start on a port
+already in use rather than deferring to the process holding it.
 
 - **Start screen** lists your saved cities with tick, deliveries, reputation and
   money, or says plainly that there are none yet.
@@ -93,13 +99,24 @@ start on a port already in use rather than deferring to the process holding it.
   is how you set up simultaneous moves for several cars: Shift into place with
   each car, then `space` to advance once and resolve them together.
 - **`space`** (or `Enter`) advances a tick without moving anything.
-- **`tab`** cycles cars (Shift+Tab goes backwards), **`p`** pauses/resumes.
+- **`c`** cycles cars (Shift+C goes backwards), **`p`** pauses/resumes.
 - **[cities]** is a button in the header, not a key: it saves and returns to the
   picker.
 - **Clicking an order** outlines its kitchen and customer on the map, so you can
   see where the job actually goes.
+- The city map uses storefront, house, charger and depot icons. Red marks a
+  customer's unassigned order; blue marks an assignment awaiting pickup and
+  amber marks cargo in transit. Customers with both unassigned and active
+  assigned orders show both indicators. Unexplored tiles remain impassable.
+- The assigned fleet number appears at the kitchen until pickup and at the
+  customer until delivery. Shared locations list all relevant fleet numbers.
 - The whole dashboard fits the viewport: panels scroll internally, the page
   never does.
+- **[analytics]** overlays up to six saved sessions on one tick axis in three
+  charts: cash, cumulative boxes delivered, and reputation. It reads the indexed
+  history projection, not the live session, so the last point can lag by one
+  autosave interval. Reputation before the ledger migration has no history and
+  starts at the session’s current value.
 
 **Sessions start paused.** This game is manual driving, so a live clock would
 expire orders while the player was still reading the screen. Unpausing is
@@ -111,14 +128,15 @@ back paused, and the client opts in to the clock explicitly. Verified against a
 live server — create, `setSpeed(2)`, save, unload, reload reports
 `paused: true, speed: 0`.
 
-The UI is optional. Without `frontend/build` the server runs API-only and logs
-which directory it looked in — the game is fully playable over HTTP either way.
+The UI is optional. Without `web/build` (or with `DRBRAIN_STATIC_DIR` pointing at
+a missing directory) the server runs API-only and logs which directory it looked
+in — the game is fully playable over HTTP either way.
 Car prices are served by the API (`car_classes`), never hardcoded in the client.
 
 ### Verifying the UI
 
 ```bash
-make verify-ui    # headless Chrome: renders, asserts panels, drives the car
+cd web && npx vitest run src/lib/delivery/Map.test.ts   # map rendering + keyboard driving
 ```
 
 This is not a screenshot test. It dispatches real key events and asserts the
@@ -126,71 +144,82 @@ car's on-screen position changed, so a broken keybinding fails the check. It
 also fails on console errors, failed requests, a page that scrolls (panels
 should scroll, not the document), or a bottom panel clipped by the viewport.
 
+## History projections
+
+`platform_sessions` remains the authoritative session snapshot: one JSON payload
+per session, loaded and saved as one aggregate. Analytics must not parse that
+bytea on every request, so the save path also maintains indexed derived tables:
+
+|table|contents|
+|---|---|
+|`delivery_sessions`|current city, account, tick, money, reputation, cash watermark|
+|`delivery_cash_entries`|append-only checking-account rows keyed by `(session_id, seq)`|
+|`delivery_order_history`|one row per order, keyed by `(session_id, order_id)`|
+
+The projection runs after a successful save or autosave and is best-effort:
+history failure never turns a saved session into an error. Cash is incremental
+by `seq`; orders are upserted only when their signature changes. A reload seeds
+both watermarks from the tables, so a restart does not replay the whole ledger.
+Terminal orders never regress to an open state.
+
+Rebuild the derived tables from the authoritative payloads at any time:
+
+```bash
+DRBRAIN_DATABASE_URL=... drbrain backfill-delivery-history --dry-run
+DRBRAIN_DATABASE_URL=... drbrain backfill-delivery-history
+```
+
+The backfill is idempotent. Delete `delivery_*` rows freely if a projection needs
+to be rebuilt; the session payloads are the source of truth.
 
 ## Quick start
 
-```bash
-make serve        # GraphQL API on :8080 (+ UI if frontend/build exists)
-make run          # validate the city and print it
-make play         # drive a car in the terminal
-make sim          # run the pacing harness
-make test         # unit tests
-make check        # fmt + vet + test
-```
-
-`make serve` does not build the frontend — it only runs the server. On a fresh
-clone it logs
-
-```
-no web UI at frontend/build (graphql only; run `make build-frontend` to add one)
-```
-
-and serves the API alone, which is a complete game. Use `make serve-ui` if you
-want the browser UI on the first run.
-
-If `:8080` is already taken — common on a machine running other projects — the
-server refuses to start and names the occupant rather than rebinding. Pick a
-port instead of killing the other process:
+From the repository root:
 
 ```bash
-make serve PORT=8081
+just restart      # regenerate schema, build web + binary, serve detached on :8181
+just stop         # stop the detached server
+go test ./...     # all Go tests
 ```
 
-That refusal matters more than it looks. A second server cannot share the port,
-so the *old* process keeps answering, and it answers with the schema it was
-built from. Rebuilding and rerunning then changes nothing, while the UI fails
-with
-
-```
-Cannot query field "upkeepPaid" on type "LedgerView".
-```
-
-which reads like a frontend bug and is not one. The guard reports what is
-actually listening (`by a running DrBrain server (health "ok")`) so the stale
-process is the obvious suspect.
+The delivery engine tools are a small CLI under `games/delivery/cmd/drbrain`:
 
 ```bash
-curl -s -X POST localhost:8080/graphql -H 'Content-Type: application/json' \
-  -d '{"query":"mutation { createSession(id:\"demo\", seed:7) { id paused } }"}'
+go run ./games/delivery/cmd/drbrain map -f games/delivery/maps/city.json
+go run ./games/delivery/cmd/drbrain play games/delivery/maps/city.json
+go run ./games/delivery/cmd/drbrain sim -f games/delivery/maps/city.json -ticks 3000
 ```
 
-Interactive playground: http://localhost:8080/graphql/playground
+`just restart` serves every game on http://127.0.0.1:8181/delivery/ (change the
+port with `just port=8081 restart`). The server refuses to start on a port
+already in use rather than deferring to the process holding it; the guard reports
+what is actually listening (`by a running DrBrain server (health "ok")`) so a
+stale process is the obvious suspect.
+
+```bash
+curl -s -X POST http://127.0.0.1:8181/graphql -H 'Content-Type: application/json' \
+  -d '{"query":"mutation { delivery { createSession(id:\"demo\", seed:7) { session { id paused } ownerToken } } }"}'
+```
+
+Interactive playground: http://127.0.0.1:8181/graphql/playground
 Full reference: [docs/graphql.md](docs/graphql.md).
 
-**GraphQL is the only transport.** There is no REST API. The schema
-(`graph/schema.graphqls`) is the contract: gqlgen generates the Go types from it
-and `cmd/gentypes` generates the TypeScript client from it, so neither side can
-drift.
+**GraphQL is the only transport.** There is no REST API. The canonical schema is
+`graph/schema.graphqls` at the repository root: gqlgen generates the Go types from
+it and `cmd/gentypes` generates the TypeScript client, so neither side can drift.
 
 ## CLI
 
 ```
-drbrain map  [-f maps/city.json] [-reveal-all] [-stats]
-drbrain play [city.json]
-drbrain sim  [-f city.json] [-ticks N] [-every N] [-seed N]
+go run ./games/delivery/cmd/drbrain map  [-f maps/city.json] [-reveal-all] [-stats]
+go run ./games/delivery/cmd/drbrain play [city.json]
+go run ./games/delivery/cmd/drbrain sim  [-f city.json] [-ticks N] [-every N] [-seed N]
 ```
 
-`drbrain play` is manual driving, one tick at a time:
+The defaults (`maps/city.json`) are relative to the working directory, so from
+the repository root pass `-f games/delivery/maps/city.json`.
+
+`go run ./games/delivery/cmd/drbrain play` is manual driving, one tick at a time:
 
 ```
 w a s d   queue a move for the active car (north/west/south/east)
@@ -204,7 +233,7 @@ Queuing a move does **not** advance the clock — that is deliberate, and it is
 exactly how the API will behave. You can queue moves for several cars, then
 advance once, and all of them step together.
 
-`drbrain sim` drives a scripted bot and prints a pacing table. It exists to
+`go run ./games/delivery/cmd/drbrain sim` drives a scripted bot and prints a pacing table. It exists to
 answer "is the queue starved or drowning?" with numbers. This is the shape of
 `-ticks 1000 -every 500` on the default seed; the digits are illustrative and
 were stale the last two times anyone checked them, so run the command rather than
@@ -234,7 +263,7 @@ shows whether quantity bands are actually rolling), and `cls` is the number of
 **active street closures** — not a car class index, despite the name.
 
 ```
-$ drbrain map
+$ go run ./games/delivery/cmd/drbrain map -f games/delivery/maps/city.json
 DrBrain City 22x22: 3 kitchens, 6 customers, 1 depots, 2 chargers, items [meds pizza sushi]
 
 .............##???????
@@ -287,23 +316,23 @@ and ownerless (admin-managed). See [docs/graphql.md](docs/graphql.md).
 ## Layout
 
 ```
-cmd/drbrain         CLI (map / play / sim)
-cmd/drbrain-server  HTTP API + serves the built UI
-cmd/gentypes        generates web/src/lib/delivery/api-types.ts from the GraphQL schema
+cmd/drbrain         engine CLI (map / play / sim)
 game/engine         world model: terrain, cars, orders, tick loop, builds, closures
 game/session        live sessions, persistence, rehydrate, ticker goroutine
-graph               GraphQL schema, resolvers, generated code
-api                 static UI serving (no API routes: GraphQL is the transport)
-frontend            SvelteKit dashboard (builds into frontend/build)
-scripts             genmap.py (map generator), verify-ui.sh + ui-smoke.mjs
+game/config         city catalogue (builtin files + PostgreSQL rows)
+graph               generated SDL, resolvers, conversions
+graph/model         hand-written Snapshot/LedgerView bound in gqlgen.yml
+metrics.go          Prometheus collectors for the host metrics listener
+scripts             genmap.py (map generator)
 maps/city.json      the shipped default city, generated by scripts/genmap.py
 maps/saopaulo.json  a second, larger 40×40 city
+llms.txt.tmpl       served at /delivery/llms.txt for AI agents
 docs/graphql.md     GraphQL API reference
 docs/known-issues.md  reproduced defects, with the tickets that track them
 IDEA.txt            design document + decisions
 ```
 
-The engine is transport-agnostic: GraphQL, the web UI and MCP will all be
+The engine is transport-agnostic: GraphQL and the SvelteKit UI in `web/` are
 adapters over `game/engine`, which knows nothing about HTTP or rendering.
 
 ## Engine rules encoded so far
@@ -318,9 +347,11 @@ adapters over `game/engine`, which knows nothing about HTTP or rendering.
   buying a car never changes how existing cars behave on a tick. Pathfinding
   and nearest-charger queries sort by (distance, y, x). Map iteration order
   never leaks into results.
-- **One step per tick, one command per car.** A move is *queued*, not applied;
-  the tick consumes it. A newer command overwrites an older one, so a fast
-  client cannot bank a backlog of steps.
+- **One step per tick per car, queued in order.** A move is *appended* to the
+  car's queue, not applied; the tick consumes one queued step. A client may
+  preload up to 64 steps per car and then advance the clock, which lets agents
+  drive without racing the tick rate; `clearMoves` drops the plan. A rejected
+  step is spent, not retried.
 - **Rejected moves cost nothing.** Blocked (water, unexplored, closed for
   works) and insufficient-battery moves leave position and battery untouched,
   and record a reason on the car.
@@ -348,9 +379,12 @@ adapters over `game/engine`, which knows nothing about HTTP or rendering.
   - An idle car parked in a one-wide street is now a real roadblock. The
     harness's driver parks idle cars at the depot for that reason, and a full
     yard whose single exit is occupied seals the fleet in — `Tow` is the escape.
-  - A driver must not detour around traffic. A blocked car keeps its queued
-    direction, so it waits and retries next tick, and waiting costs ticks rather
-    than battery. Measured three ways over 3000 ticks on the shipped map: waiting
+  - A driver must not detour around traffic. The harness issues one decision per
+    tick, so a blocked car re-queues the same direction and waits, and waiting
+    costs ticks rather than battery. (At the engine level a rejected step is
+    spent, so a manual or agent client that preloaded a route should check
+    `lastReject` and re-queue or `clearMoves` before continuing.) Measured three
+    ways over 3000 ticks on the shipped map: waiting
     behind traffic 250 delivered / 49 expired / 0 tows; detouring while pricing
     the detour 79 / 177 / 34; detouring while pricing the straight route
     198 / 89 / 84. Cost of the rule itself, same driver on both sides, three
@@ -386,12 +420,15 @@ adapters over `game/engine`, which knows nothing about HTTP or rendering.
   the order assigned collects it; driving onto the customer delivers it. No
   separate verbs, so a delivery costs two routes rather than four API calls.
 - **Orders carry a quantity, and pay scales sublinearly.** Quantity bands are
-  gated by session progress, not by chapter or the current fleet: a 5-box van
-  job can appear while the player still owns only a 4-box scooter, and the
-  assignment check refuses it until a van exists. That oversized order is the
-  demand signal. Pay is `base × chapter × (0.6 + 0.4×qty)` plus a per-tile
-  distance bonus: linear per-box pay would make bulk strictly better and order
-  choice a non-decision.
+  paced by session progress, not by chapter or the current fleet. The scooter
+  and van bands carry a small `early_weight` from tick 0 and take their full
+  weight at their `from_progress` gate, so a late-game city still asks for 1–3
+  box scooter work and a 5-box job can appear before the player owns a van. The
+  30–40 truck band has **no** early floor: it is deliberately absent until its
+  gate, because a truck is unaffordable at tick 0 and every early truck order
+  would only expire. Pay is
+  `base × chapter × (0.6 + 0.4×qty)` plus a per-tile distance bonus: linear
+  per-box pay would make bulk strictly better and order choice a non-decision.
 - **Orders are raised on tick boundaries through three gates**: the customer's
   own cooldown, the global cap, and a target queue depth derived from the
   **visible customer population** (`round(customers × 0.6)`). Buying cars must
@@ -400,10 +437,13 @@ adapters over `game/engine`, which knows nothing about HTTP or rendering.
   frequency grows over the session instead of stepping at a chapter boundary.
 - **The vehicle ladder is capacity-driven, with work bands on a progress
   curve.** Scooter 4 boxes, van 24, truck 40; all three are purchasable with
-  money alone, and the depot parks any number of cars. The bands are 1–3 from
-  0%, 5–10 from 17.5%, 13–24 from 30%, and 30–40 from 70% of `ramp_ticks`. A
-  player who ignores the ladder sees oversized orders expire; a player who buys
-  capacity can take the larger work. There is no fleet-size gate beyond money.
+  money alone, and the depot parks any number of cars. The bands reach full
+  weight at 0% (1–3), 17.5% (5–10), 30% (13–24) and 70% (30–40) of
+  `ramp_ticks`. Scooter and van bands have a floor from tick 0; the truck band
+  starts at its gate, so 30–40 box work cannot appear before a truck is
+  affordable. A player who ignores the ladder sees oversized orders expire; a
+  player who buys capacity can take the larger work. There is no fleet-size
+  gate beyond money.
 - **Deadlines are computed, and only ever extended on assignment.** Spawn sets a
   window from `route * slack`; assigning recomputes it from the courier's actual
   position so a player is not punished for an order appearing while the fleet
@@ -565,8 +605,8 @@ tows and car purchases tag their car, while builds and grants are fleet-wide.
 A charging session is one row (not one per tick), written when the car fills or
 leaves. Charges clamp at a zero balance, and the row records what was actually
 charged so the balance column still adds up. The full statement is saved with
-the session; snapshots carry the latest 200 rows and the live stream the latest
-40.
+the session; a snapshot carries the newest three months' rows, capped at 200,
+and the query and live stream carry the same window.
 
 ### Monthly report
 
@@ -580,7 +620,7 @@ months leave a short session with only one row.
 `Ledger.Months` is derived from `Ledger.Cash`: every `recordCash` call folds the
 entry into its month, and `ImportState` rebuilds the summaries from the saved
 statement. It is not serialised, so old saves backfill automatically and the
-statement remains the only source of truth. A snapshot carries at most 12
+statement remains the only source of truth. A snapshot carries at most 3
 months, newest first; quiet months are zero rows so month numbers do not skip.
 
 Each month exposes positive `income` and `expenses` magnitudes, `net`, and a
@@ -683,7 +723,7 @@ worth closing.
 
 ## Tuning (what the harness found)
 
-The numbers in `maps/city.json` were not guessed. `drbrain sim` found:
+The numbers in `maps/city.json` were not guessed. `go run ./games/delivery/cmd/drbrain sim` found:
 
 - **A 12-battery scooter could not reach the second customer at all.** An
   earlier layout shipped a 30-step round trip on a 12-step budget, so roughly
@@ -727,7 +767,7 @@ actually a memory, so what follows is the shape and the command instead:
   actually matters.
 
 ```bash
-for s in 1 42 999; do ./bin/drbrain sim -ticks 6000 -every 6000 -seed $s; done
+for s in 1 42 999; do go run ./games/delivery/cmd/drbrain sim -f games/delivery/maps/city.json -ticks 6000 -every 6000 -seed $s; done
 ```
 
 If you need exact figures, run that and quote it with the date and the tree state

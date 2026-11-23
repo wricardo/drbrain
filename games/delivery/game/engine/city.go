@@ -95,7 +95,6 @@ type Customer struct {
 type Depot struct {
 	ID          string
 	Pos         Position
-	Capacity    int
 	ChargeSlots int
 }
 
@@ -231,11 +230,11 @@ func (c *City) ChargingAt(p Position) bool {
 
 // ChargeSlotsAt reports how many cars may charge at p simultaneously.
 //
-// Only depots carry the distinction between parking spaces (Capacity) and
-// charging bays (ChargeSlots); a standalone charger's Capacity already bounds
-// how many cars can be on the tile, so it needs no separate number and reports
-// zero. Zero or negative means "no slot limit", which keeps a map authored
-// before charge slots existed charging exactly as it did.
+// Only depots have unlimited parking plus a separate ChargeSlots limit; a
+// standalone charger's Capacity already bounds how many cars can be on the
+// tile, so it needs no separate number and reports zero. Zero or negative means
+// "no slot limit", which keeps a map authored before charge slots existed
+// charging exactly as it did.
 func (c *City) ChargeSlotsAt(p Position) int {
 	for _, d := range c.Depots {
 		if d.Pos == p {
@@ -377,7 +376,7 @@ func parseCity(cfg *CityConfig) (*City, error) {
 	}
 	for _, d := range cfg.Depots {
 		c.Depots = append(c.Depots, Depot{
-			ID: d.ID, Pos: d.Pos, Capacity: d.Capacity, ChargeSlots: d.ChargeSlots,
+			ID: d.ID, Pos: d.Pos, ChargeSlots: d.ChargeSlots,
 		})
 	}
 	for _, ch := range cfg.Chargers {
@@ -470,9 +469,6 @@ func (c *City) Validate() error {
 		seenDepots[d.ID] = true
 		if err := c.checkEntityTile(d.ID, d.Pos, DepotTile, "depot"); err != nil {
 			return err
-		}
-		if d.Capacity <= 0 {
-			return fmt.Errorf("depot %q has non-positive capacity", d.ID)
 		}
 	}
 

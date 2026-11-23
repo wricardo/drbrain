@@ -81,7 +81,7 @@ export function starterCityConfig(name = 'New city'): Record<string, unknown> {
 		items: {},
 		kitchens: [],
 		customers: [],
-		depots: [{ id: 'home', pos: { x: 2, y: 2 }, capacity: 4 }],
+		depots: [{ id: 'home', pos: { x: 2, y: 2 } }],
 		chargers: [],
 		initial_cars: [],
 		car_classes: {},
@@ -135,8 +135,7 @@ export function cityConfigFromView(view: CityView): Record<string, unknown> {
 		})),
 		depots: view.depots.map((p) => ({
 			id: p.id,
-			pos: { x: p.x, y: p.y },
-			capacity: 1
+			pos: { x: p.x, y: p.y }
 		})),
 		chargers: view.chargers.map((p) => ({
 			id: p.id,

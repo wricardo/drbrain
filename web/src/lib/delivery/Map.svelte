@@ -1,10 +1,13 @@
 <script lang="ts">
-	import type { CarView, CityView, ClosureView } from '$lib/delivery/api';
+	import type { CarView, CityView, ClosureView, OrderView } from '$lib/delivery/api';
 	import { carGlyphStyle, carIndex, glyphStyle } from '$lib/delivery/glyphs';
+	import MapIcon from '$lib/delivery/MapIcon.svelte';
 
 	interface Props {
 		city: CityView;
+		assignedCarIds: ReadonlySet<string>;
 		cars: CarView[];
+		orders: OrderView[];
 		selectedCarId: string | null;
 		/** Kitchen and customer of the order being highlighted, if any. */
 		highlightKitchen?: string | null;
@@ -28,7 +31,9 @@
 
 	let {
 		city,
+		assignedCarIds,
 		cars,
+		orders,
 		selectedCarId,
 		highlightKitchen = null,
 		highlightCustomer = null,
@@ -56,11 +61,26 @@
 
 	const rows = $derived(city.rows);
 
+	// Only mark straight, uninterrupted road segments; intersections stay clear.
+	function roadAt(x: number, y: number): boolean {
+		return rows[y]?.[x] === '.';
+	}
+
+	function roadDirection(x: number, y: number): string {
+		const north = roadAt(x, y - 1);
+		const south = roadAt(x, y + 1);
+		const east = roadAt(x + 1, y);
+		const west = roadAt(x - 1, y);
+		if (north && south && !east && !west) return 'road-vertical';
+		if (east && west && !north && !south) return 'road-horizontal';
+		return '';
+	}
+
 	/**
 	 * Cars grouped by tile.
 	 *
-	 * A tile is not limited to one car any more: a depot holds as many as it
-	 * authors (4 on the shipped map), and a charger holds its own capacity.
+	 * A tile is not limited to one car any more: a depot holds any number,
+	 * and a charger holds its own capacity.
 	 * Rows can only draw one digit per tile, so a plain `map.set` per car
 	 * silently made every car but the last unselectable — the glyph and the
 	 * click target also disagreed about which car they meant.
@@ -200,6 +220,54 @@
 		return set;
 	});
 
+	type SiteState = { x: number; y: number; state: 'pending' | 'assigned' | 'carrying'; hasPending: boolean; fleetNumbers: number[] };
+
+	// An endpoint can have several active orders; cargo in transit takes
+	// precedence over an assignment still awaiting pickup.
+	const siteStates = $derived.by(() => {
+		const kitchens = new Map(city.kitchens.map((site) => [site.id, site]));
+		const customers = new Map(city.customers.map((site) => [site.id, site]));
+		const fleetNumbers = new Map(cars.map((car, index) => [car.id, index + 1]));
+		const states = new Map<string, SiteState>();
+		function mark(site: { x: number; y: number } | undefined, glyph: string, state: SiteState['state'], number: number | undefined) {
+			if (!site) return;
+			const ch = rows[site.y]?.[site.x];
+			// Never draw an endpoint through fog or unrelated terrain. A car digit
+			// can legitimately cover the site's own glyph.
+			if (!ch || (ch !== glyph && carIndex(ch) === null)) return;
+			const key = `${site.x},${site.y}`;
+			let entry = states.get(key);
+			if (!entry) {
+				entry = { x: site.x, y: site.y, state, hasPending: state === 'pending', fleetNumbers: [] };
+				states.set(key, entry);
+			} else {
+				if (state === 'pending') entry.hasPending = true;
+				else if (state === 'carrying' || entry.state === 'pending') entry.state = state;
+			}
+			if (number !== undefined && !entry.fleetNumbers.includes(number)) entry.fleetNumbers.push(number);
+		}
+		for (const order of orders) {
+			if (order.state === 'PENDING') {
+				mark(customers.get(order.customerId), 'H', 'pending', undefined);
+				continue;
+			}
+			const state = order.state === 'PICKED_UP' ? 'carrying' : order.state === 'ASSIGNED' ? 'assigned' : null;
+			if (!state) continue;
+			const number = order.assignedCar ? fleetNumbers.get(order.assignedCar) : undefined;
+			mark(kitchens.get(order.kitchenId), 'K', state, state === 'assigned' ? number : undefined);
+			mark(customers.get(order.customerId), 'H', state, number);
+		}
+		for (const site of states.values()) site.fleetNumbers.sort((a, b) => a - b);
+		return states;
+	});
+
+	function siteStatusLabel(site: SiteState | undefined): string {
+		if (!site) return '';
+		const status = site.state === 'carrying' ? 'order picked up' : site.state === 'assigned' ? 'assigned, awaiting pickup' : 'unassigned order';
+		const pending = site.hasPending && site.state !== 'pending' ? ', unassigned order' : '';
+		return `${status}${pending}${site.fleetNumbers.length ? `, fleet ${site.fleetNumbers.join(', ')}` : ''}`;
+	}
+
 	function handleTile(x: number, y: number) {
 		const here = carsAt.get(`${x},${y}`);
 		if (!here || here.length === 0 || !onSelectCar) return;
@@ -235,30 +303,25 @@
 				{@const style = ci === null ? glyphStyle(ch) : carGlyphStyle()}
 				{@const here = carsAt.get(`${x},${y}`) ?? []}
 				{@const highlighted = highlightTiles.has(`${x},${y}`)}
-				<!--
-					Roads are drawn flush so a street reads as a continuous strip.
-					A uniform 1-2px gap on every tile made the grid look beaded: a
-					row of separate squares rather than a road you drive along.
-					Buildings, water and fog keep the gap, which is what makes the
-					blocks read as solid masses.
-				-->
-				{@const flush = ch === '.' || ch === ',' || ch === 'X' || ch === 'D' || ch === 'C' || ch === 'K' || ch === 'H' || ch === 'h'}
+				{@const site = siteStates.get(`${x},${y}`)}
+				{@const siteState = site?.state}
+				{@const flush = ci !== null || ch === '.' || ch === ',' || ch === 'X' || ch === 'D' || ch === 'C' || ch === 'K' || ch === 'H' || ch === 'h' || ch === 'B' || ch === '#' || ch === '?'}
 				<button
 					type="button"
 					class="absolute flex items-center justify-center text-[12px] leading-none transition-[filter] hover:brightness-150 {flush
 						? 'rounded-none'
-						: 'rounded-[3px]'} {style.cls} {highlighted ? 'ring-2 ring-[var(--color-body)] z-10' : ''}"
+						: 'rounded-[3px]'} {style.cls} {highlighted ? 'ring-2 ring-[var(--color-body)] z-10' : ''} {ch === 'B' ? 'roof' : ''} {ch === '#' ? 'water' : ''} {ch === ',' ? 'ground' : ''} {ch === '?' ? 'fog' : ''} {ch === 'X' ? 'works' : ''} {ch === '.' ? roadDirection(x, y) : ''}"
 					style="left: {x * TILE}px; top: {y * TILE}px; width: {flush ? TILE : TILE - 1}px; height: {flush
 						? TILE
-						: TILE - 1}px;"
-					title="{style.label} [{x},{y}]"
-					aria-label="{style.label} at {x},{y}"
+						: TILE - 1}px; background-position: {-x * TILE}px {-y * TILE}px; {ch === 'B' ? `border-top: ${rows[y - 1]?.[x] === 'B' ? 0 : 1}px solid var(--color-roof-edge); border-right: ${row[x + 1] === 'B' ? 0 : 1}px solid var(--color-roof-edge); border-bottom: ${rows[y + 1]?.[x] === 'B' ? 0 : 1}px solid var(--color-roof-edge); border-left: ${row[x - 1] === 'B' ? 0 : 1}px solid var(--color-roof-edge);` : ''}"
+					title="{style.label}{site ? ` — ${siteStatusLabel(site)}` : ''} [{x},{y}]"
+					aria-label="{style.label} at {x},{y}{site ? `, ${siteStatusLabel(site)}` : ''}"
 					disabled={here.length === 0}
 					tabindex={-1}
 					onclick={() => handleTile(x, y)}
 				>
 					{#if ch === 'K' || ch === 'H' || ch === 'D' || ch === 'C' || ch === 'h'}
-						<span class="font-semibold {ch === 'h' ? 'text-[var(--color-customer)]' : 'text-white'}">{ch}</span>
+						<span class="h-full w-full p-px {ch === 'h' ? 'text-[var(--color-customer)]' : 'text-white'} {siteState === 'carrying' ? 'drop-shadow-[0_0_4px_#f59e0b]' : siteState === 'assigned' ? 'drop-shadow-[0_0_4px_#0284c7]' : siteState === 'pending' ? 'drop-shadow-[0_0_4px_#dc2626]' : ''}"><MapIcon kind={ch} /></span>
 					{/if}
 				</button>
 			{/each}
@@ -270,35 +333,33 @@
 			{#each drawn as d (d.car.id)}
 				{@const car = d.car}
 				{@const selected = d.here.some((c) => c.id === selectedCarId)}
-				<!--
-					A car is drawn as a white tile with its fleet number. The
-					transition is what makes the map animate: with no duration the
-					car jumps a whole tile, and at 4x it jumped five at once.
-
-					A car behind another on the same tile is hidden rather than
-					stacked, but stays in the DOM so that when it becomes the tile's
-					representative it glides in from wherever it was.
-				-->
+				{@const carrying = d.here.some((c) => c.cargo.length > 0)}
+				{@const assigned = !carrying && d.here.some((c) => assignedCarIds.has(c.id))}
+				<!-- Hidden cars retain their elements so promotion still animates. -->
 				<button
 					type="button"
-					class="absolute flex items-center justify-center rounded-none bg-ink text-[12px] leading-none font-bold text-white {d.first
+					class="absolute flex items-center justify-center rounded-[3px] bg-ink text-[12px] leading-none font-bold text-white {d.first
 						? 'pointer-events-auto'
 						: 'invisible'} {selected
 						? 'z-20 ring-2 ring-[var(--color-charger)] ring-offset-1 ring-offset-[var(--color-map)]'
-						: 'z-10'}"
+						: 'z-10'} {carrying ? 'drop-shadow-[0_0_4px_#f59e0b]' : assigned ? 'drop-shadow-[0_0_4px_#0284c7]' : ''}"
 					style="left: {car.x * TILE}px; top: {car.y * TILE}px; width: {TILE}px; height: {TILE}px; transition: left {d.glideMs}ms linear, top {d.glideMs}ms linear;"
-					title="{car.name} ({car.state}){d.here.length > 1
+					title="{d.here.map((c) => `${c.name} (${c.state}${c.cargo.length ? ', carrying an order' : assignedCarIds.has(c.id) ? ', assigned to an order' : ''})`).join(', ')}{d.here.length > 1
 						? ` — ${d.here.length} cars here; click to cycle`
 						: ''} [{car.x},{car.y}]"
 					aria-label="{d.here.length} car{d.here.length === 1
 						? ''
 						: 's'} at {car.x},{car.y}, {d.here
-						.map((c) => c.name)
-						.join(', ')}"
+						.map((c) => `${c.name}${c.cargo.length ? ' (carrying an order)' : assignedCarIds.has(c.id) ? ' (assigned to an order)' : ''}`)
+						.join(', ')}{siteStates.has(`${car.x},${car.y}`) ? `; location: ${siteStatusLabel(siteStates.get(`${car.x},${car.y}`))}` : ''}"
 					tabindex={d.first ? 0 : -1}
 					onclick={() => handleTile(car.x, car.y)}
 				>
-					<span class:text-[var(--color-danger)]={car.state === 'STRANDED'}>{d.digit}</span>
+					<span class="h-full w-full p-px" class:text-[var(--color-danger)]={car.state === 'STRANDED'}><MapIcon kind={car.className.toLowerCase()} /></span>
+					{#if carrying || assigned}
+						<span class="absolute -top-0.5 -left-0.5 h-1.5 w-1.5 rounded-full ring-1 {carrying ? 'bg-amber-300 ring-amber-900' : 'bg-sky-300 ring-sky-900'}" aria-hidden="true"></span>
+					{/if}
+					<span class="absolute -right-1 -bottom-1 rounded-full bg-ink px-0.5 text-[9px] leading-none text-white">{d.digit}</span>
 					{#if d.first && d.here.length > 1}
 						<span
 							class="absolute -top-0.5 -right-0.5 rounded-full bg-ink px-1 text-[11px] font-bold text-white"
@@ -306,6 +367,18 @@
 						>
 					{/if}
 				</button>
+			{/each}
+		</div>
+		<!-- Keep endpoint status visible even when a vehicle covers its tile. -->
+		<div class="pointer-events-none absolute inset-0 z-30" aria-hidden="true">
+			{#each [...siteStates.values()] as site (`${site.x},${site.y}`)}
+				<span class="absolute h-1.5 w-1.5 rounded-full ring-1 {site.state === 'carrying' ? 'bg-amber-300 ring-amber-900 drop-shadow-[0_0_4px_#f59e0b]' : site.state === 'assigned' ? 'bg-sky-300 ring-sky-900 drop-shadow-[0_0_4px_#0284c7]' : 'bg-red-500 ring-red-900 drop-shadow-[0_0_4px_#dc2626]'}" style="left: {(site.x + 1) * TILE - 4}px; top: {site.y * TILE - 2}px;"></span>
+				{#if site.hasPending && site.state !== 'pending'}
+					<span class="absolute h-1.5 w-1.5 rounded-full bg-red-500 ring-1 ring-red-900 drop-shadow-[0_0_4px_#dc2626]" style="left: {site.x * TILE - 2}px; top: {site.y * TILE - 2}px;"></span>
+				{/if}
+				{#if site.fleetNumbers.length}
+					<span class="absolute whitespace-nowrap rounded-sm bg-ink px-0.5 text-[9px] leading-none font-bold tabular-nums text-white" style="left: {(site.x + 1) * TILE - 2}px; top: {(site.y + 1) * TILE - 5}px; transform: translateX(-50%);">{site.fleetNumbers.join(',')}</span>
+				{/if}
 			{/each}
 		</div>
 	</div>
@@ -320,48 +393,31 @@
 		<span class="flex items-center gap-1">
 			<span class="inline-block h-3 w-3 rounded-[2px] bg-[var(--color-water)]" aria-hidden="true"></span>water
 		</span>
-		<span class="flex items-center gap-1">
-			<span
-				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-depot)] text-[11px] font-bold text-white"
-				aria-hidden="true">D</span
-			>depot
-		</span>
-		<span class="flex items-center gap-1">
-			<span
-				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-charger)] text-[11px] font-bold text-white"
-				aria-hidden="true">C</span
-			>charger
-		</span>
-		<span class="flex items-center gap-1">
-			<span
-				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-kitchen)] text-[11px] font-bold text-white"
-				aria-hidden="true">K</span
-			>kitchen
-		</span>
-		<span class="flex items-center gap-1">
-			<span
-				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-customer)] text-[11px] font-bold text-white"
-				aria-hidden="true">H</span
-			>customer waiting
-		</span>
-		<span class="flex items-center gap-1">
-			<span
-				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-[var(--color-customer)]/20 text-[11px] font-bold text-[var(--color-customer)]"
-				aria-hidden="true">h</span
-			>house, nobody home
-		</span>
+		{#each [{ kind: 'D', label: 'depot', color: 'bg-[var(--color-depot)] text-white' }, { kind: 'C', label: 'charger', color: 'bg-[var(--color-charger)] text-white' }, { kind: 'K', label: 'kitchen', color: 'bg-[var(--color-kitchen)] text-white' }, { kind: 'H', label: 'customer waiting', color: 'bg-[var(--color-customer)] text-white' }, { kind: 'h', label: 'house, nobody home', color: 'bg-[var(--color-customer)]/20 text-[var(--color-customer)]' }] as item (item.kind)}
+			<span class="flex items-center gap-1">
+				<span class="inline-block h-4 w-4 rounded-[2px] p-px {item.color}" aria-hidden="true"><MapIcon kind={item.kind} /></span>{item.label}
+			</span>
+		{/each}
 		<span class="flex items-center gap-1">
 			<span class="inline-block h-3 w-3 rounded-[2px] bg-[var(--color-building)]" aria-hidden="true"></span>building
 		</span>
 		<span class="flex items-center gap-1">
-			<span class="inline-block h-3 w-3 rounded-[2px] border border-dashed border-edge-faint bg-surface-muted" aria-hidden="true"
-			></span>unexplored
+			<span class="fog inline-block h-3 w-3" aria-hidden="true"></span>unexplored
 		</span>
 		<span class="flex items-center gap-1">
 			<span
-				class="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[2px] bg-ink text-[11px] font-bold text-white"
-				aria-hidden="true">1</span
+				class="inline-flex h-4 w-4 items-center justify-center rounded-[2px] bg-ink p-px text-white"
+				aria-hidden="true"><MapIcon kind="van" /></span
 			>car
+		</span>
+		<span class="flex items-center gap-1">
+			<span class="h-2 w-2 rounded-full bg-red-500 ring-1 ring-red-900" aria-hidden="true"></span>unassigned order
+		</span>
+		<span class="flex items-center gap-1">
+			<span class="h-2 w-2 rounded-full bg-sky-300 ring-1 ring-sky-900" aria-hidden="true"></span>assigned, awaiting pickup
+		</span>
+		<span class="flex items-center gap-1">
+			<span class="h-2 w-2 rounded-full bg-amber-300 ring-1 ring-amber-900" aria-hidden="true"></span>order picked up
 		</span>
 		{#if closures.length > 0}
 			<span class="flex items-center gap-1 text-[var(--color-warn)]">
@@ -388,3 +444,31 @@
 		</ul>
 	{/if}
 </div>
+
+<style>
+	.roof {
+		background-image: repeating-linear-gradient(135deg, transparent 0 7px, rgb(255 255 255 / 0.1) 7px 8px);
+	}
+	.water {
+		background-image: repeating-linear-gradient(170deg, transparent 0 12px, rgb(255 255 255 / 0.22) 12px 13px, transparent 13px 20px);
+	}
+	.ground {
+		background-image: radial-gradient(rgb(142 118 78 / 0.2) 0.7px, transparent 1px);
+		background-size: 8px 8px;
+	}
+	.fog {
+		background-color: #d7dfea;
+		background-image: repeating-linear-gradient(135deg, transparent 0 14px, rgb(126 144 168 / 0.1) 14px 15px, transparent 15px 28px);
+	}
+	.works {
+		background-image: repeating-linear-gradient(135deg, transparent 0 3px, rgb(146 64 14 / 0.45) 3px 5px);
+	}
+	.road-vertical::after, .road-horizontal::after {
+		content: '';
+		position: absolute;
+		background: var(--color-road-marking);
+		border-radius: 1px;
+	}
+	.road-vertical::after { width: 1px; height: 40%; }
+	.road-horizontal::after { width: 40%; height: 1px; }
+</style>

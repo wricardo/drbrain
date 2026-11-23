@@ -161,18 +161,18 @@ const (
 // Status are community metadata: shipped maps leave them empty, and a stored
 // community map always carries both.
 type MapConfig struct {
-	ID             string   `json:"id"`
-	Name           string   `json:"name"`
-	Description    string   `json:"description,omitempty"`
-	Difficulty     string   `json:"difficulty,omitempty"`
-	Layout         []string `json:"layout"`
-	MainTapeLength int      `json:"main_tape_length,omitempty"`
-	SubTapeLengths []int    `json:"sub_tape_lengths"` // nil = default [10]; [] = no subs (never omitted)
-	MaxSteps       int      `json:"max_steps,omitempty"`
-	MaxCallDepth   int      `json:"max_call_depth,omitempty"`
-	AllowRecursion bool     `json:"allow_recursion"`
-	OwnerID        string     `json:"owner_id,omitempty"`
-	Status         MapStatus  `json:"status,omitempty"`
+	ID             string    `json:"id"`
+	Name           string    `json:"name"`
+	Description    string    `json:"description,omitempty"`
+	Difficulty     string    `json:"difficulty,omitempty"`
+	Layout         []string  `json:"layout"`
+	MainTapeLength int       `json:"main_tape_length,omitempty"`
+	SubTapeLengths []int     `json:"sub_tape_lengths"` // nil = default [10]; [] = no subs (never omitted)
+	MaxSteps       int       `json:"max_steps,omitempty"`
+	MaxCallDepth   int       `json:"max_call_depth,omitempty"`
+	AllowRecursion bool      `json:"allow_recursion"`
+	OwnerID        string    `json:"owner_id,omitempty"`
+	Status         MapStatus `json:"status,omitempty"`
 }
 
 // Map is a parsed, validated map.

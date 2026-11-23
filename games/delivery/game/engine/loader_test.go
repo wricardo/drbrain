@@ -151,7 +151,7 @@ func minimalCityConfig() *CityConfig {
 			"D": "depot",
 		},
 		Depots: []DepotConfig{
-			{ID: "home", Pos: Position{X: 2, Y: 2}, Capacity: 4},
+			{ID: "home", Pos: Position{X: 2, Y: 2}},
 		},
 	})
 }

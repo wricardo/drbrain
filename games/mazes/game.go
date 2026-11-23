@@ -1,6 +1,8 @@
 //go:generate go run github.com/wricardo/drbrain/cmd/split-schema
 //go:generate go run github.com/99designs/gqlgen generate
 
+// Package mazes is Dr Brain - Mazes as a platform game: a tower-of-levels step
+// maze where a player sees only the level they stand on.
 package mazes
 
 import (

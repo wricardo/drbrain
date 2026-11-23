@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -85,6 +86,127 @@ func TestPausedSessionDoesNotTick(t *testing.T) {
 		if now != frozen {
 			t.Fatalf("paused session ticked: %d -> %d", frozen, now)
 		}
+	}
+}
+
+// TestWaitUntilReturnsAtTarget proves a wait wakes on the session's own
+// notifications and returns the moment the tick is reached.
+func TestWaitUntilReturnsAtTarget(t *testing.T) {
+	city, cfg := testCity(t)
+	s, err := New("wait1", city, cfg, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	// running without Start: the wait must still complete on manual advances.
+	if err := s.SetSpeed(Speed1x); err != nil {
+		t.Fatal(err)
+	}
+	target := s.CurrentTick() + 3
+
+	done := make(chan error, 1)
+	go func() { done <- s.WaitUntil(context.Background(), target) }()
+	waitFor(t, func() bool { return s.WatchCount() == 1 })
+	s.Do(func(w *engine.World) {
+		for range 3 {
+			w.Advance()
+		}
+	})
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("wait: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("wait did not return after the target tick")
+	}
+	if got := s.WatchCount(); got != 0 {
+		t.Fatalf("watchers after wait = %d, want 0", got)
+	}
+}
+
+// TestWaitUntilRejectsPaused pins the contract: a paused clock can never reach
+// a future tick, so the wait errors immediately instead of hanging.
+func TestWaitUntilRejectsPaused(t *testing.T) {
+	city, cfg := testCity(t)
+	s, err := New("wait2", city, cfg, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	err = s.WaitUntil(ctx, s.CurrentTick()+1)
+	if !errors.Is(err, ErrPaused) {
+		t.Fatalf("paused wait error = %v, want ErrPaused", err)
+	}
+	if got := s.WatchCount(); got != 0 {
+		t.Fatalf("watchers after paused wait = %d, want 0", got)
+	}
+}
+
+// TestWaitUntilEndsWhenPausedMidWait covers pausing during the call: the
+// notification wakes the waiter and it reports ErrPaused rather than sitting
+// until the client disconnects.
+func TestWaitUntilEndsWhenPausedMidWait(t *testing.T) {
+	city, cfg := testCity(t)
+	s, err := New("wait3", city, cfg, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.SetSpeed(Speed1x); err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- s.WaitUntil(context.Background(), s.CurrentTick()+100) }()
+	waitFor(t, func() bool { return s.WatchCount() == 1 })
+	if err := s.SetSpeed(SpeedPaused); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrPaused) {
+			t.Fatalf("pause-during-wait error = %v, want ErrPaused", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("wait did not end after the session was paused")
+	}
+}
+
+// TestWaitUntilHonoursContext proves a disconnected client ends the wait and
+// leaves no watcher behind.
+func TestWaitUntilHonoursContext(t *testing.T) {
+	city, cfg := testCity(t)
+	s, err := New("wait4", city, cfg, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.SetSpeed(Speed1x); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- s.WaitUntil(ctx, s.CurrentTick()+100) }()
+	waitFor(t, func() bool { return s.WatchCount() == 1 })
+	cancel()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("cancelled wait error = %v, want context.Canceled", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("wait did not end after ctx cancellation")
+	}
+	if got := s.WatchCount(); got != 0 {
+		t.Fatalf("watchers after cancelled wait = %d, want 0", got)
 	}
 }
 

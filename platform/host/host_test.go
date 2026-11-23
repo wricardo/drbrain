@@ -97,6 +97,46 @@ func startHost(t *testing.T, cfg config.Config, games ...platform.Game) (*host.H
 	return h, cancel, done
 }
 
+func TestServesMetricsOnSeparateListener(t *testing.T) {
+	cfg := testConfig(t)
+	cfg.MetricsAddr = "127.0.0.1:0"
+	h, cancel, done := startHost(t, cfg, &fakeGame{name: "alpha", prefix: "/alpha"})
+	defer cancel()
+
+	if h.MetricsAddr() == "" {
+		t.Fatal("metrics listener did not bind")
+	}
+	resp, err := http.Get("http://" + h.MetricsAddr() + "/metrics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	for _, want := range []string{"go_goroutines", "process_cpu_seconds_total"} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("scrape missing %q", want)
+		}
+	}
+	// The game listener must not expose the scrape surface: nginx proxies
+	// every path to it.
+	resp, err = http.Get("http://" + h.Addr() + "/metrics")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode == http.StatusOK {
+		t.Error("game listener served /metrics; it must stay on the metrics address")
+	}
+
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("run: %v", err)
+	}
+}
+
 func TestServesMountedGames(t *testing.T) {
 	cfg := testConfig(t)
 	a := &fakeGame{name: "alpha", prefix: "/alpha"}

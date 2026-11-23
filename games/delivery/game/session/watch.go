@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"sync"
 
 	"github.com/wricardo/drbrain/games/delivery/game/engine"
@@ -41,6 +42,29 @@ func (w *Watch) Next() bool {
 		default:
 			return false
 		}
+	}
+}
+
+// NextContext blocks like Next but also gives up when ctx ends.
+//
+// A subscriber whose client disconnects while the session is paused would
+// otherwise sit in Next forever: a paused session publishes nothing, so the
+// resolver could never reach its deferred Unwatch and the watcher leaked.
+func (w *Watch) NextContext(ctx context.Context) bool {
+	select {
+	case <-w.wake:
+		return true
+	case <-w.done:
+		// Prefer a pending change over shutdown so a final update is not lost
+		// when a client disconnects right after a tick.
+		select {
+		case <-w.wake:
+			return true
+		default:
+			return false
+		}
+	case <-ctx.Done():
+		return false
 	}
 }
 
@@ -152,11 +176,13 @@ func (s *Session) StreamSnapshot() Snapshot {
 	defer s.mu.Unlock()
 	snap := BuildSnapshot(s.world)
 	snap.ID = s.ID
+	snap.City.ID = s.cityID
 	snap.CreatedAt = s.CreatedAt
 	snap.Speed = s.speed
 	snap.Paused = s.speed == SpeedPaused
+	snap.DisplayName = s.displayName
 	snap.Orders = trimOrders(snap.Orders, streamHistory)
-	snap.Ledger.CashEntries = trimCashEntries(snap.Ledger.CashEntries, streamCashRows)
+	snap.Ledger.Statement = s
 	return snap
 }
 
@@ -164,19 +190,10 @@ func (s *Session) StreamSnapshot() Snapshot {
 // the "completed" list a player scrolls through, small enough to stay cheap.
 const streamHistory = 20
 
-// streamCashRows is how many cash statement rows a live stream keeps. The
-// statement grows with every delivery and every upkeep interval, and the live
-// frame is re-sent on every tick; the latest rows are what the panel shows, and
-// the full history stays available through the session query.
-const streamCashRows = 40
-
-// trimCashEntries keeps the newest rows of a newest-first statement.
-func trimCashEntries(entries []CashEntryView, keep int) []CashEntryView {
-	if len(entries) <= keep {
-		return entries
-	}
-	return entries[:keep]
-}
+// The statement is NOT trimmed a second time here. A snapshot already carries
+// the newest DefaultStatementMonths window capped at maxCashRows, so the query
+// and the stream return the same rows for the same fields; a separate stream
+// cap made one payload claim a window it did not show.
 
 // trimOrders keeps every unfinished order plus the newest finished ones.
 //

@@ -16,7 +16,9 @@ type AccountInput struct {
 
 // A way to sign in, enabled on this server. Sign in by navigating to /auth/<id>/login.
 type AuthProvider struct {
-	ID   string `json:"id"`
+	// Provider id used in the login URL, e.g. "google", "github", "dev" or "password".
+	ID string `json:"id"`
+	// Human-readable provider name for the sign-in button.
 	Name string `json:"name"`
 }
 
@@ -25,23 +27,33 @@ type AuthProvider struct {
 // player it belongs to. Tokens last 24 hours; there is no refresh token, so a
 // client stores it and signs in again when it expires.
 type AuthSession struct {
-	Token     string    `json:"token"`
+	// Bearer token. Send it as `Authorization: Bearer <token>`; keep it private.
+	Token string `json:"token"`
+	// When the token stops being accepted (UTC).
 	ExpiresAt time.Time `json:"expiresAt"`
-	User      *User     `json:"user"`
+	// The player the token belongs to.
+	User *User `json:"user"`
 }
 
+// Account, sign-in and profile mutations. Password sign-in and OAuth hand-off are
+// same-origin only; tokens are stateless Bearer JWTs.
 type Mutation struct {
 }
 
 // A player's public identity page. Game-specific statistics live under that game.
 type Profile struct {
-	Handle      string    `json:"handle"`
-	DisplayName string    `json:"displayName"`
-	CreatedAt   time.Time `json:"createdAt"`
+	// Public handle; the profile lives at /u/<handle>.
+	Handle string `json:"handle"`
+	// Public display name; empty means the handle is shown.
+	DisplayName string `json:"displayName"`
+	// When the account was created (UTC).
+	CreatedAt time.Time `json:"createdAt"`
 	// True when the viewer is this player (a private profile is visible only to its owner).
 	IsMine bool `json:"isMine"`
 }
 
+// Account and sign-in operations shared by every game. Read `me` to identify the
+// viewer; mutations require the Bearer token returned by the sign-in mutations.
 type Query struct {
 }
 
@@ -49,11 +61,13 @@ type Query struct {
 // is stored: no email, no avatar.
 type User struct {
 	// Unique public name, 3-20 of a-z 0-9 _; the profile lives at /u/<handle>.
-	Handle      string `json:"handle"`
+	Handle string `json:"handle"`
+	// Public name shown on boards and profiles; an empty value falls back to the handle.
 	DisplayName string `json:"displayName"`
 	// When false the profile page is hidden and board entries read "Private player".
-	ProfilePublic bool      `json:"profilePublic"`
-	CreatedAt     time.Time `json:"createdAt"`
+	ProfilePublic bool `json:"profilePublic"`
+	// When the account was created (UTC).
+	CreatedAt time.Time `json:"createdAt"`
 	// When the handle may be changed again; null when it can be changed now.
 	HandleChangeableAt *time.Time `json:"handleChangeableAt,omitempty"`
 	// True for a username/password account (the only kind that can change a password).

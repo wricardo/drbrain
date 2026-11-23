@@ -26,15 +26,39 @@ var (
 // Meta is the part of a session the platform understands. Everything
 // game-specific stays in the payload.
 type Meta struct {
-	ID           string    `json:"id"`
-	DisplayName  string    `json:"display_name,omitempty"`
+	ID          string `json:"id"`
+	DisplayName string `json:"display_name,omitempty"`
+	// Game is the owning game's registration name ("delivery", "mazes", …).
+	// The shared table holds every game's rows, so a store opened with
+	// Options.Game only lists, loads and deletes its own.
+	Game         string    `json:"game,omitempty"`
 	MapID        string    `json:"map_id,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
 	LastActionAt time.Time `json:"last_action_at"`
 	Seq          uint64    `json:"seq"`
+	// AccountID links the save to a signed-in player ("" = guest). Games that
+	// track ownership publish it here so a list can filter by owner without
+	// decoding the payload.
+	AccountID string `json:"account_id,omitempty"`
+	// Counters is the list-row summary a game optionally publishes alongside
+	// its payload. Nil means "not published": the game must decode the payload
+	// to describe the row, which is what every save written before this field
+	// did. Present counters make List O(rows) instead of O(bytes).
+	Counters *Counters `json:"counters,omitempty"`
 	// Loaded is true when the entry is in the store's loaded set (persisted or
 	// Put this process) and false for a save discovered on disk/database.
 	Loaded bool `json:"loaded"`
+}
+
+// Counters is the cheap description of a save's progress. It is a fixed
+// platform shape so a session picker can render a row without decoding the
+// payload. Delivery publishes tick, money, reputation and deliveries today;
+// every other game leaves Meta.Counters nil.
+type Counters struct {
+	Tick       int64   `json:"tick"`
+	Money      int     `json:"money"`
+	Reputation float64 `json:"reputation,omitempty"`
+	Deliveries int     `json:"deliveries,omitempty"`
 }
 
 // Store is the durable session interface. Games keep their live session
@@ -60,11 +84,16 @@ type Store interface {
 type Options struct {
 	// Pool is the PostgreSQL pool every server uses; it is required.
 	Pool *pgxpool.Pool
+	// Game scopes the store to one game's rows in the shared table. Empty
+	// means unscoped (tests and migration tooling); every server-opened store
+	// must set it, or it will list and overwrite other games' saves.
+	Game string
 	// MaxSessions bounds stored sessions; <= 0 means unlimited.
 	MaxSessions int
 	// Evict replaces the oldest LastActionAt entry instead of returning
-	// ErrLimit. Games whose manager evicts (delivery) set it; games that reject
-	// (mazes, motor) leave it false.
+	// ErrLimit. No current game sets it: delivery's Manager.Evict unloads a
+	// live session from memory but does not evict stored saves. The option is
+	// exercised only by the memory-store tests.
 	Evict bool
 }
 
@@ -80,7 +109,7 @@ func Open(opts Options) (Store, error) {
 	if opts.Pool == nil {
 		return nil, fmt.Errorf("sessionstore: PostgreSQL pool is required")
 	}
-	s := &store{pool: opts.Pool, max: opts.MaxSessions, evict: opts.Evict, mem: make(map[string]entry)}
+	s := &store{pool: opts.Pool, game: opts.Game, max: opts.MaxSessions, evict: opts.Evict, mem: make(map[string]entry)}
 	return s, nil
 }
 

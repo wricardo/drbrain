@@ -8,157 +8,125 @@ Tesla Road Trip Game — grid-based multi-session game server in Go where player
 
 ## Development Commands
 
-Server uses default port 8000. Use `just` for all common tasks (`just --list` shows every recipe).
+Tesla is one game in the Dr Brain monorepo: it shares one binary, one listener,
+one GraphQL endpoint and one SvelteKit app with the other games. Run commands
+from the repository root.
 
 ### Build and Run
 ```bash
-just build          # Build binary → ./tesla-road-trip
-just run            # Build frontend + backend, run (port 8000)
-just dev            # Build backend, run on port 8000
-./tesla-road-trip -port 9090              # Custom port
-./tesla-road-trip -public-url https://example.com  # Set public URL in /llms.txt
-# stdio-mcp mode is currently disabled in main.go
+just restart       # regen + build web/binary + start detached on :8181
+just stop          # stop the detached server
+just regen         # after any GraphQL schema edit
+just build         # go build -o tmp/drbrain ./cmd/drbrain
 ```
 
-**Port conflicts**: Port 8000 is often taken by other processes. `just dev-live` uses 9090 (frontend dev). Use 9191+ for standalone server to avoid conflicts. Check first: `lsof -i :PORT | grep LISTEN`.
+Feature gates and paths are `TESLA_*` environment variables (see
+`games/tesla/appconfig`); the rest of the process is `DRBRAIN_*`.
 
-**macOS port shadowing**: Both `*:8000` (wildcard) and `localhost:8000` (specific) can bind simultaneously. The wildcard listener wins for `curl localhost:8000` — always verify which server responds with a known query.
-
-### TUI Client
-```bash
-just build-tui                                          # Build → ./tesla-road-trip-tui
-./tesla-road-trip-tui -server http://localhost:9191     # Connect to custom port
-./tesla-road-trip-tui -server URL -session <id>        # Jump directly to session (skip list)
-```
-**`-session` flag**: Added in cmd/tui/main.go + model.go. When set, `rootModel.Init()` must return `play.Init()` not `sessions.loadCmd()` — otherwise play screen hangs forever on "Loading...". Files that must change together: `main.go` and `model.go:Init()`.
-
-### Bulk tmux Launch (multi-session)
-```bash
-# 4-pane grid per window: split-h → split-v on pane 0 → split-v on pane 2
-# Pane order: 0=TL, 1=BL, 2=TR, 3=BR
-# Avoid using 'id' as variable name in bash tmux scripts — shadows Unix 'id' command; use 'sid' instead
-```
+**Port conflicts**: the root `justfile` defaults to 8181 and refuses to start if
+the port is taken. `just port=9000 restart` changes it. Check first:
+`lsof -i :PORT | grep LISTEN`.
 
 ### Testing
 ```bash
-just test                   # All Go tests
-just test-verbose            # Verbose output
-just test-coverage           # Coverage report → coverage.html
-go test ./game/engine/...    # Single package
-go test -run TestName ./...  # Single test
-just validate                # Validate all configs
+go test ./...                          # all Go tests
+go test ./games/tesla/...              # tesla only
+go test -run TestName ./games/tesla/...
+go run ./cmd/drbrain validate --game=tesla
 ```
 
 ### Code Quality
 ```bash
-just verify         # fmt-check + vet-safe + lint (fast CI)
-just fmt            # Format (gofmt -s + goimports)
-just lint           # golangci-lint
-just vet-safe       # go vet core packages (skips flaky test pkg)
+gofmt -l .
+go vet ./...
+npm --workspace web run check          # svelte-check
+npm --workspace web run test           # Vitest
 ```
 
-### Frontend (SvelteKit + Tailwind)
-```bash
-cd frontend
-npm install
-npm run dev         # Dev server (Vite, proxies to Go backend)
-npm run build       # Static build → frontend/build/
-npm run check       # Type-check
-```
+### Frontend (SvelteKit)
+The shared app lives in `web/`; Tesla routes are `web/src/routes/tesla/` and
+`web/src/lib/tesla/`.
 
-### Full-Stack Live Dev
 ```bash
-just dev-live       # Backend on :9090 + frontend on :5173 (both with live reload)
-# Or separately:
-just dev-backend    # Backend only on :9090
-just frontend-dev   # Frontend only on :5173 (proxies to :9090)
-```
-
-### Install Dev Tools
-```bash
-just tools          # Install goimports + golangci-lint
+npm run dev             # Vite on :5173, proxies /graphql (ws included)
+npm --workspace web run build   # -> web/build
 ```
 
 ### GraphQL Code Generation
 ```bash
-go run github.com/99designs/gqlgen generate   # Regenerate from schema.graphqls
+go generate ./games/... ./graph       # split schema + gqlgen + gentypes
+go run ./cmd/split-schema -check
+go run ./cmd/merge-schema -check
+go run ./cmd/gentypes -check
 ```
-Schema lives in `graph/schema.graphqls`. Do not edit `graph/generated/` directly.
+The canonical schema is `graph/schema.graphqls` at the repository root.
+`games/tesla/graph/schema.graphqls` and `graph/generated/` are generated; never
+edit them by hand.
 
 ### MCP Server
-```bash
-just claude-game         # Claude with HTTP MCP (./mcp.json)
-# Note: binary stdio-mcp mode is currently disabled; use HTTP /mcp
-```
+MCP is mounted at `/tesla/mcp` (Streamable HTTP); stdio is disabled. Set
+`TESLA_MCP_ENABLED=false` to turn it off.
 
 ### Config Analysis Tool
 ```bash
-cd cmd/analyze && go run .   # Prints heuristics: dimensions, battery, parks, chargers, reachability
+go run ./games/tesla/cmd/analyze   # dimensions, battery, parks, chargers, reachability
 ```
 
 ## Architecture
 
 ### Package Structure
 ```
-main.go                  Entry point — wires all packages, handles flags, starts server
-api/                     REST HTTP handlers (GET/POST /api, sessions, saves, maps)
-game/
-  config/                Config file loading and management (maps/*.json)
-  engine/                Core game logic: movement, battery, victory, cell types
-  service/               GameService interface + implementation (facade over engine+session)
-  session/               Session lifecycle, in-memory manager, file persistence
-graph/
-  schema.graphqls        GraphQL schema (source of truth)
+game.go                  Platform adapter: Mount, GraphQLResolver, MCP, validate
+appconfig/               TESLA_* environment
+game/config/             Config file loading and the PostgreSQL map catalogue
+game/engine/             Core game logic: movement, battery, victory, cell types
+game/service/            GameService facade over engine+session
+game/session/            Session lifecycle (PostgreSQL-backed)
+graph/                   Resolvers, generated SDL/model
+  schema.graphqls        Generated from graph/schema.graphqls (do not edit)
   generated/             gqlgen-generated code (do not edit)
-  resolver.go            Resolver wiring
-  schema.resolvers.go    Mutation/Query/Subscription implementations
-transport/
-  mcp/                   MCP server (tools: game_state, move, bulk_move, create_session, etc.)
-  websocket/             WebSocket hub — broadcasts state updates to session subscribers
+transport/websocket/     Hub — broadcasts state updates to session subscribers
+transport/mcp/           MCP tools (game_state, move, bulk_move, create_session, …)
 validate/                Config winnability checks
 cmd/analyze/             CLI: config heuristics analyzer
-bruteforcer/             Standalone Go binary — brute-forces map solutions via HTTP API (separate go.mod)
-frontend/                SvelteKit app (Tailwind, Svelte 5)
-  src/routes/
-    +page.svelte         Home / game selection
-    multi/               Multi-player lobby
-    watch/[id]/          Spectator view
-    learn/               Tutorial/learn page
-    admin/               Admin panel
-    lobby/               Session lobby
+cmd/envcheck/            Environment/config checker
+cmd/rlenv/               Reinforcement-learning environment
+bruteforcer/             Solver CLI (part of the main module)
 ```
+The shared web app is `web/src/routes/tesla/` and `web/src/lib/tesla/`; there is
+no per-game `frontend/` or committed `static/` directory.
 
 ### Key Interfaces
-- `game/service.GameService` — primary facade used by all transport layers (REST, GraphQL, MCP)
-- `game/session.Manager` — session CRUD + persistence
+- `game/service.GameService` — primary facade used by GraphQL and MCP
+- `game/session.Manager` — session CRUD + PostgreSQL persistence
 - `game/engine` — stateless game logic; takes/returns `GameState`
 
 ### Data Flow
-1. **Session creation**: client → GraphQL (or legacy `/api/sessions`) → `GameService.CreateSession` → `session.Manager` → persisted to `sessions/`
+1. **Session creation**: client → GraphQL `tesla.createSession` → `GameService.CreateSession` → `session.Manager` → `platform_sessions` row
 2. **Move**: client → GraphQL mutation (`move`/`bulkMove`) → `GameService.Move` → state saved → WebSocket hub broadcast
-3. **MCP**: HTTP `/mcp` (Streamable HTTP) → MCP tools → same `GameService` interface
+3. **MCP**: HTTP `/tesla/mcp` (Streamable HTTP) → MCP tools → same `GameService` interface
 
 ### GraphQL Endpoints
-- `/graphql` — GraphQL endpoint (HTTP + graphql-ws subscriptions on same path)
-- `/playground` — GraphQL playground UI (feature-gated)
+- `/graphql` — one executor for every game; select the `tesla` namespace (HTTP + graphql-ws subscriptions on the same path)
+- `/graphql/playground` — GraphQL playground (host-level)
 
-### REST Endpoints
-- Legacy compatibility routes are intentionally narrow:
-  - `POST /api/sessions` — create session (`{"map_name":"easy"}`)
-  - `GET /api/sessions` — list sessions
-- Legacy WebSocket route: `/ws?session=<id>`
-- `GET /llms.txt` — LLM-readable server guide (auto-generated, includes public URL)
+### Other Routes
+- `GET /tesla/llms.txt` — LLM-readable guide rendered by the platform
+- `POST /tesla/mcp` — MCP transport
+- `/tesla/...` — the shared SvelteKit app
+- Legacy REST `/api/sessions` and `/ws` routes are gone.
 
 ### Runtime Security / Feature Gates
 
-Configured via environment variables in `.env`:
-- `GRAPHQL_INTROSPECTION` (default true)
-- `GRAPHQL_PLAYGROUND` (default true)
-- `MCP_ENABLED` (default true)
-- `ALLOWED_ORIGINS` for WebSocket origin allowlist
-- Map creation is open: `createMap`/`create_map` return a one-time edit token.
-- `ADMIN_API_KEY` (X-Admin-Key) overrides map ownership and is required to change built-in maps
-- `ALLOW_UNAUTHENTICATED_ADMIN=true` for local-only admin bypass
+Configured via `TESLA_*` environment variables:
+- `TESLA_GRAPHQL_INTROSPECTION` / `TESLA_GRAPHQL_PLAYGROUND` — reported in the
+  mount log; the unified `/graphql` handler owns the actual switches
+- `TESLA_MCP_ENABLED` (default true)
+- `TESLA_ALLOWED_ORIGINS` for the WebSocket origin allowlist
+- Map creation is owner-gated: `createMap`/`create_map` create a DRAFT owned by
+  the signed-in caller; shipped and legacy ownerless maps need `X-Admin-Key`.
+- `TESLA_ADMIN_API_KEY` (X-Admin-Key) authorizes built-in/legacy map changes
+- `TESLA_ALLOW_UNAUTHENTICATED_ADMIN=true` for local-only admin bypass
 
 ### Configuration System
 
@@ -184,7 +152,8 @@ rm -f file       # rm -rf dir
 ```
 
 ### Public URL
-Use `-public-url` to set the base URL rendered in `/llms.txt` when exposing the service behind a tunnel or reverse proxy.
+Set `DRBRAIN_PUBLIC_URL` to the external base URL; the platform renders it into
+`/<game>/llms.txt` when exposing the service behind a tunnel or reverse proxy.
 
 ## AI Strategy Guidelines (Gameplay)
 
@@ -208,8 +177,9 @@ When playing the Tesla game, ask: where is the nearest charger/home? How much ba
 - Confusing `R` (road) with `B` (building) — they look similar in monospace
 
 ### Map Creation Notes
-- `createSession(mapName: "easy_trapped_park")` returns empty ID silently — use `mapID: "easy_trapped_park"` instead (mapId field, not mapName)
-- Always check session ID is non-empty after `createSession` before launching TUI
+- `createSession(mapID: "easy_trapped_park")` selects a builtin map by its
+  `mapId`; `mapName` is a legacy alias. Always check that the returned session
+  id is non-empty.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:ca08a54f -->
 ## Beads Issue Tracker

@@ -55,15 +55,20 @@ flowchart LR
 
 ## Development Commands
 
-Root `justfile` is the maintained dev loop (per-game `Makefile`/`justfile` files are stale leftovers):
+Root `justfile` owns platform-wide operations (database, build, tests, lint, schema, infra); per-game `justfile`s hold only that game's own tooling:
 
 ```bash
+just db-up / just db-down # dev PostgreSQL from docker-compose.yaml (:55432)
 just restart             # stop, regen, build web, build binary, start detached
 just port=8081 restart   # same on another port (DRBRAIN_PORT)
 just regen               # go run ./cmd/split-schema && go generate ./graph
 just build-web           # npm run build -> web/build
 just build               # go build -o tmp/drbrain ./cmd/drbrain
 just start / just stop   # detached server in tmp/, log tmp/drbrain.log
+just test / just test-db # go test ./..., optionally against PostgreSQL
+just clear-local-test-data # wipe loopback PG rows; schema/migrations kept
+just verify              # gofmt check, vet, lint, tests, schema drift, web checks
+(cd games/mazes && just validate)   # per-game tooling lives in its own justfile
 ```
 
 Backend and app:
@@ -132,5 +137,5 @@ Issue tracking uses Beads: `bd ready`, `bd show <id>`, `bd update <id> --claim`,
 - Codegen drift guards: `cmd/split-schema/main_test.go`, `cmd/gentypes/main_test.go`, `graph/merge/merge_test.go` (`TestSchemaIsCurrent`, `TestMergedSchemaShape`); run `go test ./graph/merge ./cmd/split-schema ./cmd/gentypes` after any schema change. `games/delivery/graph/schema_drift_test.go:TestGqlgenRegenerateIsStable` rewrites generated files in place and must run alone: `DRBRAIN_CODEGEN_CHECK=1 go test -run '^TestGqlgenRegenerateIsStable$' ./games/delivery/graph` (skipped with `-short`).
 - Frontend: `npm run check` (svelte-check) plus `npm test` (Vitest 4 + jsdom + `@testing-library/svelte`, setup `web/src/test/setup.ts`); single test via `cd web && npx vitest run src/lib/<path>.test.ts`.
 - Test conventions: new test servers use `httptest` and raw GraphQL JSON POSTs; writes go to `t.TempDir()`; repo assets are read-only fixtures (`games/delivery/maps/city.json`, `games/*/maps/*.json`). Do not add `t.Parallel()` — tests mutate process env with `t.Setenv`. Unset leaked env vars before the suite. Shipped-map counts are golden (`games/mazes` expects exactly 16 maps); solution tests skip because `*/solutions/` is gitignored and absent locally.
-- No coverage thresholds or coverage uploads exist in CI (build, vet, test, web check/test/build only). Do not trust per-game `make test`/`just test` as the monorepo authority.
+- No coverage thresholds or coverage uploads exist in CI (build, vet, test, web check/test/build only). The root `justfile` is the monorepo authority; per-game recipes are scoped to that game's tooling.
 - Ops gotcha: `deploy/smoke.sh` still queries `/$game/graphql`; when touching deploy or GraphQL routing, point smoke at `/graphql` with the namespace (`{ mazes { maps { id } } }`) instead of resurrecting per-game endpoints.

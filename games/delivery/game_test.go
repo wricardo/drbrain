@@ -22,6 +22,9 @@ func TestGameMetadata(t *testing.T) {
 	if got := g.API(); len(got) != 0 {
 		t.Errorf("API = %v, want none", got)
 	}
+	if !strings.Contains(g.LLMSTemplate(), "{{.GraphQLURL}}") {
+		t.Error("llms template does not render the GraphQL URL")
+	}
 }
 
 // TestMalformedCityFailsBeforeBind pins the startup order: the city is parsed

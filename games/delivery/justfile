@@ -1,0 +1,20 @@
+# Delivery engine tooling: offline map, terminal play and pacing simulation.
+#
+# The server runs from the repo root (`just start`). Platform-wide operations
+# (database, build, tests, fmt/vet/lint, schema regen) live in the root justfile.
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+default:
+    @just --list
+
+# Validate the city and print it as ASCII (unexplored districts show '?')
+map *args:
+    go run ./cmd/drbrain map {{args}}
+
+# Drive cars manually in the terminal, one tick at a time
+play *args:
+    go run ./cmd/drbrain play {{args}}
+
+# Run the scripted bot and print a pacing table
+sim *args:
+    go run ./cmd/drbrain sim {{args}}

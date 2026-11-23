@@ -19,6 +19,8 @@
 	import EmptyState from '@drbrain/ui/components/EmptyState.svelte';
 	import Skeleton from '@drbrain/ui/components/Skeleton.svelte';
 	import GrowthPanel from '$lib/delivery/GrowthPanel.svelte';
+	import AiPromptCard from '@drbrain/ui/components/AiPromptCard.svelte';
+	import { buildSessionPrompt } from '$lib/delivery/prompt';
 
 	// --- state ---------------------------------------------------------------
 
@@ -45,6 +47,16 @@
 	let citiesLoading = $state(true);
 	let citiesFailed = $state(false);
 	let selectedCityId = $state('city');
+
+	const origin = typeof window !== 'undefined' ? window.location.origin : '';
+	const aiPrompt = $derived(
+		snap && canPlay
+			? buildSessionPrompt(origin, snap, {
+					ownerToken: ownerTokenFor(snap.id),
+					canPlay
+				})
+			: ''
+	);
 
 	const selectedCity = $derived(cities.find((c) => c.id === selectedCityId) ?? null);
 
@@ -159,6 +171,14 @@
 	const selectedCar = $derived(
 		snap?.cars.find((c) => c.id === selectedCarId) ?? snap?.cars[0] ?? null
 	);
+
+	const assignedCarIds = $derived.by(() => {
+		const ids = new Set<string>();
+		for (const order of snap?.orders ?? []) {
+			if (order.state === 'ASSIGNED' && order.assignedCar) ids.add(order.assignedCar);
+		}
+		return ids;
+	});
 
 	/** The order whose route is highlighted, falling back to the first open one. */
 	const highlightedOrder = $derived.by(() => {
@@ -422,9 +442,13 @@
 		const carId = selectedCar.id;
 		busy = true;
 		try {
+			// Direct driving is "move this car now": a leftover queue from
+			// queue-only mode would otherwise make the tick execute the stale
+			// head instead of the direction just pressed.
+			if (selectedCar.queuedMoves.length > 0) await api.clearMoves(id, carId);
 			await api.moveCar(id, carId, dir);
-			// Two round trips, so a frame may describe the state in between;
-			// only the tick's own response is authoritative for this step.
+			// More than one round trip, so a frame may describe the state in
+			// between; only the tick's own response is authoritative for this step.
 			snap = await api.tick(id, 1);
 			renderedTick = snap.tick;
 			error = null;
@@ -714,22 +738,14 @@
 			<div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm tabular-nums">
 				<span class="text-faint">Tick <strong class="text-body">{snap.tick}</strong></span>
 				<span class="text-[var(--color-money)]">${snap.ledger.money}</span>
-				{#if snap.ledger.upkeepDue > 0}
-					<!--
-						The running cost has to be visible or it is just a mysterious drop
-						in the money number. Shown as "due", not "paid", so the player can
-						act on it (park the car) before the charge lands.
-					-->
-					<span
-						class="text-faint"
-						data-upkeep-due={snap.ledger.upkeepDue}
-						title="Fleet upkeep charged next interval. Park cars on a depot tile to stop it."
-					>
-						−<span class="text-[var(--color-warn)]">${snap.ledger.upkeepDue}</span>/ivl
-					</span>
-				{/if}
 				<span class="text-faint">
 					Reputation <span class="text-body">{snap.ledger.reputation.toFixed(2)}</span>
+					<span
+						class="text-faint"
+						title="Share of each quoted reward this standing collects. Reputation rises 0.02 per on-time delivery and falls 0.10 per expiry."
+					>
+						· pay <span class="text-body">{Math.round(snap.ledger.payMultiplier * 100)}%</span>
+					</span>
 				</span>
 				<span class="text-faint">
 					Deliveries <span class="text-body">{snap.ledger.deliveries}</span>
@@ -817,6 +833,8 @@
 					<Map
 						city={snap.city}
 						cars={snap.cars}
+						orders={snap.orders}
+						{assignedCarIds}
 						selectedCarId={selectedCar?.id ?? null}
 						highlightKitchen={highlightedOrder?.kitchenId ?? null}
 						highlightCustomer={highlightedOrder?.customerId ?? null}
@@ -901,6 +919,9 @@
 						{#if selectedCar}
 							<div class="border-t border-edge px-3 py-1.5 text-xs text-muted">
 								driving <span class="text-body">{selectedCar.name}</span>
+								{#if selectedCar.queuedMoves.length > 0}
+									<span class="text-faint"> — {selectedCar.queuedMoves.length} queued</span>
+								{/if}
 								{#if selectedCar.batteryPct <= 25}
 									<span class="text-[var(--color-warn)]"> — low battery</span>
 								{/if}
@@ -925,16 +946,6 @@
 			</div>
 
 			<div class="flex min-h-0 flex-col gap-3 overflow-y-auto">
-				<FleetPanel
-					cars={snap.cars}
-					selectedCarId={selectedCar?.id ?? null}
-					onSelect={(id) => (selectedCarId = id)}
-					onTow={canPlay ? tow : undefined}
-					buyable={canPlay ? buyable : []}
-					onBuy={canPlay ? buy : undefined}
-				/>
-				<LedgerPanel entries={snap.ledger.cashEntries} money={snap.ledger.money} />
-				<MonthlyPanel months={snap.ledger.months} ticksPerMonth={snap.ledger.ticksPerMonth} />
 				<OrdersPanel
 					orders={snap.orders}
 					selectedCarId={selectedCar?.id ?? null}
@@ -944,6 +955,25 @@
 					onUnassign={canPlay ? unassign : undefined}
 					onSelectOrder={(id) => (selectedOrderId = id)}
 				/>
+				<FleetPanel
+					cars={snap.cars}
+					upkeepDue={snap.ledger.upkeepDue}
+					{assignedCarIds}
+					selectedCarId={selectedCar?.id ?? null}
+					onSelect={(id) => (selectedCarId = id)}
+					onTow={canPlay ? tow : undefined}
+					buyable={canPlay ? buyable : []}
+					onBuy={canPlay ? buy : undefined}
+				/>
+				<MonthlyPanel months={snap.ledger.months} ticksPerMonth={snap.ledger.ticksPerMonth} />
+				<LedgerPanel entries={snap.ledger.cashEntries} money={snap.ledger.money} />
+				{#if canPlay}
+					<AiPromptCard
+						prompt={aiPrompt}
+						tone="delivery"
+						blurb={`Copy this prompt into an AI chat to let it run city ${snap.id}.`}
+					/>
+				{/if}
 				<GrowthPanel growth={snap.growth} tick={snap.tick} />
 			</div>
 		</div>

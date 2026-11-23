@@ -8,6 +8,7 @@ import (
 
 func TestLoadReadsEnvironment(t *testing.T) {
 	t.Setenv("DRBRAIN_ADDR", ":9999")
+	t.Setenv("DRBRAIN_METRICS_ADDR", "127.0.0.1:9998")
 	t.Setenv("DRBRAIN_GAMES", "mazes, motor ,")
 	t.Setenv("DRBRAIN_PUBLIC_URL", "https://drbrain.test")
 	t.Setenv("DRBRAIN_STATIC_DIR", "web/build")
@@ -21,6 +22,9 @@ func TestLoadReadsEnvironment(t *testing.T) {
 	}
 	if cfg.Addr != ":9999" {
 		t.Errorf("Addr = %q", cfg.Addr)
+	}
+	if cfg.MetricsAddr != "127.0.0.1:9998" {
+		t.Errorf("MetricsAddr = %q", cfg.MetricsAddr)
 	}
 	if got := cfg.EnabledGames(); len(got) != 2 || got[0] != "mazes" || got[1] != "motor" {
 		t.Errorf("EnabledGames = %v, want [mazes motor]", got)
@@ -37,7 +41,7 @@ func TestLoadReadsEnvironment(t *testing.T) {
 }
 
 func TestLoadDefaults(t *testing.T) {
-	for _, key := range []string{"DRBRAIN_ADDR", "DRBRAIN_GAMES", "DRBRAIN_PUBLIC_URL", "DRBRAIN_STATIC_DIR", "DRBRAIN_SHUTDOWN_TIMEOUT", "DRBRAIN_DEBUG"} {
+	for _, key := range []string{"DRBRAIN_ADDR", "DRBRAIN_METRICS_ADDR", "DRBRAIN_GAMES", "DRBRAIN_PUBLIC_URL", "DRBRAIN_STATIC_DIR", "DRBRAIN_SHUTDOWN_TIMEOUT", "DRBRAIN_DEBUG"} {
 		t.Setenv(key, "") // registers restoration of the original value
 		if err := os.Unsetenv(key); err != nil {
 			t.Fatal(err)
@@ -52,6 +56,9 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.Addr != ":8080" {
 		t.Errorf("Addr = %q, want :8080", cfg.Addr)
+	}
+	if cfg.MetricsAddr != "127.0.0.1:9095" {
+		t.Errorf("MetricsAddr = %q, want 127.0.0.1:9095", cfg.MetricsAddr)
 	}
 	if cfg.ShutdownTimeout != 10*time.Second {
 		t.Errorf("ShutdownTimeout = %s, want 10s", cfg.ShutdownTimeout)

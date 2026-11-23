@@ -35,8 +35,9 @@ type Resolver struct {
 	Music    *musicgraph.Resolver
 }
 
-// New returns the root resolver for the enabled games. A nil game resolver is
-// a programming error: the host only serves the games it mounted.
+// New returns the root resolver for the enabled games. A nil game resolver
+// disables that namespace: its root field returns errGameDisabled, which is how
+// cmd/drbrain hides games not selected with DRBRAIN_GAMES.
 func New(account *accountgraph.Resolver, delivery *deliverygraph.Resolver, mazes *mazesgraph.Resolver, motor *motorgraph.Resolver, tesla *teslagraph.Resolver, music *musicgraph.Resolver) *Resolver {
 	return &Resolver{Account: account, Delivery: delivery, Mazes: mazes, Motor: motor, Tesla: tesla, Music: music}
 }

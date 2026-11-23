@@ -1,18 +1,55 @@
 # Code generated from graph/schema.graphqls by cmd/split-schema. DO NOT EDIT.
 
+"""
+A step direction. UP decreases y, RIGHT increases x, DOWN increases y, LEFT
+decreases x.
+"""
 enum Direction {
+	"""
+	One row up (y-1).
+	"""
 	UP
+	"""
+	One column right (x+1).
+	"""
 	RIGHT
+	"""
+	One row down (y+1).
+	"""
 	DOWN
+	"""
+	One column left (x-1).
+	"""
 	LEFT
 }
+"""
+Session play state.
+"""
 enum Status {
+	"""
+	Created but not moved yet.
+	"""
 	READY
+	"""
+	In progress.
+	"""
 	PLAYING
+	"""
+	The finish was reached.
+	"""
 	WON
+	"""
+	The move limit was exhausted.
+	"""
 	LOST
 }
+"""
+Why a session ended in LOST.
+"""
 enum LossReason {
+	"""
+	No moves remain.
+	"""
 	MOVE_LIMIT
 }
 """
@@ -23,15 +60,39 @@ enum Via {
 	Blocked by void or the edge: nothing happened and the move is not counted.
 	"""
 	NONE
+	"""
+	An ordinary one-tile step.
+	"""
 	WALK
+	"""
+	A blue arrow: one level up.
+	"""
 	STAIRS_UP
+	"""
+	A red arrow: one level down.
+	"""
 	STAIRS_DOWN
+	"""
+	A numbered hole: teleported to its twin on the same level.
+	"""
 	PORTAL
 }
+"""
+How to order the session list.
+"""
 enum SessionSort {
+	"""
+	Most recent action first. The default.
+	"""
 	RECENT
+	"""
+	Newest save first.
+	"""
 	CREATED
 }
+"""
+Lifecycle of a community map: a draft is private to its owner.
+"""
 enum MapStatus {
 	"""
 	A work in progress: only its owner can see, edit, play or publish it.
@@ -46,8 +107,17 @@ enum MapStatus {
 A tile coordinate in the tower. level 0 is the bottom; x = column, y = row (row 0 on top).
 """
 type Position {
+	"""
+	Tower level, 0 = bottom.
+	"""
 	level: Int!
+	"""
+	Column (0 = left).
+	"""
 	x: Int!
+	"""
+	Row (0 = top).
+	"""
 	y: Int!
 }
 """
@@ -56,8 +126,17 @@ In a LevelView only the ends on that level are listed: `a` is always on the view
 `b` is set only when the twin is on the same level (otherwise the twin's location is hidden).
 """
 type Portal {
+	"""
+	Digit glyph '1'-'9' marking both ends.
+	"""
 	glyph: String!
+	"""
+	The end on the viewed level.
+	"""
 	a: Position!
+	"""
+	The twin, when it is on the same level; null when it is hidden.
+	"""
 	b: Position
 }
 """
@@ -65,17 +144,41 @@ Public catalog entry. The start is always on level 0 and the finish on the top l
 (levelCount - 1). Layouts of other levels are hidden: players discover them by playing.
 """
 type Map {
+	"""
+	Map id used by createSession.
+	"""
 	id: ID!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	One-line description.
+	"""
 	description: String!
+	"""
+	Difficulty label shown on the map card.
+	"""
 	difficulty: String!
+	"""
+	Number of columns per level.
+	"""
 	width: Int!
+	"""
+	Number of rows per level.
+	"""
 	height: Int!
+	"""
+	Number of levels in the tower.
+	"""
 	levelCount: Int!
 	"""
 	Glyph rows of level 0, the level every game starts on.
 	"""
 	preview: [String!]!
+	"""
+	Move limit; running out loses the run.
+	"""
 	maxMoves: Int!
 	"""
 	Length of the shortest winning route; null if the finish is unreachable.
@@ -105,24 +208,66 @@ type Map {
 Full map for the editor (admin only).
 """
 type AdminMap {
+	"""
+	Map id used by createSession and updateMap.
+	"""
 	id: ID!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	One-line description.
+	"""
 	description: String!
+	"""
+	Difficulty label shown on the map card.
+	"""
 	difficulty: String!
+	"""
+	Number of columns per level.
+	"""
 	width: Int!
+	"""
+	Number of rows per level.
+	"""
 	height: Int!
+	"""
+	Number of levels in the tower.
+	"""
 	levelCount: Int!
 	"""
 	Layout glyphs per level (index 0 = bottom), each a list of rows.
 	. void, o stone, S start, F finish, U stairs up, D stairs down, 1-9 portal holes.
 	"""
 	levels: [[String!]!]!
+	"""
+	Start tile (always on level 0).
+	"""
 	start: Position!
+	"""
+	Finish tile (always on the top level).
+	"""
 	finish: Position!
+	"""
+	Numbered holes linking two tiles on the same level.
+	"""
 	portals: [Portal!]!
+	"""
+	Move limit; running out loses the run.
+	"""
 	maxMoves: Int!
+	"""
+	Shortest winning route length; null when unreachable.
+	"""
 	parMoves: Int
+	"""
+	Fewest stairs a winning route needs; null when unreachable.
+	"""
 	minLevelChanges: Int
+	"""
+	Fewest down stairs a winning route needs; null when unreachable.
+	"""
 	forcedDescents: Int
 	"""
 	DRAFT maps are visible only to their owner and cannot be played or published by anyone else.
@@ -144,29 +289,59 @@ type LevelView {
 	The level the player is on (0 = bottom).
 	"""
 	level: Int!
+	"""
+	Number of levels in the tower, for the tower diagram.
+	"""
 	levelCount: Int!
+	"""
+	Glyph rows of this level only (the fog the player sees).
+	"""
 	rows: [String!]!
+	"""
+	Portals with an end on this level.
+	"""
 	portals: [Portal!]!
 }
+"""
+The current run's observable state.
+"""
 type GameState {
+	"""
+	Where the player is now.
+	"""
 	pos: Position!
 	"""
 	Counted moves so far (blocked attempts are free).
 	"""
 	moves: Int!
+	"""
+	Session play state after the last move.
+	"""
 	status: Status!
+	"""
+	Why the run is LOST; null while playing or after a win.
+	"""
 	lossReason: LossReason
 	"""
 	Every tile entered, in order, starting with the start tile. Stairs and portal moves add the tile stepped on and the landing tile.
 	"""
 	path: [Position!]!
 }
+"""
+One attempted move and its result, including blocked attempts.
+"""
 type MoveEvent {
 	"""
 	Counted-move index after this attempt (unchanged when blocked).
 	"""
 	move: Int!
+	"""
+	Direction attempted.
+	"""
 	direction: Direction!
+	"""
+	Position before the attempt.
+	"""
 	from: Position!
 	"""
 	The tile entered by the step; equals from when blocked.
@@ -176,14 +351,39 @@ type MoveEvent {
 	Final position after stairs/portal; equals from when blocked.
 	"""
 	to: Position!
+	"""
+	True when the attempt was rejected; nothing moved and no move was counted.
+	"""
 	blocked: Boolean!
+	"""
+	How the move changed the position.
+	"""
 	via: Via!
+	"""
+	Status after the attempt.
+	"""
 	status: Status!
+	"""
+	Loss reason when this attempt ended the run.
+	"""
 	lossReason: LossReason
 }
+"""
+One play-through: the map snapshot, the player's current level, the run state
+and its counters.
+"""
 type Session {
+	"""
+	Session id; public enough to watch.
+	"""
 	id: ID!
+	"""
+	The player's name for this run; empty falls back to the map name.
+	"""
 	displayName: String!
+	"""
+	Map this session plays.
+	"""
 	mapId: ID!
 	"""
 	Catalog entry of the map this session plays. Reveals nothing beyond the start level.
@@ -193,12 +393,21 @@ type Session {
 	Fog: the only part of the map a player can see, the level the player stands on right now.
 	"""
 	view: LevelView!
+	"""
+	Current run state: position, moves and status.
+	"""
 	state: GameState!
 	"""
 	Increments on every state change; clients ignore updates with seq <= last seen.
 	"""
 	seq: Int!
+	"""
+	When the session was created (UTC).
+	"""
 	createdAt: Time!
+	"""
+	When the session last changed (UTC).
+	"""
 	lastActionAt: Time!
 	"""
 	Games finished (won or lost) in this session.
@@ -208,25 +417,65 @@ type Session {
 	Fewest moves in a won game of this session.
 	"""
 	bestMoves: Int
+	"""
+	The most recent move attempt, or null before the first move.
+	"""
 	lastEvent: MoveEvent
 }
+"""
+One subscription frame: the new snapshot plus the move that caused it.
+"""
 type SessionUpdate {
+	"""
+	Monotonic sequence of this snapshot.
+	"""
 	seq: Int!
+	"""
+	Full current snapshot.
+	"""
 	session: Session!
+	"""
+	The move that produced this frame; null for non-move changes.
+	"""
 	event: MoveEvent
 }
+"""
+One problem found by validateMap.
+"""
 type MapValidationIssue {
+	"""
+	Human-readable failure, with the level and coordinate when relevant.
+	"""
 	message: String!
 }
+"""
+Outcome of validateMap: whether the map parses and is playable, plus its
+computed par values.
+"""
 type MapValidationResult {
+	"""
+	True when the map parses into a playable map.
+	"""
 	valid: Boolean!
+	"""
+	Problems found; empty when valid.
+	"""
 	issues: [MapValidationIssue!]!
 	"""
 	Set when the map parses but the finish cannot be reached from the start.
 	"""
 	finishReachable: Boolean!
+	"""
+	Shortest winning route length; null when unreachable.
+	"""
 	parMoves: Int
+	"""
+	Fewest stairs a winning route needs; null when unreachable.
+	"""
 	minLevelChanges: Int
+	"""
+	Fewest down stairs a winning route needs; null when unreachable.
+	"""
 	forcedDescents: Int
 }
 input MapInput {
@@ -243,6 +492,9 @@ a subscription: it is the credential that lets this browser change the session, 
 id alone stays enough to read it.
 """
 type CreateSessionResult {
+	"""
+	The new session's first snapshot.
+	"""
 	session: Session!
 	"""
 	Secret that proves you created this session; keep it private.
@@ -250,6 +502,9 @@ type CreateSessionResult {
 	ownerToken: String!
 }
 scalar Time
+"""
+Mazes reads: catalogue, one session and the save list. Reads are public.
+"""
 type Query {
 	"""
 	Public catalog: published maps plus the signed-in caller's own drafts. Another player's draft
@@ -270,6 +525,10 @@ type Query {
 	Public read: anyone with the id may watch a session.
 	"""
 	session(id: ID!): Session
+	"""
+	Saved sessions in the requested order, newest first by default. `mapId` keeps
+	one map; `limit` is capped by the game.
+	"""
 	sessions(sort: SessionSort = RECENT, limit: Int = 50, mapId: ID): [Session!]!
 	"""
 	Whether this caller may change the session (and so is its player rather than a spectator):
@@ -279,6 +538,11 @@ type Query {
 	"""
 	canPlaySession(id: ID!, ownerToken: String): Boolean!
 }
+"""
+Mazes writes: play moves and map authoring. Session mutations require the
+creator's owner token or owning account; map writes require ownership or the
+admin key.
+"""
 type Mutation {
 	"""
 	Start a new game on a map. A signed-in creator's session belongs to their account; the
@@ -290,6 +554,9 @@ type Mutation {
 	owning account (FORBIDDEN otherwise). Sessions created before owner tokens stay open.
 	"""
 	deleteSession(id: ID!, ownerToken: String): Boolean!
+	"""
+	Rename the save. Creator-only, as deleteSession.
+	"""
 	renameSession(id: ID!, displayName: String!, ownerToken: String): Session!
 	"""
 	One move. A blocked attempt succeeds but changes nothing (lastEvent.blocked). Creator-only, as

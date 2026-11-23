@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. `AGENTS.md` is a symlink to this file, so other coding agents read the same guide.
 
+> **Monorepo note.** This guide was written for the standalone Motor Programming
+> repository. Commands, paths, storage and deployment below describe that era.
+> Today Motor is compiled into the shared `drbrain` binary at `/motor/`, uses
+> PostgreSQL for sessions/accounts/custom maps, and every operation goes through
+> the `motorProgramming` namespace of the unified `/graphql`. Current commands
+> live in the root README, `AGENTS.md` and `justfile`.
+
 ## Dr Brain - Motor Programming
 
 Robot-programming puzzle game for humans and AI agents. Go server (pure rules engine → `GameService` → gqlgen GraphQL with subscriptions) serving a SvelteKit SPA. Sessions, accounts and player maps live in PostgreSQL when `DATABASE_URL` is set, else in JSON files; shipped maps are always files. Repo, Go module (`github.com/wricardo/drbrain-motor-programming`) and binary share the name `drbrain-motor-programming`.

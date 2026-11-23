@@ -18,17 +18,25 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 MAPS_DIR = HERE.parent / "maps"
 RLENV_BIN = HERE / "rlenv"
-SAFETY = float(os.environ.get("TESLA_SAFETY", "0.05"))  # battery-safety shaping weight; 0 disables it
+SAFETY = float(os.environ.get("TESLA_SAFETY", "0.05"))
+# "reject" turns illegal moves into wasted steps; required for learners without
+# action masking (RecurrentPPO). MaskablePPO keeps the default (a real crash).
+LEGAL = os.environ.get("TESLA_LEGAL", "strict")
+# Visibility radius in cells; 0 = the whole map is visible. With fog on, the car
+# only sees what it has driven past, so the observation carries an "unknown"
+# plane and the policy must remember where it has been (this is why a recurrent
+# policy matters: fog needs memory).
+FOG = int(os.environ.get("TESLA_FOG", "0"))
 GRID = 20
-GO_PLANES = 14
-BINARY_PLANES = 10  # planes below this are 0/1; the rest are 0..255 bytes
+GO_PLANES = 15
+BINARY_PLANES = 11  # planes below this are 0/1; the rest are 0..255 bytes
 # Broadcast planes built here from the scalars Go sends: cheap way to hand a
 # network single numbers (a CNN only understands grids).
 IDX_BATTERY_FRAC = GO_PLANES
 IDX_BATTERY_ABS = GO_PLANES + 1
 IDX_MOVES_LEFT = GO_PLANES + 2
 IDX_SINCE_PARK = GO_PLANES + 3
-PLANES = GO_PLANES + 4  # 18 total
+PLANES = GO_PLANES + 4  # 19 total
 
 
 def shipped_maps(max_grid=GRID):
@@ -59,14 +67,16 @@ class TeslaEnv(gym.Env):
 
     def __init__(self, level=0.0, seed=None, mix=False):
         if not RLENV_BIN.exists():
-            raise FileNotFoundError(f"{RLENV_BIN} missing: run `make -C games/tesla/rl build`")
+            raise FileNotFoundError(f"{RLENV_BIN} missing: run `just -f games/tesla/rl/justfile build`")
         self.level = level
         self.mix = mix  # sample the map difficulty from [0, level] instead of using `level`
         self.rng = random.Random(seed)
         self.observation_space = gym.spaces.Box(0.0, 1.0, (PLANES, GRID, GRID), np.float32)
         self.action_space = gym.spaces.Discrete(4)  # up, down, left, right
         self._proc = subprocess.Popen(
-            [str(RLENV_BIN), "-maps", str(MAPS_DIR), "-safety", str(SAFETY)],
+            [str(RLENV_BIN), "-maps", str(MAPS_DIR), "-safety", str(SAFETY)]
+            + (["-reject-illegal"] if LEGAL == "reject" else [])
+            + (["-fog", str(FOG)] if FOG else []),
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=0,
         )
         self._out = self._proc.stdout

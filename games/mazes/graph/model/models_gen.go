@@ -12,23 +12,37 @@ import (
 
 // Full map for the editor (admin only).
 type AdminMap struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
+	// Map id used by createSession and updateMap.
+	ID string `json:"id"`
+	// Display name.
+	Name string `json:"name"`
+	// One-line description.
 	Description string `json:"description"`
-	Difficulty  string `json:"difficulty"`
-	Width       int    `json:"width"`
-	Height      int    `json:"height"`
-	LevelCount  int    `json:"levelCount"`
+	// Difficulty label shown on the map card.
+	Difficulty string `json:"difficulty"`
+	// Number of columns per level.
+	Width int `json:"width"`
+	// Number of rows per level.
+	Height int `json:"height"`
+	// Number of levels in the tower.
+	LevelCount int `json:"levelCount"`
 	// Layout glyphs per level (index 0 = bottom), each a list of rows.
 	// . void, o stone, S start, F finish, U stairs up, D stairs down, 1-9 portal holes.
-	Levels          [][]string `json:"levels"`
-	Start           *Position  `json:"start"`
-	Finish          *Position  `json:"finish"`
-	Portals         []*Portal  `json:"portals"`
-	MaxMoves        int        `json:"maxMoves"`
-	ParMoves        *int       `json:"parMoves,omitempty"`
-	MinLevelChanges *int       `json:"minLevelChanges,omitempty"`
-	ForcedDescents  *int       `json:"forcedDescents,omitempty"`
+	Levels [][]string `json:"levels"`
+	// Start tile (always on level 0).
+	Start *Position `json:"start"`
+	// Finish tile (always on the top level).
+	Finish *Position `json:"finish"`
+	// Numbered holes linking two tiles on the same level.
+	Portals []*Portal `json:"portals"`
+	// Move limit; running out loses the run.
+	MaxMoves int `json:"maxMoves"`
+	// Shortest winning route length; null when unreachable.
+	ParMoves *int `json:"parMoves,omitempty"`
+	// Fewest stairs a winning route needs; null when unreachable.
+	MinLevelChanges *int `json:"minLevelChanges,omitempty"`
+	// Fewest down stairs a winning route needs; null when unreachable.
+	ForcedDescents *int `json:"forcedDescents,omitempty"`
 	// DRAFT maps are visible only to their owner and cannot be played or published by anyone else.
 	// Every shipped map is PUBLISHED.
 	Status MapStatus `json:"status"`
@@ -40,16 +54,21 @@ type AdminMap struct {
 // a subscription: it is the credential that lets this browser change the session, while the session
 // id alone stays enough to read it.
 type CreateSessionResult struct {
+	// The new session's first snapshot.
 	Session *Session `json:"session"`
 	// Secret that proves you created this session; keep it private.
 	OwnerToken string `json:"ownerToken"`
 }
 
+// The current run's observable state.
 type GameState struct {
+	// Where the player is now.
 	Pos *Position `json:"pos"`
 	// Counted moves so far (blocked attempts are free).
-	Moves      int         `json:"moves"`
-	Status     Status      `json:"status"`
+	Moves int `json:"moves"`
+	// Session play state after the last move.
+	Status Status `json:"status"`
+	// Why the run is LOST; null while playing or after a win.
 	LossReason *LossReason `json:"lossReason,omitempty"`
 	// Every tile entered, in order, starting with the start tile. Stairs and portal moves add the tile stepped on and the landing tile.
 	Path []*Position `json:"path"`
@@ -60,25 +79,36 @@ type GameState struct {
 // Stairs lead to the same x,y on level+1 (U) or level-1 (D).
 type LevelView struct {
 	// The level the player is on (0 = bottom).
-	Level      int       `json:"level"`
-	LevelCount int       `json:"levelCount"`
-	Rows       []string  `json:"rows"`
-	Portals    []*Portal `json:"portals"`
+	Level int `json:"level"`
+	// Number of levels in the tower, for the tower diagram.
+	LevelCount int `json:"levelCount"`
+	// Glyph rows of this level only (the fog the player sees).
+	Rows []string `json:"rows"`
+	// Portals with an end on this level.
+	Portals []*Portal `json:"portals"`
 }
 
 // Public catalog entry. The start is always on level 0 and the finish on the top level
 // (levelCount - 1). Layouts of other levels are hidden: players discover them by playing.
 type Map struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
+	// Map id used by createSession.
+	ID string `json:"id"`
+	// Display name.
+	Name string `json:"name"`
+	// One-line description.
 	Description string `json:"description"`
-	Difficulty  string `json:"difficulty"`
-	Width       int    `json:"width"`
-	Height      int    `json:"height"`
-	LevelCount  int    `json:"levelCount"`
+	// Difficulty label shown on the map card.
+	Difficulty string `json:"difficulty"`
+	// Number of columns per level.
+	Width int `json:"width"`
+	// Number of rows per level.
+	Height int `json:"height"`
+	// Number of levels in the tower.
+	LevelCount int `json:"levelCount"`
 	// Glyph rows of level 0, the level every game starts on.
-	Preview  []string `json:"preview"`
-	MaxMoves int      `json:"maxMoves"`
+	Preview []string `json:"preview"`
+	// Move limit; running out loses the run.
+	MaxMoves int `json:"maxMoves"`
 	// Length of the shortest winning route; null if the finish is unreachable.
 	ParMoves *int `json:"parMoves,omitempty"`
 	// Fewest stairs any winning route takes (levelCount - 1 + 2 * forcedDescents);
@@ -103,35 +133,54 @@ type MapInput struct {
 	MaxMoves    *int       `json:"maxMoves,omitempty"`
 }
 
+// One problem found by validateMap.
 type MapValidationIssue struct {
+	// Human-readable failure, with the level and coordinate when relevant.
 	Message string `json:"message"`
 }
 
+// Outcome of validateMap: whether the map parses and is playable, plus its
+// computed par values.
 type MapValidationResult struct {
-	Valid  bool                  `json:"valid"`
+	// True when the map parses into a playable map.
+	Valid bool `json:"valid"`
+	// Problems found; empty when valid.
 	Issues []*MapValidationIssue `json:"issues"`
 	// Set when the map parses but the finish cannot be reached from the start.
 	FinishReachable bool `json:"finishReachable"`
-	ParMoves        *int `json:"parMoves,omitempty"`
+	// Shortest winning route length; null when unreachable.
+	ParMoves *int `json:"parMoves,omitempty"`
+	// Fewest stairs a winning route needs; null when unreachable.
 	MinLevelChanges *int `json:"minLevelChanges,omitempty"`
-	ForcedDescents  *int `json:"forcedDescents,omitempty"`
+	// Fewest down stairs a winning route needs; null when unreachable.
+	ForcedDescents *int `json:"forcedDescents,omitempty"`
 }
 
+// One attempted move and its result, including blocked attempts.
 type MoveEvent struct {
 	// Counted-move index after this attempt (unchanged when blocked).
-	Move      int       `json:"move"`
+	Move int `json:"move"`
+	// Direction attempted.
 	Direction Direction `json:"direction"`
-	From      *Position `json:"from"`
+	// Position before the attempt.
+	From *Position `json:"from"`
 	// The tile entered by the step; equals from when blocked.
 	Stepped *Position `json:"stepped"`
 	// Final position after stairs/portal; equals from when blocked.
-	To         *Position   `json:"to"`
-	Blocked    bool        `json:"blocked"`
-	Via        Via         `json:"via"`
-	Status     Status      `json:"status"`
+	To *Position `json:"to"`
+	// True when the attempt was rejected; nothing moved and no move was counted.
+	Blocked bool `json:"blocked"`
+	// How the move changed the position.
+	Via Via `json:"via"`
+	// Status after the attempt.
+	Status Status `json:"status"`
+	// Loss reason when this attempt ended the run.
 	LossReason *LossReason `json:"lossReason,omitempty"`
 }
 
+// Mazes writes: play moves and map authoring. Session mutations require the
+// creator's owner token or owning account; map writes require ownership or the
+// admin key.
 type Mutation struct {
 }
 
@@ -139,57 +188,83 @@ type Mutation struct {
 // In a LevelView only the ends on that level are listed: `a` is always on the viewed level and
 // `b` is set only when the twin is on the same level (otherwise the twin's location is hidden).
 type Portal struct {
-	Glyph string    `json:"glyph"`
-	A     *Position `json:"a"`
-	B     *Position `json:"b,omitempty"`
+	// Digit glyph '1'-'9' marking both ends.
+	Glyph string `json:"glyph"`
+	// The end on the viewed level.
+	A *Position `json:"a"`
+	// The twin, when it is on the same level; null when it is hidden.
+	B *Position `json:"b,omitempty"`
 }
 
 // A tile coordinate in the tower. level 0 is the bottom; x = column, y = row (row 0 on top).
 type Position struct {
+	// Tower level, 0 = bottom.
 	Level int `json:"level"`
-	X     int `json:"x"`
-	Y     int `json:"y"`
+	// Column (0 = left).
+	X int `json:"x"`
+	// Row (0 = top).
+	Y int `json:"y"`
 }
 
+// Mazes reads: catalogue, one session and the save list. Reads are public.
 type Query struct {
 }
 
+// One play-through: the map snapshot, the player's current level, the run state
+// and its counters.
 type Session struct {
-	ID          string `json:"id"`
+	// Session id; public enough to watch.
+	ID string `json:"id"`
+	// The player's name for this run; empty falls back to the map name.
 	DisplayName string `json:"displayName"`
-	MapID       string `json:"mapId"`
+	// Map this session plays.
+	MapID string `json:"mapId"`
 	// Catalog entry of the map this session plays. Reveals nothing beyond the start level.
 	Map *Map `json:"map"`
 	// Fog: the only part of the map a player can see, the level the player stands on right now.
-	View  *LevelView `json:"view"`
+	View *LevelView `json:"view"`
+	// Current run state: position, moves and status.
 	State *GameState `json:"state"`
 	// Increments on every state change; clients ignore updates with seq <= last seen.
-	Seq          int       `json:"seq"`
-	CreatedAt    time.Time `json:"createdAt"`
+	Seq int `json:"seq"`
+	// When the session was created (UTC).
+	CreatedAt time.Time `json:"createdAt"`
+	// When the session last changed (UTC).
 	LastActionAt time.Time `json:"lastActionAt"`
 	// Games finished (won or lost) in this session.
 	Attempts int `json:"attempts"`
 	// Fewest moves in a won game of this session.
-	BestMoves *int       `json:"bestMoves,omitempty"`
+	BestMoves *int `json:"bestMoves,omitempty"`
+	// The most recent move attempt, or null before the first move.
 	LastEvent *MoveEvent `json:"lastEvent,omitempty"`
 }
 
+// One subscription frame: the new snapshot plus the move that caused it.
 type SessionUpdate struct {
-	Seq     int        `json:"seq"`
-	Session *Session   `json:"session"`
-	Event   *MoveEvent `json:"event,omitempty"`
+	// Monotonic sequence of this snapshot.
+	Seq int `json:"seq"`
+	// Full current snapshot.
+	Session *Session `json:"session"`
+	// The move that produced this frame; null for non-move changes.
+	Event *MoveEvent `json:"event,omitempty"`
 }
 
 type Subscription struct {
 }
 
+// A step direction. UP decreases y, RIGHT increases x, DOWN increases y, LEFT
+// decreases x.
 type Direction string
 
 const (
-	DirectionUp    Direction = "UP"
+	// One row up (y-1).
+	DirectionUp Direction = "UP"
+	// One column right (x+1).
 	DirectionRight Direction = "RIGHT"
-	DirectionDown  Direction = "DOWN"
-	DirectionLeft  Direction = "LEFT"
+	// One row down (y+1).
+	DirectionDown Direction = "DOWN"
+	// One column left (x-1).
+	DirectionLeft Direction = "LEFT"
 )
 
 var AllDirection = []Direction{
@@ -242,9 +317,11 @@ func (e Direction) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// Why a session ended in LOST.
 type LossReason string
 
 const (
+	// No moves remain.
 	LossReasonMoveLimit LossReason = "MOVE_LIMIT"
 )
 
@@ -295,6 +372,7 @@ func (e LossReason) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// Lifecycle of a community map: a draft is private to its owner.
 type MapStatus string
 
 const (
@@ -352,10 +430,13 @@ func (e MapStatus) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// How to order the session list.
 type SessionSort string
 
 const (
-	SessionSortRecent  SessionSort = "RECENT"
+	// Most recent action first. The default.
+	SessionSortRecent SessionSort = "RECENT"
+	// Newest save first.
 	SessionSortCreated SessionSort = "CREATED"
 )
 
@@ -407,13 +488,18 @@ func (e SessionSort) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// Session play state.
 type Status string
 
 const (
-	StatusReady   Status = "READY"
+	// Created but not moved yet.
+	StatusReady Status = "READY"
+	// In progress.
 	StatusPlaying Status = "PLAYING"
-	StatusWon     Status = "WON"
-	StatusLost    Status = "LOST"
+	// The finish was reached.
+	StatusWon Status = "WON"
+	// The move limit was exhausted.
+	StatusLost Status = "LOST"
 )
 
 var AllStatus = []Status{
@@ -471,11 +557,15 @@ type Via string
 
 const (
 	// Blocked by void or the edge: nothing happened and the move is not counted.
-	ViaNone       Via = "NONE"
-	ViaWalk       Via = "WALK"
-	ViaStairsUp   Via = "STAIRS_UP"
+	ViaNone Via = "NONE"
+	// An ordinary one-tile step.
+	ViaWalk Via = "WALK"
+	// A blue arrow: one level up.
+	ViaStairsUp Via = "STAIRS_UP"
+	// A red arrow: one level down.
 	ViaStairsDown Via = "STAIRS_DOWN"
-	ViaPortal     Via = "PORTAL"
+	// A numbered hole: teleported to its twin on the same level.
+	ViaPortal Via = "PORTAL"
 )
 
 var AllVia = []Via{

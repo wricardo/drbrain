@@ -1,8 +1,8 @@
 // Package auth implements optional player sign-in: OAuth2 / OpenID Connect
 // login with Google and GitHub through a small Provider interface, username and
-// password accounts, the HTTP routes under /auth, the login cookie, same-origin
-// (CSRF) checks and a per-IP rate limiter. Accounts and logins themselves live
-// in platform/account.
+// password accounts, the HTTP routes under /auth, stateless Bearer access
+// tokens, the short-lived OAuth flow cookie, same-origin (CSRF) checks and a
+// per-IP rate limiter. Accounts and logins themselves live in platform/account.
 //
 // Username/password sign-in is on by default (AUTH_PASSWORD=false turns it off)
 // because it needs nothing registered anywhere; the OAuth providers are each

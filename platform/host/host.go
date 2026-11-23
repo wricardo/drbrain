@@ -15,6 +15,9 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/wricardo/drbrain/platform"
 	"github.com/wricardo/drbrain/platform/account"
@@ -77,6 +80,12 @@ type Host struct {
 	ln    net.Listener
 	srv   *http.Server
 
+	// metricsHandler serves the registry games register into. Both stay zero
+	// when DRBRAIN_METRICS_ADDR is empty; the registry is then nil in Deps.
+	metricsHandler http.Handler
+	metricsLn      net.Listener
+	metricsSrv     *http.Server
+
 	shutdownOnce sync.Once
 	shutdownErr  error
 }
@@ -102,6 +111,15 @@ func (h *Host) Addr() string {
 		return ""
 	}
 	return h.ln.Addr().String()
+}
+
+// MetricsAddr is the bound Prometheus address, empty when the listener is
+// disabled. Only valid after Ready.
+func (h *Host) MetricsAddr() string {
+	if h.metricsLn == nil {
+		return ""
+	}
+	return h.metricsLn.Addr().String()
 }
 
 // Run validates the selection, mounts every enabled game, binds, and serves
@@ -131,6 +149,18 @@ func (h *Host) Run(ctx context.Context) error {
 		return fmt.Errorf("listen %s: %w", h.cfg.Addr, err)
 	}
 	h.ln = ln
+	if h.metricsHandler != nil {
+		metricsLn, err := net.Listen("tcp", h.cfg.MetricsAddr)
+		if err != nil {
+			_ = ln.Close()
+			return fmt.Errorf("listen metrics %s: %w", h.cfg.MetricsAddr, err)
+		}
+		h.metricsLn = metricsLn
+		h.metricsSrv = &http.Server{
+			Handler:           h.metricsHandler,
+			ReadHeaderTimeout: ReadHeaderTimeout,
+		}
+	}
 	h.srv = &http.Server{
 		Handler:           handler,
 		ReadHeaderTimeout: ReadHeaderTimeout,
@@ -142,14 +172,31 @@ func (h *Host) Run(ctx context.Context) error {
 		names = append(names, g.Name())
 	}
 	h.logger.Info("listening", "addr", ln.Addr().String(), "games", names)
+	if h.metricsSrv != nil {
+		h.logger.Info("metrics listening", "addr", h.metricsLn.Addr().String())
+	}
 
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- h.srv.Serve(ln) }()
+	var metricsErr chan error
+	if h.metricsSrv != nil {
+		metricsErr = make(chan error, 1)
+		go func() { metricsErr <- h.metricsSrv.Serve(h.metricsLn) }()
+	}
 
 	select {
 	case err := <-serveErr:
+		h.closeMetrics()
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return fmt.Errorf("serve: %w", err)
+		}
+		return h.shutdownGames(enabled)
+	case err := <-metricsErr:
+		// The game listener is still up. Stop it before reporting why the
+		// process can no longer be scraped.
+		_ = h.srv.Close()
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return fmt.Errorf("metrics serve: %w", err)
 		}
 		return h.shutdownGames(enabled)
 	case <-ctx.Done():
@@ -158,12 +205,25 @@ func (h *Host) Run(ctx context.Context) error {
 
 	var httpErr error
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), h.cfg.ShutdownTimeout)
+	if h.metricsSrv != nil {
+		if err := h.metricsSrv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
+			httpErr = fmt.Errorf("metrics shutdown: %w", err)
+		}
+	}
 	if err := h.srv.Shutdown(shutdownCtx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
-		httpErr = fmt.Errorf("http shutdown: %w", err)
+		httpErr = errors.Join(httpErr, fmt.Errorf("http shutdown: %w", err))
 	}
 	cancel()
 
 	return errors.Join(httpErr, h.shutdownGames(enabled))
+}
+
+// closeMetrics stops the scrape listener after the game listener has already
+// stopped. It is a no-op when metrics are disabled.
+func (h *Host) closeMetrics() {
+	if h.metricsSrv != nil {
+		_ = h.metricsSrv.Close()
+	}
 }
 
 // mount builds the router and lets each game register its handlers. A game
@@ -171,6 +231,15 @@ func (h *Host) Run(ctx context.Context) error {
 func (h *Host) mount(enabled []platform.Game) (http.Handler, error) {
 	if _, err := os.Stat(h.cfg.StaticDir); err != nil {
 		h.logger.Warn("no web app; API-only", "static_dir", h.cfg.StaticDir, "err", err)
+	}
+	var registry *prometheus.Registry
+	if h.cfg.MetricsAddr != "" {
+		registry = prometheus.NewRegistry()
+		registry.MustRegister(
+			collectors.NewGoCollector(),
+			collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
+		)
+		h.metricsHandler = promhttp.HandlerFor(registry, promhttp.HandlerOpts{})
 	}
 	router := httpserve.NewRouter(httpserve.SPAHandler(h.cfg.StaticDir))
 	bindings := GraphQLBindings{
@@ -188,6 +257,7 @@ func (h *Host) mount(enabled []platform.Game) (http.Handler, error) {
 			DB:        h.db,
 			Accounts:  h.accounts,
 			Auth:      h.auth,
+			Metrics:   registry,
 		}
 		if err := g.Mount(mux, deps); err != nil {
 			return nil, fmt.Errorf("game %s: mount: %w", g.Name(), err)

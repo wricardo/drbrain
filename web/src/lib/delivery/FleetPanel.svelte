@@ -5,7 +5,10 @@
 
 	interface Props {
 		cars: CarView[];
+		/** Upkeep charged on the next interval; shown in the panel header. */
+		upkeepDue?: number;
 		selectedCarId: string | null;
+		assignedCarIds: ReadonlySet<string>;
 		onSelect?: (id: string) => void;
 		onTow?: (id: string) => void;
 		buyable?: {
@@ -19,7 +22,23 @@
 		onBuy?: (cls: string) => void;
 	}
 
-	let { cars, selectedCarId, onSelect, onTow, buyable = [], onBuy }: Props = $props();
+	let {
+		cars,
+		upkeepDue = 0,
+		selectedCarId,
+		assignedCarIds,
+		onSelect,
+		onTow,
+		buyable = [],
+		onBuy
+	}: Props = $props();
+
+	// The header is where the player looks before adding a car, and upkeep is
+	// the cost of adding one, so the fee lives here rather than in the HUD.
+	const heading = $derived(
+		`${cars.length} vehicle${cars.length === 1 ? '' : 's'}` +
+			(upkeepDue > 0 ? ` · Upkeep Fee $${upkeepDue}` : '')
+	);
 
 	// Typed by the generated union: a new car state on the server breaks the
 	// build here rather than silently rendering with no colour.
@@ -31,7 +50,11 @@
 	};
 </script>
 
-<Panel title="Fleet" summary="{cars.length} vehicle{cars.length === 1 ? '' : 's'}">
+<Panel
+	title="Fleet"
+	summary={heading}
+	summaryClass={upkeepDue > 0 ? 'text-[var(--color-warn)]' : ''}
+>
 	<ul class="divide-y divide-edge">
 		{#each cars as car, i (car.id)}
 			<li>
@@ -46,9 +69,10 @@
 				>
 					<div class="flex items-baseline justify-between gap-2">
 						<span class="flex items-baseline gap-2">
-							<span class="inline-flex h-4 w-4 items-center justify-center rounded-[2px] bg-ink text-[11px] font-bold text-white"
-								>{i + 1}</span
-							>
+							<span class="relative inline-flex h-4 w-4 items-center justify-center rounded-[2px] bg-ink text-[11px] font-bold text-white {car.cargo.length ? 'drop-shadow-[0_0_4px_#f59e0b]' : assignedCarIds.has(car.id) ? 'drop-shadow-[0_0_4px_#0284c7]' : ''}">
+								{i + 1}
+								{#if car.cargo.length || assignedCarIds.has(car.id)}<span class="absolute -top-0.5 -left-0.5 h-1.5 w-1.5 rounded-full ring-1 {car.cargo.length ? 'bg-amber-300 ring-amber-900' : 'bg-sky-300 ring-sky-900'}" aria-hidden="true"></span>{/if}
+							</span>
 							<span class="text-sm font-medium text-body">{car.name}</span>
 							<span class="text-xs text-faint">{car.className}</span>
 						</span>
@@ -78,7 +102,7 @@
 							{#if car.load > 0}
 								carrying {car.load}/{car.capacity} boxes
 							{:else}
-								empty · {car.capacity} box{car.capacity === 1 ? '' : 'es'}
+								{assignedCarIds.has(car.id) ? 'assigned · ' : ''}empty · {car.capacity} box{car.capacity === 1 ? '' : 'es'}
 							{/if}
 						</span>
 					</div>

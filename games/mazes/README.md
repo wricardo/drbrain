@@ -45,19 +45,20 @@ Every map can be solved. Each one has been checked against a known solution.
 
 There are two ways to get an AI to play.
 
-**1. Copy the prompt from the game (easiest).** Start a game in the browser and click **Play with an AI**. It copies a ready-made prompt with the session and the API calls the AI needs. Paste it into an AI assistant that can make web requests (for example a coding agent). Then open the game's watch page and see if the AI can win.
+**1. Copy the prompt from the game (easiest).** Start a game in the browser and click **Play with an AI**. It copies a ready-made prompt with the session and the API calls the AI needs. Paste it into an AI assistant that can make web requests (for example a coding agent). Then open **Multi** (`/mazes/multi`) or the session page and see if the AI can win.
 
-**2. Point an agent at the API.** The game publishes a guide for AI agents at `/llms.txt`. It has the rules, the endpoints and examples for every call. Give your agent that link and ask it to beat a map.
+**2. Point an agent at the API.** The game publishes a guide for AI agents at `/mazes/llms.txt`. It has the rules, the endpoints and examples for every call. Give your agent that link and ask it to beat a map.
 
-The API is plain GraphQL at `/graphql`. A game takes three calls:
+The API is plain GraphQL at `<server>/graphql`. A game takes three calls, all
+inside the `mazes` namespace:
 
 ```graphql
-query    { maps { id name difficulty levelCount parMoves maxMoves } }                     # 1. pick a map
-mutation { createSession(mapID: "first_steps") { id view { level rows } } }               # 2. start a game
-mutation { move(sessionID: "…", direction: RIGHT) { state { status moves } view { level rows } } }   # 3. move
+query Maps     { mazes { maps { id name difficulty levelCount parMoves maxMoves } } }          # 1. pick a map
+mutation Start { mazes { createSession(mapID: "first_steps") { session { id view { level rows } } ownerToken } } }  # 2. start a game
+mutation Step  { mazes { move(sessionID: "…", direction: RIGHT, ownerToken: "…") { state { status moves } view { level rows } } } }  # 3. move
 ```
 
-Moves are `UP`, `RIGHT`, `DOWN` and `LEFT`. The response after each move shows the level you are on now. Read the session (or subscribe to it) until the status is `WON` or `LOST`.
+Moves are `UP`, `RIGHT`, `DOWN` and `LEFT`. The response after each move shows the level you are on now. Read the session (or subscribe to it) until the status is `WON` or `LOST`. `createSession` returns the `ownerToken` that proves you own the session; mutations require it.
 
 The server never shows an agent more than the current level, just like a person. Every test of an idea is a real move in a session; `reset` starts over.
 
@@ -71,10 +72,10 @@ Some questions worth exploring:
 
 Mazes is part of **Dr Brain**, a collection of browser brain games. It is free to play.
 
-Run it yourself:
+Run it yourself from the repository root:
 
 ```sh
-make run          # builds and serves http://localhost:8000
+just restart      # serves all games on http://127.0.0.1:8181/mazes/
 ```
 
 Want to hack on it or add a map? See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).

@@ -26,9 +26,11 @@ func GQLGenConfig(root string) ([]byte, error) {
 	// Custom field resolvers that live in the game's graph package rather than
 	// its model struct. These mirror the per-game gqlgen.yml files.
 	custom := map[string][]string{
-		"Motor_Map":       {"builtin", "status", "ownedByMe"},
-		"Tesla_GameState": {"grid"},
-		"Tesla_GameMap":   {"layout"},
+		"Delivery_LedgerView": {"months", "cashEntries", "cars"},
+		"Delivery_Snapshot":   {"orders", "openOrders"},
+		"Motor_Map":           {"builtin", "status", "ownedByMe"},
+		"Tesla_GameState":     {"grid"},
+		"Tesla_GameMap":       {"layout"},
 	}
 
 	for _, g := range Games {

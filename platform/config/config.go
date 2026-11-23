@@ -17,6 +17,11 @@ import (
 type Config struct {
 	// Addr is the listen address, e.g. ":8080".
 	Addr string `envconfig:"DRBRAIN_ADDR" default:":8080"`
+	// MetricsAddr is the Prometheus scrape listener. It is separate from Addr
+	// so /metrics is never reachable through the public vhost, which proxies
+	// every path. Bind loopback unless a remote Prometheus must reach it.
+	// Empty disables the listener.
+	MetricsAddr string `envconfig:"DRBRAIN_METRICS_ADDR" default:"127.0.0.1:9095"`
 	// Games is a comma-separated list of games to serve. Empty means every
 	// compiled-in game; --games overrides it.
 	Games string `envconfig:"DRBRAIN_GAMES"`

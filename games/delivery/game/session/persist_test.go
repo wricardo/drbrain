@@ -317,7 +317,7 @@ func TestListIncludesUnloadedSessions(t *testing.T) {
 	}
 	mgr.Evict("unloaded")
 
-	list := mgr.List()
+	list := mgr.List(ListOptions{})
 	var found *Summary
 	for i := range list {
 		if list[i].ID == "unloaded" {

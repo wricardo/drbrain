@@ -16,6 +16,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/wricardo/drbrain/games/delivery"
+	deliverysession "github.com/wricardo/drbrain/games/delivery/game/session"
 	deliverygraph "github.com/wricardo/drbrain/games/delivery/graph"
 	"github.com/wricardo/drbrain/games/mazes"
 	mazesgraph "github.com/wricardo/drbrain/games/mazes/graph"
@@ -91,6 +92,8 @@ func run(args []string, games []platform.Game, stdout, stderr io.Writer) int {
 		return runGameCommand("mapgen", args[1:], games, stdout, stderr)
 	case "import-maps":
 		return runImportMaps(args[1:], stdout, stderr)
+	case "backfill-delivery-history":
+		return runBackfillDeliveryHistory(args[1:], stdout, stderr)
 	case "stdio-mcp", "mcp-stdio", "mcp":
 		fmt.Fprintln(stderr, "drbrain: stdio MCP is disabled: the MCP transport runs over HTTP at /<game>/mcp (set TESLA_MCP_ENABLED=true)")
 		return 1
@@ -113,8 +116,10 @@ commands:
   validate --game=NAME  validate a game's maps and config
   mapgen   --game=NAME  generate a map for a game
   import-maps           import legacy Tesla maps / Delivery cities
+  backfill-delivery-history  rebuild delivery history tables from saves
 
 import-maps: see "drbrain import-maps -h" for flags and cutover order.
+backfill-delivery-history: see "drbrain backfill-delivery-history -h".
 
 serve flags:
   --games=a,b           override DRBRAIN_GAMES
@@ -278,6 +283,48 @@ func runGameCommand(command string, args []string, games []platform.Game, stdout
 		fmt.Fprintf(stderr, "drbrain %s: %v\n", command, err)
 		return 1
 	}
+	return 0
+}
+
+// runBackfillDeliveryHistory rebuilds the indexed delivery history tables from
+// platform_sessions. It is idempotent and safe to rerun after a failed
+// projection.
+func runBackfillDeliveryHistory(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("backfill-delivery-history", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	dryRun := fs.Bool("dry-run", false, "decode and validate saves without writing projections")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() > 0 {
+		fmt.Fprintf(stderr, "drbrain backfill-delivery-history: unexpected argument %q\n", fs.Arg(0))
+		return 2
+	}
+
+	cfg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(stderr, "drbrain backfill-delivery-history: %v\n", err)
+		return 1
+	}
+	pool, err := pgdb.Open(context.Background(), cfg.DatabaseURL)
+	if err != nil {
+		fmt.Fprintf(stderr, "drbrain backfill-delivery-history: database: %v\n", err)
+		return 1
+	}
+	defer pool.Close()
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	written, err := deliverysession.BackfillHistory(ctx, pool, deliverysession.BackfillOptions{DryRun: *dryRun})
+	if err != nil {
+		fmt.Fprintf(stderr, "drbrain backfill-delivery-history: projected %d: %v\n", written, err)
+		return 1
+	}
+	if *dryRun {
+		fmt.Fprintf(stdout, "validated %d delivery sessions (dry run)\n", written)
+		return 0
+	}
+	fmt.Fprintf(stdout, "projected %d delivery sessions\n", written)
 	return 0
 }
 

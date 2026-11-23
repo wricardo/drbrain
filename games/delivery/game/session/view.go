@@ -16,6 +16,8 @@ func (s *Session) Snapshot() Snapshot {
 	snap.CreatedAt = s.CreatedAt
 	snap.Speed = s.speed
 	snap.Paused = s.speed == SpeedPaused
+	snap.DisplayName = s.displayName
+	snap.Ledger.Statement = s
 	return snap
 }
 
@@ -29,16 +31,17 @@ func (s *Session) Summary() Summary {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return Summary{
-		ID:         s.ID,
-		CreatedAt:  s.CreatedAt,
-		Tick:       s.world.Tick,
-		Speed:      s.speed,
-		Money:      s.world.Ledger.Money,
-		Reputation: s.world.Ledger.Reputation,
-		Deliveries: s.world.Ledger.Deliveries,
-		Loaded:     true,
-		AccountID:  s.accountID,
-		CityID:     s.cityID,
+		ID:          s.ID,
+		CreatedAt:   s.CreatedAt,
+		Tick:        s.world.Tick,
+		Speed:       s.speed,
+		Money:       s.world.Ledger.Money,
+		Reputation:  s.world.Ledger.Reputation,
+		Deliveries:  s.world.Ledger.Deliveries,
+		Loaded:      true,
+		AccountID:   s.accountID,
+		CityID:      s.cityID,
+		DisplayName: s.displayName,
 	}
 }
 
@@ -50,6 +53,9 @@ func (s *Session) Summary() Summary {
 type Snapshot struct {
 	ID        string    `json:"id"`
 	CreatedAt time.Time `json:"created_at"`
+	// DisplayName is the player's name for this save; "" means unnamed, which
+	// every view renders as the city name.
+	DisplayName string `json:"display_name,omitempty"`
 
 	Tick   int64 `json:"tick"`
 	Speed  int   `json:"speed"`
@@ -71,6 +77,10 @@ type Snapshot struct {
 	Growth []GrowthView `json:"growth"`
 
 	Events []EventView `json:"events"`
+	// EventCapacity is how many events the retained feed can hold. Events
+	// older than the oldest retained row are gone, and without this a poller
+	// cannot tell a quiet stretch from a gap it missed.
+	EventCapacity int `json:"event_capacity"`
 
 	// Closures are the street works live right now. Empty when none are, so a
 	// client can treat "no closures" as the common case without a nil check.
@@ -122,7 +132,10 @@ type CarView struct {
 	Cargo      []string `json:"cargo"`
 	State      string   `json:"state"`
 	Queued     string   `json:"queued_move,omitempty"`
-	LastReject string   `json:"last_reject,omitempty"`
+	// QueuedMoves is the full movement plan in execution order: the step for
+	// the next tick first. Omitted when nothing is queued.
+	QueuedMoves []string `json:"queued_moves,omitempty"`
+	LastReject  string   `json:"last_reject,omitempty"`
 
 	// ChargeDue is the unpaid balance of a charging session in progress. It is
 	// zero on an uncharged car and after the session settles, so a client can
@@ -224,18 +237,29 @@ type LedgerView struct {
 	TowFees    int `json:"tow_fees"`
 	UpkeepDue  int `json:"upkeep_due"`
 
-	// CashEntries is the checking-account statement, newest first. The query
-	// path carries the full history; the live stream trims it to the most
-	// recent rows (see StreamSnapshot). Non-nil so an empty statement marshals
-	// as [] rather than null.
+	// PayMultiplier is the share of the quoted reward this standing collects.
+	// The client shows it next to reputation so a reduced payout is explained
+	// rather than looking like a short-paid order.
+	PayMultiplier float64 `json:"pay_multiplier"`
+
+	// CashEntries is the checking-account statement, newest first: the newest
+	// DefaultStatementMonths window capped at maxCashRows. The query and live
+	// stream carry the same rows (the stream trims order history, not the
+	// statement). Non-nil so an empty statement marshals as [] rather than null.
 	CashEntries []CashEntryView `json:"cash_entries"`
 
 	// TicksPerMonth and Months are the monthly income/expense report. It is
-	// newest first, bounded to maxMonths; the engine keeps the full derived
-	// history and the view fills quiet months with zero rows so the player can
-	// see a gap rather than silently skipping a month number.
+	// newest first, bounded to DefaultStatementMonths; the engine keeps the
+	// full derived history and the view fills quiet months with zero rows so
+	// the player can see a gap rather than silently skipping a month number.
 	TicksPerMonth int         `json:"ticks_per_month"`
 	Months        []MonthView `json:"months"`
+
+	// Statement serves filtered reads over the full history, so a client can
+	// ask for an older month or a tick range without the frame carrying it.
+	// Set on snapshots built from a live session; nil on a hand-built view,
+	// which then exposes only the bounded window above.
+	Statement StatementReader `json:"-"`
 }
 
 // CashEntryView is one movement through the balance.
@@ -346,15 +370,16 @@ func BuildSnapshot(w *engine.World) Snapshot {
 			ID: c.ID, Name: c.Name, Class: c.ClassName,
 			X: c.Pos.X, Y: c.Pos.Y,
 			Battery: c.Battery, MaxBattery: c.Class.MaxBattery,
-			BatteryPct: c.BatteryPct(),
-			Capacity:   c.Class.Capacity,
-			Load:       c.Load(),
-			FreeBoxes:  c.FreeBoxes(),
-			Cargo:      nonNilStrings(c.Cargo),
-			State:      string(c.State(city)),
-			Queued:     string(c.QueuedMove),
-			LastReject: string(c.LastReject),
-			ChargeDue:  c.ChargeDue,
+			BatteryPct:  c.BatteryPct(),
+			Capacity:    c.Class.Capacity,
+			Load:        c.Load(),
+			FreeBoxes:   c.FreeBoxes(),
+			Cargo:       nonNilStrings(c.Cargo),
+			State:       string(c.State(city)),
+			Queued:      string(c.QueuedMove),
+			QueuedMoves: queuedDirections(c),
+			LastReject:  string(c.LastReject),
+			ChargeDue:   c.ChargeDue,
 		})
 	}
 
@@ -389,6 +414,18 @@ func BuildSnapshot(w *engine.World) Snapshot {
 		})
 	}
 
+	// The snapshot carries the newest DefaultStatementMonths of the report and
+	// the rows of those months, capped by maxCashRows. Older history stays in
+	// the ledger and is served on demand through StatementReader, so a frame
+	// never pays for years of rows.
+	ticksPerMonth := w.TicksPerMonth()
+	lastMonth := w.MonthForTick(w.Tick)
+	firstMonth := lastMonth - DefaultStatementMonths + 1
+	if firstMonth < 1 {
+		firstMonth = 1
+	}
+	windowStart := int64(firstMonth-1) * int64(ticksPerMonth)
+
 	snap.Ledger = LedgerView{
 		Money:            w.Ledger.Money,
 		MoneyEarned:      w.Ledger.MoneyEarned,
@@ -403,9 +440,10 @@ func BuildSnapshot(w *engine.World) Snapshot {
 		UpkeepPaid:       w.Ledger.UpkeepPaid,
 		TowFees:          w.Ledger.TowFees,
 		UpkeepDue:        w.FleetUpkeep(),
-		CashEntries:      cashEntriesView(w.Ledger.Cash, maxCashRows),
-		TicksPerMonth:    w.TicksPerMonth(),
-		Months:           monthsView(w.Ledger.Months, w.MonthForTick(w.Tick), w.TicksPerMonth(), maxMonths),
+		PayMultiplier:    w.PayMultiplier(),
+		CashEntries:      cashEntriesWindow(w.Ledger.Cash, windowStart, w.Tick, "", "", maxCashRows),
+		TicksPerMonth:    ticksPerMonth,
+		Months:           monthRange(w.Ledger.Months, firstMonth, lastMonth, ticksPerMonth, ""),
 	}
 
 	for _, cc := range w.CarClassCatalog() {
@@ -433,6 +471,7 @@ func BuildSnapshot(w *engine.World) Snapshot {
 			CarID: e.CarID, X: e.Pos.X, Y: e.Pos.Y,
 		})
 	}
+	snap.EventCapacity = w.MaxEvents()
 	for _, c := range w.ActiveClosures() {
 		cv := ClosureView{
 			ID: c.ID, Reason: c.Reason,
@@ -476,81 +515,17 @@ func nonNilStrings(s []string) []string {
 	return s
 }
 
-// maxCashRows bounds the statement a snapshot carries. The engine keeps the
-// full ledger for the save and the statement chain; a snapshot is re-sent on
-// every mutation and every streamed tick, so carrying years of rows would make
-// each keypress pay for the whole history. 200 rows covers a long session's
-// recent account activity without dominating the frame.
-const maxCashRows = 200
-
-// cashEntriesView converts the stored statement to the client shape, newest
-// first, keeping at most limit rows. The engine keeps entries in chronological
-// order so appending is cheap and the running balance reads forward; the UI
-// renders an account statement from the latest line, so reversing here is the
-// one conversion.
-func cashEntriesView(entries []engine.CashEntry, limit int) []CashEntryView {
-	out := make([]CashEntryView, 0, min(len(entries), limit))
-	for i := len(entries) - 1; i >= 0 && len(out) < limit; i-- {
-		e := entries[i]
-		out = append(out, CashEntryView{
-			Seq:      e.Seq,
-			Tick:     e.Tick,
-			Kind:     string(e.Kind),
-			Category: string(e.Kind.Category()),
-			Amount:   e.Amount,
-			Balance:  e.Balance,
-			CarID:    e.CarID,
-			CarName:  e.CarName,
-			OrderID:  e.OrderID,
-			Memo:     e.Memo,
-		})
+// queuedDirections renders the full movement plan as strings. The GraphQL view
+// is the agent-facing surface, so it exposes the whole backlog and not just the
+// step for the next tick.
+func queuedDirections(c *engine.Car) []string {
+	moves := c.PendingMoves()
+	if len(moves) == 0 {
+		return nil
 	}
-	return out
-}
-
-// maxMonths bounds the monthly report a snapshot carries. A long-running save
-// can have hundreds of months; the dashboard only needs the recent ledger, and
-// the full derived history stays in the session.
-const maxMonths = 12
-
-// monthsView converts engine month summaries into the newest-first client
-// shape, zero-filling quiet months and keeping at most limit rows. A month with
-// no entries is still a row: skipping it would make month 1 followed by month 3
-// look like a data bug rather than a quiet month.
-func monthsView(summaries []engine.MonthSummary, current, ticksPerMonth, limit int) []MonthView {
-	if current < 1 {
-		current = 1
-	}
-	first := current - limit + 1
-	if first < 1 {
-		first = 1
-	}
-	byIndex := make(map[int]engine.MonthSummary, len(summaries))
-	for _, m := range summaries {
-		byIndex[m.Index] = m
-	}
-	out := make([]MonthView, 0, current-first+1)
-	for i := current; i >= first; i-- {
-		m, ok := byIndex[i]
-		if !ok {
-			start := int64(i-1) * int64(ticksPerMonth)
-			m = engine.MonthSummary{
-				Index: i, StartTick: start, EndTick: start + int64(ticksPerMonth) - 1,
-			}
-		}
-		categories := make([]MonthCategoryView, 0, len(m.Categories))
-		for _, c := range m.Categories {
-			categories = append(categories, MonthCategoryView{
-				Category: string(c.Category),
-				Income:   c.Income,
-				Expenses: c.Expenses,
-			})
-		}
-		out = append(out, MonthView{
-			Index: m.Index, StartTick: m.StartTick, EndTick: m.EndTick,
-			Income: m.Income, Expenses: m.Expenses, Net: m.Income - m.Expenses,
-			Categories: categories,
-		})
+	out := make([]string, len(moves))
+	for i, d := range moves {
+		out[i] = string(d)
 	}
 	return out
 }

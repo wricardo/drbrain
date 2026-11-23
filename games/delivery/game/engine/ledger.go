@@ -76,6 +76,35 @@ type Ledger struct {
 	// NextCashSeq is the id handed to the next entry. Persisted so two entries
 	// can never share a seq across a save/restore.
 	NextCashSeq int
+
+	// ReputationEntries is the append-only standing history: one row per
+	// reputation change, oldest first, with the running balance after it.
+	// New saves also carry an opening row from newStartLedger.
+	ReputationEntries []ReputationEntry `json:"reputation_entries,omitempty"`
+	// NextReputationSeq is the id handed to the next reputation entry.
+	NextReputationSeq int `json:"next_reputation_seq,omitempty"`
+}
+
+// ReputationReason categorises one change to the standing score.
+type ReputationReason string
+
+const (
+	ReputationOpening      ReputationReason = "opening"
+	ReputationDelivery     ReputationReason = "delivery"
+	ReputationLateDelivery ReputationReason = "late_delivery"
+	ReputationExpired      ReputationReason = "expired"
+	ReputationGrowth       ReputationReason = "growth"
+)
+
+// ReputationEntry is one movement of the standing score.
+type ReputationEntry struct {
+	Seq     int              `json:"seq"`
+	Tick    int64            `json:"tick"`
+	Delta   float64          `json:"delta"`
+	Balance float64          `json:"balance"`
+	Reason  ReputationReason `json:"reason"`
+	OrderID string           `json:"order_id,omitempty"`
+	Memo    string           `json:"memo,omitempty"`
 }
 
 // CashEntryKind categorises one movement through the player's balance.
@@ -289,15 +318,20 @@ type CashEntry struct {
 }
 
 // NewLedger returns a ledger with the given starting balance: Money is set to
-// startMoney, Reputation starts neutral at 3/5, and a non-zero balance is
-// recorded as the opening cash entry. Lifetime MoneyEarned starts at zero, so
-// starting capital is not counted as earnings.
+// startMoney, a non-zero balance is recorded as the opening cash entry, and
+// Lifetime MoneyEarned starts at zero, so starting capital is not counted as
+// earnings.
+//
+// Reputation starts at a neutral 3.0 so the type is usable without a map
+// config (tests, fixtures). A real world does not keep that value: NewWorld
+// opens it at the map's max_reputation via newStartLedger.
 func NewLedger(startMoney int) *Ledger {
 	l := &Ledger{
-		Money:            startMoney,
-		Reputation:       3.0, // neutral starting standing out of 5
-		DeliveriesByItem: map[string]int{},
-		NextCashSeq:      1,
+		Money:             startMoney,
+		Reputation:        3.0, // neutral default; NewWorld starts at max_reputation
+		DeliveriesByItem:  map[string]int{},
+		NextCashSeq:       1,
+		NextReputationSeq: 1,
 	}
 	if startMoney != 0 {
 		l.Cash = append(l.Cash, CashEntry{
@@ -309,6 +343,37 @@ func NewLedger(startMoney int) *Ledger {
 		})
 	}
 	return l
+}
+
+// recordReputation applies one standing change and appends the actual delta to
+// the history. The actual delta, not the nominal config amount, is stored so a
+// clamp at 0 or max_reputation does not make the series lie. A clamped-to-zero
+// change records nothing: the line did not move.
+func (w *World) recordReputation(delta float64, reason ReputationReason, orderID, memo string) float64 {
+	if delta == 0 {
+		return 0
+	}
+	before := w.Ledger.Reputation
+	w.Ledger.Reputation += delta
+	w.clampReputation()
+	applied := w.Ledger.Reputation - before
+	if applied == 0 {
+		return 0
+	}
+	if w.Ledger.NextReputationSeq < 1 {
+		w.Ledger.NextReputationSeq = 1
+	}
+	w.Ledger.ReputationEntries = append(w.Ledger.ReputationEntries, ReputationEntry{
+		Seq:     w.Ledger.NextReputationSeq,
+		Tick:    w.Tick,
+		Delta:   applied,
+		Balance: w.Ledger.Reputation,
+		Reason:  reason,
+		OrderID: orderID,
+		Memo:    memo,
+	})
+	w.Ledger.NextReputationSeq++
+	return applied
 }
 
 // recordCash applies one movement to the balance and appends it to the ledger.

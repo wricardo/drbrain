@@ -340,12 +340,17 @@ func (w *World) spawnOneFor(cu Customer) bool {
 
 // rollQuantity picks how many boxes this customer asks for.
 //
-// Chapter is the only filter. Demand is intentionally allowed to exceed the
+// Progress is the only filter. Demand is intentionally allowed to exceed the
 // current fleet: a 13-box job in a city where the player owns only a 4-box
 // scooter is the signal that the van is now worth buying. The assignment path
 // still refuses to exceed a car's hold, so an oversized order cannot corrupt
 // cargo; it sits pending (and eventually expires) until a capable vehicle
 // exists. The fallback is always a single box, which every car can take.
+//
+// A band with EarlyWeight stays in the draw from tick 0 at that reduced share;
+// its Weight takes over at FromProgress. That is what keeps every quantity
+// range, and therefore every vehicle class, relevant at every stage instead of
+// switching the small bands off once the ramp finishes.
 func (w *World) rollQuantity(cu Customer) int {
 	bands := w.ordersCfg.QuantityBands
 	if len(bands) == 0 {
@@ -363,12 +368,12 @@ func (w *World) rollQuantity(cu Customer) int {
 		if b.MinSize <= 0 || b.MaxSize < b.MinSize {
 			continue
 		}
-		if progress < b.FromProgress {
-			continue
-		}
 		weight := b.Weight
+		if progress < b.FromProgress {
+			weight = b.EarlyWeight
+		}
 		if weight <= 0 {
-			weight = 1
+			continue
 		}
 		eligible = append(eligible, candidate{band: b, weight: weight})
 		total += weight

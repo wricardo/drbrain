@@ -11,7 +11,7 @@ games/tesla/rl/          Python: Gymnasium env, training, evaluation
 ## Run
 
 ```bash
-make -C games/tesla/rl venv build              # once: Python env + Go helper binary
+just -f games/tesla/rl/justfile venv build    # once: Python env + Go helper binary
 cd games/tesla/rl
 .venv/bin/python train.py --steps 6_000_000   # ~1h on an M-series Mac (uses the GPU via mps)
 .venv/bin/tensorboard --logdir runs           # live curves
@@ -46,13 +46,33 @@ same Go code as training (`rlenv observe`), so the rules and planes cannot drift
 | episode | one game, from start until win/death/move cap |
 | curriculum | maps start tiny and generous (1 park, spare battery) and get harder as the win rate passes 80% |
 
+## Fog of war
+
+The observation never assumes the whole map is visible. `TESLA_FOG=3` starts the
+Go env with a 3-cell visibility radius: cells the car has not driven past are
+masked out and reported on an extra "unknown" plane, the derived distance planes
+are computed from known cells only, and unexplored cells are offered as legal
+but risky moves (a hidden wall still ends the run). Without fog the unknown
+plane is omitted, so existing full-map checkpoints keep working.
+
+Fog needs memory, which is what the recurrent trainer is for:
+
+```bash
+just build
+TESLA_LEGAL=reject TESLA_FOG=3 .venv/bin/python train_recurrent.py --steps 4_000_000
+```
+
+`TESLA_LEGAL=reject` makes illegal moves cost a wasted step instead of crashing,
+because RecurrentPPO has no action masking; the agent still cannot cheat, it just
+pays for the mistake.
+
 ## Things to try when it stalls
 
 - Watch `fixedmaps/win_rate` in TensorBoard: it is the honest score on maps never
   used for training (training win rate only reflects the current curriculum level).
 - `end_reason/*` shows why runs end (stranded, max_moves, crash...), which tells
   you which failure to attack next.
-- Reward numbers: `defaultRewards` in `cmd/rlenv/env.go` (rebuild with `make build`).
+- Reward numbers: `defaultRewards` in `cmd/rlenv/env.go` (rebuild with `just build`).
 - Map difficulty ramp: `difficulty_to_gen` in `tesla_env.py`; promotion rule: `Curriculum` in `train.py`.
 - Remove the two distance planes in `env.go` to see how much the net can figure out by itself.
 - Fog mode needs memory (a recurrent policy); not implemented here.

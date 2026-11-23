@@ -7,8 +7,8 @@ import (
 
 // chargeTestWorld builds a city whose only feature is one depot holding two
 // scooters, so charging can be observed without orders or movement in play.
-// capacity is how many cars may park there; slots is the charging limit.
-func chargeTestWorld(t *testing.T, capacity, slots int) *World {
+// slots is the charging limit.
+func chargeTestWorld(t *testing.T, slots int) *World {
 	t.Helper()
 
 	cfg := completeConfig(&CityConfig{
@@ -25,7 +25,7 @@ func chargeTestWorld(t *testing.T, capacity, slots int) *World {
 		Legend: map[string]string{"W": "water", "R": "road", "D": "depot"},
 		Items:  map[string]string{},
 		Depots: []DepotConfig{{
-			ID: "d1", Pos: Position{1, 1}, Capacity: capacity, ChargeSlots: slots,
+			ID: "d1", Pos: Position{1, 1}, ChargeSlots: slots,
 		}},
 		CarClasses: map[string]CarClassConfig{
 			"scooter": {Capacity: 4, MaxBattery: 10, StepCost: 1},
@@ -48,10 +48,10 @@ func chargeTestWorld(t *testing.T, capacity, slots int) *World {
 }
 
 // TestChargeSlotsLimitSimultaneousCharging pins the depot contract: with fewer
-// charging bays than parking spaces, one car charges per tick, chosen in id
-// order, and the other is not starved once the first is full.
+// charging bays than cars, one car charges per tick, chosen in id order, and the
+// other is not starved once the first is full.
 func TestChargeSlotsLimitSimultaneousCharging(t *testing.T) {
-	w := chargeTestWorld(t, 2, 1)
+	w := chargeTestWorld(t, 1)
 	for _, c := range w.Cars {
 		c.Battery = 1
 	}
@@ -79,7 +79,7 @@ func TestChargeSlotsLimitSimultaneousCharging(t *testing.T) {
 // TestChargeSlotsZeroIsUnlimited keeps maps authored before charge_slots
 // existed charging every car at once, rather than silently losing capacity.
 func TestChargeSlotsZeroIsUnlimited(t *testing.T) {
-	w := chargeTestWorld(t, 2, 0)
+	w := chargeTestWorld(t, 0)
 	for _, c := range w.Cars {
 		c.Battery = 1
 	}
@@ -116,16 +116,16 @@ func TestDuplicateDepotIDRejected(t *testing.T) {
 	// entries (the old check) misses it.
 	dup := base()
 	dup.Depots = []DepotConfig{
-		{ID: "d_main", Pos: Position{1, 1}, Capacity: 2},
-		{ID: "d_other", Pos: Position{1, 3}, Capacity: 2},
-		{ID: "d_main", Pos: Position{3, 3}, Capacity: 2},
+		{ID: "d_main", Pos: Position{1, 1}},
+		{ID: "d_other", Pos: Position{1, 3}},
+		{ID: "d_main", Pos: Position{3, 3}},
 	}
 	if _, err := NewCity(dup); err == nil || !strings.Contains(err.Error(), "duplicate depot id") {
 		t.Errorf("duplicate depot id error = %v, want one mentioning duplicate depot id", err)
 	}
 
 	empty := base()
-	empty.Depots = []DepotConfig{{ID: "", Pos: Position{1, 1}, Capacity: 2}}
+	empty.Depots = []DepotConfig{{ID: "", Pos: Position{1, 1}}}
 	if _, err := NewCity(empty); err == nil || !strings.Contains(err.Error(), "empty id") {
 		t.Errorf("empty depot id error = %v, want one mentioning empty id", err)
 	}

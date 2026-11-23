@@ -13,14 +13,14 @@
 	/* Solid ink for car tokens and count badges that sit on light tiles. */
 	--color-ink: #1e1b4b;
 
-	/* Map terrain. Roads are the light ribbons; buildings are the darker blocks
-	   the streets run between. The container shows through the 1px gaps around
-	   blocks that are not drawn flush. */
+	/* Map terrain: connected streets and roofs, with restrained surface texture. */
 	--color-map: #e2e8f0;
-	--color-road: #ffffff;
+	--color-road: #e8ebee;
+	--color-road-marking: #b6bec7;
 	--color-ground: #e8dcc4;
 	--color-water: #7cc4e8;
 	--color-building: #b6c2d9;
+	--color-roof-edge: #8e9db5;
 
 	/* Accents are dark enough to pass as text on white and carry white text
 	   when used as a solid fill. */

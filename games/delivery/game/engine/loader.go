@@ -96,7 +96,7 @@ func (cfg *CityConfig) validate() error {
 		}
 	}
 
-	positiveInt(cfg.TickMS, "tick_ms", 300)
+	positiveInt(cfg.TickMS, "tick_ms", 600)
 	nonNegativeInt(cfg.GroundExtraStepCost, "ground_extra_step_cost", 1)
 	positiveInt(cfg.TicksPerMonth, "ticks_per_month", 600)
 	positiveInt(cfg.MaxEvents, "max_events", 500)
@@ -117,7 +117,7 @@ func (cfg *CityConfig) validate() error {
 	positiveInt64(o.MinDeadlineTicks, "orders.min_deadline_ticks", 10)
 	positiveInt64(o.UnreachableLegTicks, "orders.unreachable_leg_ticks", 20)
 	nonNegativeInt(o.DistanceBonusPerTile, "orders.distance_bonus_per_tile", 3)
-	nonNegativeFloat(o.ExpirePenaltyReputation, "orders.expire_penalty_reputation", 0.05)
+	nonNegativeFloat(o.ExpirePenaltyReputation, "orders.expire_penalty_reputation", 0.10)
 	fraction(o.LatePayMultiplier, "orders.late_pay_multiplier", 0.6)
 	nonNegativeInt(o.ForceFirstOrderAtTick, "orders.force_first_order_at_tick", 0)
 	nonNegativeFloat(o.ReputationPerDelivery, "orders.reputation_per_delivery", 0.02)
@@ -140,6 +140,7 @@ func (cfg *CityConfig) validate() error {
 		if b.FromProgress < 0 || b.FromProgress > 1 {
 			problems = append(problems, fmt.Sprintf("%s.from_progress must be in [0, 1] (suggested 0)", prefix))
 		}
+		nonNegativeInt(b.EarlyWeight, prefix+".early_weight", 0)
 		positiveInt(b.Weight, prefix+".weight", 30)
 	}
 
@@ -156,7 +157,6 @@ func (cfg *CityConfig) validate() error {
 	}
 	for i, d := range cfg.Depots {
 		prefix := fmt.Sprintf("depots[%d]", i)
-		positiveInt(d.Capacity, prefix+".capacity", 4)
 		nonNegativeInt(d.ChargeSlots, prefix+".charge_slots", 4)
 	}
 	for class, cc := range cfg.CarClasses {

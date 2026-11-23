@@ -51,8 +51,10 @@ type Config struct {
 }
 
 type ResolverRoot interface {
+	Delivery_LedgerView() Delivery_LedgerViewResolver
 	Delivery_Mutation() Delivery_MutationResolver
 	Delivery_Query() Delivery_QueryResolver
+	Delivery_Snapshot() Delivery_SnapshotResolver
 	Global_Mutation() Global_MutationResolver
 	Global_Query() Global_QueryResolver
 	Mazes_Mutation() Mazes_MutationResolver
@@ -85,23 +87,33 @@ type ComplexityRoot struct {
 		Unlocked   func(childComplexity int) int
 	}
 
+	Delivery_CarLedgerView struct {
+		CarID    func(childComplexity int) int
+		CarName  func(childComplexity int) int
+		Expenses func(childComplexity int) int
+		Income   func(childComplexity int) int
+		Net      func(childComplexity int) int
+		Rows     func(childComplexity int) int
+	}
+
 	Delivery_CarView struct {
-		Battery    func(childComplexity int) int
-		BatteryPct func(childComplexity int) int
-		Capacity   func(childComplexity int) int
-		Cargo      func(childComplexity int) int
-		ChargeDue  func(childComplexity int) int
-		ClassName  func(childComplexity int) int
-		FreeBoxes  func(childComplexity int) int
-		ID         func(childComplexity int) int
-		LastReject func(childComplexity int) int
-		Load       func(childComplexity int) int
-		MaxBattery func(childComplexity int) int
-		Name       func(childComplexity int) int
-		QueuedMove func(childComplexity int) int
-		State      func(childComplexity int) int
-		X          func(childComplexity int) int
-		Y          func(childComplexity int) int
+		Battery     func(childComplexity int) int
+		BatteryPct  func(childComplexity int) int
+		Capacity    func(childComplexity int) int
+		Cargo       func(childComplexity int) int
+		ChargeDue   func(childComplexity int) int
+		ClassName   func(childComplexity int) int
+		FreeBoxes   func(childComplexity int) int
+		ID          func(childComplexity int) int
+		LastReject  func(childComplexity int) int
+		Load        func(childComplexity int) int
+		MaxBattery  func(childComplexity int) int
+		Name        func(childComplexity int) int
+		QueuedMove  func(childComplexity int) int
+		QueuedMoves func(childComplexity int) int
+		State       func(childComplexity int) int
+		X           func(childComplexity int) int
+		Y           func(childComplexity int) int
 	}
 
 	Delivery_CarWindow struct {
@@ -178,6 +190,13 @@ type ComplexityRoot struct {
 		Session    func(childComplexity int) int
 	}
 
+	Delivery_EventFeed struct {
+		Capacity   func(childComplexity int) int
+		Events     func(childComplexity int) int
+		OldestTick func(childComplexity int) int
+		Truncated  func(childComplexity int) int
+	}
+
 	Delivery_EventView struct {
 		CarID   func(childComplexity int) int
 		Message func(childComplexity int) int
@@ -205,22 +224,35 @@ type ComplexityRoot struct {
 	}
 
 	Delivery_LedgerView struct {
-		CashEntries      func(childComplexity int) int
+		Cars             func(childComplexity int, month *int, fromTick *int, toTick *int, limit *int) int
+		CashEntries      func(childComplexity int, month *int, fromTick *int, toTick *int, category *model.CashCategory, carID *string, limit *int) int
 		Deliveries       func(childComplexity int) int
 		DeliveriesByItem func(childComplexity int) int
 		ExpiredOrders    func(childComplexity int) int
 		LateDeliveries   func(childComplexity int) int
 		Money            func(childComplexity int) int
 		MoneyEarned      func(childComplexity int) int
-		Months           func(childComplexity int) int
+		Months           func(childComplexity int, month *int, fromTick *int, toTick *int, category *model.CashCategory, limit *int) int
 		OnTimeStreak     func(childComplexity int) int
 		OrdersSpawned    func(childComplexity int) int
+		PayMultiplier    func(childComplexity int) int
 		Reputation       func(childComplexity int) int
 		TicksPerMonth    func(childComplexity int) int
 		TowFees          func(childComplexity int) int
 		Tows             func(childComplexity int) int
 		UpkeepDue        func(childComplexity int) int
 		UpkeepPaid       func(childComplexity int) int
+	}
+
+	Delivery_MoneyHistory struct {
+		CityID    func(childComplexity int) int
+		Points    func(childComplexity int) int
+		SessionID func(childComplexity int) int
+	}
+
+	Delivery_MoneyPoint struct {
+		Money func(childComplexity int) int
+		Tick  func(childComplexity int) int
 	}
 
 	Delivery_MonthCategoryView struct {
@@ -243,6 +275,7 @@ type ComplexityRoot struct {
 		AssignOrder   func(childComplexity int, id string, orderID string, carID string, ownerToken *string) int
 		BuyCar        func(childComplexity int, id string, className string, depotID string, ownerToken *string) int
 		ClaimSessions func(childComplexity int, claims []*model.SessionClaimInput) int
+		ClearMoves    func(childComplexity int, id string, carID string, ownerToken *string) int
 		CreateCity    func(childComplexity int, id string, config string) int
 		CreateSession func(childComplexity int, id *string, seed *int, cityID *string) int
 		DeleteCity    func(childComplexity int, id string) int
@@ -250,6 +283,7 @@ type ComplexityRoot struct {
 		EvictSession  func(childComplexity int, id string, ownerToken *string) int
 		MoveCar       func(childComplexity int, id string, carID string, direction model.Direction, ownerToken *string) int
 		PublishCity   func(childComplexity int, id string) int
+		RenameSession func(childComplexity int, id string, displayName string, ownerToken *string) int
 		SaveSession   func(childComplexity int, id string, ownerToken *string) int
 		SetSpeed      func(childComplexity int, id string, speed int, ownerToken *string) int
 		Tick          func(childComplexity int, id string, count int, ownerToken *string) int
@@ -257,6 +291,7 @@ type ComplexityRoot struct {
 		UnassignOrder func(childComplexity int, id string, orderID string, ownerToken *string) int
 		UpdateCity    func(childComplexity int, id string, config string) int
 		ValidateCity  func(childComplexity int, config string) int
+		WaitUntil     func(childComplexity int, id string, tick *int, ticks *int, ownerToken *string) int
 	}
 
 	Delivery_OrderView struct {
@@ -286,15 +321,19 @@ type ComplexityRoot struct {
 	}
 
 	Delivery_Query struct {
-		CanPlaySession func(childComplexity int, id string, ownerToken *string) int
-		CarView        func(childComplexity int, id string, carID string, radius int) int
-		Cities         func(childComplexity int) int
-		City           func(childComplexity int, id *string) int
-		CityConfig     func(childComplexity int, id string) int
-		Events         func(childComplexity int, id string, sinceTick int) int
-		Health         func(childComplexity int) int
-		Session        func(childComplexity int, id string) int
-		Sessions       func(childComplexity int) int
+		CanPlaySession    func(childComplexity int, id string, ownerToken *string) int
+		CarView           func(childComplexity int, id string, carID string, radius int) int
+		Cities            func(childComplexity int) int
+		City              func(childComplexity int, id *string) int
+		CityConfig        func(childComplexity int, id string) int
+		Events            func(childComplexity int, id string, sinceTick int, limit *int) int
+		Health            func(childComplexity int) int
+		ItemsHistory      func(childComplexity int, ids []string, cityID *string, fromTick *int, toTick *int, maxPoints *int) int
+		MetricHistory     func(childComplexity int, metric model.AnalyticsMetric, ids []string, cityID *string, fromTick *int, toTick *int, maxPoints *int) int
+		MoneyHistory      func(childComplexity int, ids []string, cityID *string, fromTick *int, toTick *int, maxPoints *int) int
+		ReputationHistory func(childComplexity int, ids []string, cityID *string, fromTick *int, toTick *int, maxPoints *int) int
+		Session           func(childComplexity int, id string) int
+		Sessions          func(childComplexity int, sort *model.SessionSort, limit *int, before *time.Time, cursor *string, mine *bool) int
 	}
 
 	Delivery_SessionClaimResult struct {
@@ -304,7 +343,9 @@ type ComplexityRoot struct {
 
 	Delivery_SessionSummary struct {
 		CreatedAt        func(childComplexity int) int
+		Cursor           func(childComplexity int) int
 		Deliveries       func(childComplexity int) int
+		DisplayName      func(childComplexity int) int
 		ID               func(childComplexity int) int
 		Loaded           func(childComplexity int) int
 		Mine             func(childComplexity int) int
@@ -317,20 +358,34 @@ type ComplexityRoot struct {
 	}
 
 	Delivery_Snapshot struct {
-		CarClasses func(childComplexity int) int
-		Cars       func(childComplexity int) int
-		City       func(childComplexity int) int
-		Closures   func(childComplexity int) int
-		CreatedAt  func(childComplexity int) int
-		Events     func(childComplexity int) int
-		Growth     func(childComplexity int) int
-		ID         func(childComplexity int) int
-		Ledger     func(childComplexity int) int
-		Orders     func(childComplexity int) int
-		Paused     func(childComplexity int) int
-		Speed      func(childComplexity int) int
-		Tick       func(childComplexity int) int
-		TickMs     func(childComplexity int) int
+		CarClasses    func(childComplexity int) int
+		Cars          func(childComplexity int) int
+		City          func(childComplexity int) int
+		Closures      func(childComplexity int) int
+		CreatedAt     func(childComplexity int) int
+		DisplayName   func(childComplexity int) int
+		EventCapacity func(childComplexity int) int
+		Events        func(childComplexity int) int
+		Growth        func(childComplexity int) int
+		ID            func(childComplexity int) int
+		Ledger        func(childComplexity int) int
+		OpenOrders    func(childComplexity int) int
+		Orders        func(childComplexity int, state []model.OrderState, carID *string, sinceTick *int, includeFinished *bool, limit *int) int
+		Paused        func(childComplexity int) int
+		Speed         func(childComplexity int) int
+		Tick          func(childComplexity int) int
+		TickMs        func(childComplexity int) int
+	}
+
+	Delivery_ValuePoint struct {
+		Tick  func(childComplexity int) int
+		Value func(childComplexity int) int
+	}
+
+	Delivery_ValueSeries struct {
+		CityID    func(childComplexity int) int
+		Points    func(childComplexity int) int
+		SessionID func(childComplexity int) int
 	}
 
 	Global_AuthProvider struct {
@@ -1042,16 +1097,25 @@ type ComplexityRoot struct {
 	}
 }
 
+type Delivery_LedgerViewResolver interface {
+	CashEntries(ctx context.Context, obj *model.LedgerView, month *int, fromTick *int, toTick *int, category *model.CashCategory, carID *string, limit *int) ([]*model.CashEntryView, error)
+
+	Months(ctx context.Context, obj *model.LedgerView, month *int, fromTick *int, toTick *int, category *model.CashCategory, limit *int) ([]*model.MonthView, error)
+	Cars(ctx context.Context, obj *model.LedgerView, month *int, fromTick *int, toTick *int, limit *int) ([]*model.CarLedgerView, error)
+}
 type Delivery_MutationResolver interface {
 	CreateSession(ctx context.Context, obj *graph.Resolver, id *string, seed *int, cityID *string) (*model.CreateSessionResult, error)
 	MoveCar(ctx context.Context, obj *graph.Resolver, id string, carID string, direction model.Direction, ownerToken *string) (*model.Snapshot, error)
+	ClearMoves(ctx context.Context, obj *graph.Resolver, id string, carID string, ownerToken *string) (*model.Snapshot, error)
 	Tick(ctx context.Context, obj *graph.Resolver, id string, count int, ownerToken *string) (*model.Snapshot, error)
+	WaitUntil(ctx context.Context, obj *graph.Resolver, id string, tick *int, ticks *int, ownerToken *string) (*model.Snapshot, error)
 	SetSpeed(ctx context.Context, obj *graph.Resolver, id string, speed int, ownerToken *string) (*model.Snapshot, error)
 	AssignOrder(ctx context.Context, obj *graph.Resolver, id string, orderID string, carID string, ownerToken *string) (*model.Snapshot, error)
 	UnassignOrder(ctx context.Context, obj *graph.Resolver, id string, orderID string, ownerToken *string) (*model.Snapshot, error)
 	BuyCar(ctx context.Context, obj *graph.Resolver, id string, className string, depotID string, ownerToken *string) (*model.Snapshot, error)
 	TowCar(ctx context.Context, obj *graph.Resolver, id string, carID string, ownerToken *string) (*model.Snapshot, error)
 	SaveSession(ctx context.Context, obj *graph.Resolver, id string, ownerToken *string) (*model.Snapshot, error)
+	RenameSession(ctx context.Context, obj *graph.Resolver, id string, displayName string, ownerToken *string) (*model.Snapshot, error)
 	EvictSession(ctx context.Context, obj *graph.Resolver, id string, ownerToken *string) (bool, error)
 	DeleteSession(ctx context.Context, obj *graph.Resolver, id string, ownerToken *string) (bool, error)
 	ClaimSessions(ctx context.Context, obj *graph.Resolver, claims []*model.SessionClaimInput) ([]*model.SessionClaimResult, error)
@@ -1066,11 +1130,19 @@ type Delivery_QueryResolver interface {
 	Cities(ctx context.Context, obj *graph.Resolver) ([]*model.CityInfo, error)
 	City(ctx context.Context, obj *graph.Resolver, id *string) (*model.CityView, error)
 	CityConfig(ctx context.Context, obj *graph.Resolver, id string) (*string, error)
-	Sessions(ctx context.Context, obj *graph.Resolver) ([]*model.SessionSummary, error)
+	Sessions(ctx context.Context, obj *graph.Resolver, sort *model.SessionSort, limit *int, before *time.Time, cursor *string, mine *bool) ([]*model.SessionSummary, error)
+	MoneyHistory(ctx context.Context, obj *graph.Resolver, ids []string, cityID *string, fromTick *int, toTick *int, maxPoints *int) ([]*model.MoneyHistory, error)
+	ItemsHistory(ctx context.Context, obj *graph.Resolver, ids []string, cityID *string, fromTick *int, toTick *int, maxPoints *int) ([]*model.ValueSeries, error)
+	ReputationHistory(ctx context.Context, obj *graph.Resolver, ids []string, cityID *string, fromTick *int, toTick *int, maxPoints *int) ([]*model.ValueSeries, error)
+	MetricHistory(ctx context.Context, obj *graph.Resolver, metric model.AnalyticsMetric, ids []string, cityID *string, fromTick *int, toTick *int, maxPoints *int) ([]*model.ValueSeries, error)
 	Session(ctx context.Context, obj *graph.Resolver, id string) (*model.Snapshot, error)
 	CarView(ctx context.Context, obj *graph.Resolver, id string, carID string, radius int) (*model.CarWindow, error)
-	Events(ctx context.Context, obj *graph.Resolver, id string, sinceTick int) ([]*model.EventView, error)
+	Events(ctx context.Context, obj *graph.Resolver, id string, sinceTick int, limit *int) (*model.EventFeed, error)
 	CanPlaySession(ctx context.Context, obj *graph.Resolver, id string, ownerToken *string) (bool, error)
+}
+type Delivery_SnapshotResolver interface {
+	Orders(ctx context.Context, obj *model.Snapshot, state []model.OrderState, carID *string, sinceTick *int, includeFinished *bool, limit *int) ([]*model.OrderView, error)
+	OpenOrders(ctx context.Context, obj *model.Snapshot) ([]*model.OrderView, error)
 }
 type Global_MutationResolver interface {
 	Logout(ctx context.Context, obj *graph1.Resolver) (bool, error)
@@ -1273,6 +1345,48 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Delivery_CarClassView.Unlocked(childComplexity), true
 
+	case "Delivery_CarLedgerView.carId":
+		if e.complexity.Delivery_CarLedgerView.CarID == nil {
+			break
+		}
+
+		return e.complexity.Delivery_CarLedgerView.CarID(childComplexity), true
+
+	case "Delivery_CarLedgerView.carName":
+		if e.complexity.Delivery_CarLedgerView.CarName == nil {
+			break
+		}
+
+		return e.complexity.Delivery_CarLedgerView.CarName(childComplexity), true
+
+	case "Delivery_CarLedgerView.expenses":
+		if e.complexity.Delivery_CarLedgerView.Expenses == nil {
+			break
+		}
+
+		return e.complexity.Delivery_CarLedgerView.Expenses(childComplexity), true
+
+	case "Delivery_CarLedgerView.income":
+		if e.complexity.Delivery_CarLedgerView.Income == nil {
+			break
+		}
+
+		return e.complexity.Delivery_CarLedgerView.Income(childComplexity), true
+
+	case "Delivery_CarLedgerView.net":
+		if e.complexity.Delivery_CarLedgerView.Net == nil {
+			break
+		}
+
+		return e.complexity.Delivery_CarLedgerView.Net(childComplexity), true
+
+	case "Delivery_CarLedgerView.rows":
+		if e.complexity.Delivery_CarLedgerView.Rows == nil {
+			break
+		}
+
+		return e.complexity.Delivery_CarLedgerView.Rows(childComplexity), true
+
 	case "Delivery_CarView.battery":
 		if e.complexity.Delivery_CarView.Battery == nil {
 			break
@@ -1363,6 +1477,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Delivery_CarView.QueuedMove(childComplexity), true
+
+	case "Delivery_CarView.queuedMoves":
+		if e.complexity.Delivery_CarView.QueuedMoves == nil {
+			break
+		}
+
+		return e.complexity.Delivery_CarView.QueuedMoves(childComplexity), true
 
 	case "Delivery_CarView.state":
 		if e.complexity.Delivery_CarView.State == nil {
@@ -1756,6 +1877,34 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Delivery_CreateSessionResult.Session(childComplexity), true
 
+	case "Delivery_EventFeed.capacity":
+		if e.complexity.Delivery_EventFeed.Capacity == nil {
+			break
+		}
+
+		return e.complexity.Delivery_EventFeed.Capacity(childComplexity), true
+
+	case "Delivery_EventFeed.events":
+		if e.complexity.Delivery_EventFeed.Events == nil {
+			break
+		}
+
+		return e.complexity.Delivery_EventFeed.Events(childComplexity), true
+
+	case "Delivery_EventFeed.oldestTick":
+		if e.complexity.Delivery_EventFeed.OldestTick == nil {
+			break
+		}
+
+		return e.complexity.Delivery_EventFeed.OldestTick(childComplexity), true
+
+	case "Delivery_EventFeed.truncated":
+		if e.complexity.Delivery_EventFeed.Truncated == nil {
+			break
+		}
+
+		return e.complexity.Delivery_EventFeed.Truncated(childComplexity), true
+
 	case "Delivery_EventView.carId":
 		if e.complexity.Delivery_EventView.CarID == nil {
 			break
@@ -1854,12 +2003,29 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Delivery_ItemCount.Item(childComplexity), true
 
+	case "Delivery_LedgerView.cars":
+		if e.complexity.Delivery_LedgerView.Cars == nil {
+			break
+		}
+
+		args, err := ec.field_Delivery_LedgerView_cars_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Delivery_LedgerView.Cars(childComplexity, args["month"].(*int), args["fromTick"].(*int), args["toTick"].(*int), args["limit"].(*int)), true
+
 	case "Delivery_LedgerView.cashEntries":
 		if e.complexity.Delivery_LedgerView.CashEntries == nil {
 			break
 		}
 
-		return e.complexity.Delivery_LedgerView.CashEntries(childComplexity), true
+		args, err := ec.field_Delivery_LedgerView_cashEntries_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Delivery_LedgerView.CashEntries(childComplexity, args["month"].(*int), args["fromTick"].(*int), args["toTick"].(*int), args["category"].(*model.CashCategory), args["carId"].(*string), args["limit"].(*int)), true
 
 	case "Delivery_LedgerView.deliveries":
 		if e.complexity.Delivery_LedgerView.Deliveries == nil {
@@ -1908,7 +2074,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			break
 		}
 
-		return e.complexity.Delivery_LedgerView.Months(childComplexity), true
+		args, err := ec.field_Delivery_LedgerView_months_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Delivery_LedgerView.Months(childComplexity, args["month"].(*int), args["fromTick"].(*int), args["toTick"].(*int), args["category"].(*model.CashCategory), args["limit"].(*int)), true
 
 	case "Delivery_LedgerView.onTimeStreak":
 		if e.complexity.Delivery_LedgerView.OnTimeStreak == nil {
@@ -1923,6 +2094,13 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Delivery_LedgerView.OrdersSpawned(childComplexity), true
+
+	case "Delivery_LedgerView.payMultiplier":
+		if e.complexity.Delivery_LedgerView.PayMultiplier == nil {
+			break
+		}
+
+		return e.complexity.Delivery_LedgerView.PayMultiplier(childComplexity), true
 
 	case "Delivery_LedgerView.reputation":
 		if e.complexity.Delivery_LedgerView.Reputation == nil {
@@ -1965,6 +2143,41 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Delivery_LedgerView.UpkeepPaid(childComplexity), true
+
+	case "Delivery_MoneyHistory.cityId":
+		if e.complexity.Delivery_MoneyHistory.CityID == nil {
+			break
+		}
+
+		return e.complexity.Delivery_MoneyHistory.CityID(childComplexity), true
+
+	case "Delivery_MoneyHistory.points":
+		if e.complexity.Delivery_MoneyHistory.Points == nil {
+			break
+		}
+
+		return e.complexity.Delivery_MoneyHistory.Points(childComplexity), true
+
+	case "Delivery_MoneyHistory.sessionId":
+		if e.complexity.Delivery_MoneyHistory.SessionID == nil {
+			break
+		}
+
+		return e.complexity.Delivery_MoneyHistory.SessionID(childComplexity), true
+
+	case "Delivery_MoneyPoint.money":
+		if e.complexity.Delivery_MoneyPoint.Money == nil {
+			break
+		}
+
+		return e.complexity.Delivery_MoneyPoint.Money(childComplexity), true
+
+	case "Delivery_MoneyPoint.tick":
+		if e.complexity.Delivery_MoneyPoint.Tick == nil {
+			break
+		}
+
+		return e.complexity.Delivery_MoneyPoint.Tick(childComplexity), true
 
 	case "Delivery_MonthCategoryView.category":
 		if e.complexity.Delivery_MonthCategoryView.Category == nil {
@@ -2072,6 +2285,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Delivery_Mutation.ClaimSessions(childComplexity, args["claims"].([]*model.SessionClaimInput)), true
 
+	case "Delivery_Mutation.clearMoves":
+		if e.complexity.Delivery_Mutation.ClearMoves == nil {
+			break
+		}
+
+		args, err := ec.field_Delivery_Mutation_clearMoves_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Delivery_Mutation.ClearMoves(childComplexity, args["id"].(string), args["carId"].(string), args["ownerToken"].(*string)), true
+
 	case "Delivery_Mutation.createCity":
 		if e.complexity.Delivery_Mutation.CreateCity == nil {
 			break
@@ -2156,6 +2381,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Delivery_Mutation.PublishCity(childComplexity, args["id"].(string)), true
 
+	case "Delivery_Mutation.renameSession":
+		if e.complexity.Delivery_Mutation.RenameSession == nil {
+			break
+		}
+
+		args, err := ec.field_Delivery_Mutation_renameSession_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Delivery_Mutation.RenameSession(childComplexity, args["id"].(string), args["displayName"].(string), args["ownerToken"].(*string)), true
+
 	case "Delivery_Mutation.saveSession":
 		if e.complexity.Delivery_Mutation.SaveSession == nil {
 			break
@@ -2239,6 +2476,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Delivery_Mutation.ValidateCity(childComplexity, args["config"].(string)), true
+
+	case "Delivery_Mutation.waitUntil":
+		if e.complexity.Delivery_Mutation.WaitUntil == nil {
+			break
+		}
+
+		args, err := ec.field_Delivery_Mutation_waitUntil_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Delivery_Mutation.WaitUntil(childComplexity, args["id"].(string), args["tick"].(*int), args["ticks"].(*int), args["ownerToken"].(*string)), true
 
 	case "Delivery_OrderView.assignedCar":
 		if e.complexity.Delivery_OrderView.AssignedCar == nil {
@@ -2445,7 +2694,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Delivery_Query.Events(childComplexity, args["id"].(string), args["sinceTick"].(int)), true
+		return e.complexity.Delivery_Query.Events(childComplexity, args["id"].(string), args["sinceTick"].(int), args["limit"].(*int)), true
 
 	case "Delivery_Query.health":
 		if e.complexity.Delivery_Query.Health == nil {
@@ -2453,6 +2702,54 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Delivery_Query.Health(childComplexity), true
+
+	case "Delivery_Query.itemsHistory":
+		if e.complexity.Delivery_Query.ItemsHistory == nil {
+			break
+		}
+
+		args, err := ec.field_Delivery_Query_itemsHistory_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Delivery_Query.ItemsHistory(childComplexity, args["ids"].([]string), args["cityId"].(*string), args["fromTick"].(*int), args["toTick"].(*int), args["maxPoints"].(*int)), true
+
+	case "Delivery_Query.metricHistory":
+		if e.complexity.Delivery_Query.MetricHistory == nil {
+			break
+		}
+
+		args, err := ec.field_Delivery_Query_metricHistory_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Delivery_Query.MetricHistory(childComplexity, args["metric"].(model.AnalyticsMetric), args["ids"].([]string), args["cityId"].(*string), args["fromTick"].(*int), args["toTick"].(*int), args["maxPoints"].(*int)), true
+
+	case "Delivery_Query.moneyHistory":
+		if e.complexity.Delivery_Query.MoneyHistory == nil {
+			break
+		}
+
+		args, err := ec.field_Delivery_Query_moneyHistory_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Delivery_Query.MoneyHistory(childComplexity, args["ids"].([]string), args["cityId"].(*string), args["fromTick"].(*int), args["toTick"].(*int), args["maxPoints"].(*int)), true
+
+	case "Delivery_Query.reputationHistory":
+		if e.complexity.Delivery_Query.ReputationHistory == nil {
+			break
+		}
+
+		args, err := ec.field_Delivery_Query_reputationHistory_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Delivery_Query.ReputationHistory(childComplexity, args["ids"].([]string), args["cityId"].(*string), args["fromTick"].(*int), args["toTick"].(*int), args["maxPoints"].(*int)), true
 
 	case "Delivery_Query.session":
 		if e.complexity.Delivery_Query.Session == nil {
@@ -2471,7 +2768,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			break
 		}
 
-		return e.complexity.Delivery_Query.Sessions(childComplexity), true
+		args, err := ec.field_Delivery_Query_sessions_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Delivery_Query.Sessions(childComplexity, args["sort"].(*model.SessionSort), args["limit"].(*int), args["before"].(*time.Time), args["cursor"].(*string), args["mine"].(*bool)), true
 
 	case "Delivery_SessionClaimResult.sessionID":
 		if e.complexity.Delivery_SessionClaimResult.SessionID == nil {
@@ -2494,12 +2796,26 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Delivery_SessionSummary.CreatedAt(childComplexity), true
 
+	case "Delivery_SessionSummary.cursor":
+		if e.complexity.Delivery_SessionSummary.Cursor == nil {
+			break
+		}
+
+		return e.complexity.Delivery_SessionSummary.Cursor(childComplexity), true
+
 	case "Delivery_SessionSummary.deliveries":
 		if e.complexity.Delivery_SessionSummary.Deliveries == nil {
 			break
 		}
 
 		return e.complexity.Delivery_SessionSummary.Deliveries(childComplexity), true
+
+	case "Delivery_SessionSummary.displayName":
+		if e.complexity.Delivery_SessionSummary.DisplayName == nil {
+			break
+		}
+
+		return e.complexity.Delivery_SessionSummary.DisplayName(childComplexity), true
 
 	case "Delivery_SessionSummary.id":
 		if e.complexity.Delivery_SessionSummary.ID == nil {
@@ -2599,6 +2915,20 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Delivery_Snapshot.CreatedAt(childComplexity), true
 
+	case "Delivery_Snapshot.displayName":
+		if e.complexity.Delivery_Snapshot.DisplayName == nil {
+			break
+		}
+
+		return e.complexity.Delivery_Snapshot.DisplayName(childComplexity), true
+
+	case "Delivery_Snapshot.eventCapacity":
+		if e.complexity.Delivery_Snapshot.EventCapacity == nil {
+			break
+		}
+
+		return e.complexity.Delivery_Snapshot.EventCapacity(childComplexity), true
+
 	case "Delivery_Snapshot.events":
 		if e.complexity.Delivery_Snapshot.Events == nil {
 			break
@@ -2627,12 +2957,24 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.Delivery_Snapshot.Ledger(childComplexity), true
 
+	case "Delivery_Snapshot.openOrders":
+		if e.complexity.Delivery_Snapshot.OpenOrders == nil {
+			break
+		}
+
+		return e.complexity.Delivery_Snapshot.OpenOrders(childComplexity), true
+
 	case "Delivery_Snapshot.orders":
 		if e.complexity.Delivery_Snapshot.Orders == nil {
 			break
 		}
 
-		return e.complexity.Delivery_Snapshot.Orders(childComplexity), true
+		args, err := ec.field_Delivery_Snapshot_orders_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Delivery_Snapshot.Orders(childComplexity, args["state"].([]model.OrderState), args["carId"].(*string), args["sinceTick"].(*int), args["includeFinished"].(*bool), args["limit"].(*int)), true
 
 	case "Delivery_Snapshot.paused":
 		if e.complexity.Delivery_Snapshot.Paused == nil {
@@ -2661,6 +3003,41 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Delivery_Snapshot.TickMs(childComplexity), true
+
+	case "Delivery_ValuePoint.tick":
+		if e.complexity.Delivery_ValuePoint.Tick == nil {
+			break
+		}
+
+		return e.complexity.Delivery_ValuePoint.Tick(childComplexity), true
+
+	case "Delivery_ValuePoint.value":
+		if e.complexity.Delivery_ValuePoint.Value == nil {
+			break
+		}
+
+		return e.complexity.Delivery_ValuePoint.Value(childComplexity), true
+
+	case "Delivery_ValueSeries.cityId":
+		if e.complexity.Delivery_ValueSeries.CityID == nil {
+			break
+		}
+
+		return e.complexity.Delivery_ValueSeries.CityID(childComplexity), true
+
+	case "Delivery_ValueSeries.points":
+		if e.complexity.Delivery_ValueSeries.Points == nil {
+			break
+		}
+
+		return e.complexity.Delivery_ValueSeries.Points(childComplexity), true
+
+	case "Delivery_ValueSeries.sessionId":
+		if e.complexity.Delivery_ValueSeries.SessionID == nil {
+			break
+		}
+
+		return e.complexity.Delivery_ValueSeries.SessionID(childComplexity), true
 
 	case "Global_AuthProvider.id":
 		if e.complexity.Global_AuthProvider.ID == nil {
@@ -6552,11 +6929,17 @@ type Global_User {
 	Unique public name, 3-20 of a-z 0-9 _; the profile lives at /u/<handle>.
 	"""
 	handle: String!
+	"""
+	Public name shown on boards and profiles; an empty value falls back to the handle.
+	"""
 	displayName: String!
 	"""
 	When false the profile page is hidden and board entries read "Private player".
 	"""
 	profilePublic: Boolean!
+	"""
+	When the account was created (UTC).
+	"""
 	createdAt: Time!
 	"""
 	When the handle may be changed again; null when it can be changed now.
@@ -6571,7 +6954,13 @@ type Global_User {
 A way to sign in, enabled on this server. Sign in by navigating to /auth/<id>/login.
 """
 type Global_AuthProvider {
+	"""
+	Provider id used in the login URL, e.g. "google", "github", "dev" or "password".
+	"""
 	id: ID!
+	"""
+	Human-readable provider name for the sign-in button.
+	"""
 	name: String!
 }
 """
@@ -6581,16 +6970,34 @@ player it belongs to. Tokens last 24 hours; there is no refresh token, so a
 client stores it and signs in again when it expires.
 """
 type Global_AuthSession {
+	"""
+	Bearer token. Send it as ` + "`" + `Authorization: Bearer <token>` + "`" + `; keep it private.
+	"""
 	token: String!
+	"""
+	When the token stops being accepted (UTC).
+	"""
 	expiresAt: Time!
+	"""
+	The player the token belongs to.
+	"""
 	user: Global_User!
 }
 """
 A player's public identity page. Game-specific statistics live under that game.
 """
 type Global_Profile {
+	"""
+	Public handle; the profile lives at /u/<handle>.
+	"""
 	handle: String!
+	"""
+	Public display name; empty means the handle is shown.
+	"""
 	displayName: String!
+	"""
+	When the account was created (UTC).
+	"""
 	createdAt: Time!
 	"""
 	True when the viewer is this player (a private profile is visible only to its owner).
@@ -6608,6 +7015,10 @@ input Global_AccountInput {
 	displayName: String
 	profilePublic: Boolean
 }
+"""
+Account and sign-in operations shared by every game. Read ` + "`" + `me` + "`" + ` to identify the
+viewer; mutations require the Bearer token returned by the sign-in mutations.
+"""
 type Global_Query {
 	"""
 	The signed-in player, or null.
@@ -6622,6 +7033,10 @@ type Global_Query {
 	"""
 	profile(handle: String!): Global_Profile
 }
+"""
+Account, sign-in and profile mutations. Password sign-in and OAuth hand-off are
+same-origin only; tokens are stateless Bearer JWTs.
+"""
 type Global_Mutation {
 	"""
 	Sign-out counterpart for clients: tokens are stateless, so the server has
@@ -6656,23 +7071,80 @@ type Global_Mutation {
 	"""
 	deleteAccount(confirmHandle: String!): Boolean!
 }
+"""
+One grid step. Coordinates are x to the right, y downward, matching
+` + "`" + `grid[y][x]` + "`" + `.
+"""
 enum Delivery_Direction {
+	"""
+	One row up (y-1).
+	"""
 	NORTH
+	"""
+	One row down (y+1).
+	"""
 	SOUTH
+	"""
+	One column right (x+1).
+	"""
 	EAST
+	"""
+	One column left (x-1).
+	"""
 	WEST
 }
+"""
+Liveness of the delivery subsystem inside the process.
+"""
 type Delivery_Health {
+	"""
+	"ok" while sessions can be created and served.
+	"""
 	status: String!
 }
+"""
+One row in a save picker. Counters come from the stored metadata, so listing
+does not decode every session payload.
+"""
 type Delivery_SessionSummary {
+	"""
+	Session id; also the save's primary key.
+	"""
 	id: ID!
+	"""
+	When the save was created (UTC).
+	"""
 	createdAt: Time!
+	"""
+	The player's name for this save; empty when unnamed, in which case a client
+	shows the city name.
+	"""
+	displayName: String!
+	"""
+	World tick the save was last written at.
+	"""
 	tick: Int!
+	"""
+	Clock multiplier for a loaded session. An unloaded save reports 0
+	(paused), because a stored save has no running clock.
+	"""
 	speed: Int!
+	"""
+	Spendable balance in dollars.
+	"""
 	money: Int!
+	"""
+	Lifetime reputation, 0-5.
+	"""
 	reputation: Float!
+	"""
+	On-time deliveries completed.
+	"""
 	deliveries: Int!
+	"""
+	True when the session is currently held in memory; false means it will be
+	loaded from PostgreSQL on the next read.
+	"""
 	loaded: Boolean!
 	"""
 	The owning player's public name: an account's display name, "Private player"
@@ -6688,6 +7160,12 @@ type Delivery_SessionSummary {
 	True when the session belongs to the signed-in viewer's account.
 	"""
 	mine: Boolean!
+	"""
+	Opaque cursor naming this row's position in the requested sort order. Pass
+	the last row's cursor as ` + "`" + `sessions(cursor:)` + "`" + ` to fetch the next page without
+	skipping or repeating rows that share a sort value.
+	"""
+	cursor: String!
 }
 """
 The result of createSession. The ownerToken is returned only here and never by a
@@ -6696,12 +7174,18 @@ change the session (and attach it to an account later), while the session id
 alone stays enough to read it.
 """
 type Delivery_CreateSessionResult {
+	"""
+	The new session's first snapshot.
+	"""
 	session: Delivery_Snapshot!
 	"""
 	Secret that proves you created this session; keep it private.
 	"""
 	ownerToken: String!
 }
+"""
+Outcome of asking to attach a guest save to the signed-in account.
+"""
 enum Delivery_ClaimStatus {
 	"""
 	The session now belongs to your account.
@@ -6718,32 +7202,87 @@ enum Delivery_ClaimStatus {
 	REJECTED
 }
 input Delivery_SessionClaimInput {
+	"""
+	Session id to attach.
+	"""
 	sessionID: ID!
+	"""
+	The secret createSession returned for that session.
+	"""
 	ownerToken: String!
 }
+"""
+Per-claim outcome; claims are answered independently.
+"""
 type Delivery_SessionClaimResult {
+	"""
+	The session id from the request.
+	"""
 	sessionID: ID!
+	"""
+	Whether the save now belongs to the caller.
+	"""
 	status: Delivery_ClaimStatus!
 }
 """
 The full client view of a session at one tick.
 """
 type Delivery_Snapshot {
+	"""
+	Session id.
+	"""
 	id: ID!
+	"""
+	When the save was created (UTC).
+	"""
 	createdAt: Time!
+	"""
+	The player's name for this save; empty when unnamed, in which case a client
+	shows the city name.
+	"""
+	displayName: String!
+	"""
+	World tick, monotonically increasing.
+	"""
 	tick: Int!
 	"""
 	Clock multiplier: 0 paused, 1/2/4 running.
 	"""
 	speed: Int!
+	"""
+	True when the clock is stopped (speed 0).
+	"""
 	paused: Boolean!
 	"""
 	Wall-clock length of one tick at 1x, from the city config.
 	"""
 	tickMs: Int!
+	"""
+	The city as this session sees it: explored districts revealed, closed tiles
+	marked, and waiting customers listed.
+	"""
 	city: Delivery_CityView!
+	"""
+	Every car in the fleet, in stable id order.
+	"""
 	cars: [Delivery_CarView!]!
-	orders: [Delivery_OrderView!]!
+	"""
+	Delivery jobs, newest created first. With no arguments this is the history
+	up to the 2000-row default cap, which is what a replay or an audit usually
+	wants; ` + "`" + `limit` + "`" + ` cannot exceed 2000. A live client should ask for openOrders
+	or filter instead. Finished history is ~96% of a long save and never
+	shrinks, so selecting it per frame is the difference between a small and a
+	multi-megabyte payload.
+	"""
+	orders(state: [Delivery_OrderState!], carId: ID, sinceTick: Int, includeFinished: Boolean = true, limit: Int = 2000): [Delivery_OrderView!]!
+	"""
+	Every unfinished job (PENDING, ASSIGNED, PICKED_UP), newest created first.
+	This is the list a player acts on and the cheapest useful order read.
+	"""
+	openOrders: [Delivery_OrderView!]!
+	"""
+	Money, reputation and the newest statement window.
+	"""
 	ledger: Delivery_LedgerView!
 	"""
 	The purchasable catalogue with per-session unlock and affordability flags, cheapest first.
@@ -6755,18 +7294,78 @@ type Delivery_Snapshot {
 	own timeline, not through purchases.
 	"""
 	growth: [Delivery_GrowthView!]!
+	"""
+	The retained event feed, oldest first. Bounded by the city's max_events; see
+	eventCapacity and the events query for the truncation flag.
+	"""
 	events: [Delivery_EventView!]!
+	"""
+	How many events the retained feed can hold. A poller that asks for events
+	older than the oldest retained row has lost those events, and only the
+	events query can say so.
+	"""
+	eventCapacity: Int!
 	"""
 	Street works currently closing part of the map.
 	"""
 	closures: [Delivery_ClosureView!]!
 }
 """
+The retained event feed with the metadata a poller needs to tell a quiet
+stretch from a gap it missed.
+"""
+type Delivery_EventFeed {
+	"""
+	Matching events, oldest first, capped at the requested limit (newest kept).
+	"""
+	events: [Delivery_EventView!]!
+	"""
+	Tick of the oldest retained event, or the current tick when the feed is
+	empty.
+	"""
+	oldestTick: Int!
+	"""
+	True when the requested sinceTick predates the retained feed, so events
+	before oldestTick are gone rather than absent.
+	"""
+	truncated: Boolean!
+	"""
+	How many events the feed can retain (the city's max_events).
+	"""
+	capacity: Int!
+}
+"""
+How to order the session list.
+"""
+enum Delivery_SessionSort {
+	"""
+	Newest save first. The default, and the only order that needs no counters.
+	"""
+	CREATED_AT
+	"""
+	Highest world tick first.
+	"""
+	TICK
+	"""
+	Highest spendable balance first.
+	"""
+	MONEY
+}
+"""
 A window of the city around one car, for cheap polling.
 """
 type Delivery_CarWindow {
+	"""
+	The car at the centre of the window.
+	"""
 	car: Delivery_CarView!
+	"""
+	Number of rows in the window (shrinks at map edges).
+	"""
 	rowSpan: Int!
+	"""
+	Number of glyph columns in the window (shrinks at map edges).
+	"""
 	colSpan: Int!
 	"""
 	Row-major glyph rows for the window only.
@@ -6776,10 +7375,23 @@ type Delivery_CarWindow {
 	Origin of rows[0][0] in city coordinates.
 	"""
 	originX: Int!
+	"""
+	City row of rows[0].
+	"""
 	originY: Int!
+	"""
+	Cars inside the window, including the centre car.
+	"""
 	visibleCars: [Delivery_CarView!]!
+	"""
+	Orders whose kitchen or customer lies inside the window.
+	"""
 	nearbyOrders: [Delivery_OrderView!]!
 }
+"""
+Lifecycle of a city: a draft is private to its owner, a published city is
+selectable by everyone.
+"""
 enum Delivery_CityStatus {
 	"""
 	A work in progress: only its owner can see, edit, play or publish it.
@@ -6794,8 +7406,17 @@ enum Delivery_CityStatus {
 One entry in the city catalogue: a published city or the caller's own draft.
 """
 type Delivery_CityInfo {
+	"""
+	City id used by ` + "`" + `city` + "`" + `, ` + "`" + `cityConfig` + "`" + ` and ` + "`" + `createSession(cityId:)` + "`" + `.
+	"""
 	id: ID!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	Width and height of the square grid.
+	"""
 	gridSize: Int!
 	"""
 	DRAFT cities are visible only to their owner. The owner may play and publish a draft;
@@ -6816,9 +7437,22 @@ type Delivery_CityInfo {
 	"""
 	ownerless: Boolean!
 }
+"""
+The city as one session sees it: explored districts, waiting customers and the
+static facilities.
+"""
 type Delivery_CityView {
+	"""
+	City id.
+	"""
 	id: ID!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	Width and height of the square grid.
+	"""
 	gridSize: Int!
 	"""
 	DRAFT cities are visible only to their owner. The owner may play a draft; another
@@ -6848,6 +7482,9 @@ type Delivery_CityView {
 	Tiles still unexplored. Always 0 on the static city query, which reveals all.
 	"""
 	hiddenTiles: Int!
+	"""
+	Pickup points (restaurants).
+	"""
 	kitchens: [Delivery_PointView!]!
 	"""
 	Customers currently waiting for a delivery. A customer appears when it
@@ -6856,7 +7493,13 @@ type Delivery_CityView {
 	shows authored houses as 'h' and carries no session state.
 	"""
 	customers: [Delivery_PointView!]!
+	"""
+	Depots: the only place cars can be bought and where charging is fastest.
+	"""
 	depots: [Delivery_PointView!]!
+	"""
+	Standalone charging points (slower than a depot).
+	"""
 	chargers: [Delivery_PointView!]!
 }
 """
@@ -6864,24 +7507,76 @@ The outcome of validateCity: valid means the JSON parses into a city; publishabl
 full publication gate (the same validation the server runs at startup) accepts it.
 """
 type Delivery_CityValidationResult {
+	"""
+	True when the JSON parses into a city config.
+	"""
 	valid: Boolean!
+	"""
+	True when the full publication gate (grid, districts, orders, reachability)
+	accepts the city.
+	"""
 	publishable: Boolean!
+	"""
+	Human-readable validation failures; empty when publishable.
+	"""
 	issues: [String!]!
 }
+"""
+A named location on the grid: kitchen, depot, charger or waiting customer.
+"""
 type Delivery_PointView {
+	"""
+	Stable id used by orders, builds and assignments.
+	"""
 	id: ID!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	Column on the grid (right is +x).
+	"""
 	x: Int!
+	"""
+	Row on the grid (down is +y).
+	"""
 	y: Int!
 }
+"""
+One vehicle in the fleet: position, charge, hold and what it is doing.
+"""
 type Delivery_CarView {
+	"""
+	Stable car id, used by every car mutation.
+	"""
 	id: ID!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	Vehicle class: scooter, van or truck.
+	"""
 	className: String!
+	"""
+	Column on the grid (right is +x).
+	"""
 	x: Int!
+	"""
+	Row on the grid (down is +y).
+	"""
 	y: Int!
+	"""
+	Current battery charge.
+	"""
 	battery: Int!
+	"""
+	Charge capacity of this class.
+	"""
 	maxBattery: Int!
+	"""
+	Charge as an integer percentage 0-100.
+	"""
 	batteryPct: Int!
 	"""
 	Hold size in boxes.
@@ -6895,12 +7590,25 @@ type Delivery_CarView {
 	Boxes still free.
 	"""
 	freeBoxes: Int!
+	"""
+	Order ids whose boxes are in the hold.
+	"""
 	cargo: [ID!]!
+	"""
+	Coarse status shown by the UI.
+	"""
 	state: Delivery_CarState!
 	"""
-	The move queued for the next tick, if any.
+	The move queued for the next tick, if any. This is the head of the car's
+	movement queue; steps after it are listed in ` + "`" + `queuedMoves` + "`" + `.
 	"""
 	queuedMove: Delivery_Direction
+	"""
+	The full movement plan in execution order: the step for the next tick first,
+	then the backlog. A car executes at most one step per tick, so a long list
+	unfolds over several ticks. Empty when nothing is queued.
+	"""
+	queuedMoves: [Delivery_Direction!]!
 	"""
 	Why the most recent move was rejected, if it was.
 	"""
@@ -6911,19 +7619,53 @@ type Delivery_CarView {
 	"""
 	chargeDue: Int!
 }
+"""
+What a car is doing right now.
+"""
 enum Delivery_CarState {
+	"""
+	Empty hold, not on a charger, with charge left.
+	"""
 	IDLE
+	"""
+	Carrying at least one box.
+	"""
 	CARRYING
+	"""
+	On a depot or charger with battery below full. Depot charging is free;
+	standalone chargers bill per tick.
+	"""
 	CHARGING
+	"""
+	Out of battery away from a charger; must be towed.
+	"""
 	STRANDED
 }
+"""
+Why the engine rejected a queued move. A rejection does not advance the clock;
+the car stays where it is. Checks run in a fixed order and the first failure is
+reported.
+"""
 enum Delivery_RejectReason {
+	"""
+	The queued direction is not one of the four grid steps.
+	"""
 	BAD_DIRECTION
+	"""
+	The destination is outside the grid.
+	"""
 	OFF_GRID
+	"""
+	Water, building or an unexplored tile. A street closure reports CLOSED.
+	"""
 	BLOCKED
+	"""
+	The car has no charge left, or the step costs more than it has.
+	"""
 	NO_BATTERY
 	"""
-	The tile is closed for street works.
+	The tile is closed for street works. A car already standing on it may
+	still drive off.
 	"""
 	CLOSED
 	"""
@@ -6931,39 +7673,92 @@ enum Delivery_RejectReason {
 	"""
 	OCCUPIED
 }
+"""
+One purchasable vehicle class, with this session's unlock and affordability
+flags.
+"""
 type Delivery_CarClassView {
+	"""
+	Class name accepted by buyCar.
+	"""
 	className: String!
+	"""
+	Purchase price in dollars.
+	"""
 	price: Int!
 	"""
 	Hold size in boxes.
 	"""
 	capacity: Int!
+	"""
+	Charge capacity of this class.
+	"""
 	maxBattery: Int!
+	"""
+	Battery spent per road step for this class; ground tiles add the city's
+	ground surcharge.
+	"""
 	stepCost: Int!
 	"""
 	True once a build has granted this class, or it never needed one.
 	"""
 	unlocked: Boolean!
+	"""
+	True when the current balance covers the price.
+	"""
 	affordable: Boolean!
 }
+"""
+One delivery job: what was ordered, where it goes, its deadline and pay.
+"""
 type Delivery_OrderView {
+	"""
+	Order id used by assignOrder/unassignOrder.
+	"""
 	id: ID!
+	"""
+	Item code the customer ordered (e.g. "pizza").
+	"""
 	item: String!
+	"""
+	Item display name.
+	"""
 	itemName: String!
 	"""
 	How many boxes the customer asked for.
 	"""
 	quantity: Int!
+	"""
+	Kitchen that supplies it.
+	"""
 	kitchenId: ID!
+	"""
+	Kitchen display name.
+	"""
 	kitchenName: String!
+	"""
+	Customer that placed it.
+	"""
 	customerId: ID!
+	"""
+	Customer display name.
+	"""
 	customerName: String!
+	"""
+	Lifecycle state; PENDING/ASSIGNED/PICKED_UP are live, DONE/EXPIRED are settled.
+	"""
 	state: Delivery_OrderState!
 	"""
 	The car holding or holding-to-be. Kept after DONE, so read it as history once state is terminal.
 	"""
 	assignedCar: ID
+	"""
+	Tick the customer raised the order.
+	"""
 	createdTick: Int!
+	"""
+	Tick by which the delivery must be completed.
+	"""
 	deadlineTick: Int!
 	"""
 	Ticks until the deadline. Signed: negative means already past it but not yet swept.
@@ -6982,13 +7777,35 @@ type Delivery_OrderView {
 	"""
 	late: Boolean!
 }
+"""
+Order lifecycle. Live states can still be assigned and delivered.
+"""
 enum Delivery_OrderState {
+	"""
+	Raised by a customer, no car assigned.
+	"""
 	PENDING
+	"""
+	A car is assigned but the boxes are still at the kitchen.
+	"""
 	ASSIGNED
+	"""
+	The car picked the boxes up and is carrying them.
+	"""
 	PICKED_UP
+	"""
+	Delivered, on time or late.
+	"""
 	DONE
+	"""
+	The deadline passed before delivery.
+	"""
 	EXPIRED
 }
+"""
+The checking account and its report: balance, reputation, lifetime counters and
+the newest statement window.
+"""
 type Delivery_LedgerView {
 	"""
 	Spendable balance. Buying a car or build reduces it.
@@ -7006,7 +7823,13 @@ type Delivery_LedgerView {
 	On-time deliveries only. A late delivery increments lateDeliveries instead.
 	"""
 	deliveries: Int!
+	"""
+	Deliveries completed after their deadline.
+	"""
 	lateDeliveries: Int!
+	"""
+	Orders that expired before delivery.
+	"""
 	expiredOrders: Int!
 	"""
 	Every order ever raised, including the ones that later expired.
@@ -7016,6 +7839,9 @@ type Delivery_LedgerView {
 	Consecutive on-time deliveries. Both a late delivery and an expiry reset it to 0.
 	"""
 	onTimeStreak: Int!
+	"""
+	Tows paid for.
+	"""
 	tows: Int!
 	"""
 	Delivered ORDERS per item, not boxes: a two-box delivery adds 1.
@@ -7038,21 +7864,79 @@ type Delivery_LedgerView {
 	"""
 	upkeepDue: Int!
 	"""
+	Share of a quoted reward the fleet is actually paid, from its standing: 1.0
+	at 4.90+, then 0.9, 0.8 … per half point down to 0.1 at 0.50. Below 0.50 the
+	ladder floors at 0.1 — any standing above zero still earns a tenth, so a
+	collapsed fleet can work its way back. Only an exactly-zero standing pays
+	nothing. A session opens at the map's max_reputation (5.0 on the shipped
+	city), so early deliveries pay in full; missed orders spend the ladder.
+	"""
+	payMultiplier: Float!
+	"""
 	Checking-account statement, newest first: every movement of money with the
 	car it belongs to when the movement is car-specific. Snapshots carry the
-	most recent rows; the engine retains the full statement with the save. The
-	live subscription carries fewer rows than a query.
+	rows of the newest three months; the engine retains the full statement with
+	the save, and these arguments read further back on demand. The query and the
+	live subscription carry the same window and rows.
+	
+	` + "`" + `month` + "`" + ` is the 1-based accounting month (month 1 covers ticks 0 through
+	ticksPerMonth-1) and overrides the tick window with that month's bounds.
+	` + "`" + `fromTick` + "`" + `/` + "`" + `toTick` + "`" + ` are inclusive tick bounds and intersect with ` + "`" + `month` + "`" + ` when
+	both are given. ` + "`" + `category` + "`" + ` keeps one economic bucket. ` + "`" + `carId` + "`" + ` keeps rows
+	attributed to that car. ` + "`" + `limit` + "`" + ` caps the rows, newest first, and defaults to
+	the snapshot window.
 	"""
-	cashEntries: [Delivery_CashEntryView!]!
+	cashEntries(month: Int, fromTick: Int, toTick: Int, category: Delivery_CashCategory, carId: ID, limit: Int): [Delivery_CashEntryView!]!
 	"""
 	Length of one accounting month in simulation ticks.
 	"""
 	ticksPerMonth: Int!
 	"""
-	Monthly income/expense report, newest first. Snapshots carry at most 12
-	months; quiet months are included as zero rows so month numbers do not skip.
+	Monthly income/expense report, newest first. Quiet months are included as
+	zero rows so month numbers do not skip. The default window is the newest
+	three months; ` + "`" + `month` + "`" + ` selects one month, and ` + "`" + `fromTick` + "`" + `/` + "`" + `toTick` + "`" + ` select the
+	months intersecting that range. ` + "`" + `category` + "`" + ` keeps one bucket and recomputes
+	the month's income, expenses and net from it, so a filtered row reads as that
+	bucket's own report.
 	"""
-	months: [Delivery_MonthView!]!
+	months(month: Int, fromTick: Int, toTick: Int, category: Delivery_CashCategory, limit: Int): [Delivery_MonthView!]!
+	"""
+	Per-car profit and loss for the requested window, highest row count first.
+	Same filters as cashEntries minus carId, because this is the aggregate of
+	every car. Rows that belong to no car (upkeep, world costs) are not included,
+	so the entries here never sum to the whole month; add un-attributed rows to
+	reconcile against months.
+	"""
+	cars(month: Int, fromTick: Int, toTick: Int, limit: Int = 50): [Delivery_CarLedgerView!]!
+}
+"""
+One car's income, expenses and net for a window of the statement.
+"""
+type Delivery_CarLedgerView {
+	"""
+	Car id these totals are attributed to.
+	"""
+	carId: ID!
+	"""
+	Car display name.
+	"""
+	carName: String!
+	"""
+	Positive magnitude of money in attributed to this car.
+	"""
+	income: Int!
+	"""
+	Positive magnitude of money out attributed to this car.
+	"""
+	expenses: Int!
+	"""
+	income minus expenses.
+	"""
+	net: Int!
+	"""
+	Statement rows behind these totals.
+	"""
+	rows: Int!
 }
 """
 One movement through the player's checking account.
@@ -7062,7 +7946,13 @@ type Delivery_CashEntryView {
 	Stable, monotonic id within the session. Use it as the list key.
 	"""
 	seq: Int!
+	"""
+	World tick the movement was recorded at.
+	"""
 	tick: Int!
+	"""
+	What the movement is.
+	"""
 	kind: Delivery_CashKind!
 	"""
 	Economic bucket used by the monthly report.
@@ -7082,35 +7972,109 @@ type Delivery_CashEntryView {
 	The car this movement belongs to, when it belongs to one.
 	"""
 	carId: ID
+	"""
+	Car display name when carId is set.
+	"""
 	carName: String
+	"""
+	Order this movement belongs to, for delivery income and fines.
+	"""
 	orderId: ID
 	"""
 	Short human-readable detail, e.g. "pizza to Rosa's" or "fleet upkeep".
 	"""
 	memo: String!
 }
+"""
+Specific reason for a checking-account movement. The category groups these for
+the monthly report.
+"""
 enum Delivery_CashKind {
+	"""
+	Starting balance granted with the save.
+	"""
 	OPENING
+	"""
+	On-time delivery income.
+	"""
 	DELIVERY
+	"""
+	Late delivery income at the reduced multiplier.
+	"""
 	LATE_DELIVERY
+	"""
+	Fine for an expired order.
+	"""
 	ORDER_FINE
+	"""
+	Periodic fleet running cost.
+	"""
 	UPKEEP
+	"""
+	Paid charging on a charger or depot.
+	"""
 	CHARGING
+	"""
+	Tow back to a depot.
+	"""
 	TOW
+	"""
+	Vehicle purchase.
+	"""
 	CAR_PURCHASE
+	"""
+	Build or city upgrade purchase.
+	"""
 	BUILD
+	"""
+	Reward or grant (achievement, opening bonus).
+	"""
 	GRANT
 }
+"""
+Economic bucket used by the monthly report. Income buckets are positive;
+expense buckets are negative.
+"""
 enum Delivery_CashCategory {
+	"""
+	Opening balance.
+	"""
 	OPENING
+	"""
+	Delivery income, on time or late.
+	"""
 	DELIVERY_INCOME
+	"""
+	Rewards and grants.
+	"""
 	REWARDS
+	"""
+	Fines for expired orders.
+	"""
 	ORDER_FINES
+	"""
+	Fleet running cost.
+	"""
 	UPKEEP
+	"""
+	Charging fees.
+	"""
 	CHARGING
+	"""
+	Tow fees.
+	"""
 	TOWS
+	"""
+	Vehicle purchases.
+	"""
 	CAR_PURCHASES
+	"""
+	Builds and city upgrades.
+	"""
 	BUILDS
+	"""
+	Anything that does not fit another bucket.
+	"""
 	OTHER
 }
 """
@@ -7121,7 +8085,13 @@ type Delivery_MonthView {
 	One-based month number. Month 1 covers ticks 0 through ticksPerMonth-1.
 	"""
 	index: Int!
+	"""
+	First tick in the month (inclusive).
+	"""
 	startTick: Int!
+	"""
+	Last tick in the month (inclusive).
+	"""
 	endTick: Int!
 	"""
 	Positive magnitude of money in.
@@ -7135,9 +8105,18 @@ type Delivery_MonthView {
 	income minus expenses.
 	"""
 	net: Int!
+	"""
+	Per-bucket totals for the month, in category order.
+	"""
 	categories: [Delivery_MonthCategoryView!]!
 }
+"""
+One economic bucket's totals within a month.
+"""
 type Delivery_MonthCategoryView {
+	"""
+	Bucket this row describes.
+	"""
 	category: Delivery_CashCategory!
 	"""
 	Positive magnitude in this category, or zero.
@@ -7148,23 +8127,165 @@ type Delivery_MonthCategoryView {
 	"""
 	expenses: Int!
 }
+"""
+Delivered orders for one item, counted as orders rather than boxes.
+"""
 type Delivery_ItemCount {
+	"""
+	Item code.
+	"""
 	item: String!
+	"""
+	Orders delivered for this item.
+	"""
 	count: Int!
 }
-type Delivery_GrowthView {
-	id: ID!
+"""
+One balance point in a session's money-by-tick curve.
+"""
+type Delivery_MoneyPoint {
+	"""
+	Tick of the sampled balance.
+	"""
 	tick: Int!
+	"""
+	Balance at that tick, in dollars.
+	"""
+	money: Int!
+}
+"""
+A session's money-by-tick series, read from the indexed delivery history
+projection. Points are downsampled to at most the requested maxPoints; when the
+window reaches the session's current tick, the last point is its current
+balance.
+"""
+type Delivery_MoneyHistory {
+	"""
+	Session the series belongs to.
+	"""
+	sessionId: ID!
+	"""
+	City the session was created from.
+	"""
+	cityId: ID!
+	"""
+	Sampled balances, oldest first.
+	"""
+	points: [Delivery_MoneyPoint!]!
+}
+"""
+One value at a tick in a non-money analytics series.
+"""
+type Delivery_ValuePoint {
+	"""
+	Tick of the sample.
+	"""
+	tick: Int!
+	"""
+	Sample value: cumulative boxes for itemsHistory, reputation for
+	reputationHistory.
+	"""
+	value: Float!
+}
+"""
+One session's downsampled items-or-reputation series.
+"""
+type Delivery_ValueSeries {
+	"""
+	Session the series belongs to.
+	"""
+	sessionId: ID!
+	"""
+	City the session was created from.
+	"""
+	cityId: ID!
+	"""
+	Sampled values, oldest first.
+	"""
+	points: [Delivery_ValuePoint!]!
+}
+"""
+Cumulative operational series available from metricHistory.
+"""
+enum Delivery_AnalyticsMetric {
+	"""
+	On-time orders completed, counted at delivery tick.
+	"""
+	DELIVERIES
+	"""
+	Orders completed after their deadline, counted at delivery tick.
+	"""
+	LATE_DELIVERIES
+	"""
+	Orders that expired undelivered, counted just after their deadline.
+	"""
+	EXPIRED_ORDERS
+	"""
+	Every order ever raised, counted at creation tick.
+	"""
+	ORDERS_CREATED
+	"""
+	Cash paid by completed orders (on time and late), counted at delivery tick.
+	"""
+	DELIVERY_INCOME
+	"""
+	Cash fined for expired orders, as a positive spend magnitude.
+	"""
+	ORDER_FINES
+	"""
+	Fleet upkeep paid, as a positive spend magnitude.
+	"""
+	UPKEEP_SPEND
+	"""
+	Charging fees paid, as a positive spend magnitude.
+	"""
+	CHARGING_SPEND
+	"""
+	Tow fees paid, as a positive spend magnitude.
+	"""
+	TOW_SPEND
+}
+"""
+One scheduled city-growth stage.
+"""
+type Delivery_GrowthView {
+	"""
+	Stage id, stable within a city.
+	"""
+	id: ID!
+	"""
+	Tick at which the stage applies.
+	"""
+	tick: Int!
+	"""
+	Short name, e.g. "Harbour Gate".
+	"""
 	title: String!
+	"""
+	What the stage changes: districts revealed, kitchens/customers added,
+	chargers or depot bays built.
+	"""
 	description: String!
+	"""
+	True once the stage has applied.
+	"""
 	done: Boolean!
 }
+"""
+One entry in the session's retained activity feed.
+"""
 type Delivery_EventView {
+	"""
+	Tick the event was recorded at.
+	"""
 	tick: Int!
 	"""
 	One of the car_* / order_* / city_growth / closure_* names the engine emits.
 	"""
 	type: String!
+	"""
+	Human-readable description of what happened.
+	"""
 	message: String!
 	"""
 	Null for world events (spawns, builds, closures); set for anything a car caused.
@@ -7174,15 +8295,30 @@ type Delivery_EventView {
 	Position of the event, or 0,0 when it has none — non-null, so 0,0 is ambiguous.
 	"""
 	x: Int!
+	"""
+	Row of the event, 0 when it has no position.
+	"""
 	y: Int!
 }
 """
 A stretch of street closed for works.
 """
 type Delivery_ClosureView {
+	"""
+	Closure id, used by events and the UI.
+	"""
 	id: ID!
+	"""
+	Why the street is closed, e.g. "street works".
+	"""
 	reason: String!
+	"""
+	Tick the closure begins.
+	"""
 	startTick: Int!
+	"""
+	Tick the closure ends (reopens at this tick).
+	"""
 	endTick: Int!
 	"""
 	Ticks until it reopens; negative when it has already ended.
@@ -7196,10 +8332,23 @@ type Delivery_ClosureView {
 	Bounding box of the closed tiles, for camera moves.
 	"""
 	minX: Int!
+	"""
+	Top row of the closure.
+	"""
 	minY: Int!
+	"""
+	Rightmost column of the closure.
+	"""
 	maxX: Int!
+	"""
+	Bottom row of the closure.
+	"""
 	maxY: Int!
 }
+"""
+Delivery reads: cities, saves, live snapshots, event deltas and money history.
+Reads are public; mutations are creator-only.
+"""
 type Delivery_Query {
 	"""
 	Liveness probe.
@@ -7222,21 +8371,86 @@ type Delivery_Query {
 	"""
 	cityConfig(id: ID!): String
 	"""
-	Every save on disk, newest first.
+	Saved sessions, ordered by sort. A save's row is described from its stored
+	counters, so a bounded list does not decode the save payloads; saves written
+	before counters existed are decoded only when they survive the filter and
+	the limit. mine = true requires a signed-in viewer and keeps that account's
+	saves.
 	"""
-	sessions: [Delivery_SessionSummary!]!
+	sessions(sort: Delivery_SessionSort = CREATED_AT,
+		"""
+		Rows to return, capped at 500.
+		"""
+		limit: Int = 50
+
+		"""
+		Cursor: keep saves created strictly before this time. Valid only with
+		the default CREATED_AT sort and cannot be combined with ` + "`" + `cursor` + "`" + `; the
+		time alone cannot break ties between equal timestamps.
+		"""
+		before: Time
+
+		"""
+		Opaque page cursor: the ` + "`" + `cursor` + "`" + ` of the last row of the previous page.
+		It encodes the requested sort's key and the row id, so paging is exact
+		for every sort, including equal values. Must match ` + "`" + `sort` + "`" + `; cannot be
+		combined with ` + "`" + `before` + "`" + `.
+		"""
+		cursor: String
+
+		"""
+		Keep only the signed-in viewer's saves. UNAUTHENTICATED when signed out.
+		"""
+		mine: Boolean
+	): [Delivery_SessionSummary!]!
 	"""
-	One session's full state. Rehydrates from disk when not in memory.
+	Money-by-tick series for up to 20 delivery sessions, read from the indexed
+	delivery history projection rather than from live sessions or Prometheus.
+	
+	Omitted ids select the most recently created sessions. cityId narrows the
+	set. fromTick/toTick are inclusive; an omitted toTick runs to each session's
+	current tick. maxPoints downsamples each series into tick buckets and keeps
+	the last balance in each bucket, so a long session stays bounded.
+	"""
+	moneyHistory(ids: [ID!], cityId: ID, fromTick: Int, toTick: Int, maxPoints: Int = 500): [Delivery_MoneyHistory!]!
+	"""
+	Cumulative boxes delivered at each tick, from done orders in the indexed
+	delivery history projection. Expired and open orders do not contribute.
+	Same window and downsampling contract as moneyHistory.
+	"""
+	itemsHistory(ids: [ID!], cityId: ID, fromTick: Int, toTick: Int, maxPoints: Int = 500): [Delivery_ValueSeries!]!
+	"""
+	Recorded reputation at each tick. Sessions saved before the reputation
+	ledger existed return one current point until their next reputation change.
+	Same window and downsampling contract as moneyHistory.
+	"""
+	reputationHistory(ids: [ID!], cityId: ID, fromTick: Int, toTick: Int, maxPoints: Int = 500): [Delivery_ValueSeries!]!
+	"""
+	Cumulative operational metrics at each tick, read from the indexed delivery
+	history projection. Every metric is monotonic from tick 0 except the
+	spending series, which accumulate spend as a positive magnitude.
+	Same window and downsampling contract as moneyHistory.
+	"""
+	metricHistory(metric: Delivery_AnalyticsMetric!, ids: [ID!], cityId: ID, fromTick: Int, toTick: Int, maxPoints: Int = 500): [Delivery_ValueSeries!]!
+	"""
+	One session's full state. Loads the PostgreSQL row when not in memory.
 	"""
 	session(id: ID!): Delivery_Snapshot!
 	"""
 	A window of the city around one car, for cheap agent polling.
+	
+	radius is the half-width in tiles and is clamped to 10; a larger value
+	returns the same window as 10.
 	"""
 	carView(id: ID!, carId: ID!, radius: Int! = 2): Delivery_CarWindow!
 	"""
 	Events newer than a tick, so a client can poll for deltas.
+	
+	The returned feed says whether the request reached further back than the
+	retained ring: truncated = true means events before oldestTick are gone, not
+	absent. limit keeps the newest matching events, capped at the feed capacity.
 	"""
-	events(id: ID!, sinceTick: Int! = 0): [Delivery_EventView!]!
+	events(id: ID!, sinceTick: Int! = 0, limit: Int = 200): Delivery_EventFeed!
 	"""
 	Whether this caller may change the session: true for the session's creator
 	(by owner token or signed-in owning account) and for a session created before
@@ -7245,9 +8459,13 @@ type Delivery_Query {
 	"""
 	canPlaySession(id: ID!, ownerToken: String): Boolean!
 }
+"""
+Delivery writes and lifecycle. Every session mutation requires the creator's
+owner token or the owning account; reads stay public.
+"""
 type Delivery_Mutation {
 	"""
-	Start a new city. Both fields optional; a seed makes it reproducible, and an omitted id is
+	Start a new city. Every argument is optional; a seed makes it reproducible, and an omitted id is
 	generated. cityId selects the city config to snapshot (omitted = the default city); the
 	session keeps that snapshot, so later city edits never change a running game. A signed-in
 	creator's session belongs to their account. The response carries the secret ownerToken,
@@ -7255,16 +8473,35 @@ type Delivery_Mutation {
 	"""
 	createSession(id: ID, seed: Int, cityId: ID): Delivery_CreateSessionResult!
 	"""
-	Queue one step for one car. Does NOT advance the clock. Only the session's
+	Queue one step for one car by appending it to that car's movement queue.
+	Does NOT advance the clock: queued steps run one per tick, in order, so a
+	client can preload a route and then call tick. A rejected step (wall,
+	battery, closure, traffic) is spent, not retried. At most 64 steps may be
+	queued per car; the overflow is LIMIT_REACHED. Only the session's
 	creator may change it: pass the ownerToken from createSession, or be signed in
 	to the account that owns the session (FORBIDDEN otherwise). Sessions created
 	before owner tokens stay open.
 	"""
 	moveCar(id: ID!, carId: ID!, direction: Delivery_Direction!, ownerToken: String): Delivery_Snapshot!
 	"""
+	Drop a car's entire movement queue, including the step for the next tick.
+	Use it to replan: a preloaded route must not keep steering after traffic or
+	closures change. Creator-only, as moveCar.
+	"""
+	clearMoves(id: ID!, carId: ID!, ownerToken: String): Delivery_Snapshot!
+	"""
 	Advance the world manually. Useful when paused. Creator-only, as moveCar.
 	"""
 	tick(id: ID!, count: Int! = 1, ownerToken: String): Delivery_Snapshot!
+	"""
+	Wait for the running clock to reach a target tick, then return that snapshot.
+	Pass exactly one of ` + "`" + `tick` + "`" + ` (an absolute tick in the future) or ` + "`" + `ticks` + "`" + ` (a
+	count from the tick when the call starts, at most 1000). The clock must be
+	running: a paused session never advances, so the call fails with
+	INVALID_ARGUMENT instead of hanging, and pausing while it waits ends it the
+	same way. Creator-only, as moveCar.
+	"""
+	waitUntil(id: ID!, tick: Int, ticks: Int, ownerToken: String): Delivery_Snapshot!
 	"""
 	Set the clock multiplier. 0 pauses. Creator-only, as moveCar.
 	"""
@@ -7274,6 +8511,9 @@ type Delivery_Mutation {
 	Creator-only, as moveCar.
 	"""
 	assignOrder(id: ID!, orderId: ID!, carId: ID!, ownerToken: String): Delivery_Snapshot!
+	"""
+	Remove the car from an order, returning it to PENDING. Creator-only, as moveCar.
+	"""
 	unassignOrder(id: ID!, orderId: ID!, ownerToken: String): Delivery_Snapshot!
 	"""
 	Buy a vehicle at a depot. Creator-only, as moveCar.
@@ -7284,16 +8524,22 @@ type Delivery_Mutation {
 	"""
 	towCar(id: ID!, carId: ID!, ownerToken: String): Delivery_Snapshot!
 	"""
-	Write the save to disk. Creator-only, as moveCar.
+	Persist the save to PostgreSQL now. Creator-only, as moveCar.
 	"""
 	saveSession(id: ID!, ownerToken: String): Delivery_Snapshot!
+	"""
+	Name this save for the player. Creator-only, as moveCar. A blank name clears
+	it and every view falls back to the city name. Persisted immediately, so the
+	name survives a restart and shows in the session list before the save loads.
+	"""
+	renameSession(id: ID!, displayName: String!, ownerToken: String): Delivery_Snapshot!
 	"""
 	Save, then drop from memory. The next read rehydrates. Creator-only: evicting
 	someone else's session would stop their clock.
 	"""
 	evictSession(id: ID!, ownerToken: String): Boolean!
 	"""
-	Delete the save file permanently. Needs the ownerToken (or the owning account)
+	Delete the save row permanently. Needs the ownerToken (or the owning account)
 	even for a guest session; only a save created before owner tokens is open.
 	"""
 	deleteSession(id: ID!, ownerToken: String): Boolean!
@@ -7330,19 +8576,56 @@ type Delivery_Mutation {
 	"""
 	validateCity(config: String!): Delivery_CityValidationResult!
 }
+"""
+A step direction. UP decreases y, RIGHT increases x, DOWN increases y, LEFT
+decreases x.
+"""
 enum Mazes_Direction {
+	"""
+	One row up (y-1).
+	"""
 	UP
+	"""
+	One column right (x+1).
+	"""
 	RIGHT
+	"""
+	One row down (y+1).
+	"""
 	DOWN
+	"""
+	One column left (x-1).
+	"""
 	LEFT
 }
+"""
+Session play state.
+"""
 enum Mazes_Status {
+	"""
+	Created but not moved yet.
+	"""
 	READY
+	"""
+	In progress.
+	"""
 	PLAYING
+	"""
+	The finish was reached.
+	"""
 	WON
+	"""
+	The move limit was exhausted.
+	"""
 	LOST
 }
+"""
+Why a session ended in LOST.
+"""
 enum Mazes_LossReason {
+	"""
+	No moves remain.
+	"""
 	MOVE_LIMIT
 }
 """
@@ -7353,15 +8636,39 @@ enum Mazes_Via {
 	Blocked by void or the edge: nothing happened and the move is not counted.
 	"""
 	NONE
+	"""
+	An ordinary one-tile step.
+	"""
 	WALK
+	"""
+	A blue arrow: one level up.
+	"""
 	STAIRS_UP
+	"""
+	A red arrow: one level down.
+	"""
 	STAIRS_DOWN
+	"""
+	A numbered hole: teleported to its twin on the same level.
+	"""
 	PORTAL
 }
+"""
+How to order the session list.
+"""
 enum Mazes_SessionSort {
+	"""
+	Most recent action first. The default.
+	"""
 	RECENT
+	"""
+	Newest save first.
+	"""
 	CREATED
 }
+"""
+Lifecycle of a community map: a draft is private to its owner.
+"""
 enum Mazes_MapStatus {
 	"""
 	A work in progress: only its owner can see, edit, play or publish it.
@@ -7376,8 +8683,17 @@ enum Mazes_MapStatus {
 A tile coordinate in the tower. level 0 is the bottom; x = column, y = row (row 0 on top).
 """
 type Mazes_Position {
+	"""
+	Tower level, 0 = bottom.
+	"""
 	level: Int!
+	"""
+	Column (0 = left).
+	"""
 	x: Int!
+	"""
+	Row (0 = top).
+	"""
 	y: Int!
 }
 """
@@ -7386,8 +8702,17 @@ In a LevelView only the ends on that level are listed: ` + "`" + `a` + "`" + ` i
 ` + "`" + `b` + "`" + ` is set only when the twin is on the same level (otherwise the twin's location is hidden).
 """
 type Mazes_Portal {
+	"""
+	Digit glyph '1'-'9' marking both ends.
+	"""
 	glyph: String!
+	"""
+	The end on the viewed level.
+	"""
 	a: Mazes_Position!
+	"""
+	The twin, when it is on the same level; null when it is hidden.
+	"""
 	b: Mazes_Position
 }
 """
@@ -7395,17 +8720,41 @@ Public catalog entry. The start is always on level 0 and the finish on the top l
 (levelCount - 1). Layouts of other levels are hidden: players discover them by playing.
 """
 type Mazes_Map {
+	"""
+	Map id used by createSession.
+	"""
 	id: ID!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	One-line description.
+	"""
 	description: String!
+	"""
+	Difficulty label shown on the map card.
+	"""
 	difficulty: String!
+	"""
+	Number of columns per level.
+	"""
 	width: Int!
+	"""
+	Number of rows per level.
+	"""
 	height: Int!
+	"""
+	Number of levels in the tower.
+	"""
 	levelCount: Int!
 	"""
 	Glyph rows of level 0, the level every game starts on.
 	"""
 	preview: [String!]!
+	"""
+	Move limit; running out loses the run.
+	"""
 	maxMoves: Int!
 	"""
 	Length of the shortest winning route; null if the finish is unreachable.
@@ -7435,24 +8784,66 @@ type Mazes_Map {
 Full map for the editor (admin only).
 """
 type Mazes_AdminMap {
+	"""
+	Map id used by createSession and updateMap.
+	"""
 	id: ID!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	One-line description.
+	"""
 	description: String!
+	"""
+	Difficulty label shown on the map card.
+	"""
 	difficulty: String!
+	"""
+	Number of columns per level.
+	"""
 	width: Int!
+	"""
+	Number of rows per level.
+	"""
 	height: Int!
+	"""
+	Number of levels in the tower.
+	"""
 	levelCount: Int!
 	"""
 	Layout glyphs per level (index 0 = bottom), each a list of rows.
 	. void, o stone, S start, F finish, U stairs up, D stairs down, 1-9 portal holes.
 	"""
 	levels: [[String!]!]!
+	"""
+	Start tile (always on level 0).
+	"""
 	start: Mazes_Position!
+	"""
+	Finish tile (always on the top level).
+	"""
 	finish: Mazes_Position!
+	"""
+	Numbered holes linking two tiles on the same level.
+	"""
 	portals: [Mazes_Portal!]!
+	"""
+	Move limit; running out loses the run.
+	"""
 	maxMoves: Int!
+	"""
+	Shortest winning route length; null when unreachable.
+	"""
 	parMoves: Int
+	"""
+	Fewest stairs a winning route needs; null when unreachable.
+	"""
 	minLevelChanges: Int
+	"""
+	Fewest down stairs a winning route needs; null when unreachable.
+	"""
 	forcedDescents: Int
 	"""
 	DRAFT maps are visible only to their owner and cannot be played or published by anyone else.
@@ -7474,29 +8865,59 @@ type Mazes_LevelView {
 	The level the player is on (0 = bottom).
 	"""
 	level: Int!
+	"""
+	Number of levels in the tower, for the tower diagram.
+	"""
 	levelCount: Int!
+	"""
+	Glyph rows of this level only (the fog the player sees).
+	"""
 	rows: [String!]!
+	"""
+	Portals with an end on this level.
+	"""
 	portals: [Mazes_Portal!]!
 }
+"""
+The current run's observable state.
+"""
 type Mazes_GameState {
+	"""
+	Where the player is now.
+	"""
 	pos: Mazes_Position!
 	"""
 	Counted moves so far (blocked attempts are free).
 	"""
 	moves: Int!
+	"""
+	Session play state after the last move.
+	"""
 	status: Mazes_Status!
+	"""
+	Why the run is LOST; null while playing or after a win.
+	"""
 	lossReason: Mazes_LossReason
 	"""
 	Every tile entered, in order, starting with the start tile. Stairs and portal moves add the tile stepped on and the landing tile.
 	"""
 	path: [Mazes_Position!]!
 }
+"""
+One attempted move and its result, including blocked attempts.
+"""
 type Mazes_MoveEvent {
 	"""
 	Counted-move index after this attempt (unchanged when blocked).
 	"""
 	move: Int!
+	"""
+	Direction attempted.
+	"""
 	direction: Mazes_Direction!
+	"""
+	Position before the attempt.
+	"""
 	from: Mazes_Position!
 	"""
 	The tile entered by the step; equals from when blocked.
@@ -7506,14 +8927,39 @@ type Mazes_MoveEvent {
 	Final position after stairs/portal; equals from when blocked.
 	"""
 	to: Mazes_Position!
+	"""
+	True when the attempt was rejected; nothing moved and no move was counted.
+	"""
 	blocked: Boolean!
+	"""
+	How the move changed the position.
+	"""
 	via: Mazes_Via!
+	"""
+	Status after the attempt.
+	"""
 	status: Mazes_Status!
+	"""
+	Loss reason when this attempt ended the run.
+	"""
 	lossReason: Mazes_LossReason
 }
+"""
+One play-through: the map snapshot, the player's current level, the run state
+and its counters.
+"""
 type Mazes_Session {
+	"""
+	Session id; public enough to watch.
+	"""
 	id: ID!
+	"""
+	The player's name for this run; empty falls back to the map name.
+	"""
 	displayName: String!
+	"""
+	Map this session plays.
+	"""
 	mapId: ID!
 	"""
 	Catalog entry of the map this session plays. Reveals nothing beyond the start level.
@@ -7523,12 +8969,21 @@ type Mazes_Session {
 	Fog: the only part of the map a player can see, the level the player stands on right now.
 	"""
 	view: Mazes_LevelView!
+	"""
+	Current run state: position, moves and status.
+	"""
 	state: Mazes_GameState!
 	"""
 	Increments on every state change; clients ignore updates with seq <= last seen.
 	"""
 	seq: Int!
+	"""
+	When the session was created (UTC).
+	"""
 	createdAt: Time!
+	"""
+	When the session last changed (UTC).
+	"""
 	lastActionAt: Time!
 	"""
 	Games finished (won or lost) in this session.
@@ -7538,25 +8993,65 @@ type Mazes_Session {
 	Fewest moves in a won game of this session.
 	"""
 	bestMoves: Int
+	"""
+	The most recent move attempt, or null before the first move.
+	"""
 	lastEvent: Mazes_MoveEvent
 }
+"""
+One subscription frame: the new snapshot plus the move that caused it.
+"""
 type Mazes_SessionUpdate {
+	"""
+	Monotonic sequence of this snapshot.
+	"""
 	seq: Int!
+	"""
+	Full current snapshot.
+	"""
 	session: Mazes_Session!
+	"""
+	The move that produced this frame; null for non-move changes.
+	"""
 	event: Mazes_MoveEvent
 }
+"""
+One problem found by validateMap.
+"""
 type Mazes_MapValidationIssue {
+	"""
+	Human-readable failure, with the level and coordinate when relevant.
+	"""
 	message: String!
 }
+"""
+Outcome of validateMap: whether the map parses and is playable, plus its
+computed par values.
+"""
 type Mazes_MapValidationResult {
+	"""
+	True when the map parses into a playable map.
+	"""
 	valid: Boolean!
+	"""
+	Problems found; empty when valid.
+	"""
 	issues: [Mazes_MapValidationIssue!]!
 	"""
 	Set when the map parses but the finish cannot be reached from the start.
 	"""
 	finishReachable: Boolean!
+	"""
+	Shortest winning route length; null when unreachable.
+	"""
 	parMoves: Int
+	"""
+	Fewest stairs a winning route needs; null when unreachable.
+	"""
 	minLevelChanges: Int
+	"""
+	Fewest down stairs a winning route needs; null when unreachable.
+	"""
 	forcedDescents: Int
 }
 input Mazes_MapInput {
@@ -7573,12 +9068,18 @@ a subscription: it is the credential that lets this browser change the session, 
 id alone stays enough to read it.
 """
 type Mazes_CreateSessionResult {
+	"""
+	The new session's first snapshot.
+	"""
 	session: Mazes_Session!
 	"""
 	Secret that proves you created this session; keep it private.
 	"""
 	ownerToken: String!
 }
+"""
+Mazes reads: catalogue, one session and the save list. Reads are public.
+"""
 type Mazes_Query {
 	"""
 	Public catalog: published maps plus the signed-in caller's own drafts. Another player's draft
@@ -7599,6 +9100,10 @@ type Mazes_Query {
 	Public read: anyone with the id may watch a session.
 	"""
 	session(id: ID!): Mazes_Session
+	"""
+	Saved sessions in the requested order, newest first by default. ` + "`" + `mapId` + "`" + ` keeps
+	one map; ` + "`" + `limit` + "`" + ` is capped by the game.
+	"""
 	sessions(sort: Mazes_SessionSort = RECENT, limit: Int = 50, mapId: ID): [Mazes_Session!]!
 	"""
 	Whether this caller may change the session (and so is its player rather than a spectator):
@@ -7608,6 +9113,11 @@ type Mazes_Query {
 	"""
 	canPlaySession(id: ID!, ownerToken: String): Boolean!
 }
+"""
+Mazes writes: play moves and map authoring. Session mutations require the
+creator's owner token or owning account; map writes require ownership or the
+admin key.
+"""
 type Mazes_Mutation {
 	"""
 	Start a new game on a map. A signed-in creator's session belongs to their account; the
@@ -7619,6 +9129,9 @@ type Mazes_Mutation {
 	owning account (FORBIDDEN otherwise). Sessions created before owner tokens stay open.
 	"""
 	deleteSession(id: ID!, ownerToken: String): Boolean!
+	"""
+	Rename the save. Creator-only, as deleteSession.
+	"""
 	renameSession(id: ID!, displayName: String!, ownerToken: String): Mazes_Session!
 	"""
 	One move. A blocked attempt succeeds but changes nothing (lastEvent.blocked). Creator-only, as
@@ -7663,47 +9176,156 @@ type Mazes_Mutation {
 	"""
 	validateMap(map: Mazes_MapInput!): Mazes_MapValidationResult!
 }
+"""
+One tape slot. EMPTY is a no-op that still spends a step.
+"""
 enum Motor_Instruction {
+	"""
+	Skipped for free; does not spend a step.
+	"""
 	EMPTY
+	"""
+	Turn 90 degrees left in place.
+	"""
 	TURN_LEFT
+	"""
+	Turn 90 degrees right in place.
+	"""
 	TURN_RIGHT
+	"""
+	Step one tile in the facing direction.
+	"""
 	MOVE_FORWARD
+	"""
+	Call subroutine 1, then resume the next slot.
+	"""
 	CALL_SUB_1
+	"""
+	Call subroutine 2.
+	"""
 	CALL_SUB_2
+	"""
+	Call subroutine 3.
+	"""
 	CALL_SUB_3
+	"""
+	Call subroutine 4.
+	"""
 	CALL_SUB_4
+	"""
+	Call subroutine 5.
+	"""
 	CALL_SUB_5
+	"""
+	Call subroutine 6.
+	"""
 	CALL_SUB_6
+	"""
+	Call subroutine 7.
+	"""
 	CALL_SUB_7
+	"""
+	Call subroutine 8.
+	"""
 	CALL_SUB_8
+	"""
+	Call subroutine 9.
+	"""
 	CALL_SUB_9
+	"""
+	Call subroutine 10.
+	"""
 	CALL_SUB_10
 }
+"""
+Direction the robot is facing. UP decreases y, RIGHT increases x, DOWN
+increases y, LEFT decreases x.
+"""
 enum Motor_Facing {
+	"""
+	Facing up (y-1).
+	"""
 	UP
+	"""
+	Facing right (x+1).
+	"""
 	RIGHT
+	"""
+	Facing down (y+1).
+	"""
 	DOWN
+	"""
+	Facing left (x-1).
+	"""
 	LEFT
 }
+"""
+Run state of the robot.
+"""
 enum Motor_Status {
+	"""
+	Program loaded but not started.
+	"""
 	READY
+	"""
+	A run is in progress.
+	"""
 	RUNNING
+	"""
+	Every treat was collected.
+	"""
 	WON
+	"""
+	The run ended without collecting every treat.
+	"""
 	LOST
 }
+"""
+Why a run ended in LOST.
+"""
 enum Motor_LossReason {
+	"""
+	The map's step limit was reached.
+	"""
 	STEP_LIMIT
+	"""
+	Subroutine nesting exceeded maxCallDepth.
+	"""
 	CALL_DEPTH
+	"""
+	The main tape ran off its end without collecting every treat.
+	"""
 	PROGRAM_ENDED
 }
+"""
+How to order the session list.
+"""
 enum Motor_SessionSort {
+	"""
+	Most recent action first. The default.
+	"""
 	RECENT
+	"""
+	Newest save first.
+	"""
 	CREATED
 }
+"""
+A tile coordinate: x = column, y = row (0,0 is the top-left).
+"""
 type Motor_Position {
+	"""
+	Column (0 = left).
+	"""
 	x: Int!
+	"""
+	Row (0 = top).
+	"""
 	y: Int!
 }
+"""
+One entry on the call stack.
+"""
 type Motor_Frame {
 	"""
 	Tape index; -1 is the main tape.
@@ -7714,45 +9336,90 @@ type Motor_Frame {
 	"""
 	pc: Int!
 }
+"""
+A one-way tile: moving onto it carries the robot one extra cell.
+"""
 type Motor_Conveyor {
+	"""
+	Tile occupied by the belt.
+	"""
 	pos: Motor_Position!
 	"""
 	Direction the robot is carried after moving onto this tile.
 	"""
 	dir: Motor_Facing!
 }
+"""
+A mirror: arriving on it turns the robot 90 degrees.
+"""
 type Motor_Mirror {
+	"""
+	Tile occupied by the mirror.
+	"""
 	pos: Motor_Position!
 	"""
 	True for '/', false for '\\'.
 	"""
 	slash: Boolean!
 }
+"""
+A collectable key that opens every matching door.
+"""
 type Motor_KeyTile {
+	"""
+	Tile occupied by the key.
+	"""
 	pos: Motor_Position!
 	"""
 	Lower-case key letter ('a'..'c').
 	"""
 	letter: String!
 }
+"""
+A door, impassable until its key is collected.
+"""
 type Motor_DoorTile {
+	"""
+	Tile occupied by the door.
+	"""
 	pos: Motor_Position!
 	"""
 	Upper-case door letter ('A'..'C').
 	"""
 	letter: String!
 }
+"""
+A portal: arriving on one end teleports the robot to the other.
+"""
 type Motor_Portal {
+	"""
+	Tile occupied by this end.
+	"""
 	pos: Motor_Position!
 	"""
 	Digit shared by the two ends of the pair.
 	"""
 	pair: String!
 }
+"""
+One map, with the tape sizes and terrain the player must work with.
+"""
 type Motor_Map {
+	"""
+	Map id used by createSession.
+	"""
 	id: ID!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	One-line description.
+	"""
 	description: String!
+	"""
+	Difficulty label shown on the map card.
+	"""
 	difficulty: String!
 	"""
 	True for a map shipped with the game: only an admin may change or delete it.
@@ -7767,12 +9434,35 @@ type Motor_Map {
 	True when the signed-in caller created this community map.
 	"""
 	ownedByMe: Boolean!
+	"""
+	Number of columns.
+	"""
 	width: Int!
+	"""
+	Number of rows.
+	"""
 	height: Int!
+	"""
+	Glyph rows: '.' floor, '#' rock, '*' treat, '^>v<' robot start and initial
+	facing, 'U/D/L/R' conveyors, '/' and '\\' mirrors, 'a'-'c' keys, 'A'-'C'
+	doors, '1'-'9' portals.
+	"""
 	layout: [String!]!
+	"""
+	Robot start tile.
+	"""
 	start: Motor_Position!
+	"""
+	Direction the robot faces at the start.
+	"""
 	startFacing: Motor_Facing!
+	"""
+	Impassable rock tiles.
+	"""
 	rocks: [Motor_Position!]!
+	"""
+	Collectable treats; collecting every one wins.
+	"""
 	treats: [Motor_Position!]!
 	"""
 	One-way tiles: a move onto one is carried one extra cell in Conveyor.dir.
@@ -7794,46 +9484,133 @@ type Motor_Map {
 	Portal pairs ('1'..'9'); arriving on one teleports to the other.
 	"""
 	portals: [Motor_Portal!]!
+	"""
+	Slot count of the main tape.
+	"""
 	mainTapeLength: Int!
+	"""
+	Slot count of each subroutine tape, in CALL_SUB order.
+	"""
 	subTapeLengths: [Int!]!
+	"""
+	Step limit for one run.
+	"""
 	maxSteps: Int!
+	"""
+	Maximum subroutine nesting depth.
+	"""
 	maxCallDepth: Int!
+	"""
+	True when a subroutine may call itself (directly or through a cycle).
+	"""
 	allowRecursion: Boolean!
 }
+"""
+The robot's program: the main tape and one tape per subroutine.
+"""
 type Motor_Program {
+	"""
+	Main tape, exactly mainTapeLength slots.
+	"""
 	main: [Motor_Instruction!]!
+	"""
+	Subroutine tapes, each exactly its map's subTapeLengths slot count.
+	"""
 	subs: [[Motor_Instruction!]!]!
 }
+"""
+Program input for setProgram; tape lengths must match the map exactly.
+"""
 input Motor_ProgramInput {
+	"""
+	Main tape slots.
+	"""
 	main: [Motor_Instruction!]!
+	"""
+	Subroutine tapes.
+	"""
 	subs: [[Motor_Instruction!]!]!
 }
+"""
+The robot's observable state after the latest step.
+"""
 type Motor_VMState {
+	"""
+	Robot tile.
+	"""
 	pos: Motor_Position!
+	"""
+	Direction the robot faces.
+	"""
 	facing: Motor_Facing!
+	"""
+	Treats not yet collected.
+	"""
 	treatsRemaining: [Motor_Position!]!
 	"""
 	Bottom frame is main; the last frame is the active tape.
 	"""
 	callStack: [Motor_Frame!]!
+	"""
+	Steps spent in the current run.
+	"""
 	steps: Int!
+	"""
+	Run state.
+	"""
 	status: Motor_Status!
+	"""
+	Why the run is LOST; null while playing or after a win.
+	"""
 	lossReason: Motor_LossReason
+	"""
+	Tiles the robot has entered, in order.
+	"""
 	visited: [Motor_Position!]!
 	"""
 	Lower-case letters of the doors this run has opened.
 	"""
 	openDoors: [String!]!
 }
+"""
+One executed instruction and everything it changed.
+"""
 type Motor_StepEvent {
+	"""
+	1-based step number in the run.
+	"""
 	step: Int!
+	"""
+	Instruction that ran.
+	"""
 	instruction: Motor_Instruction!
+	"""
+	Tape index: -1 for main, 0-9 for a subroutine.
+	"""
 	tapeIndex: Int!
+	"""
+	Slot index on that tape.
+	"""
 	slotIndex: Int!
+	"""
+	Position before the step.
+	"""
 	from: Motor_Position!
+	"""
+	Position after the step (before conveyor/portal effects when applicable).
+	"""
 	to: Motor_Position!
+	"""
+	Facing before the instruction.
+	"""
 	facingBefore: Motor_Facing!
+	"""
+	Facing after the instruction.
+	"""
 	facingAfter: Motor_Facing!
+	"""
+	True when a MOVE_FORWARD was blocked by a rock, door or the edge.
+	"""
 	blocked: Boolean!
 	"""
 	True when a CALL_SUB_k was ignored because the map has allowRecursion: false and that sub is already on the call stack. The step is still spent.
@@ -7859,13 +9636,35 @@ type Motor_StepEvent {
 	Portal destination when the arrival tile was a portal.
 	"""
 	teleported: Motor_Position
+	"""
+	Treat collected on this step, or null.
+	"""
 	collected: Motor_Position
+	"""
+	Call stack after the step; the last frame is the active tape.
+	"""
 	callStack: [Motor_Frame!]!
+	"""
+	Run state after the step.
+	"""
 	status: Motor_Status!
+	"""
+	Loss reason when this step ended the run.
+	"""
 	lossReason: Motor_LossReason
 }
+"""
+One session: the map snapshot, the run state, the player's program (when the
+caller may see it) and the run counters.
+"""
 type Motor_Session {
+	"""
+	Session id; public enough to watch.
+	"""
 	id: ID!
+	"""
+	Map this session plays.
+	"""
 	mapId: ID!
 	"""
 	Snapshot of the map taken when the session was created.
@@ -7877,17 +9676,41 @@ type Motor_Session {
 	never a public answer key. Driving playback (run, step, pause, reset) does not reveal it either.
 	"""
 	program: Motor_Program
+	"""
+	Robot state after the latest step.
+	"""
 	vm: Motor_VMState!
+	"""
+	True while the program is running on the server clock.
+	"""
 	playing: Boolean!
+	"""
+	Delay between steps in milliseconds.
+	"""
 	speedMs: Int!
 	"""
 	Increments on every state change; clients ignore updates with seq <= last seen.
 	"""
 	seq: Int!
+	"""
+	When the session was created (UTC).
+	"""
 	createdAt: Time!
+	"""
+	When the session last changed (UTC).
+	"""
 	lastActionAt: Time!
+	"""
+	Finished runs (won or lost) in this session.
+	"""
 	attempts: Int!
+	"""
+	Fewest steps in a won run; null until the first win.
+	"""
 	bestSteps: Int
+	"""
+	The most recent executed step, or null before the first step.
+	"""
 	lastEvent: Motor_StepEvent
 	"""
 	Secret that proves the caller created this session; keep it private. Returned only by the
@@ -7899,22 +9722,52 @@ type Motor_Session {
 	"""
 	ownerToken: String
 }
+"""
+One subscription frame: the new session snapshot plus the step that caused it.
+"""
 type Motor_SessionUpdate {
+	"""
+	Monotonic sequence of this snapshot.
+	"""
 	seq: Int!
+	"""
+	Full current session.
+	"""
 	session: Motor_Session!
+	"""
+	The step that produced this frame; null for non-step changes.
+	"""
 	event: Motor_StepEvent
 }
+"""
+One problem found by validateMap.
+"""
 type Motor_MapValidationIssue {
+	"""
+	Human-readable failure, with the coordinate when relevant.
+	"""
 	message: String!
 }
+"""
+Outcome of validateMap.
+"""
 type Motor_MapValidationResult {
+	"""
+	True when the map parses and is structurally playable.
+	"""
 	valid: Boolean!
+	"""
+	Problems found; empty when valid.
+	"""
 	issues: [Motor_MapValidationIssue!]!
 	"""
 	Cells reachable check result: treats unreachable from start.
 	"""
 	unreachableTreats: [Motor_Position!]!
 }
+"""
+Lifecycle of a community map: a draft is private to its owner.
+"""
 enum Motor_MapStatus {
 	"""
 	A work in progress: only its owner can see, edit, play or publish it.
@@ -7926,17 +9779,50 @@ enum Motor_MapStatus {
 	PUBLISHED
 }
 input Motor_MapInput {
+	"""
+	Map id (also the URL and save key).
+	"""
 	id: ID!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	One-line description.
+	"""
 	description: String
+	"""
+	Difficulty label.
+	"""
 	difficulty: String
+	"""
+	Glyph rows of the map.
+	"""
 	layout: [String!]!
+	"""
+	Main tape slot count.
+	"""
 	mainTapeLength: Int
+	"""
+	Slot count of each subroutine tape.
+	"""
 	subTapeLengths: [Int!]
+	"""
+	Step limit for one run.
+	"""
 	maxSteps: Int
+	"""
+	Maximum subroutine nesting depth.
+	"""
 	maxCallDepth: Int
+	"""
+	Whether subroutines may recurse.
+	"""
 	allowRecursion: Boolean
 }
+"""
+How to rank the winning sessions of a map.
+"""
 enum Motor_LeaderboardOrder {
 	"""
 	Fewest slots used first; ties by fewest steps, then earliest. The default.
@@ -7991,12 +9877,21 @@ chosen order; the sessions of one account are collapsed into the account's singl
 Only sessions that played the map's current rules count.
 """
 type Motor_Leaderboard {
+	"""
+	Map this board ranks.
+	"""
 	mapId: ID!
+	"""
+	Order the rows are ranked by.
+	"""
 	order: Motor_LeaderboardOrder!
 	"""
 	Ranked sessions on this board, not just the rows returned.
 	"""
 	total: Int!
+	"""
+	The returned rows, best first.
+	"""
 	entries: [Motor_LeaderboardEntry!]!
 	"""
 	The signed-in viewer's entry, else the entry of the requested sessionId, even beyond the returned rows; null when it has not won.
@@ -8008,6 +9903,9 @@ A player's best result on one map: their best winning session on the SLOTS board
 and where it ranks there.
 """
 type Motor_PlayerRun {
+	"""
+	Map the run was played on.
+	"""
 	mapId: ID!
 	"""
 	Ranked sessions on that map's SLOTS board.
@@ -8018,6 +9916,9 @@ type Motor_PlayerRun {
 	"""
 	entry: Motor_LeaderboardEntry!
 }
+"""
+Outcome of asking to attach a guest session to the signed-in account.
+"""
 enum Motor_ClaimStatus {
 	"""
 	The session now belongs to your account.
@@ -8033,13 +9934,31 @@ enum Motor_ClaimStatus {
 	REJECTED
 }
 input Motor_SessionClaimInput {
+	"""
+	Session id to attach.
+	"""
 	sessionID: ID!
+	"""
+	The secret createSession returned for that session.
+	"""
 	ownerToken: String!
 }
+"""
+Per-claim outcome; claims are answered independently.
+"""
 type Motor_SessionClaimResult {
+	"""
+	The session id from the request.
+	"""
 	sessionID: ID!
+	"""
+	Whether the session now belongs to the caller.
+	"""
 	status: Motor_ClaimStatus!
 }
+"""
+Motor reads: maps, sessions, leaderboards and a player's runs.
+"""
 type Motor_Query {
 	"""
 	Published maps plus the signed-in caller's own drafts. Another player's draft is never listed.
@@ -8061,6 +9980,11 @@ type Motor_Query {
 	playback at /watch; a play page uses it to decide between editing and a read-only view.
 	"""
 	canPlaySession(id: ID!, ownerToken: String): Boolean!
+	"""
+	Saved sessions in the requested order, newest first by default. ` + "`" + `mapId` + "`" + `
+	keeps one map; ` + "`" + `limit` + "`" + ` is capped by the game. Programs are omitted unless
+	the caller may see them.
+	"""
 	sessions(sort: Motor_SessionSort = RECENT, limit: Int = 50, mapId: ID): [Motor_Session!]!
 	"""
 	Ranks the winning sessions of a map (limit defaults to 20, at most 100). Null when the map does not exist.
@@ -8078,6 +10002,9 @@ type Motor_Query {
 	"""
 	playerRunsFor(handle: String!): [Motor_PlayerRun!]!
 }
+"""
+Motor writes: play a program, manage sessions and author maps.
+"""
 type Motor_Mutation {
 	"""
 	Starts a session. The response carries the secret ` + "`" + `ownerToken` + "`" + `: it is needed to play the session
@@ -8142,20 +10069,57 @@ type Motor_Mutation {
 	"""
 	deleteMap(id: ID!): Boolean!
 }
+"""
+One grid step. UP decreases y, DOWN increases y, LEFT decreases x, RIGHT
+increases x.
+"""
 enum Tesla_Direction {
+	"""
+	One row up (y-1).
+	"""
 	UP
+	"""
+	One row down (y+1).
+	"""
 	DOWN
+	"""
+	One column left (x-1).
+	"""
 	LEFT
+	"""
+	One column right (x+1).
+	"""
 	RIGHT
 }
+"""
+Sort direction for lists and history.
+"""
 enum Tesla_SortOrder {
+	"""
+	Ascending (oldest/smallest first).
+	"""
 	ASC
+	"""
+	Descending (newest/largest first).
+	"""
 	DESC
 }
+"""
+How to order the session list.
+"""
 enum Tesla_SessionSort {
+	"""
+	Newest save first.
+	"""
 	CREATED
+	"""
+	Most recent action first. The default.
+	"""
 	ACTION
 }
+"""
+Lifecycle of a community map: a draft is private to its owner.
+"""
 enum Tesla_MapStatus {
 	"""
 	A work in progress: only its owner can see, edit, play or publish it.
@@ -8166,35 +10130,113 @@ enum Tesla_MapStatus {
 	"""
 	PUBLISHED
 }
+"""
+Outcome of deleteSession.
+"""
 type Tesla_DeleteSessionResult {
+	"""
+	Human-readable confirmation or reason the delete failed.
+	"""
 	message: String!
 }
+"""
+One page of the session list.
+"""
 type Tesla_SessionList {
+	"""
+	Rows in this page.
+	"""
 	count: Int!
+	"""
+	Rows matching the query before the limit.
+	"""
 	total: Int!
+	"""
+	The sessions themselves.
+	"""
 	sessions: [Tesla_Session!]!
+	"""
+	Sort field used (for echoing back to the client).
+	"""
 	sort: String!
+	"""
+	Sort order used.
+	"""
 	order: String!
 }
+"""
+Sessions of one map, with full state, used by the lobby.
+"""
 type Tesla_UnifiedSessions {
+	"""
+	Map the sessions belong to.
+	"""
 	mapName: String!
+	"""
+	Number of sessions returned.
+	"""
 	count: Int!
+	"""
+	The sessions with their game state.
+	"""
 	sessions: [Tesla_UnifiedSession!]!
 }
+"""
+One lobby row: session metadata plus its full state and map.
+"""
 type Tesla_UnifiedSession {
+	"""
+	Session id.
+	"""
 	sessionId: ID!
+	"""
+	When the session was created (RFC3339 with the server's zone offset).
+	"""
 	createdAt: String!
+	"""
+	When the session last changed (RFC3339 with the server's zone offset).
+	"""
 	lastActionAt: String!
+	"""
+	Current game state.
+	"""
 	gameState: Tesla_GameState!
+	"""
+	Map the session plays.
+	"""
 	gameMap: Tesla_GameMap!
 }
+"""
+One play-through: the session metadata, the current game state and the map.
+"""
 type Tesla_Session {
+	"""
+	Session id; public enough to watch.
+	"""
 	id: ID!
+	"""
+	The player's name for this save; null/empty falls back to the map name.
+	"""
 	displayName: String
+	"""
+	Map the session plays.
+	"""
 	mapName: String!
+	"""
+	When the session was created (RFC3339 with the server's zone offset).
+	"""
 	createdAt: String!
+	"""
+	When the session last changed (RFC3339 with the server's zone offset).
+	"""
 	lastActionAt: String!
+	"""
+	Current game state.
+	"""
 	gameState: Tesla_GameState!
+	"""
+	Map the session plays, with its layout and legend.
+	"""
 	gameMap: Tesla_GameMap!
 	"""
 	Only set in the createSession response, when fog is enabled and no gridPassword
@@ -8203,29 +10245,99 @@ type Tesla_Session {
 	"""
 	generatedGridPassword: String
 }
+"""
+Everything a client needs to render and reason about one session.
+"""
 type Tesla_GameState {
+	"""
+	Full row-major map (` + "`" + `grid[y][x]` + "`" + `). In fog sessions this requires the grid
+	password; a won run is revealed without it until reset.
+	"""
 	grid(password: String): [[Tesla_Cell!]!]!
+	"""
+	The Tesla's tile.
+	"""
 	playerPos: Tesla_Position!
+	"""
+	Current battery charge.
+	"""
 	battery: Int!
+	"""
+	Battery capacity of the map.
+	"""
 	maxBattery: Int!
+	"""
+	Parks visited, scored by the map's rules.
+	"""
 	score: Int!
+	"""
+	Number of parks on the map.
+	"""
 	totalParks: Int!
+	"""
+	Parks and whether they are visited.
+	"""
 	visitedParks: [Tesla_VisitedPark!]!
+	"""
+	Status line for the human player.
+	"""
 	message: String!
+	"""
+	True when the run is over, whether won or lost.
+	"""
 	gameOver: Boolean!
+	"""
+	True when every park was visited.
+	"""
 	victory: Boolean!
+	"""
+	Map name.
+	"""
 	mapName: String!
+	"""
+	Every move this run, in order.
+	"""
 	moveHistory: [Tesla_MoveHistoryEntry!]!
+	"""
+	Total moves taken in the run.
+	"""
 	totalMoves: Int!
+	"""
+	How many times the run has been reset.
+	"""
 	resetCount: Int!
+	"""
+	The visible window around the player: ` + "`" + `(2fogRadius+1)` + "`" + ` square cells.
+	"""
 	nearbyGrid: [[Tesla_Cell!]!]!
+	"""
+	Moves made in the current attempt (after the last reset).
+	"""
 	currentMoves: [Tesla_MoveHistoryEntry!]!
+	"""
+	Count of currentMoves.
+	"""
 	currentMovesCount: Int!
+	"""
+	SAFE, LOW, CAUTION, DANGER, CRITICAL, WARNING (no charger) or UNKNOWN.
+	"""
 	batteryRisk: String!
+	"""
+	True when the session was created with fog.
+	"""
 	fogEnabled: Boolean!
+	"""
+	Radius of the visible window, in tiles.
+	"""
 	fogRadius: Int!
+	"""
+	Per-step delay configured for the session, in milliseconds.
+	"""
 	moveDelayMs: Int!
 }
+"""
+One map cell as the client sees it.
+"""
 type Tesla_Cell {
 	"""
 	Column of this cell on the map (RIGHT = x+1). Negative or >= map width for off-map nearbyGrid cells.
@@ -8235,42 +10347,138 @@ type Tesla_Cell {
 	Row of this cell on the map (DOWN = y+1). Negative or >= map height for off-map nearbyGrid cells.
 	"""
 	y: Int!
+	"""
+	Cell kind: road, home, park, supercharger, water, building, etc.
+	"""
 	type: String!
+	"""
+	True when the player has already entered this cell.
+	"""
 	visited: Boolean!
+	"""
+	Stable cell id, or empty for off-map cells.
+	"""
 	id: String!
+	"""
+	Directions this cell permits; empty means every direction.
+	"""
 	allowedDirections: [String!]!
 }
+"""
+A tile coordinate: x = column, y = row.
+"""
 type Tesla_Position {
+	"""
+	Column (0 = left).
+	"""
 	x: Int!
+	"""
+	Row (0 = top).
+	"""
 	y: Int!
 }
+"""
+One park and whether this run has visited it.
+"""
 type Tesla_VisitedPark {
+	"""
+	Park id from the map.
+	"""
 	id: String!
+	"""
+	True once the Tesla has entered the park.
+	"""
 	visited: Boolean!
 }
+"""
+One move in the run's history.
+"""
 type Tesla_MoveHistoryEntry {
+	"""
+	Action label ("move", "reset", ...).
+	"""
 	action: String!
+	"""
+	Position before the move.
+	"""
 	fromPosition: Tesla_Position!
+	"""
+	Position after the move.
+	"""
 	toPosition: Tesla_Position!
+	"""
+	Battery after the move.
+	"""
 	battery: Int!
+	"""
+	Wall-clock Unix timestamp in seconds.
+	"""
 	timestamp: Int!
+	"""
+	False when the move was rejected.
+	"""
 	success: Boolean!
+	"""
+	1-based move number within the run.
+	"""
 	moveNumber: Int!
 }
+"""
+Outcome of validateMap.
+"""
 type Tesla_MapValidationResult {
+	"""
+	True when the map parses.
+	"""
 	valid: Boolean!
+	"""
+	True when every park is reachable without stranding the car.
+	"""
 	winnable: Boolean!
+	"""
+	Human-readable summary.
+	"""
 	message: String!
+	"""
+	Validation failure detail, when any.
+	"""
 	error: String
 }
+"""
+One map: geometry, battery budget, legend and per-cell overrides.
+"""
 type Tesla_GameMap {
+	"""
+	Display name (also the map's lookup key).
+	"""
 	name: String!
+	"""
+	One-line description.
+	"""
 	description: String!
+	"""
+	Width and height of the square grid.
+	"""
 	gridSize: Int!
+	"""
+	Battery capacity.
+	"""
 	maxBattery: Int!
+	"""
+	Battery the car starts with.
+	"""
 	startingBattery: Int!
+	"""
+	Glyph rows of the map (fog sessions hide it behind the password).
+	"""
 	layout(password: String): [String!]!
+	"""
+	Glyph-to-meaning legend for the layout characters.
+	"""
 	legend: [Tesla_LegendEntry!]!
+	"""
+	Per-glyph overrides, e.g. one-way cells and cell types.
+	"""
 	cellConfigs: [Tesla_CellConfigEntry!]!
 	"""
 	True for maps shipped with the server; only an admin key may change them.
@@ -8293,50 +10501,156 @@ type Tesla_GameMap {
 	"""
 	editKey: String
 }
+"""
+One glyph and what it means on the map.
+"""
 type Tesla_LegendEntry {
+	"""
+	Single layout character.
+	"""
 	key: String!
+	"""
+	Human-readable meaning.
+	"""
 	value: String!
 }
+"""
+Per-glyph behaviour override.
+"""
 type Tesla_CellConfigEntry {
+	"""
+	Single layout character.
+	"""
 	key: String!
+	"""
+	Cell type this glyph resolves to (road, building, home, ...).
+	"""
 	type: String!
+	"""
+	Directions this cell permits; empty means every direction.
+	"""
 	allowedDirections: [String!]!
 }
 input Tesla_GameMapInput {
+	"""
+	Map name (the lookup key).
+	"""
 	name: String!
+	"""
+	One-line description.
+	"""
 	description: String!
+	"""
+	Width and height of the square grid.
+	"""
 	gridSize: Int!
+	"""
+	Battery capacity.
+	"""
 	maxBattery: Int!
+	"""
+	Battery the car starts with.
+	"""
 	startingBattery: Int!
+	"""
+	Glyph rows of the map.
+	"""
 	layout: [String!]!
+	"""
+	Legend for the glyphs.
+	"""
 	legend: [Tesla_LegendEntryInput!]!
+	"""
+	Optional per-glyph overrides.
+	"""
 	cellConfigs: [Tesla_CellConfigEntryInput!] = []
 }
 input Tesla_LegendEntryInput {
+	"""
+	Single layout character.
+	"""
 	key: String!
+	"""
+	Human-readable meaning.
+	"""
 	value: String!
 }
 input Tesla_CellConfigEntryInput {
+	"""
+	Single layout character.
+	"""
 	key: String!
+	"""
+	Cell type this glyph resolves to.
+	"""
 	type: String!
+	"""
+	Directions this cell permits; empty means every direction.
+	"""
 	allowedDirections: [String!]!
 }
 input Tesla_GameMapPatchInput {
+	"""
+	New name, when changing it.
+	"""
 	name: String
+	"""
+	New description, when changing it.
+	"""
 	description: String
+	"""
+	New grid size, when changing it.
+	"""
 	gridSize: Int
+	"""
+	New battery capacity, when changing it.
+	"""
 	maxBattery: Int
+	"""
+	New starting battery, when changing it.
+	"""
 	startingBattery: Int
+	"""
+	Replacement glyph rows, when changing them.
+	"""
 	layout: [String!]
+	"""
+	Replacement legend, when changing it.
+	"""
 	legend: [Tesla_LegendEntryInput!]
+	"""
+	Replacement cell overrides, when changing them.
+	"""
 	cellConfigs: [Tesla_CellConfigEntryInput!]
 }
+"""
+One row in the map catalogue.
+"""
 type Tesla_MapInfo {
+	"""
+	Conventional file name (` + "`" + `<name>.json` + "`" + `). Community rows use the same naming
+	convention but are stored in PostgreSQL.
+	"""
 	filename: String!
+	"""
+	Map id used by createSession (the map's ` + "`" + `name` + "`" + `).
+	"""
 	mapId: String!
+	"""
+	Display name.
+	"""
 	name: String!
+	"""
+	One-line description.
+	"""
 	description: String!
+	"""
+	Width and height of the square grid.
+	"""
 	gridSize: Int!
+	"""
+	Battery capacity.
+	"""
 	maxBattery: Int!
 	"""
 	True for maps shipped with the server.
@@ -8352,80 +10666,289 @@ type Tesla_MapInfo {
 	"""
 	ownedByMe: Boolean!
 }
+"""
+Result of one move.
+"""
 type Tesla_MoveResult {
+	"""
+	False when the move was rejected. A collision also ends the run
+	(` + "`" + `gameOver` + "`" + ` becomes true), so read the state rather than assuming nothing
+	changed.
+	"""
 	success: Boolean!
+	"""
+	State after the attempt.
+	"""
 	gameState: Tesla_GameState!
+	"""
+	Status line for the player.
+	"""
 	message: String!
+	"""
+	Events raised by the step.
+	"""
 	events: [Tesla_GameEvent!]!
+	"""
+	Compact summary of the step, when available.
+	"""
 	step: Tesla_StepInfo
+	"""
+	The attempted target, set when the move was rejected and the reason is positional.
+	"""
 	attemptedTo: Tesla_AttemptInfo
 }
+"""
+Result of bulkMove: how far the batch got and the resulting state.
+"""
 type Tesla_BulkMoveResult {
+	"""
+	Number of moves actually executed.
+	"""
 	movesExecuted: Int!
+	"""
+	Total moves taken in the run after this call.
+	"""
 	totalMoves: Int!
+	"""
+	Number of moves requested.
+	"""
 	requestedMoves: Int!
+	"""
+	False when the whole batch was rejected before the first move.
+	"""
 	success: Boolean!
+	"""
+	State after the batch.
+	"""
 	gameState: Tesla_GameState!
+	"""
+	Events raised by the batch.
+	"""
 	events: [Tesla_GameEvent!]!
+	"""
+	Human-readable reason the batch stopped early; empty when it ran to completion.
+	"""
 	stoppedReason: String!
+	"""
+	Machine-readable stop reason code.
+	"""
 	stopReasonCode: String!
+	"""
+	1-based index of the move that stopped the batch, 0 when none did.
+	"""
 	stoppedOnMove: Int!
+	"""
+	True when the batch hit the per-call move cap.
+	"""
 	truncated: Boolean!
+	"""
+	Per-call move cap.
+	"""
 	limit: Int!
+	"""
+	Position before the batch.
+	"""
 	startPos: Tesla_Position!
+	"""
+	Position after the batch.
+	"""
 	endPos: Tesla_Position!
+	"""
+	Battery before the batch.
+	"""
 	startBattery: Int!
+	"""
+	Battery after the batch.
+	"""
 	endBattery: Int!
+	"""
+	Score change over the batch.
+	"""
 	scoreDelta: Int!
+	"""
+	Per-move summaries for this call only.
+	"""
 	steps: [Tesla_StepInfo!]!
+	"""
+	The attempted target when the batch stopped on a rejected move.
+	"""
 	attemptedTo: Tesla_AttemptInfo
+	"""
+	True when the run ended during the batch.
+	"""
 	gameOver: Boolean!
+	"""
+	Machine-readable game-over reason, empty when still playing.
+	"""
 	gameOverCode: String!
+	"""
+	Status line for the player.
+	"""
 	message: String!
+	"""
+	Directions that are legal from the end position, walls and battery considered.
+	"""
 	possibleMoves: [String!]!
+	"""
+	SAFE, LOW, CAUTION, DANGER, CRITICAL, WARNING or UNKNOWN.
+	"""
 	batteryRisk: String!
 }
+"""
+One notable thing that happened during a move or batch.
+"""
 type Tesla_GameEvent {
+	"""
+	Event kind (park_visited, charged, blocked, ...).
+	"""
 	type: String!
+	"""
+	Human-readable description.
+	"""
 	message: String!
+	"""
+	RFC3339 wall-clock time of the event.
+	"""
 	timestamp: String!
+	"""
+	Where it happened.
+	"""
 	position: Tesla_Position!
 }
+"""
+Compact summary of one executed step.
+"""
 type Tesla_StepInfo {
+	"""
+	1-based step index in the run.
+	"""
 	idx: Int!
+	"""
+	Direction moved.
+	"""
 	dir: String!
+	"""
+	Position before the step.
+	"""
 	from: Tesla_Position!
+	"""
+	Position after the step.
+	"""
 	to: Tesla_Position!
+	"""
+	Glyph of the entered tile.
+	"""
 	tileChar: String!
+	"""
+	Cell type of the entered tile.
+	"""
 	tileType: String!
+	"""
+	Battery before the step.
+	"""
 	batteryBefore: Int!
+	"""
+	Battery after the step.
+	"""
 	batteryAfter: Int!
+	"""
+	False when the step was rejected.
+	"""
 	success: Boolean!
+	"""
+	True when the step charged the battery.
+	"""
 	charged: Boolean!
+	"""
+	True when the step entered a park.
+	"""
 	park: Boolean!
+	"""
+	True when this step won the run.
+	"""
 	victory: Boolean!
 }
+"""
+The target a rejected move tried to enter.
+"""
 type Tesla_AttemptInfo {
+	"""
+	Column attempted.
+	"""
 	x: Int!
+	"""
+	Row attempted.
+	"""
 	y: Int!
+	"""
+	Glyph at that tile.
+	"""
 	tileChar: String!
+	"""
+	Cell type at that tile.
+	"""
 	tileType: String!
+	"""
+	Whether the tile itself is passable (the rejection may be directional).
+	"""
 	passable: Boolean!
 }
+"""
+One page of a session's move history.
+"""
 type Tesla_HistoryResponse {
+	"""
+	Moves on this page.
+	"""
 	moves: [Tesla_MoveHistoryEntry!]!
+	"""
+	Total moves in the run.
+	"""
 	totalMoves: Int!
+	"""
+	1-based page number.
+	"""
 	page: Int!
+	"""
+	Page size.
+	"""
 	pageSize: Int!
+	"""
+	Total number of pages.
+	"""
 	totalPages: Int!
+	"""
+	True when a newer page exists.
+	"""
 	hasNext: Boolean!
+	"""
+	True when an older page exists.
+	"""
 	hasPrevious: Boolean!
 }
+"""
+Tesla reads: sessions, game state, history and map catalogue.
+"""
 type Tesla_Query {
+	"""
+	One session, or an error when the id is unknown.
+	"""
 	session(id: ID!): Tesla_Session!
+	"""
+	Saved sessions, paged by ` + "`" + `limit` + "`" + `; ` + "`" + `sort` + "`" + `/` + "`" + `order` + "`" + ` control the ranking.
+	"""
 	sessions(sort: Tesla_SessionSort = ACTION, order: Tesla_SortOrder = DESC, limit: Int): Tesla_SessionList!
+	"""
+	Sessions of one map (` + "`" + `mapName` + "`" + `; empty means every map) with full state.
+	"""
 	unifiedSessions(mapName: String): Tesla_UnifiedSessions!
+	"""
+	One session's game state without the map document.
+	"""
 	gameState(sessionID: ID!): Tesla_GameState!
+	"""
+	One page of a session's move history.
+	"""
 	history(sessionID: ID!, page: Int = 1, limit: Int = 50, order: Tesla_SortOrder = DESC): Tesla_HistoryResponse!
 	"""
 	Published maps plus the signed-in caller's own drafts. Another player's draft is never listed.
@@ -8436,12 +10959,35 @@ type Tesla_Query {
 	"""
 	map(name: String!, password: String): Tesla_GameMap!
 }
+"""
+Tesla writes: play, manage sessions and author maps. Map writes require
+ownership or the admin key.
+"""
 type Tesla_Mutation {
+	"""
+	Start a session on a map. ` + "`" + `mapID` + "`" + ` (or the legacy ` + "`" + `mapName` + "`" + `) selects the map;
+	fog and its radius are opt-in. Move speed is per session.
+	"""
 	createSession(mapID: String, mapName: String, fogEnabled: Boolean = false, fogRadius: Int = 1, gridPassword: String, moveDelayMs: Int): Tesla_Session!
+	"""
+	Delete a session.
+	"""
 	deleteSession(id: ID!): Tesla_DeleteSessionResult!
+	"""
+	Rename the save.
+	"""
 	updateSession(id: ID!, displayName: String!): Tesla_Session!
+	"""
+	One step. ` + "`" + `reset` + "`" + ` restarts the run before moving.
+	"""
 	move(sessionID: ID!, direction: Tesla_Direction!, reset: Boolean = false): Tesla_MoveResult!
+	"""
+	Several steps in order (at most 50 per call), stopping early on game over.
+	"""
 	bulkMove(sessionID: ID!, moves: [Tesla_Direction!]!, reset: Boolean = false): Tesla_BulkMoveResult!
+	"""
+	Restart the run.
+	"""
 	reset(sessionID: ID!): Tesla_GameState!
 	"""
 	Creates a DRAFT map owned by the signed-in player (UNAUTHENTICATED otherwise). Update it
@@ -8468,8 +11014,15 @@ type Tesla_Mutation {
 	need X-Admin-Key. editKey is accepted only for legacy unowned maps.
 	"""
 	deleteMap(name: String!, editKey: String): Tesla_DeleteSessionResult!
+	"""
+	Validates a map definition without saving it.
+	"""
 	validateMap(map: Tesla_GameMapInput!): Tesla_MapValidationResult!
 }
+"""
+Challenge level. Higher difficulties flip more bars, and each win rewards a
+larger share of the excerpt.
+"""
 enum Music_Difficulty {
 	"""
 	Reorder the whole excerpt; no bar is flipped. Rewards 5% per win.
@@ -8484,35 +11037,114 @@ enum Music_Difficulty {
 	"""
 	GENIUS
 }
+"""
+One sounding note.
+"""
 type Music_Note {
+	"""
+	Start position in ticks from the start of the measure.
+	"""
 	at: Int!
+	"""
+	Duration in ticks.
+	"""
 	dur: Int!
+	"""
+	MIDI pitch number.
+	"""
 	pitch: Int!
 }
+"""
+One bar of the excerpt.
+"""
 type Music_Measure {
+	"""
+	Bar id used by slots and arrangement inputs.
+	"""
 	id: ID!
+	"""
+	Bar length in ticks.
+	"""
 	len: Int!
+	"""
+	Notes in the bar, in time order.
+	"""
 	notes: [Music_Note!]!
 }
+"""
+One output position in the arrangement: which bar sits there and whether it is
+flipped.
+"""
 type Music_Slot {
+	"""
+	0-based position in the excerpt.
+	"""
 	position: Int!
+	"""
+	Bar placed at this position.
+	"""
 	measureID: ID!
+	"""
+	True when the bar is reversed (retrograde).
+	"""
 	flipH: Boolean!
+	"""
+	True when the bar's pitches are inverted.
+	"""
 	flipV: Boolean!
 }
+"""
+One slot in a setArrangement call.
+"""
 input Music_PlacementInput {
+	"""
+	Bar to place.
+	"""
 	measureID: ID!
+	"""
+	Reverse the bar.
+	"""
 	flipH: Boolean!
+	"""
+	Invert the bar's pitches.
+	"""
 	flipV: Boolean!
 }
+"""
+One excerpt: metadata, its bars and the original note sequence.
+"""
 type Music_Excerpt {
+	"""
+	Excerpt id used by createSession.
+	"""
 	id: ID!
+	"""
+	Title.
+	"""
 	title: String!
+	"""
+	Composer.
+	"""
 	composer: String!
+	"""
+	Tempo in beats per minute.
+	"""
 	tempoBPM: Int!
+	"""
+	Time signature, e.g. "4/4".
+	"""
 	timeSig: String!
+	"""
+	Key signature, e.g. "C major".
+	"""
 	key: String!
+	"""
+	Clef the arrangement is drawn in.
+	"""
 	clef: String!
+	"""
+	Vertical axis used when inverting pitches.
+	"""
 	axis: Int!
 	"""
 	The piece's bars in performance order. Every Music Region piece is at most
@@ -8520,44 +11152,146 @@ type Music_Excerpt {
 	the number of slots in a session.
 	"""
 	measures: [Music_Measure!]!
+	"""
+	Every note of the excerpt in performance order, for preview rendering.
+	"""
 	notes: [Music_Note!]!
 }
+"""
+The last change made to a session, for highlighting the modified bars.
+"""
 type Music_LastChange {
+	"""
+	Mutation kind: SWITCH, TRANSFORM, ARRANGE, RESET or SOLVE.
+	"""
 	kind: String!
+	"""
+	First affected slot; 0 for changes that are not slot-specific.
+	"""
 	a: Int!
+	"""
+	Second affected slot for SWITCH; 0 when not applicable.
+	"""
 	b: Int!
 }
+"""
+One play-through: the excerpt, the current arrangement and its progress.
+"""
 type Music_Session {
+	"""
+	Session id.
+	"""
 	id: ID!
+	"""
+	The player's name for this save; null/empty falls back to the excerpt title.
+	"""
 	displayName: String
+	"""
+	Difficulty the session was created at.
+	"""
 	difficulty: Music_Difficulty!
+	"""
+	The excerpt being restored.
+	"""
 	excerpt: Music_Excerpt!
+	"""
+	Current arrangement, one slot per excerpt bar.
+	"""
 	slots: [Music_Slot!]!
+	"""
+	True when every bar is back in place and unflipped.
+	"""
 	solved: Boolean!
+	"""
+	Monotonic sequence of this snapshot.
+	"""
 	seq: Int!
+	"""
+	Wins recorded on this save.
+	"""
 	wins: Int!
+	"""
+	Percent of the excerpt's reward granted per win at this difficulty.
+	"""
 	percentPerWin: Int!
+	"""
+	When the session was created (RFC3339 UTC).
+	"""
 	createdAt: String!
+	"""
+	When the session last changed (RFC3339 UTC).
+	"""
 	lastActionAt: String!
+	"""
+	The most recent change, or null before the first one.
+	"""
 	lastChange: Music_LastChange
 }
+"""
+One subscription frame: the new session and the change that caused it.
+"""
 type Music_SessionUpdate {
+	"""
+	Full current session.
+	"""
 	session: Music_Session!
+	"""
+	The change that produced this frame, or null.
+	"""
 	lastChange: Music_LastChange
 }
+"""
+Music reads: excerpts and sessions.
+"""
 type Music_Query {
+	"""
+	Every available excerpt.
+	"""
 	excerpts: [Music_Excerpt!]!
+	"""
+	One excerpt, or null when the id is unknown.
+	"""
 	excerpt(id: ID!): Music_Excerpt
+	"""
+	One session, or null when the id is unknown.
+	"""
 	session(id: ID!): Music_Session
+	"""
+	Saved sessions, newest first, limited by ` + "`" + `limit` + "`" + ` (default 50).
+	"""
 	sessions(limit: Int = 50): [Music_Session!]!
 }
+"""
+Music writes: start a session and rearrange its bars.
+"""
 type Music_Mutation {
+	"""
+	Start a session on an excerpt; ` + "`" + `seed` + "`" + ` makes the scramble reproducible.
+	"""
 	createSession(excerptID: ID!, difficulty: Music_Difficulty!, displayName: String, seed: Int): Music_Session!
+	"""
+	Swap two slots.
+	"""
 	switchMeasures(sessionID: ID!, a: Int!, b: Int!): Music_Session!
+	"""
+	Toggle horizontal and/or vertical flips on one slot.
+	"""
 	transformMeasure(sessionID: ID!, position: Int!, flipH: Boolean!, flipV: Boolean!): Music_Session!
+	"""
+	Replace the whole arrangement in one call.
+	"""
 	setArrangement(sessionID: ID!, slots: [Music_PlacementInput!]!): Music_Session!
+	"""
+	Restore the scrambled starting arrangement.
+	"""
 	resetArrangement(sessionID: ID!): Music_Session!
+	"""
+	Delete a session.
+	"""
 	deleteSession(id: ID!): Boolean!
+	"""
+	Rename the save.
+	"""
 	renameSession(id: ID!, displayName: String!): Music_Session!
 }
 scalar Time
@@ -8604,8 +11338,20 @@ type Subscription {
 	program is null unless the caller may change the program (ownerToken or the owning login).
 	"""
 	motorProgrammingSessionUpdated(sessionID: ID!, ownerToken: String): Motor_SessionUpdate!
+	"""
+	The full game state of one session, emitted on every accepted move or tick.
+	The session must be readable by the caller.
+	"""
 	teslaSessionUpdated(sessionID: ID!): Tesla_GameState!
+	"""
+	Lobby-wide state broadcasts for the session list; emits the latest visible
+	session state as it changes.
+	"""
 	teslaLobbyUpdated: Tesla_GameState!
+	"""
+	Every change to one music session: the new session and the change that
+	caused it.
+	"""
 	musicSessionUpdated(sessionID: ID!): Music_SessionUpdate!
 }
 `, BuiltIn: false},
@@ -8615,6 +11361,366 @@ var parsedSchema = gqlparser.MustLoadSchema(sources...)
 // endregion ************************** generated!.gotpl **************************
 
 // region    ***************************** args.gotpl *****************************
+
+func (ec *executionContext) field_Delivery_LedgerView_cars_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Delivery_LedgerView_cars_argsMonth(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["month"] = arg0
+	arg1, err := ec.field_Delivery_LedgerView_cars_argsFromTick(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["fromTick"] = arg1
+	arg2, err := ec.field_Delivery_LedgerView_cars_argsToTick(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["toTick"] = arg2
+	arg3, err := ec.field_Delivery_LedgerView_cars_argsLimit(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["limit"] = arg3
+	return args, nil
+}
+func (ec *executionContext) field_Delivery_LedgerView_cars_argsMonth(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["month"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("month"))
+	if tmp, ok := rawArgs["month"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_LedgerView_cars_argsFromTick(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["fromTick"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("fromTick"))
+	if tmp, ok := rawArgs["fromTick"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_LedgerView_cars_argsToTick(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["toTick"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("toTick"))
+	if tmp, ok := rawArgs["toTick"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_LedgerView_cars_argsLimit(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["limit"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("limit"))
+	if tmp, ok := rawArgs["limit"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_LedgerView_cashEntries_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Delivery_LedgerView_cashEntries_argsMonth(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["month"] = arg0
+	arg1, err := ec.field_Delivery_LedgerView_cashEntries_argsFromTick(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["fromTick"] = arg1
+	arg2, err := ec.field_Delivery_LedgerView_cashEntries_argsToTick(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["toTick"] = arg2
+	arg3, err := ec.field_Delivery_LedgerView_cashEntries_argsCategory(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["category"] = arg3
+	arg4, err := ec.field_Delivery_LedgerView_cashEntries_argsCarID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["carId"] = arg4
+	arg5, err := ec.field_Delivery_LedgerView_cashEntries_argsLimit(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["limit"] = arg5
+	return args, nil
+}
+func (ec *executionContext) field_Delivery_LedgerView_cashEntries_argsMonth(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["month"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("month"))
+	if tmp, ok := rawArgs["month"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_LedgerView_cashEntries_argsFromTick(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["fromTick"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("fromTick"))
+	if tmp, ok := rawArgs["fromTick"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_LedgerView_cashEntries_argsToTick(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["toTick"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("toTick"))
+	if tmp, ok := rawArgs["toTick"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_LedgerView_cashEntries_argsCategory(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*model.CashCategory, error) {
+	if _, ok := rawArgs["category"]; !ok {
+		var zeroVal *model.CashCategory
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("category"))
+	if tmp, ok := rawArgs["category"]; ok {
+		return ec.unmarshalODelivery_CashCategory2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐCashCategory(ctx, tmp)
+	}
+
+	var zeroVal *model.CashCategory
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_LedgerView_cashEntries_argsCarID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["carId"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("carId"))
+	if tmp, ok := rawArgs["carId"]; ok {
+		return ec.unmarshalOID2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_LedgerView_cashEntries_argsLimit(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["limit"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("limit"))
+	if tmp, ok := rawArgs["limit"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_LedgerView_months_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Delivery_LedgerView_months_argsMonth(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["month"] = arg0
+	arg1, err := ec.field_Delivery_LedgerView_months_argsFromTick(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["fromTick"] = arg1
+	arg2, err := ec.field_Delivery_LedgerView_months_argsToTick(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["toTick"] = arg2
+	arg3, err := ec.field_Delivery_LedgerView_months_argsCategory(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["category"] = arg3
+	arg4, err := ec.field_Delivery_LedgerView_months_argsLimit(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["limit"] = arg4
+	return args, nil
+}
+func (ec *executionContext) field_Delivery_LedgerView_months_argsMonth(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["month"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("month"))
+	if tmp, ok := rawArgs["month"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_LedgerView_months_argsFromTick(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["fromTick"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("fromTick"))
+	if tmp, ok := rawArgs["fromTick"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_LedgerView_months_argsToTick(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["toTick"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("toTick"))
+	if tmp, ok := rawArgs["toTick"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_LedgerView_months_argsCategory(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*model.CashCategory, error) {
+	if _, ok := rawArgs["category"]; !ok {
+		var zeroVal *model.CashCategory
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("category"))
+	if tmp, ok := rawArgs["category"]; ok {
+		return ec.unmarshalODelivery_CashCategory2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐCashCategory(ctx, tmp)
+	}
+
+	var zeroVal *model.CashCategory
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_LedgerView_months_argsLimit(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["limit"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("limit"))
+	if tmp, ok := rawArgs["limit"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
 
 func (ec *executionContext) field_Delivery_Mutation_assignOrder_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
@@ -8835,6 +11941,80 @@ func (ec *executionContext) field_Delivery_Mutation_claimSessions_argsClaims(
 	}
 
 	var zeroVal []*model.SessionClaimInput
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Mutation_clearMoves_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Delivery_Mutation_clearMoves_argsID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	arg1, err := ec.field_Delivery_Mutation_clearMoves_argsCarID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["carId"] = arg1
+	arg2, err := ec.field_Delivery_Mutation_clearMoves_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg2
+	return args, nil
+}
+func (ec *executionContext) field_Delivery_Mutation_clearMoves_argsID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["id"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
+	if tmp, ok := rawArgs["id"]; ok {
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Mutation_clearMoves_argsCarID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["carId"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("carId"))
+	if tmp, ok := rawArgs["carId"]; ok {
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Mutation_clearMoves_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
 	return zeroVal, nil
 }
 
@@ -9215,6 +12395,80 @@ func (ec *executionContext) field_Delivery_Mutation_publishCity_argsID(
 	}
 
 	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Mutation_renameSession_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Delivery_Mutation_renameSession_argsID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	arg1, err := ec.field_Delivery_Mutation_renameSession_argsDisplayName(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["displayName"] = arg1
+	arg2, err := ec.field_Delivery_Mutation_renameSession_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg2
+	return args, nil
+}
+func (ec *executionContext) field_Delivery_Mutation_renameSession_argsID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["id"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
+	if tmp, ok := rawArgs["id"]; ok {
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Mutation_renameSession_argsDisplayName(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["displayName"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("displayName"))
+	if tmp, ok := rawArgs["displayName"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Mutation_renameSession_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
 	return zeroVal, nil
 }
 
@@ -9644,6 +12898,103 @@ func (ec *executionContext) field_Delivery_Mutation_validateCity_argsConfig(
 	return zeroVal, nil
 }
 
+func (ec *executionContext) field_Delivery_Mutation_waitUntil_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Delivery_Mutation_waitUntil_argsID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	arg1, err := ec.field_Delivery_Mutation_waitUntil_argsTick(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["tick"] = arg1
+	arg2, err := ec.field_Delivery_Mutation_waitUntil_argsTicks(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ticks"] = arg2
+	arg3, err := ec.field_Delivery_Mutation_waitUntil_argsOwnerToken(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ownerToken"] = arg3
+	return args, nil
+}
+func (ec *executionContext) field_Delivery_Mutation_waitUntil_argsID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["id"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
+	if tmp, ok := rawArgs["id"]; ok {
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Mutation_waitUntil_argsTick(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["tick"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("tick"))
+	if tmp, ok := rawArgs["tick"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Mutation_waitUntil_argsTicks(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["ticks"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ticks"))
+	if tmp, ok := rawArgs["ticks"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Mutation_waitUntil_argsOwnerToken(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["ownerToken"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ownerToken"))
+	if tmp, ok := rawArgs["ownerToken"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
 func (ec *executionContext) field_Delivery_Query_canPlaySession_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -9838,6 +13189,11 @@ func (ec *executionContext) field_Delivery_Query_events_args(ctx context.Context
 		return nil, err
 	}
 	args["sinceTick"] = arg1
+	arg2, err := ec.field_Delivery_Query_events_argsLimit(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["limit"] = arg2
 	return args, nil
 }
 func (ec *executionContext) field_Delivery_Query_events_argsID(
@@ -9876,6 +13232,527 @@ func (ec *executionContext) field_Delivery_Query_events_argsSinceTick(
 	return zeroVal, nil
 }
 
+func (ec *executionContext) field_Delivery_Query_events_argsLimit(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["limit"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("limit"))
+	if tmp, ok := rawArgs["limit"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_itemsHistory_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Delivery_Query_itemsHistory_argsIds(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ids"] = arg0
+	arg1, err := ec.field_Delivery_Query_itemsHistory_argsCityID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["cityId"] = arg1
+	arg2, err := ec.field_Delivery_Query_itemsHistory_argsFromTick(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["fromTick"] = arg2
+	arg3, err := ec.field_Delivery_Query_itemsHistory_argsToTick(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["toTick"] = arg3
+	arg4, err := ec.field_Delivery_Query_itemsHistory_argsMaxPoints(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["maxPoints"] = arg4
+	return args, nil
+}
+func (ec *executionContext) field_Delivery_Query_itemsHistory_argsIds(
+	ctx context.Context,
+	rawArgs map[string]any,
+) ([]string, error) {
+	if _, ok := rawArgs["ids"]; !ok {
+		var zeroVal []string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ids"))
+	if tmp, ok := rawArgs["ids"]; ok {
+		return ec.unmarshalOID2ᚕstringᚄ(ctx, tmp)
+	}
+
+	var zeroVal []string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_itemsHistory_argsCityID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["cityId"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("cityId"))
+	if tmp, ok := rawArgs["cityId"]; ok {
+		return ec.unmarshalOID2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_itemsHistory_argsFromTick(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["fromTick"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("fromTick"))
+	if tmp, ok := rawArgs["fromTick"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_itemsHistory_argsToTick(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["toTick"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("toTick"))
+	if tmp, ok := rawArgs["toTick"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_itemsHistory_argsMaxPoints(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["maxPoints"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("maxPoints"))
+	if tmp, ok := rawArgs["maxPoints"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_metricHistory_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Delivery_Query_metricHistory_argsMetric(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["metric"] = arg0
+	arg1, err := ec.field_Delivery_Query_metricHistory_argsIds(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ids"] = arg1
+	arg2, err := ec.field_Delivery_Query_metricHistory_argsCityID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["cityId"] = arg2
+	arg3, err := ec.field_Delivery_Query_metricHistory_argsFromTick(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["fromTick"] = arg3
+	arg4, err := ec.field_Delivery_Query_metricHistory_argsToTick(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["toTick"] = arg4
+	arg5, err := ec.field_Delivery_Query_metricHistory_argsMaxPoints(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["maxPoints"] = arg5
+	return args, nil
+}
+func (ec *executionContext) field_Delivery_Query_metricHistory_argsMetric(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (model.AnalyticsMetric, error) {
+	if _, ok := rawArgs["metric"]; !ok {
+		var zeroVal model.AnalyticsMetric
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("metric"))
+	if tmp, ok := rawArgs["metric"]; ok {
+		return ec.unmarshalNDelivery_AnalyticsMetric2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐAnalyticsMetric(ctx, tmp)
+	}
+
+	var zeroVal model.AnalyticsMetric
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_metricHistory_argsIds(
+	ctx context.Context,
+	rawArgs map[string]any,
+) ([]string, error) {
+	if _, ok := rawArgs["ids"]; !ok {
+		var zeroVal []string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ids"))
+	if tmp, ok := rawArgs["ids"]; ok {
+		return ec.unmarshalOID2ᚕstringᚄ(ctx, tmp)
+	}
+
+	var zeroVal []string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_metricHistory_argsCityID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["cityId"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("cityId"))
+	if tmp, ok := rawArgs["cityId"]; ok {
+		return ec.unmarshalOID2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_metricHistory_argsFromTick(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["fromTick"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("fromTick"))
+	if tmp, ok := rawArgs["fromTick"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_metricHistory_argsToTick(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["toTick"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("toTick"))
+	if tmp, ok := rawArgs["toTick"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_metricHistory_argsMaxPoints(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["maxPoints"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("maxPoints"))
+	if tmp, ok := rawArgs["maxPoints"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_moneyHistory_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Delivery_Query_moneyHistory_argsIds(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ids"] = arg0
+	arg1, err := ec.field_Delivery_Query_moneyHistory_argsCityID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["cityId"] = arg1
+	arg2, err := ec.field_Delivery_Query_moneyHistory_argsFromTick(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["fromTick"] = arg2
+	arg3, err := ec.field_Delivery_Query_moneyHistory_argsToTick(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["toTick"] = arg3
+	arg4, err := ec.field_Delivery_Query_moneyHistory_argsMaxPoints(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["maxPoints"] = arg4
+	return args, nil
+}
+func (ec *executionContext) field_Delivery_Query_moneyHistory_argsIds(
+	ctx context.Context,
+	rawArgs map[string]any,
+) ([]string, error) {
+	if _, ok := rawArgs["ids"]; !ok {
+		var zeroVal []string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ids"))
+	if tmp, ok := rawArgs["ids"]; ok {
+		return ec.unmarshalOID2ᚕstringᚄ(ctx, tmp)
+	}
+
+	var zeroVal []string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_moneyHistory_argsCityID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["cityId"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("cityId"))
+	if tmp, ok := rawArgs["cityId"]; ok {
+		return ec.unmarshalOID2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_moneyHistory_argsFromTick(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["fromTick"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("fromTick"))
+	if tmp, ok := rawArgs["fromTick"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_moneyHistory_argsToTick(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["toTick"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("toTick"))
+	if tmp, ok := rawArgs["toTick"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_moneyHistory_argsMaxPoints(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["maxPoints"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("maxPoints"))
+	if tmp, ok := rawArgs["maxPoints"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_reputationHistory_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Delivery_Query_reputationHistory_argsIds(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["ids"] = arg0
+	arg1, err := ec.field_Delivery_Query_reputationHistory_argsCityID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["cityId"] = arg1
+	arg2, err := ec.field_Delivery_Query_reputationHistory_argsFromTick(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["fromTick"] = arg2
+	arg3, err := ec.field_Delivery_Query_reputationHistory_argsToTick(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["toTick"] = arg3
+	arg4, err := ec.field_Delivery_Query_reputationHistory_argsMaxPoints(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["maxPoints"] = arg4
+	return args, nil
+}
+func (ec *executionContext) field_Delivery_Query_reputationHistory_argsIds(
+	ctx context.Context,
+	rawArgs map[string]any,
+) ([]string, error) {
+	if _, ok := rawArgs["ids"]; !ok {
+		var zeroVal []string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("ids"))
+	if tmp, ok := rawArgs["ids"]; ok {
+		return ec.unmarshalOID2ᚕstringᚄ(ctx, tmp)
+	}
+
+	var zeroVal []string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_reputationHistory_argsCityID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["cityId"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("cityId"))
+	if tmp, ok := rawArgs["cityId"]; ok {
+		return ec.unmarshalOID2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_reputationHistory_argsFromTick(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["fromTick"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("fromTick"))
+	if tmp, ok := rawArgs["fromTick"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_reputationHistory_argsToTick(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["toTick"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("toTick"))
+	if tmp, ok := rawArgs["toTick"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_reputationHistory_argsMaxPoints(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["maxPoints"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("maxPoints"))
+	if tmp, ok := rawArgs["maxPoints"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
 func (ec *executionContext) field_Delivery_Query_session_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -9901,6 +13778,246 @@ func (ec *executionContext) field_Delivery_Query_session_argsID(
 	}
 
 	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_sessions_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Delivery_Query_sessions_argsSort(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["sort"] = arg0
+	arg1, err := ec.field_Delivery_Query_sessions_argsLimit(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["limit"] = arg1
+	arg2, err := ec.field_Delivery_Query_sessions_argsBefore(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["before"] = arg2
+	arg3, err := ec.field_Delivery_Query_sessions_argsCursor(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["cursor"] = arg3
+	arg4, err := ec.field_Delivery_Query_sessions_argsMine(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["mine"] = arg4
+	return args, nil
+}
+func (ec *executionContext) field_Delivery_Query_sessions_argsSort(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*model.SessionSort, error) {
+	if _, ok := rawArgs["sort"]; !ok {
+		var zeroVal *model.SessionSort
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("sort"))
+	if tmp, ok := rawArgs["sort"]; ok {
+		return ec.unmarshalODelivery_SessionSort2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐSessionSort(ctx, tmp)
+	}
+
+	var zeroVal *model.SessionSort
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_sessions_argsLimit(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["limit"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("limit"))
+	if tmp, ok := rawArgs["limit"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_sessions_argsBefore(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*time.Time, error) {
+	if _, ok := rawArgs["before"]; !ok {
+		var zeroVal *time.Time
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("before"))
+	if tmp, ok := rawArgs["before"]; ok {
+		return ec.unmarshalOTime2ᚖtimeᚐTime(ctx, tmp)
+	}
+
+	var zeroVal *time.Time
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_sessions_argsCursor(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["cursor"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("cursor"))
+	if tmp, ok := rawArgs["cursor"]; ok {
+		return ec.unmarshalOString2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Query_sessions_argsMine(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*bool, error) {
+	if _, ok := rawArgs["mine"]; !ok {
+		var zeroVal *bool
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("mine"))
+	if tmp, ok := rawArgs["mine"]; ok {
+		return ec.unmarshalOBoolean2ᚖbool(ctx, tmp)
+	}
+
+	var zeroVal *bool
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Snapshot_orders_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Delivery_Snapshot_orders_argsState(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["state"] = arg0
+	arg1, err := ec.field_Delivery_Snapshot_orders_argsCarID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["carId"] = arg1
+	arg2, err := ec.field_Delivery_Snapshot_orders_argsSinceTick(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["sinceTick"] = arg2
+	arg3, err := ec.field_Delivery_Snapshot_orders_argsIncludeFinished(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["includeFinished"] = arg3
+	arg4, err := ec.field_Delivery_Snapshot_orders_argsLimit(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["limit"] = arg4
+	return args, nil
+}
+func (ec *executionContext) field_Delivery_Snapshot_orders_argsState(
+	ctx context.Context,
+	rawArgs map[string]any,
+) ([]model.OrderState, error) {
+	if _, ok := rawArgs["state"]; !ok {
+		var zeroVal []model.OrderState
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("state"))
+	if tmp, ok := rawArgs["state"]; ok {
+		return ec.unmarshalODelivery_OrderState2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐOrderStateᚄ(ctx, tmp)
+	}
+
+	var zeroVal []model.OrderState
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Snapshot_orders_argsCarID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*string, error) {
+	if _, ok := rawArgs["carId"]; !ok {
+		var zeroVal *string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("carId"))
+	if tmp, ok := rawArgs["carId"]; ok {
+		return ec.unmarshalOID2ᚖstring(ctx, tmp)
+	}
+
+	var zeroVal *string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Snapshot_orders_argsSinceTick(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["sinceTick"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("sinceTick"))
+	if tmp, ok := rawArgs["sinceTick"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Snapshot_orders_argsIncludeFinished(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*bool, error) {
+	if _, ok := rawArgs["includeFinished"]; !ok {
+		var zeroVal *bool
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("includeFinished"))
+	if tmp, ok := rawArgs["includeFinished"]; ok {
+		return ec.unmarshalOBoolean2ᚖbool(ctx, tmp)
+	}
+
+	var zeroVal *bool
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Delivery_Snapshot_orders_argsLimit(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (*int, error) {
+	if _, ok := rawArgs["limit"]; !ok {
+		var zeroVal *int
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("limit"))
+	if tmp, ok := rawArgs["limit"]; ok {
+		return ec.unmarshalOInt2ᚖint(ctx, tmp)
+	}
+
+	var zeroVal *int
 	return zeroVal, nil
 }
 
@@ -13965,6 +18082,270 @@ func (ec *executionContext) fieldContext_Delivery_CarClassView_affordable(_ cont
 	return fc, nil
 }
 
+func (ec *executionContext) _Delivery_CarLedgerView_carId(ctx context.Context, field graphql.CollectedField, obj *model.CarLedgerView) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_CarLedgerView_carId(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.CarID, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNID2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_CarLedgerView_carId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_CarLedgerView",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_CarLedgerView_carName(ctx context.Context, field graphql.CollectedField, obj *model.CarLedgerView) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_CarLedgerView_carName(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.CarName, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_CarLedgerView_carName(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_CarLedgerView",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_CarLedgerView_income(ctx context.Context, field graphql.CollectedField, obj *model.CarLedgerView) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_CarLedgerView_income(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Income, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int)
+	fc.Result = res
+	return ec.marshalNInt2int(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_CarLedgerView_income(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_CarLedgerView",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_CarLedgerView_expenses(ctx context.Context, field graphql.CollectedField, obj *model.CarLedgerView) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_CarLedgerView_expenses(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Expenses, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int)
+	fc.Result = res
+	return ec.marshalNInt2int(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_CarLedgerView_expenses(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_CarLedgerView",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_CarLedgerView_net(ctx context.Context, field graphql.CollectedField, obj *model.CarLedgerView) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_CarLedgerView_net(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Net, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int)
+	fc.Result = res
+	return ec.marshalNInt2int(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_CarLedgerView_net(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_CarLedgerView",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_CarLedgerView_rows(ctx context.Context, field graphql.CollectedField, obj *model.CarLedgerView) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_CarLedgerView_rows(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Rows, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int)
+	fc.Result = res
+	return ec.marshalNInt2int(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_CarLedgerView_rows(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_CarLedgerView",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Delivery_CarView_id(ctx context.Context, field graphql.CollectedField, obj *model.CarView) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Delivery_CarView_id(ctx, field)
 	if err != nil {
@@ -14578,6 +18959,50 @@ func (ec *executionContext) fieldContext_Delivery_CarView_queuedMove(_ context.C
 	return fc, nil
 }
 
+func (ec *executionContext) _Delivery_CarView_queuedMoves(ctx context.Context, field graphql.CollectedField, obj *model.CarView) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_CarView_queuedMoves(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.QueuedMoves, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]model.Direction)
+	fc.Result = res
+	return ec.marshalNDelivery_Direction2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐDirectionᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_CarView_queuedMoves(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_CarView",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Delivery_Direction does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Delivery_CarView_lastReject(ctx context.Context, field graphql.CollectedField, obj *model.CarView) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Delivery_CarView_lastReject(ctx, field)
 	if err != nil {
@@ -14730,6 +19155,8 @@ func (ec *executionContext) fieldContext_Delivery_CarWindow_car(_ context.Contex
 				return ec.fieldContext_Delivery_CarView_state(ctx, field)
 			case "queuedMove":
 				return ec.fieldContext_Delivery_CarView_queuedMove(ctx, field)
+			case "queuedMoves":
+				return ec.fieldContext_Delivery_CarView_queuedMoves(ctx, field)
 			case "lastReject":
 				return ec.fieldContext_Delivery_CarView_lastReject(ctx, field)
 			case "chargeDue":
@@ -15028,6 +19455,8 @@ func (ec *executionContext) fieldContext_Delivery_CarWindow_visibleCars(_ contex
 				return ec.fieldContext_Delivery_CarView_state(ctx, field)
 			case "queuedMove":
 				return ec.fieldContext_Delivery_CarView_queuedMove(ctx, field)
+			case "queuedMoves":
+				return ec.fieldContext_Delivery_CarView_queuedMoves(ctx, field)
 			case "lastReject":
 				return ec.fieldContext_Delivery_CarView_lastReject(ctx, field)
 			case "chargeDue":
@@ -17093,6 +21522,8 @@ func (ec *executionContext) fieldContext_Delivery_CreateSessionResult_session(_ 
 				return ec.fieldContext_Delivery_Snapshot_id(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Delivery_Snapshot_createdAt(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Delivery_Snapshot_displayName(ctx, field)
 			case "tick":
 				return ec.fieldContext_Delivery_Snapshot_tick(ctx, field)
 			case "speed":
@@ -17107,6 +21538,8 @@ func (ec *executionContext) fieldContext_Delivery_CreateSessionResult_session(_ 
 				return ec.fieldContext_Delivery_Snapshot_cars(ctx, field)
 			case "orders":
 				return ec.fieldContext_Delivery_Snapshot_orders(ctx, field)
+			case "openOrders":
+				return ec.fieldContext_Delivery_Snapshot_openOrders(ctx, field)
 			case "ledger":
 				return ec.fieldContext_Delivery_Snapshot_ledger(ctx, field)
 			case "carClasses":
@@ -17115,6 +21548,8 @@ func (ec *executionContext) fieldContext_Delivery_CreateSessionResult_session(_ 
 				return ec.fieldContext_Delivery_Snapshot_growth(ctx, field)
 			case "events":
 				return ec.fieldContext_Delivery_Snapshot_events(ctx, field)
+			case "eventCapacity":
+				return ec.fieldContext_Delivery_Snapshot_eventCapacity(ctx, field)
 			case "closures":
 				return ec.fieldContext_Delivery_Snapshot_closures(ctx, field)
 			}
@@ -17163,6 +21598,196 @@ func (ec *executionContext) fieldContext_Delivery_CreateSessionResult_ownerToken
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_EventFeed_events(ctx context.Context, field graphql.CollectedField, obj *model.EventFeed) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_EventFeed_events(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Events, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model.EventView)
+	fc.Result = res
+	return ec.marshalNDelivery_EventView2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐEventViewᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_EventFeed_events(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_EventFeed",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "tick":
+				return ec.fieldContext_Delivery_EventView_tick(ctx, field)
+			case "type":
+				return ec.fieldContext_Delivery_EventView_type(ctx, field)
+			case "message":
+				return ec.fieldContext_Delivery_EventView_message(ctx, field)
+			case "carId":
+				return ec.fieldContext_Delivery_EventView_carId(ctx, field)
+			case "x":
+				return ec.fieldContext_Delivery_EventView_x(ctx, field)
+			case "y":
+				return ec.fieldContext_Delivery_EventView_y(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Delivery_EventView", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_EventFeed_oldestTick(ctx context.Context, field graphql.CollectedField, obj *model.EventFeed) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_EventFeed_oldestTick(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.OldestTick, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int)
+	fc.Result = res
+	return ec.marshalNInt2int(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_EventFeed_oldestTick(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_EventFeed",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_EventFeed_truncated(ctx context.Context, field graphql.CollectedField, obj *model.EventFeed) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_EventFeed_truncated(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Truncated, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_EventFeed_truncated(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_EventFeed",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_EventFeed_capacity(ctx context.Context, field graphql.CollectedField, obj *model.EventFeed) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_EventFeed_capacity(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Capacity, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int)
+	fc.Result = res
+	return ec.marshalNInt2int(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_EventFeed_capacity(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_EventFeed",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
 		},
 	}
 	return fc, nil
@@ -18359,6 +22984,50 @@ func (ec *executionContext) fieldContext_Delivery_LedgerView_upkeepDue(_ context
 	return fc, nil
 }
 
+func (ec *executionContext) _Delivery_LedgerView_payMultiplier(ctx context.Context, field graphql.CollectedField, obj *model.LedgerView) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_LedgerView_payMultiplier(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.PayMultiplier, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(float64)
+	fc.Result = res
+	return ec.marshalNFloat2float64(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_LedgerView_payMultiplier(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_LedgerView",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Float does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Delivery_LedgerView_cashEntries(ctx context.Context, field graphql.CollectedField, obj *model.LedgerView) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Delivery_LedgerView_cashEntries(ctx, field)
 	if err != nil {
@@ -18373,7 +23042,7 @@ func (ec *executionContext) _Delivery_LedgerView_cashEntries(ctx context.Context
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.CashEntries, nil
+		return ec.resolvers.Delivery_LedgerView().CashEntries(rctx, obj, fc.Args["month"].(*int), fc.Args["fromTick"].(*int), fc.Args["toTick"].(*int), fc.Args["category"].(*model.CashCategory), fc.Args["carId"].(*string), fc.Args["limit"].(*int))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -18390,12 +23059,12 @@ func (ec *executionContext) _Delivery_LedgerView_cashEntries(ctx context.Context
 	return ec.marshalNDelivery_CashEntryView2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐCashEntryViewᚄ(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) fieldContext_Delivery_LedgerView_cashEntries(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Delivery_LedgerView_cashEntries(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Delivery_LedgerView",
 		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
+		IsMethod:   true,
+		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
 			case "seq":
@@ -18421,6 +23090,17 @@ func (ec *executionContext) fieldContext_Delivery_LedgerView_cashEntries(_ conte
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Delivery_CashEntryView", field.Name)
 		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Delivery_LedgerView_cashEntries_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
 	}
 	return fc, nil
 }
@@ -18483,7 +23163,7 @@ func (ec *executionContext) _Delivery_LedgerView_months(ctx context.Context, fie
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.Months, nil
+		return ec.resolvers.Delivery_LedgerView().Months(rctx, obj, fc.Args["month"].(*int), fc.Args["fromTick"].(*int), fc.Args["toTick"].(*int), fc.Args["category"].(*model.CashCategory), fc.Args["limit"].(*int))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -18500,12 +23180,12 @@ func (ec *executionContext) _Delivery_LedgerView_months(ctx context.Context, fie
 	return ec.marshalNDelivery_MonthView2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐMonthViewᚄ(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) fieldContext_Delivery_LedgerView_months(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Delivery_LedgerView_months(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Delivery_LedgerView",
 		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
+		IsMethod:   true,
+		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
 			case "index":
@@ -18524,6 +23204,312 @@ func (ec *executionContext) fieldContext_Delivery_LedgerView_months(_ context.Co
 				return ec.fieldContext_Delivery_MonthView_categories(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Delivery_MonthView", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Delivery_LedgerView_months_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_LedgerView_cars(ctx context.Context, field graphql.CollectedField, obj *model.LedgerView) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_LedgerView_cars(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Delivery_LedgerView().Cars(rctx, obj, fc.Args["month"].(*int), fc.Args["fromTick"].(*int), fc.Args["toTick"].(*int), fc.Args["limit"].(*int))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model.CarLedgerView)
+	fc.Result = res
+	return ec.marshalNDelivery_CarLedgerView2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐCarLedgerViewᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_LedgerView_cars(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_LedgerView",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "carId":
+				return ec.fieldContext_Delivery_CarLedgerView_carId(ctx, field)
+			case "carName":
+				return ec.fieldContext_Delivery_CarLedgerView_carName(ctx, field)
+			case "income":
+				return ec.fieldContext_Delivery_CarLedgerView_income(ctx, field)
+			case "expenses":
+				return ec.fieldContext_Delivery_CarLedgerView_expenses(ctx, field)
+			case "net":
+				return ec.fieldContext_Delivery_CarLedgerView_net(ctx, field)
+			case "rows":
+				return ec.fieldContext_Delivery_CarLedgerView_rows(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Delivery_CarLedgerView", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Delivery_LedgerView_cars_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_MoneyHistory_sessionId(ctx context.Context, field graphql.CollectedField, obj *model.MoneyHistory) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_MoneyHistory_sessionId(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.SessionID, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNID2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_MoneyHistory_sessionId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_MoneyHistory",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_MoneyHistory_cityId(ctx context.Context, field graphql.CollectedField, obj *model.MoneyHistory) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_MoneyHistory_cityId(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.CityID, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNID2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_MoneyHistory_cityId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_MoneyHistory",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_MoneyHistory_points(ctx context.Context, field graphql.CollectedField, obj *model.MoneyHistory) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_MoneyHistory_points(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Points, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model.MoneyPoint)
+	fc.Result = res
+	return ec.marshalNDelivery_MoneyPoint2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐMoneyPointᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_MoneyHistory_points(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_MoneyHistory",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "tick":
+				return ec.fieldContext_Delivery_MoneyPoint_tick(ctx, field)
+			case "money":
+				return ec.fieldContext_Delivery_MoneyPoint_money(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Delivery_MoneyPoint", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_MoneyPoint_tick(ctx context.Context, field graphql.CollectedField, obj *model.MoneyPoint) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_MoneyPoint_tick(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Tick, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int)
+	fc.Result = res
+	return ec.marshalNInt2int(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_MoneyPoint_tick(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_MoneyPoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_MoneyPoint_money(ctx context.Context, field graphql.CollectedField, obj *model.MoneyPoint) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_MoneyPoint_money(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Money, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int)
+	fc.Result = res
+	return ec.marshalNInt2int(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_MoneyPoint_money(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_MoneyPoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
 		},
 	}
 	return fc, nil
@@ -19081,6 +24067,8 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_moveCar(ctx context.C
 				return ec.fieldContext_Delivery_Snapshot_id(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Delivery_Snapshot_createdAt(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Delivery_Snapshot_displayName(ctx, field)
 			case "tick":
 				return ec.fieldContext_Delivery_Snapshot_tick(ctx, field)
 			case "speed":
@@ -19095,6 +24083,8 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_moveCar(ctx context.C
 				return ec.fieldContext_Delivery_Snapshot_cars(ctx, field)
 			case "orders":
 				return ec.fieldContext_Delivery_Snapshot_orders(ctx, field)
+			case "openOrders":
+				return ec.fieldContext_Delivery_Snapshot_openOrders(ctx, field)
 			case "ledger":
 				return ec.fieldContext_Delivery_Snapshot_ledger(ctx, field)
 			case "carClasses":
@@ -19103,6 +24093,8 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_moveCar(ctx context.C
 				return ec.fieldContext_Delivery_Snapshot_growth(ctx, field)
 			case "events":
 				return ec.fieldContext_Delivery_Snapshot_events(ctx, field)
+			case "eventCapacity":
+				return ec.fieldContext_Delivery_Snapshot_eventCapacity(ctx, field)
 			case "closures":
 				return ec.fieldContext_Delivery_Snapshot_closures(ctx, field)
 			}
@@ -19117,6 +24109,97 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_moveCar(ctx context.C
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Delivery_Mutation_moveCar_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_Mutation_clearMoves(ctx context.Context, field graphql.CollectedField, obj *graph.Resolver) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_Mutation_clearMoves(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Delivery_Mutation().ClearMoves(rctx, obj, fc.Args["id"].(string), fc.Args["carId"].(string), fc.Args["ownerToken"].(*string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.Snapshot)
+	fc.Result = res
+	return ec.marshalNDelivery_Snapshot2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐSnapshot(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_Mutation_clearMoves(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Delivery_Snapshot_id(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Delivery_Snapshot_createdAt(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Delivery_Snapshot_displayName(ctx, field)
+			case "tick":
+				return ec.fieldContext_Delivery_Snapshot_tick(ctx, field)
+			case "speed":
+				return ec.fieldContext_Delivery_Snapshot_speed(ctx, field)
+			case "paused":
+				return ec.fieldContext_Delivery_Snapshot_paused(ctx, field)
+			case "tickMs":
+				return ec.fieldContext_Delivery_Snapshot_tickMs(ctx, field)
+			case "city":
+				return ec.fieldContext_Delivery_Snapshot_city(ctx, field)
+			case "cars":
+				return ec.fieldContext_Delivery_Snapshot_cars(ctx, field)
+			case "orders":
+				return ec.fieldContext_Delivery_Snapshot_orders(ctx, field)
+			case "openOrders":
+				return ec.fieldContext_Delivery_Snapshot_openOrders(ctx, field)
+			case "ledger":
+				return ec.fieldContext_Delivery_Snapshot_ledger(ctx, field)
+			case "carClasses":
+				return ec.fieldContext_Delivery_Snapshot_carClasses(ctx, field)
+			case "growth":
+				return ec.fieldContext_Delivery_Snapshot_growth(ctx, field)
+			case "events":
+				return ec.fieldContext_Delivery_Snapshot_events(ctx, field)
+			case "eventCapacity":
+				return ec.fieldContext_Delivery_Snapshot_eventCapacity(ctx, field)
+			case "closures":
+				return ec.fieldContext_Delivery_Snapshot_closures(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Delivery_Snapshot", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Delivery_Mutation_clearMoves_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -19166,6 +24249,8 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_tick(ctx context.Cont
 				return ec.fieldContext_Delivery_Snapshot_id(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Delivery_Snapshot_createdAt(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Delivery_Snapshot_displayName(ctx, field)
 			case "tick":
 				return ec.fieldContext_Delivery_Snapshot_tick(ctx, field)
 			case "speed":
@@ -19180,6 +24265,8 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_tick(ctx context.Cont
 				return ec.fieldContext_Delivery_Snapshot_cars(ctx, field)
 			case "orders":
 				return ec.fieldContext_Delivery_Snapshot_orders(ctx, field)
+			case "openOrders":
+				return ec.fieldContext_Delivery_Snapshot_openOrders(ctx, field)
 			case "ledger":
 				return ec.fieldContext_Delivery_Snapshot_ledger(ctx, field)
 			case "carClasses":
@@ -19188,6 +24275,8 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_tick(ctx context.Cont
 				return ec.fieldContext_Delivery_Snapshot_growth(ctx, field)
 			case "events":
 				return ec.fieldContext_Delivery_Snapshot_events(ctx, field)
+			case "eventCapacity":
+				return ec.fieldContext_Delivery_Snapshot_eventCapacity(ctx, field)
 			case "closures":
 				return ec.fieldContext_Delivery_Snapshot_closures(ctx, field)
 			}
@@ -19202,6 +24291,97 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_tick(ctx context.Cont
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Delivery_Mutation_tick_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_Mutation_waitUntil(ctx context.Context, field graphql.CollectedField, obj *graph.Resolver) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_Mutation_waitUntil(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Delivery_Mutation().WaitUntil(rctx, obj, fc.Args["id"].(string), fc.Args["tick"].(*int), fc.Args["ticks"].(*int), fc.Args["ownerToken"].(*string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.Snapshot)
+	fc.Result = res
+	return ec.marshalNDelivery_Snapshot2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐSnapshot(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_Mutation_waitUntil(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Delivery_Snapshot_id(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Delivery_Snapshot_createdAt(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Delivery_Snapshot_displayName(ctx, field)
+			case "tick":
+				return ec.fieldContext_Delivery_Snapshot_tick(ctx, field)
+			case "speed":
+				return ec.fieldContext_Delivery_Snapshot_speed(ctx, field)
+			case "paused":
+				return ec.fieldContext_Delivery_Snapshot_paused(ctx, field)
+			case "tickMs":
+				return ec.fieldContext_Delivery_Snapshot_tickMs(ctx, field)
+			case "city":
+				return ec.fieldContext_Delivery_Snapshot_city(ctx, field)
+			case "cars":
+				return ec.fieldContext_Delivery_Snapshot_cars(ctx, field)
+			case "orders":
+				return ec.fieldContext_Delivery_Snapshot_orders(ctx, field)
+			case "openOrders":
+				return ec.fieldContext_Delivery_Snapshot_openOrders(ctx, field)
+			case "ledger":
+				return ec.fieldContext_Delivery_Snapshot_ledger(ctx, field)
+			case "carClasses":
+				return ec.fieldContext_Delivery_Snapshot_carClasses(ctx, field)
+			case "growth":
+				return ec.fieldContext_Delivery_Snapshot_growth(ctx, field)
+			case "events":
+				return ec.fieldContext_Delivery_Snapshot_events(ctx, field)
+			case "eventCapacity":
+				return ec.fieldContext_Delivery_Snapshot_eventCapacity(ctx, field)
+			case "closures":
+				return ec.fieldContext_Delivery_Snapshot_closures(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Delivery_Snapshot", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Delivery_Mutation_waitUntil_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -19251,6 +24431,8 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_setSpeed(ctx context.
 				return ec.fieldContext_Delivery_Snapshot_id(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Delivery_Snapshot_createdAt(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Delivery_Snapshot_displayName(ctx, field)
 			case "tick":
 				return ec.fieldContext_Delivery_Snapshot_tick(ctx, field)
 			case "speed":
@@ -19265,6 +24447,8 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_setSpeed(ctx context.
 				return ec.fieldContext_Delivery_Snapshot_cars(ctx, field)
 			case "orders":
 				return ec.fieldContext_Delivery_Snapshot_orders(ctx, field)
+			case "openOrders":
+				return ec.fieldContext_Delivery_Snapshot_openOrders(ctx, field)
 			case "ledger":
 				return ec.fieldContext_Delivery_Snapshot_ledger(ctx, field)
 			case "carClasses":
@@ -19273,6 +24457,8 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_setSpeed(ctx context.
 				return ec.fieldContext_Delivery_Snapshot_growth(ctx, field)
 			case "events":
 				return ec.fieldContext_Delivery_Snapshot_events(ctx, field)
+			case "eventCapacity":
+				return ec.fieldContext_Delivery_Snapshot_eventCapacity(ctx, field)
 			case "closures":
 				return ec.fieldContext_Delivery_Snapshot_closures(ctx, field)
 			}
@@ -19336,6 +24522,8 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_assignOrder(ctx conte
 				return ec.fieldContext_Delivery_Snapshot_id(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Delivery_Snapshot_createdAt(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Delivery_Snapshot_displayName(ctx, field)
 			case "tick":
 				return ec.fieldContext_Delivery_Snapshot_tick(ctx, field)
 			case "speed":
@@ -19350,6 +24538,8 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_assignOrder(ctx conte
 				return ec.fieldContext_Delivery_Snapshot_cars(ctx, field)
 			case "orders":
 				return ec.fieldContext_Delivery_Snapshot_orders(ctx, field)
+			case "openOrders":
+				return ec.fieldContext_Delivery_Snapshot_openOrders(ctx, field)
 			case "ledger":
 				return ec.fieldContext_Delivery_Snapshot_ledger(ctx, field)
 			case "carClasses":
@@ -19358,6 +24548,8 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_assignOrder(ctx conte
 				return ec.fieldContext_Delivery_Snapshot_growth(ctx, field)
 			case "events":
 				return ec.fieldContext_Delivery_Snapshot_events(ctx, field)
+			case "eventCapacity":
+				return ec.fieldContext_Delivery_Snapshot_eventCapacity(ctx, field)
 			case "closures":
 				return ec.fieldContext_Delivery_Snapshot_closures(ctx, field)
 			}
@@ -19421,6 +24613,8 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_unassignOrder(ctx con
 				return ec.fieldContext_Delivery_Snapshot_id(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Delivery_Snapshot_createdAt(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Delivery_Snapshot_displayName(ctx, field)
 			case "tick":
 				return ec.fieldContext_Delivery_Snapshot_tick(ctx, field)
 			case "speed":
@@ -19435,6 +24629,8 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_unassignOrder(ctx con
 				return ec.fieldContext_Delivery_Snapshot_cars(ctx, field)
 			case "orders":
 				return ec.fieldContext_Delivery_Snapshot_orders(ctx, field)
+			case "openOrders":
+				return ec.fieldContext_Delivery_Snapshot_openOrders(ctx, field)
 			case "ledger":
 				return ec.fieldContext_Delivery_Snapshot_ledger(ctx, field)
 			case "carClasses":
@@ -19443,6 +24639,8 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_unassignOrder(ctx con
 				return ec.fieldContext_Delivery_Snapshot_growth(ctx, field)
 			case "events":
 				return ec.fieldContext_Delivery_Snapshot_events(ctx, field)
+			case "eventCapacity":
+				return ec.fieldContext_Delivery_Snapshot_eventCapacity(ctx, field)
 			case "closures":
 				return ec.fieldContext_Delivery_Snapshot_closures(ctx, field)
 			}
@@ -19506,6 +24704,8 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_buyCar(ctx context.Co
 				return ec.fieldContext_Delivery_Snapshot_id(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Delivery_Snapshot_createdAt(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Delivery_Snapshot_displayName(ctx, field)
 			case "tick":
 				return ec.fieldContext_Delivery_Snapshot_tick(ctx, field)
 			case "speed":
@@ -19520,6 +24720,8 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_buyCar(ctx context.Co
 				return ec.fieldContext_Delivery_Snapshot_cars(ctx, field)
 			case "orders":
 				return ec.fieldContext_Delivery_Snapshot_orders(ctx, field)
+			case "openOrders":
+				return ec.fieldContext_Delivery_Snapshot_openOrders(ctx, field)
 			case "ledger":
 				return ec.fieldContext_Delivery_Snapshot_ledger(ctx, field)
 			case "carClasses":
@@ -19528,6 +24730,8 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_buyCar(ctx context.Co
 				return ec.fieldContext_Delivery_Snapshot_growth(ctx, field)
 			case "events":
 				return ec.fieldContext_Delivery_Snapshot_events(ctx, field)
+			case "eventCapacity":
+				return ec.fieldContext_Delivery_Snapshot_eventCapacity(ctx, field)
 			case "closures":
 				return ec.fieldContext_Delivery_Snapshot_closures(ctx, field)
 			}
@@ -19591,6 +24795,8 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_towCar(ctx context.Co
 				return ec.fieldContext_Delivery_Snapshot_id(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Delivery_Snapshot_createdAt(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Delivery_Snapshot_displayName(ctx, field)
 			case "tick":
 				return ec.fieldContext_Delivery_Snapshot_tick(ctx, field)
 			case "speed":
@@ -19605,6 +24811,8 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_towCar(ctx context.Co
 				return ec.fieldContext_Delivery_Snapshot_cars(ctx, field)
 			case "orders":
 				return ec.fieldContext_Delivery_Snapshot_orders(ctx, field)
+			case "openOrders":
+				return ec.fieldContext_Delivery_Snapshot_openOrders(ctx, field)
 			case "ledger":
 				return ec.fieldContext_Delivery_Snapshot_ledger(ctx, field)
 			case "carClasses":
@@ -19613,6 +24821,8 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_towCar(ctx context.Co
 				return ec.fieldContext_Delivery_Snapshot_growth(ctx, field)
 			case "events":
 				return ec.fieldContext_Delivery_Snapshot_events(ctx, field)
+			case "eventCapacity":
+				return ec.fieldContext_Delivery_Snapshot_eventCapacity(ctx, field)
 			case "closures":
 				return ec.fieldContext_Delivery_Snapshot_closures(ctx, field)
 			}
@@ -19676,6 +24886,8 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_saveSession(ctx conte
 				return ec.fieldContext_Delivery_Snapshot_id(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Delivery_Snapshot_createdAt(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Delivery_Snapshot_displayName(ctx, field)
 			case "tick":
 				return ec.fieldContext_Delivery_Snapshot_tick(ctx, field)
 			case "speed":
@@ -19690,6 +24902,8 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_saveSession(ctx conte
 				return ec.fieldContext_Delivery_Snapshot_cars(ctx, field)
 			case "orders":
 				return ec.fieldContext_Delivery_Snapshot_orders(ctx, field)
+			case "openOrders":
+				return ec.fieldContext_Delivery_Snapshot_openOrders(ctx, field)
 			case "ledger":
 				return ec.fieldContext_Delivery_Snapshot_ledger(ctx, field)
 			case "carClasses":
@@ -19698,6 +24912,8 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_saveSession(ctx conte
 				return ec.fieldContext_Delivery_Snapshot_growth(ctx, field)
 			case "events":
 				return ec.fieldContext_Delivery_Snapshot_events(ctx, field)
+			case "eventCapacity":
+				return ec.fieldContext_Delivery_Snapshot_eventCapacity(ctx, field)
 			case "closures":
 				return ec.fieldContext_Delivery_Snapshot_closures(ctx, field)
 			}
@@ -19712,6 +24928,97 @@ func (ec *executionContext) fieldContext_Delivery_Mutation_saveSession(ctx conte
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Delivery_Mutation_saveSession_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_Mutation_renameSession(ctx context.Context, field graphql.CollectedField, obj *graph.Resolver) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_Mutation_renameSession(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Delivery_Mutation().RenameSession(rctx, obj, fc.Args["id"].(string), fc.Args["displayName"].(string), fc.Args["ownerToken"].(*string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.Snapshot)
+	fc.Result = res
+	return ec.marshalNDelivery_Snapshot2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐSnapshot(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_Mutation_renameSession(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Delivery_Snapshot_id(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Delivery_Snapshot_createdAt(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Delivery_Snapshot_displayName(ctx, field)
+			case "tick":
+				return ec.fieldContext_Delivery_Snapshot_tick(ctx, field)
+			case "speed":
+				return ec.fieldContext_Delivery_Snapshot_speed(ctx, field)
+			case "paused":
+				return ec.fieldContext_Delivery_Snapshot_paused(ctx, field)
+			case "tickMs":
+				return ec.fieldContext_Delivery_Snapshot_tickMs(ctx, field)
+			case "city":
+				return ec.fieldContext_Delivery_Snapshot_city(ctx, field)
+			case "cars":
+				return ec.fieldContext_Delivery_Snapshot_cars(ctx, field)
+			case "orders":
+				return ec.fieldContext_Delivery_Snapshot_orders(ctx, field)
+			case "openOrders":
+				return ec.fieldContext_Delivery_Snapshot_openOrders(ctx, field)
+			case "ledger":
+				return ec.fieldContext_Delivery_Snapshot_ledger(ctx, field)
+			case "carClasses":
+				return ec.fieldContext_Delivery_Snapshot_carClasses(ctx, field)
+			case "growth":
+				return ec.fieldContext_Delivery_Snapshot_growth(ctx, field)
+			case "events":
+				return ec.fieldContext_Delivery_Snapshot_events(ctx, field)
+			case "eventCapacity":
+				return ec.fieldContext_Delivery_Snapshot_eventCapacity(ctx, field)
+			case "closures":
+				return ec.fieldContext_Delivery_Snapshot_closures(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Delivery_Snapshot", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Delivery_Mutation_renameSession_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -21387,7 +26694,7 @@ func (ec *executionContext) _Delivery_Query_sessions(ctx context.Context, field 
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Delivery_Query().Sessions(rctx, obj)
+		return ec.resolvers.Delivery_Query().Sessions(rctx, obj, fc.Args["sort"].(*model.SessionSort), fc.Args["limit"].(*int), fc.Args["before"].(*time.Time), fc.Args["cursor"].(*string), fc.Args["mine"].(*bool))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -21404,7 +26711,7 @@ func (ec *executionContext) _Delivery_Query_sessions(ctx context.Context, field 
 	return ec.marshalNDelivery_SessionSummary2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐSessionSummaryᚄ(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) fieldContext_Delivery_Query_sessions(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Delivery_Query_sessions(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Delivery_Query",
 		Field:      field,
@@ -21416,6 +26723,8 @@ func (ec *executionContext) fieldContext_Delivery_Query_sessions(_ context.Conte
 				return ec.fieldContext_Delivery_SessionSummary_id(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Delivery_SessionSummary_createdAt(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Delivery_SessionSummary_displayName(ctx, field)
 			case "tick":
 				return ec.fieldContext_Delivery_SessionSummary_tick(ctx, field)
 			case "speed":
@@ -21434,9 +26743,274 @@ func (ec *executionContext) fieldContext_Delivery_Query_sessions(_ context.Conte
 				return ec.fieldContext_Delivery_SessionSummary_ownerHandle(ctx, field)
 			case "mine":
 				return ec.fieldContext_Delivery_SessionSummary_mine(ctx, field)
+			case "cursor":
+				return ec.fieldContext_Delivery_SessionSummary_cursor(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Delivery_SessionSummary", field.Name)
 		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Delivery_Query_sessions_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_Query_moneyHistory(ctx context.Context, field graphql.CollectedField, obj *graph.Resolver) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_Query_moneyHistory(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Delivery_Query().MoneyHistory(rctx, obj, fc.Args["ids"].([]string), fc.Args["cityId"].(*string), fc.Args["fromTick"].(*int), fc.Args["toTick"].(*int), fc.Args["maxPoints"].(*int))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model.MoneyHistory)
+	fc.Result = res
+	return ec.marshalNDelivery_MoneyHistory2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐMoneyHistoryᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_Query_moneyHistory(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "sessionId":
+				return ec.fieldContext_Delivery_MoneyHistory_sessionId(ctx, field)
+			case "cityId":
+				return ec.fieldContext_Delivery_MoneyHistory_cityId(ctx, field)
+			case "points":
+				return ec.fieldContext_Delivery_MoneyHistory_points(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Delivery_MoneyHistory", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Delivery_Query_moneyHistory_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_Query_itemsHistory(ctx context.Context, field graphql.CollectedField, obj *graph.Resolver) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_Query_itemsHistory(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Delivery_Query().ItemsHistory(rctx, obj, fc.Args["ids"].([]string), fc.Args["cityId"].(*string), fc.Args["fromTick"].(*int), fc.Args["toTick"].(*int), fc.Args["maxPoints"].(*int))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model.ValueSeries)
+	fc.Result = res
+	return ec.marshalNDelivery_ValueSeries2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐValueSeriesᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_Query_itemsHistory(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "sessionId":
+				return ec.fieldContext_Delivery_ValueSeries_sessionId(ctx, field)
+			case "cityId":
+				return ec.fieldContext_Delivery_ValueSeries_cityId(ctx, field)
+			case "points":
+				return ec.fieldContext_Delivery_ValueSeries_points(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Delivery_ValueSeries", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Delivery_Query_itemsHistory_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_Query_reputationHistory(ctx context.Context, field graphql.CollectedField, obj *graph.Resolver) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_Query_reputationHistory(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Delivery_Query().ReputationHistory(rctx, obj, fc.Args["ids"].([]string), fc.Args["cityId"].(*string), fc.Args["fromTick"].(*int), fc.Args["toTick"].(*int), fc.Args["maxPoints"].(*int))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model.ValueSeries)
+	fc.Result = res
+	return ec.marshalNDelivery_ValueSeries2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐValueSeriesᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_Query_reputationHistory(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "sessionId":
+				return ec.fieldContext_Delivery_ValueSeries_sessionId(ctx, field)
+			case "cityId":
+				return ec.fieldContext_Delivery_ValueSeries_cityId(ctx, field)
+			case "points":
+				return ec.fieldContext_Delivery_ValueSeries_points(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Delivery_ValueSeries", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Delivery_Query_reputationHistory_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_Query_metricHistory(ctx context.Context, field graphql.CollectedField, obj *graph.Resolver) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_Query_metricHistory(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Delivery_Query().MetricHistory(rctx, obj, fc.Args["metric"].(model.AnalyticsMetric), fc.Args["ids"].([]string), fc.Args["cityId"].(*string), fc.Args["fromTick"].(*int), fc.Args["toTick"].(*int), fc.Args["maxPoints"].(*int))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model.ValueSeries)
+	fc.Result = res
+	return ec.marshalNDelivery_ValueSeries2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐValueSeriesᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_Query_metricHistory(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "sessionId":
+				return ec.fieldContext_Delivery_ValueSeries_sessionId(ctx, field)
+			case "cityId":
+				return ec.fieldContext_Delivery_ValueSeries_cityId(ctx, field)
+			case "points":
+				return ec.fieldContext_Delivery_ValueSeries_points(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Delivery_ValueSeries", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Delivery_Query_metricHistory_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
 	}
 	return fc, nil
 }
@@ -21484,6 +27058,8 @@ func (ec *executionContext) fieldContext_Delivery_Query_session(ctx context.Cont
 				return ec.fieldContext_Delivery_Snapshot_id(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Delivery_Snapshot_createdAt(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Delivery_Snapshot_displayName(ctx, field)
 			case "tick":
 				return ec.fieldContext_Delivery_Snapshot_tick(ctx, field)
 			case "speed":
@@ -21498,6 +27074,8 @@ func (ec *executionContext) fieldContext_Delivery_Query_session(ctx context.Cont
 				return ec.fieldContext_Delivery_Snapshot_cars(ctx, field)
 			case "orders":
 				return ec.fieldContext_Delivery_Snapshot_orders(ctx, field)
+			case "openOrders":
+				return ec.fieldContext_Delivery_Snapshot_openOrders(ctx, field)
 			case "ledger":
 				return ec.fieldContext_Delivery_Snapshot_ledger(ctx, field)
 			case "carClasses":
@@ -21506,6 +27084,8 @@ func (ec *executionContext) fieldContext_Delivery_Query_session(ctx context.Cont
 				return ec.fieldContext_Delivery_Snapshot_growth(ctx, field)
 			case "events":
 				return ec.fieldContext_Delivery_Snapshot_events(ctx, field)
+			case "eventCapacity":
+				return ec.fieldContext_Delivery_Snapshot_eventCapacity(ctx, field)
 			case "closures":
 				return ec.fieldContext_Delivery_Snapshot_closures(ctx, field)
 			}
@@ -21613,7 +27193,7 @@ func (ec *executionContext) _Delivery_Query_events(ctx context.Context, field gr
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Delivery_Query().Events(rctx, obj, fc.Args["id"].(string), fc.Args["sinceTick"].(int))
+		return ec.resolvers.Delivery_Query().Events(rctx, obj, fc.Args["id"].(string), fc.Args["sinceTick"].(int), fc.Args["limit"].(*int))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -21625,9 +27205,9 @@ func (ec *executionContext) _Delivery_Query_events(ctx context.Context, field gr
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model.EventView)
+	res := resTmp.(*model.EventFeed)
 	fc.Result = res
-	return ec.marshalNDelivery_EventView2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐEventViewᚄ(ctx, field.Selections, res)
+	return ec.marshalNDelivery_EventFeed2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐEventFeed(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Delivery_Query_events(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -21638,20 +27218,16 @@ func (ec *executionContext) fieldContext_Delivery_Query_events(ctx context.Conte
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
-			case "tick":
-				return ec.fieldContext_Delivery_EventView_tick(ctx, field)
-			case "type":
-				return ec.fieldContext_Delivery_EventView_type(ctx, field)
-			case "message":
-				return ec.fieldContext_Delivery_EventView_message(ctx, field)
-			case "carId":
-				return ec.fieldContext_Delivery_EventView_carId(ctx, field)
-			case "x":
-				return ec.fieldContext_Delivery_EventView_x(ctx, field)
-			case "y":
-				return ec.fieldContext_Delivery_EventView_y(ctx, field)
+			case "events":
+				return ec.fieldContext_Delivery_EventFeed_events(ctx, field)
+			case "oldestTick":
+				return ec.fieldContext_Delivery_EventFeed_oldestTick(ctx, field)
+			case "truncated":
+				return ec.fieldContext_Delivery_EventFeed_truncated(ctx, field)
+			case "capacity":
+				return ec.fieldContext_Delivery_EventFeed_capacity(ctx, field)
 			}
-			return nil, fmt.Errorf("no field named %q was found under type Delivery_EventView", field.Name)
+			return nil, fmt.Errorf("no field named %q was found under type Delivery_EventFeed", field.Name)
 		},
 	}
 	defer func() {
@@ -21894,6 +27470,50 @@ func (ec *executionContext) fieldContext_Delivery_SessionSummary_createdAt(_ con
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_SessionSummary_displayName(ctx context.Context, field graphql.CollectedField, obj *model.SessionSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_SessionSummary_displayName(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.DisplayName, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_SessionSummary_displayName(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_SessionSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
 		},
 	}
 	return fc, nil
@@ -22292,6 +27912,50 @@ func (ec *executionContext) fieldContext_Delivery_SessionSummary_mine(_ context.
 	return fc, nil
 }
 
+func (ec *executionContext) _Delivery_SessionSummary_cursor(ctx context.Context, field graphql.CollectedField, obj *model.SessionSummary) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_SessionSummary_cursor(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Cursor, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_SessionSummary_cursor(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_SessionSummary",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Delivery_Snapshot_id(ctx context.Context, field graphql.CollectedField, obj *model.Snapshot) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Delivery_Snapshot_id(ctx, field)
 	if err != nil {
@@ -22375,6 +28039,50 @@ func (ec *executionContext) fieldContext_Delivery_Snapshot_createdAt(_ context.C
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_Snapshot_displayName(ctx context.Context, field graphql.CollectedField, obj *model.Snapshot) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_Snapshot_displayName(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.DisplayName, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNString2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_Snapshot_displayName(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_Snapshot",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
 		},
 	}
 	return fc, nil
@@ -22695,6 +28403,8 @@ func (ec *executionContext) fieldContext_Delivery_Snapshot_cars(_ context.Contex
 				return ec.fieldContext_Delivery_CarView_state(ctx, field)
 			case "queuedMove":
 				return ec.fieldContext_Delivery_CarView_queuedMove(ctx, field)
+			case "queuedMoves":
+				return ec.fieldContext_Delivery_CarView_queuedMoves(ctx, field)
 			case "lastReject":
 				return ec.fieldContext_Delivery_CarView_lastReject(ctx, field)
 			case "chargeDue":
@@ -22720,7 +28430,7 @@ func (ec *executionContext) _Delivery_Snapshot_orders(ctx context.Context, field
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.Orders, nil
+		return ec.resolvers.Delivery_Snapshot().Orders(rctx, obj, fc.Args["state"].([]model.OrderState), fc.Args["carId"].(*string), fc.Args["sinceTick"].(*int), fc.Args["includeFinished"].(*bool), fc.Args["limit"].(*int))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -22737,12 +28447,101 @@ func (ec *executionContext) _Delivery_Snapshot_orders(ctx context.Context, field
 	return ec.marshalNDelivery_OrderView2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐOrderViewᚄ(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) fieldContext_Delivery_Snapshot_orders(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Delivery_Snapshot_orders(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Delivery_Snapshot",
 		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Delivery_OrderView_id(ctx, field)
+			case "item":
+				return ec.fieldContext_Delivery_OrderView_item(ctx, field)
+			case "itemName":
+				return ec.fieldContext_Delivery_OrderView_itemName(ctx, field)
+			case "quantity":
+				return ec.fieldContext_Delivery_OrderView_quantity(ctx, field)
+			case "kitchenId":
+				return ec.fieldContext_Delivery_OrderView_kitchenId(ctx, field)
+			case "kitchenName":
+				return ec.fieldContext_Delivery_OrderView_kitchenName(ctx, field)
+			case "customerId":
+				return ec.fieldContext_Delivery_OrderView_customerId(ctx, field)
+			case "customerName":
+				return ec.fieldContext_Delivery_OrderView_customerName(ctx, field)
+			case "state":
+				return ec.fieldContext_Delivery_OrderView_state(ctx, field)
+			case "assignedCar":
+				return ec.fieldContext_Delivery_OrderView_assignedCar(ctx, field)
+			case "createdTick":
+				return ec.fieldContext_Delivery_OrderView_createdTick(ctx, field)
+			case "deadlineTick":
+				return ec.fieldContext_Delivery_OrderView_deadlineTick(ctx, field)
+			case "ticksLeft":
+				return ec.fieldContext_Delivery_OrderView_ticksLeft(ctx, field)
+			case "reward":
+				return ec.fieldContext_Delivery_OrderView_reward(ctx, field)
+			case "paid":
+				return ec.fieldContext_Delivery_OrderView_paid(ctx, field)
+			case "late":
+				return ec.fieldContext_Delivery_OrderView_late(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Delivery_OrderView", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Delivery_Snapshot_orders_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_Snapshot_openOrders(ctx context.Context, field graphql.CollectedField, obj *model.Snapshot) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_Snapshot_openOrders(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Delivery_Snapshot().OpenOrders(rctx, obj)
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model.OrderView)
+	fc.Result = res
+	return ec.marshalNDelivery_OrderView2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐOrderViewᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_Snapshot_openOrders(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_Snapshot",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
 			case "id":
@@ -22849,12 +28648,16 @@ func (ec *executionContext) fieldContext_Delivery_Snapshot_ledger(_ context.Cont
 				return ec.fieldContext_Delivery_LedgerView_towFees(ctx, field)
 			case "upkeepDue":
 				return ec.fieldContext_Delivery_LedgerView_upkeepDue(ctx, field)
+			case "payMultiplier":
+				return ec.fieldContext_Delivery_LedgerView_payMultiplier(ctx, field)
 			case "cashEntries":
 				return ec.fieldContext_Delivery_LedgerView_cashEntries(ctx, field)
 			case "ticksPerMonth":
 				return ec.fieldContext_Delivery_LedgerView_ticksPerMonth(ctx, field)
 			case "months":
 				return ec.fieldContext_Delivery_LedgerView_months(ctx, field)
+			case "cars":
+				return ec.fieldContext_Delivery_LedgerView_cars(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Delivery_LedgerView", field.Name)
 		},
@@ -23036,6 +28839,50 @@ func (ec *executionContext) fieldContext_Delivery_Snapshot_events(_ context.Cont
 	return fc, nil
 }
 
+func (ec *executionContext) _Delivery_Snapshot_eventCapacity(ctx context.Context, field graphql.CollectedField, obj *model.Snapshot) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_Snapshot_eventCapacity(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.EventCapacity, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int)
+	fc.Result = res
+	return ec.marshalNInt2int(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_Snapshot_eventCapacity(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_Snapshot",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Delivery_Snapshot_closures(ctx context.Context, field graphql.CollectedField, obj *model.Snapshot) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Delivery_Snapshot_closures(ctx, field)
 	if err != nil {
@@ -23097,6 +28944,232 @@ func (ec *executionContext) fieldContext_Delivery_Snapshot_closures(_ context.Co
 				return ec.fieldContext_Delivery_ClosureView_maxY(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Delivery_ClosureView", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_ValuePoint_tick(ctx context.Context, field graphql.CollectedField, obj *model.ValuePoint) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_ValuePoint_tick(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Tick, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int)
+	fc.Result = res
+	return ec.marshalNInt2int(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_ValuePoint_tick(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_ValuePoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_ValuePoint_value(ctx context.Context, field graphql.CollectedField, obj *model.ValuePoint) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_ValuePoint_value(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Value, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(float64)
+	fc.Result = res
+	return ec.marshalNFloat2float64(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_ValuePoint_value(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_ValuePoint",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Float does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_ValueSeries_sessionId(ctx context.Context, field graphql.CollectedField, obj *model.ValueSeries) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_ValueSeries_sessionId(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.SessionID, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNID2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_ValueSeries_sessionId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_ValueSeries",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_ValueSeries_cityId(ctx context.Context, field graphql.CollectedField, obj *model.ValueSeries) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_ValueSeries_cityId(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.CityID, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(string)
+	fc.Result = res
+	return ec.marshalNID2string(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_ValueSeries_cityId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_ValueSeries",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Delivery_ValueSeries_points(ctx context.Context, field graphql.CollectedField, obj *model.ValueSeries) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Delivery_ValueSeries_points(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Points, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.([]*model.ValuePoint)
+	fc.Result = res
+	return ec.marshalNDelivery_ValuePoint2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐValuePointᚄ(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Delivery_ValueSeries_points(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Delivery_ValueSeries",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "tick":
+				return ec.fieldContext_Delivery_ValuePoint_tick(ctx, field)
+			case "value":
+				return ec.fieldContext_Delivery_ValuePoint_value(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Delivery_ValuePoint", field.Name)
 		},
 	}
 	return fc, nil
@@ -38630,8 +44703,12 @@ func (ec *executionContext) fieldContext_Mutation_delivery(_ context.Context, fi
 				return ec.fieldContext_Delivery_Mutation_createSession(ctx, field)
 			case "moveCar":
 				return ec.fieldContext_Delivery_Mutation_moveCar(ctx, field)
+			case "clearMoves":
+				return ec.fieldContext_Delivery_Mutation_clearMoves(ctx, field)
 			case "tick":
 				return ec.fieldContext_Delivery_Mutation_tick(ctx, field)
+			case "waitUntil":
+				return ec.fieldContext_Delivery_Mutation_waitUntil(ctx, field)
 			case "setSpeed":
 				return ec.fieldContext_Delivery_Mutation_setSpeed(ctx, field)
 			case "assignOrder":
@@ -38644,6 +44721,8 @@ func (ec *executionContext) fieldContext_Mutation_delivery(_ context.Context, fi
 				return ec.fieldContext_Delivery_Mutation_towCar(ctx, field)
 			case "saveSession":
 				return ec.fieldContext_Delivery_Mutation_saveSession(ctx, field)
+			case "renameSession":
+				return ec.fieldContext_Delivery_Mutation_renameSession(ctx, field)
 			case "evictSession":
 				return ec.fieldContext_Delivery_Mutation_evictSession(ctx, field)
 			case "deleteSession":
@@ -39038,6 +45117,14 @@ func (ec *executionContext) fieldContext_Query_delivery(_ context.Context, field
 				return ec.fieldContext_Delivery_Query_cityConfig(ctx, field)
 			case "sessions":
 				return ec.fieldContext_Delivery_Query_sessions(ctx, field)
+			case "moneyHistory":
+				return ec.fieldContext_Delivery_Query_moneyHistory(ctx, field)
+			case "itemsHistory":
+				return ec.fieldContext_Delivery_Query_itemsHistory(ctx, field)
+			case "reputationHistory":
+				return ec.fieldContext_Delivery_Query_reputationHistory(ctx, field)
+			case "metricHistory":
+				return ec.fieldContext_Delivery_Query_metricHistory(ctx, field)
 			case "session":
 				return ec.fieldContext_Delivery_Query_session(ctx, field)
 			case "carView":
@@ -39475,6 +45562,8 @@ func (ec *executionContext) fieldContext_Subscription_deliverySession(ctx contex
 				return ec.fieldContext_Delivery_Snapshot_id(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Delivery_Snapshot_createdAt(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Delivery_Snapshot_displayName(ctx, field)
 			case "tick":
 				return ec.fieldContext_Delivery_Snapshot_tick(ctx, field)
 			case "speed":
@@ -39489,6 +45578,8 @@ func (ec *executionContext) fieldContext_Subscription_deliverySession(ctx contex
 				return ec.fieldContext_Delivery_Snapshot_cars(ctx, field)
 			case "orders":
 				return ec.fieldContext_Delivery_Snapshot_orders(ctx, field)
+			case "openOrders":
+				return ec.fieldContext_Delivery_Snapshot_openOrders(ctx, field)
 			case "ledger":
 				return ec.fieldContext_Delivery_Snapshot_ledger(ctx, field)
 			case "carClasses":
@@ -39497,6 +45588,8 @@ func (ec *executionContext) fieldContext_Subscription_deliverySession(ctx contex
 				return ec.fieldContext_Delivery_Snapshot_growth(ctx, field)
 			case "events":
 				return ec.fieldContext_Delivery_Snapshot_events(ctx, field)
+			case "eventCapacity":
+				return ec.fieldContext_Delivery_Snapshot_eventCapacity(ctx, field)
 			case "closures":
 				return ec.fieldContext_Delivery_Snapshot_closures(ctx, field)
 			}
@@ -50965,6 +57058,70 @@ func (ec *executionContext) _Delivery_CarClassView(ctx context.Context, sel ast.
 	return out
 }
 
+var delivery_CarLedgerViewImplementors = []string{"Delivery_CarLedgerView"}
+
+func (ec *executionContext) _Delivery_CarLedgerView(ctx context.Context, sel ast.SelectionSet, obj *model.CarLedgerView) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, delivery_CarLedgerViewImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Delivery_CarLedgerView")
+		case "carId":
+			out.Values[i] = ec._Delivery_CarLedgerView_carId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "carName":
+			out.Values[i] = ec._Delivery_CarLedgerView_carName(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "income":
+			out.Values[i] = ec._Delivery_CarLedgerView_income(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "expenses":
+			out.Values[i] = ec._Delivery_CarLedgerView_expenses(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "net":
+			out.Values[i] = ec._Delivery_CarLedgerView_net(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "rows":
+			out.Values[i] = ec._Delivery_CarLedgerView_rows(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var delivery_CarViewImplementors = []string{"Delivery_CarView"}
 
 func (ec *executionContext) _Delivery_CarView(ctx context.Context, sel ast.SelectionSet, obj *model.CarView) graphql.Marshaler {
@@ -51043,6 +57200,11 @@ func (ec *executionContext) _Delivery_CarView(ctx context.Context, sel ast.Selec
 			}
 		case "queuedMove":
 			out.Values[i] = ec._Delivery_CarView_queuedMove(ctx, field, obj)
+		case "queuedMoves":
+			out.Values[i] = ec._Delivery_CarView_queuedMoves(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "lastReject":
 			out.Values[i] = ec._Delivery_CarView_lastReject(ctx, field, obj)
 		case "chargeDue":
@@ -51567,6 +57729,60 @@ func (ec *executionContext) _Delivery_CreateSessionResult(ctx context.Context, s
 	return out
 }
 
+var delivery_EventFeedImplementors = []string{"Delivery_EventFeed"}
+
+func (ec *executionContext) _Delivery_EventFeed(ctx context.Context, sel ast.SelectionSet, obj *model.EventFeed) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, delivery_EventFeedImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Delivery_EventFeed")
+		case "events":
+			out.Values[i] = ec._Delivery_EventFeed_events(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "oldestTick":
+			out.Values[i] = ec._Delivery_EventFeed_oldestTick(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "truncated":
+			out.Values[i] = ec._Delivery_EventFeed_truncated(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "capacity":
+			out.Values[i] = ec._Delivery_EventFeed_capacity(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var delivery_EventViewImplementors = []string{"Delivery_EventView"}
 
 func (ec *executionContext) _Delivery_EventView(ctx context.Context, sel ast.SelectionSet, obj *model.EventView) graphql.Marshaler {
@@ -51784,80 +58000,276 @@ func (ec *executionContext) _Delivery_LedgerView(ctx context.Context, sel ast.Se
 		case "money":
 			out.Values[i] = ec._Delivery_LedgerView_money(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "moneyEarned":
 			out.Values[i] = ec._Delivery_LedgerView_moneyEarned(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "reputation":
 			out.Values[i] = ec._Delivery_LedgerView_reputation(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "deliveries":
 			out.Values[i] = ec._Delivery_LedgerView_deliveries(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "lateDeliveries":
 			out.Values[i] = ec._Delivery_LedgerView_lateDeliveries(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "expiredOrders":
 			out.Values[i] = ec._Delivery_LedgerView_expiredOrders(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "ordersSpawned":
 			out.Values[i] = ec._Delivery_LedgerView_ordersSpawned(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "onTimeStreak":
 			out.Values[i] = ec._Delivery_LedgerView_onTimeStreak(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "tows":
 			out.Values[i] = ec._Delivery_LedgerView_tows(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "deliveriesByItem":
 			out.Values[i] = ec._Delivery_LedgerView_deliveriesByItem(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "upkeepPaid":
 			out.Values[i] = ec._Delivery_LedgerView_upkeepPaid(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "towFees":
 			out.Values[i] = ec._Delivery_LedgerView_towFees(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "upkeepDue":
 			out.Values[i] = ec._Delivery_LedgerView_upkeepDue(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "payMultiplier":
+			out.Values[i] = ec._Delivery_LedgerView_payMultiplier(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "cashEntries":
-			out.Values[i] = ec._Delivery_LedgerView_cashEntries(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Delivery_LedgerView_cashEntries(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
 			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "ticksPerMonth":
 			out.Values[i] = ec._Delivery_LedgerView_ticksPerMonth(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "months":
-			out.Values[i] = ec._Delivery_LedgerView_months(ctx, field, obj)
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Delivery_LedgerView_months(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "cars":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Delivery_LedgerView_cars(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var delivery_MoneyHistoryImplementors = []string{"Delivery_MoneyHistory"}
+
+func (ec *executionContext) _Delivery_MoneyHistory(ctx context.Context, sel ast.SelectionSet, obj *model.MoneyHistory) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, delivery_MoneyHistoryImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Delivery_MoneyHistory")
+		case "sessionId":
+			out.Values[i] = ec._Delivery_MoneyHistory_sessionId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "cityId":
+			out.Values[i] = ec._Delivery_MoneyHistory_cityId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "points":
+			out.Values[i] = ec._Delivery_MoneyHistory_points(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var delivery_MoneyPointImplementors = []string{"Delivery_MoneyPoint"}
+
+func (ec *executionContext) _Delivery_MoneyPoint(ctx context.Context, sel ast.SelectionSet, obj *model.MoneyPoint) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, delivery_MoneyPointImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Delivery_MoneyPoint")
+		case "tick":
+			out.Values[i] = ec._Delivery_MoneyPoint_tick(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "money":
+			out.Values[i] = ec._Delivery_MoneyPoint_money(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -52085,6 +58497,42 @@ func (ec *executionContext) _Delivery_Mutation(ctx context.Context, sel ast.Sele
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "clearMoves":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Delivery_Mutation_clearMoves(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "tick":
 			field := field
 
@@ -52095,6 +58543,42 @@ func (ec *executionContext) _Delivery_Mutation(ctx context.Context, sel ast.Sele
 					}
 				}()
 				res = ec._Delivery_Mutation_tick(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "waitUntil":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Delivery_Mutation_waitUntil(ctx, field, obj)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
@@ -52311,6 +58795,42 @@ func (ec *executionContext) _Delivery_Mutation(ctx context.Context, sel ast.Sele
 					}
 				}()
 				res = ec._Delivery_Mutation_saveSession(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "renameSession":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Delivery_Mutation_renameSession(ctx, field, obj)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
@@ -52998,6 +59518,150 @@ func (ec *executionContext) _Delivery_Query(ctx context.Context, sel ast.Selecti
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "moneyHistory":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Delivery_Query_moneyHistory(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "itemsHistory":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Delivery_Query_itemsHistory(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "reputationHistory":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Delivery_Query_reputationHistory(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "metricHistory":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Delivery_Query_metricHistory(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "session":
 			field := field
 
@@ -53230,6 +59894,11 @@ func (ec *executionContext) _Delivery_SessionSummary(ctx context.Context, sel as
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "displayName":
+			out.Values[i] = ec._Delivery_SessionSummary_displayName(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		case "tick":
 			out.Values[i] = ec._Delivery_SessionSummary_tick(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -53272,6 +59941,11 @@ func (ec *executionContext) _Delivery_SessionSummary(ctx context.Context, sel as
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "cursor":
+			out.Values[i] = ec._Delivery_SessionSummary_cursor(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -53309,70 +59983,240 @@ func (ec *executionContext) _Delivery_Snapshot(ctx context.Context, sel ast.Sele
 		case "id":
 			out.Values[i] = ec._Delivery_Snapshot_id(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "createdAt":
 			out.Values[i] = ec._Delivery_Snapshot_createdAt(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "displayName":
+			out.Values[i] = ec._Delivery_Snapshot_displayName(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "tick":
 			out.Values[i] = ec._Delivery_Snapshot_tick(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "speed":
 			out.Values[i] = ec._Delivery_Snapshot_speed(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "paused":
 			out.Values[i] = ec._Delivery_Snapshot_paused(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "tickMs":
 			out.Values[i] = ec._Delivery_Snapshot_tickMs(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "city":
 			out.Values[i] = ec._Delivery_Snapshot_city(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "cars":
 			out.Values[i] = ec._Delivery_Snapshot_cars(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "orders":
-			out.Values[i] = ec._Delivery_Snapshot_orders(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Delivery_Snapshot_orders(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
 			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "openOrders":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Delivery_Snapshot_openOrders(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "ledger":
 			out.Values[i] = ec._Delivery_Snapshot_ledger(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "carClasses":
 			out.Values[i] = ec._Delivery_Snapshot_carClasses(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "growth":
 			out.Values[i] = ec._Delivery_Snapshot_growth(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "events":
 			out.Values[i] = ec._Delivery_Snapshot_events(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "eventCapacity":
+			out.Values[i] = ec._Delivery_Snapshot_eventCapacity(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "closures":
 			out.Values[i] = ec._Delivery_Snapshot_closures(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var delivery_ValuePointImplementors = []string{"Delivery_ValuePoint"}
+
+func (ec *executionContext) _Delivery_ValuePoint(ctx context.Context, sel ast.SelectionSet, obj *model.ValuePoint) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, delivery_ValuePointImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Delivery_ValuePoint")
+		case "tick":
+			out.Values[i] = ec._Delivery_ValuePoint_tick(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "value":
+			out.Values[i] = ec._Delivery_ValuePoint_value(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var delivery_ValueSeriesImplementors = []string{"Delivery_ValueSeries"}
+
+func (ec *executionContext) _Delivery_ValueSeries(ctx context.Context, sel ast.SelectionSet, obj *model.ValueSeries) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, delivery_ValueSeriesImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Delivery_ValueSeries")
+		case "sessionId":
+			out.Values[i] = ec._Delivery_ValueSeries_sessionId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "cityId":
+			out.Values[i] = ec._Delivery_ValueSeries_cityId(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "points":
+			out.Values[i] = ec._Delivery_ValueSeries_points(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
@@ -61236,6 +68080,16 @@ func (ec *executionContext) marshalNBoolean2bool(ctx context.Context, sel ast.Se
 	return res
 }
 
+func (ec *executionContext) unmarshalNDelivery_AnalyticsMetric2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐAnalyticsMetric(ctx context.Context, v any) (model.AnalyticsMetric, error) {
+	var res model.AnalyticsMetric
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNDelivery_AnalyticsMetric2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐAnalyticsMetric(ctx context.Context, sel ast.SelectionSet, v model.AnalyticsMetric) graphql.Marshaler {
+	return v
+}
+
 func (ec *executionContext) marshalNDelivery_CarClassView2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐCarClassViewᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.CarClassView) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
@@ -61288,6 +68142,60 @@ func (ec *executionContext) marshalNDelivery_CarClassView2ᚖgithubᚗcomᚋwric
 		return graphql.Null
 	}
 	return ec._Delivery_CarClassView(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNDelivery_CarLedgerView2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐCarLedgerViewᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.CarLedgerView) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNDelivery_CarLedgerView2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐCarLedgerView(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNDelivery_CarLedgerView2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐCarLedgerView(ctx context.Context, sel ast.SelectionSet, v *model.CarLedgerView) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Delivery_CarLedgerView(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNDelivery_CarState2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐCarState(ctx context.Context, v any) (model.CarState, error) {
@@ -61622,6 +68530,79 @@ func (ec *executionContext) marshalNDelivery_Direction2githubᚗcomᚋwricardo�
 	return v
 }
 
+func (ec *executionContext) unmarshalNDelivery_Direction2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐDirectionᚄ(ctx context.Context, v any) ([]model.Direction, error) {
+	var vSlice []any
+	vSlice = graphql.CoerceList(v)
+	var err error
+	res := make([]model.Direction, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNDelivery_Direction2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐDirection(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) marshalNDelivery_Direction2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐDirectionᚄ(ctx context.Context, sel ast.SelectionSet, v []model.Direction) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNDelivery_Direction2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐDirection(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNDelivery_EventFeed2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐEventFeed(ctx context.Context, sel ast.SelectionSet, v model.EventFeed) graphql.Marshaler {
+	return ec._Delivery_EventFeed(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNDelivery_EventFeed2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐEventFeed(ctx context.Context, sel ast.SelectionSet, v *model.EventFeed) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Delivery_EventFeed(ctx, sel, v)
+}
+
 func (ec *executionContext) marshalNDelivery_EventView2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐEventViewᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.EventView) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
@@ -61806,6 +68787,114 @@ func (ec *executionContext) marshalNDelivery_LedgerView2ᚖgithubᚗcomᚋwricar
 		return graphql.Null
 	}
 	return ec._Delivery_LedgerView(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNDelivery_MoneyHistory2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐMoneyHistoryᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.MoneyHistory) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNDelivery_MoneyHistory2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐMoneyHistory(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNDelivery_MoneyHistory2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐMoneyHistory(ctx context.Context, sel ast.SelectionSet, v *model.MoneyHistory) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Delivery_MoneyHistory(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNDelivery_MoneyPoint2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐMoneyPointᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.MoneyPoint) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNDelivery_MoneyPoint2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐMoneyPoint(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNDelivery_MoneyPoint2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐMoneyPoint(ctx context.Context, sel ast.SelectionSet, v *model.MoneyPoint) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Delivery_MoneyPoint(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalNDelivery_MonthCategoryView2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐMonthCategoryViewᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.MonthCategoryView) graphql.Marshaler {
@@ -62202,6 +69291,114 @@ func (ec *executionContext) marshalNDelivery_Snapshot2ᚖgithubᚗcomᚋwricardo
 		return graphql.Null
 	}
 	return ec._Delivery_Snapshot(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNDelivery_ValuePoint2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐValuePointᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.ValuePoint) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNDelivery_ValuePoint2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐValuePoint(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNDelivery_ValuePoint2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐValuePoint(ctx context.Context, sel ast.SelectionSet, v *model.ValuePoint) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Delivery_ValuePoint(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNDelivery_ValueSeries2ᚕᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐValueSeriesᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.ValueSeries) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNDelivery_ValueSeries2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐValueSeries(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNDelivery_ValueSeries2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐValueSeries(ctx context.Context, sel ast.SelectionSet, v *model.ValueSeries) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Delivery_ValueSeries(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalNFloat2float64(ctx context.Context, v any) (float64, error) {
@@ -65480,6 +72677,22 @@ func (ec *executionContext) marshalOBoolean2ᚖbool(ctx context.Context, sel ast
 	return res
 }
 
+func (ec *executionContext) unmarshalODelivery_CashCategory2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐCashCategory(ctx context.Context, v any) (*model.CashCategory, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var res = new(model.CashCategory)
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalODelivery_CashCategory2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐCashCategory(ctx context.Context, sel ast.SelectionSet, v *model.CashCategory) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return v
+}
+
 func (ec *executionContext) marshalODelivery_CityView2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐCityView(ctx context.Context, sel ast.SelectionSet, v *model.CityView) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
@@ -65503,6 +72716,71 @@ func (ec *executionContext) marshalODelivery_Direction2ᚖgithubᚗcomᚋwricard
 	return v
 }
 
+func (ec *executionContext) unmarshalODelivery_OrderState2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐOrderStateᚄ(ctx context.Context, v any) ([]model.OrderState, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var vSlice []any
+	vSlice = graphql.CoerceList(v)
+	var err error
+	res := make([]model.OrderState, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNDelivery_OrderState2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐOrderState(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) marshalODelivery_OrderState2ᚕgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐOrderStateᚄ(ctx context.Context, sel ast.SelectionSet, v []model.OrderState) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNDelivery_OrderState2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐOrderState(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
 func (ec *executionContext) unmarshalODelivery_RejectReason2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐRejectReason(ctx context.Context, v any) (*model.RejectReason, error) {
 	if v == nil {
 		return nil, nil
@@ -65513,6 +72791,22 @@ func (ec *executionContext) unmarshalODelivery_RejectReason2ᚖgithubᚗcomᚋwr
 }
 
 func (ec *executionContext) marshalODelivery_RejectReason2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐRejectReason(ctx context.Context, sel ast.SelectionSet, v *model.RejectReason) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return v
+}
+
+func (ec *executionContext) unmarshalODelivery_SessionSort2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐSessionSort(ctx context.Context, v any) (*model.SessionSort, error) {
+	if v == nil {
+		return nil, nil
+	}
+	var res = new(model.SessionSort)
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalODelivery_SessionSort2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋdeliveryᚋgraphᚋmodelᚐSessionSort(ctx context.Context, sel ast.SelectionSet, v *model.SessionSort) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
 	}

@@ -19,7 +19,7 @@ type CityConfig struct {
 	GridSize int `json:"grid_size"`
 
 	// TickMS is the wall-clock length of one tick at 1x for live sessions.
-	// Required: positive. Suggested: 300. The sim harness ignores it and
+	// Required: positive. Suggested: 600. The sim harness ignores it and
 	// advances a fixed count of ticks.
 	TickMS int `json:"tick_ms"`
 
@@ -177,14 +177,8 @@ type DepotConfig struct {
 	// Pos is the depot tile. It must be on depot terrain, checked at load.
 	Pos Position `json:"pos"`
 
-	// Capacity is legacy map data: fleet size is money-gated, so the depot
-	// accepts any number of cars. It remains decoded for old maps and the
-	// upgrade_depot effect; parking and movement use UnlimitedCarCapacity.
-	// Must still be positive for map validation. Suggested: 4.
-	Capacity int `json:"capacity"`
-
-	// ChargeSlots is how many cars may recharge on this tile per tick. When it
-	// is fewer than Capacity the cars that charge are chosen in car id order,
+	// ChargeSlots is how many cars may recharge on this tile per tick. When
+	// positive, the cars that charge are chosen in car id order,
 	// deterministically; the others stay parked with no charge that tick.
 	// Zero or negative means no slot limit (every car on the tile charges).
 	// Suggested: 4.
@@ -262,7 +256,7 @@ type CarClassConfig struct {
 
 	// Price is the purchase price in dollars. Required: non-negative. Zero
 	// means the class is free, but requires_grant can still lock it behind a
-	// growth stage. Suggested: 0 (scooter), 1000 (van), 3500 (truck).
+	// growth stage. Suggested: 0 (scooter), 600 (van), 2100 (truck).
 	Price int `json:"price"`
 
 	// RequiresGrant, when true, means money alone cannot buy this class: a
@@ -384,9 +378,11 @@ type OrdersConfig struct {
 	// dominates on long hauls. Required: non-negative. Suggested: 3.
 	DistanceBonusPerTile int `json:"distance_bonus_per_tile"`
 
-	// ExpirePenaltyReputation is reputation lost when an order expires.
+	// ExpirePenaltyReputation is the MAXIMUM reputation lost when an order
+	// expires: it applies at standing 1.0 and above, and scales down linearly
+	// below that (see World.ExpirePenalty), so a collapsed fleet can climb back.
 	// Reputation is clamped to [0, max_reputation]. Required: non-negative.
-	// Suggested: 0.05.
+	// Suggested: 0.10.
 	ExpirePenaltyReputation float64 `json:"expire_penalty_reputation"`
 
 	// LatePayMultiplier is the fraction of the reward paid for a delivery that
@@ -430,8 +426,9 @@ type OrdersConfig struct {
 // QuantityBandConfig is one band of order sizes a customer may ask for.
 //
 // MinSize and MaxSize are inclusive box counts. FromProgress is the ramp
-// fraction (0..1) at which the band becomes eligible; Weight is its share of
-// the draw relative to the other eligible bands.
+// fraction (0..1) at which the band reaches its full Weight; EarlyWeight is the
+// share it keeps before that point. Weight is its share relative to the other
+// eligible bands.
 //
 // Bands are NOT filtered by the player's current fleet. A map should be able
 // to offer a thirteen-box job before the player owns a van: the unassignable
@@ -439,6 +436,12 @@ type OrdersConfig struct {
 // than an optional luxury. The assign check still refuses to put more boxes in
 // a car than its hold allows, so an oversized order can never corrupt the
 // cargo invariant.
+//
+// EarlyWeight is what keeps every vehicle class in the game at every stage: a
+// band with a positive EarlyWeight stays in the draw from tick 0 at a small
+// share, so a late-game city still asks for scooter- and van-sized hauls, and
+// an early city can occasionally ask for a bigger one. Zero (the default)
+// keeps the original hard gate: the band does not exist until FromProgress.
 type QuantityBandConfig struct {
 	// MinSize is the smallest box count this band can roll.
 	MinSize int `json:"min_size"`
@@ -446,9 +449,15 @@ type QuantityBandConfig struct {
 	// MaxSize is the largest box count, inclusive.
 	MaxSize int `json:"max_size"`
 
-	// FromProgress is the ramp fraction (0..1) at which this band becomes
-	// eligible. It is progress through RampTicks, not a chapter count.
+	// FromProgress is the ramp fraction (0..1) at which this band starts using
+	// its full Weight. It is progress through RampTicks, not a chapter count.
 	FromProgress float64 `json:"from_progress,omitempty"`
+
+	// EarlyWeight is this band's relative share before FromProgress. Zero keeps
+	// the band out of the draw until FromProgress; a positive value makes the
+	// band available from tick 0 at that reduced weight. Required:
+	// non-negative. Suggested: 1-3 for bands that should always exist.
+	EarlyWeight int `json:"early_weight,omitempty"`
 
 	// Weight is a relative share, not a percentage, so the bands need not sum
 	// to anything. Required: positive. Suggested: 30-40 per band.
@@ -485,7 +494,7 @@ type ChargingConfig struct {
 // deliberate choice over "idle cars cost money": the engine has no sell or
 // scrap action, so a per-tick charge on an unsellable asset is an unrecoverable
 // mistake for the player, with no exit. Parking is the exit, and it needs no new
-// verb — it also gives DepotConfig.Capacity a meaning beyond gating purchases.
+// verb: depots accept any number of cars, so a car is always somewhere to park.
 //
 // The block is required (CityConfig.Fleet is a pointer) so a map cannot omit
 // its upkeep choice by accident. Set UpkeepIntervalTicks to 0 to disable upkeep
@@ -571,7 +580,7 @@ type GrowthConfig struct {
 //	add_customer              Entities (CustomerConfig shape)
 //	add_charger               Entities (ChargerConfig shape)
 //	add_depot                 Entities (DepotConfig shape)
-//	upgrade_depot             DepotID, Capacity, Charge
+//	upgrade_depot             DepotID, Charge
 //	grant_car_class           Class
 //	grant_money               Amount
 //	grant_reputation          Rep
@@ -597,10 +606,6 @@ type GrowthEffect struct {
 
 	// DepotID names the depot an upgrade_depot targets.
 	DepotID string `json:"depot,omitempty"`
-
-	// Capacity replaces the target depot's yard size for upgrade_depot. Zero
-	// or negative leaves it unchanged.
-	Capacity int `json:"capacity,omitempty"`
 
 	// Charge replaces the target depot's charge slots for upgrade_depot. Zero
 	// or negative leaves them unchanged.

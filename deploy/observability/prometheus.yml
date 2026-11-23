@@ -1,0 +1,11 @@
+# Scrapes the drbrain host process, not a container: the game binary serves its
+# metrics on the host's separate loopback listener (DRBRAIN_METRICS_ADDR,
+# default 127.0.0.1:9095). Update the target if that address changes.
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: drbrain
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["host.docker.internal:9095"]

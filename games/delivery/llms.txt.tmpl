@@ -1,0 +1,368 @@
+# Dr Brain - Delivery — LLM Guide
+
+Dr Brain - Delivery is a manual fleet game for humans and AI agents. You run one
+city: assign orders to cars, drive each car to its kitchen (pickup is automatic),
+then to its customer (dropoff is automatic), and deliver before the deadline.
+There is no win condition; the city grows on a fixed tick schedule, demand rises,
+and the fleet is limited only by money.
+
+Humans: open {{.BaseURL}}/ , pick a city, and drive with `w a s d`, the arrow keys
+or the on-screen D-pad. The game starts paused so orders cannot expire while you
+read the screen.
+
+GraphQL endpoint:       POST {{.GraphQLURL}}   (one schema, namespace: delivery)
+GraphQL subscriptions:  {{.GraphQLWSURL}}  (graphql-ws protocol, root field `deliverySession`)
+Playground:             GET  {{.PlaygroundURL}}
+Introspection:          enabled unless the operator disabled it — query __schema/__type
+
+Every example below is valid against the live schema. Replace SESSION_ID with an
+id returned by `createSession`, CAR_ID / ORDER_ID with ids from a snapshot, and
+OWNER_TOKEN with the secret `createSession` returned.
+
+There is no MCP endpoint for Delivery. Use GraphQL.
+
+---
+
+## Ownership
+
+- A session id is public: anyone with it may read `session`, `sessions`, the
+  `carView`/`events` queries and the `deliverySession` subscription, and may watch
+  it live.
+- Only the session's creator may change it. `createSession` returns `ownerToken`,
+  a secret shown once. Pass it as `ownerToken` on every mutation. A signed-in
+  creator may instead use the account they created the session with.
+- `canPlaySession(id, ownerToken)` answers whether this caller may change the
+  session; it returns `false` for an unknown id rather than an error.
+- A missing or wrong credential is FORBIDDEN; an unknown id is NOT_FOUND. Sessions
+  created before owner tokens existed stay open to anyone.
+- Sessions start paused, including restored saves. A save remembers the speed it
+  was left at but reloads paused; the client must opt into the clock again.
+
+## Commands vs. the clock
+
+- `moveCar` appends one step to that car's movement queue. It does **not** move
+  the car and does not advance the clock. A car runs at most one queued step per
+  tick, in order, so you can preload a route (up to 64 steps per car) and then
+  advance the clock. The overflow is `LIMIT_REACHED`.
+- `clearMoves` drops a car's whole queue, including the step for the next tick.
+  Use it when traffic, closures or a better order invalidate a preloaded route.
+- `tick` applies one queued step per car, advances the world by `count` ticks
+  (default 1) and returns the new snapshot. A rejected step (wall, battery,
+  closure, occupied tile) is spent, not retried; the rest of the queue stays.
+- `setSpeed` changes the clock multiplier: 0 pauses, 1/2/4 run in real time.
+  Use `setSpeed(id, speed: 0, ...)` and `tick` for deterministic agent play.
+- `waitUntil` blocks until the running clock reaches a target and returns that
+  snapshot. Pass exactly one of `tick` (an absolute future tick) or `ticks` (a
+  count from the tick when the call starts, at most 1000). A paused session
+  cannot advance, so the call fails with `INVALID_ARGUMENT` instead of hanging —
+  including when the session is paused while the call is already waiting. Use
+  `tick` when you want progress without a running clock.
+- Sessions are serialized on the server; every mutation returns the full snapshot,
+  so there is no follow-up read needed after one succeeds.
+
+## Coordinates and the map
+
+- The grid is `gridSize x gridSize`. `x` grows to the right; `y` grows downward.
+  Row 0 is the TOP row. NORTH = y-1, SOUTH = y+1, EAST = x+1, WEST = x-1.
+- `session.city.rows` is the current map as glyph rows. `hiddenTiles` is the
+  number of unexplored tiles.
+- Glyphs: `.` road, `,` ground (passable, costs one extra battery), `#` water
+  (blocked), `B` building (blocked), `D` depot (free charging and parking),
+  `C` charger (paid charging), `K` kitchen, `H` customer waiting, `h` customer
+  house with no live order, `?` unexplored (blocked), `X` closed for street works
+  (blocked), digits are cars. `rows` collapses cars on the same tile to one digit;
+  the `cars` list is the authority.
+
+## Rules
+
+- A car spends `carClasses[].stepCost` battery per step; ground adds the city's
+  ground surcharge. Moving into water, a building, an unexplored tile, a closed
+  tile, off the map, or a road tile occupied by another car is rejected: position
+  and battery are unchanged, and `lastReject` records why on the next tick.
+- Cars may always leave a tile that closes under them. Following is allowed: a
+  car may enter a tile a car ahead vacated on the same tick. A head-on pair cannot
+  pass through each other.
+- A depot accepts any number of cars and charges for free; a standalone charger
+  holds its `capacity` and bills per tick. A car with no battery and no route to a
+  charger is `STRANDED`; `towCar` returns it to the nearest depot for a fee.
+- Pickup and dropoff are automatic. `ASSIGNED` means drive to the kitchen;
+  `PICKED_UP` means drive to the customer; then the order becomes `DONE`.
+- An order's `quantity` is boxes. `assignOrder` refuses an order that does not fit
+  beside the boxes the car already carries AND the boxes promised to its other
+  assigned-but-not-yet-picked-up orders. A car may hold several orders at once,
+  but their total must fit; the error names the carried, assigned and capacity
+  figures. `freeBoxes` is only the currently empty hold, so subtract outstanding
+  assignments yourself before batching. Buy a van or truck at a depot when the
+  work outgrows the scooter; the depot id comes from `session.city.depots`.
+- `ticksLeft` is signed: a negative value means the deadline has passed but the
+  tick has not swept the order yet. Assigning refreshes the deadline from the
+  courier's current position. Late deliveries pay less; expired orders cost money
+  and reputation (up to -0.10, scaled by standing: full at 1.0+, a fifth at 0.2).
+  Reputation is clamped to 0..5 and a new session starts at the top of the scale
+  (5.00), so it pays in full until orders are missed.
+- Reputation sets what customers pay: `ledger.payMultiplier` is 1.0 at 4.90+,
+  0.9 at 4.50, 0.8 at 4.00, 0.7 at 3.50, 0.6 at 3.00, 0.5 at 2.50,
+  0.4 at 2.00, 0.3 at 1.50, 0.2 at 1.00, 0.1 at 0.50, and a 0.1 floor for any
+  standing above zero (0 only at exactly 0.00). An
+  on-time delivery pays `round(reward x payMultiplier)` and still earns +0.02
+  reputation even when the multiplier is 0, so free runs rebuild standing.
+- Fleet upkeep charges cars not parked on a depot every
+  `fleet.upkeep_interval_ticks`. `ledger.upkeepDue` shows the next charge.
+  `ledger.upkeepPaid` and `ledger.towFees` are cumulative costs.
+- Growth stages open districts, kitchens, customers, chargers and depot bays
+  automatically. Hidden tiles become passable only when a stage reveals them.
+  Count the applied stages from `growth { done }`; there is no separate chapter
+  field in the API.
+- Street works (`closures`, `X`) are temporary and derived from the session seed
+  and tick. Closed tiles cannot be entered; a car already on one may drive off.
+
+### Order states
+
+| state | meaning |
+|---|---|
+| `PENDING` | no car assigned |
+| `ASSIGNED` | assigned; drive to the kitchen for pickup |
+| `PICKED_UP` | carrying; drive to the customer for dropoff |
+| `DONE` | delivered; `paid` and `late` are meaningful |
+| `EXPIRED` | never delivered; a fine and reputation hit |
+
+`assignedCar` stays set after a terminal state: read `state` to decide what is in
+flight, and use `assignedCar` as history once the order is `DONE`/`EXPIRED`.
+
+## Quick start
+
+### 1. List cities / create a session
+
+```graphql
+query {
+  delivery {
+    cities { id name gridSize status ownedByMe builtin ownerless }
+  }
+}
+```
+
+```graphql
+mutation {
+  delivery {
+    createSession(cityId: "city") {
+      session { id tick paused speed tickMs }
+      ownerToken
+    }
+  }
+}
+```
+
+`createSession` takes optional `id` (generated when omitted), `seed`
+(reproducible city) and `cityId` (omitted = the server's default). It snapshots
+the city, so later city edits never change a running game. Keep `ownerToken`.
+
+### 2. Read the session
+
+```graphql
+query {
+  delivery {
+    session(id: "SESSION_ID") {
+      id displayName tick paused speed tickMs eventCapacity
+      city {
+        id name gridSize rows hiddenTiles
+        kitchens { id name x y }
+        customers { id name x y }
+        depots { id name x y }
+        chargers { id name x y }
+      }
+      cars {
+        id name className x y battery maxBattery batteryPct capacity load freeBoxes
+        cargo state queuedMove queuedMoves lastReject chargeDue
+      }
+      openOrders {
+        id item itemName quantity kitchenId kitchenName customerId customerName
+        state assignedCar createdTick deadlineTick ticksLeft reward paid late
+      }
+      ledger {
+        money moneyEarned reputation payMultiplier deliveries lateDeliveries expiredOrders
+        ordersSpawned onTimeStreak tows upkeepPaid towFees upkeepDue
+        ticksPerMonth
+        cashEntries { seq tick kind category amount balance carId carName orderId memo }
+        months { index startTick endTick income expenses net categories { category income expenses } }
+        deliveriesByItem { item count }
+      }
+      carClasses { className price capacity maxBattery stepCost unlocked affordable }
+      growth { id tick title description done }
+      events { tick type message carId x y }
+      closures { id reason startTick endTick ticksLeft minX minY maxX maxY tiles { x y } }
+    }
+  }
+}
+```
+
+`Query.city` is a static preview with every district revealed; `session.city`
+is the live view and is the one to read while playing.
+
+`openOrders` is the actionable list. `orders` takes filters and defaults to the
+newest 2000 rows: `orders(state: [EXPIRED], sinceTick: 4000, limit: 50)`; pass
+`includeFinished: false` for the open set.
+
+`Query.events(id, sinceTick, limit)` returns a feed rather than a bare list:
+`oldestTick`, `truncated` and `capacity` say whether the request reached past
+the retained ring, so a poller can tell a quiet stretch from a gap it missed.
+`Query.sessions` takes `sort` (CREATED_AT/TICK/MONEY), `limit` (≤500), `before`
+and `mine`. `renameSession(id, displayName, ownerToken)` names a save.
+
+`ledger.months` and `ledger.cashEntries` default to the newest three accounting
+months. Both take filters, and the full history stays readable this way:
+
+```graphql
+query {
+  delivery {
+    session(id: "SESSION_ID") {
+      ledger {
+        months(month: 2) { index startTick endTick income expenses net
+          categories { category income expenses } }
+        cashEntries(month: 2, category: TOWS, carId: "car_1", limit: 50) {
+          seq tick kind category amount balance memo
+        }
+      }
+    }
+  }
+}
+```
+
+`month` is 1-based; `fromTick`/`toTick` are inclusive and intersect `month` when
+both are given; `category` filters the bucket and makes a month row report only
+that bucket; `carId` applies to statement rows only; `limit` caps rows, newest
+first.
+
+### 3. Assign an order
+
+```graphql
+mutation {
+  delivery {
+    assignOrder(id: "SESSION_ID", orderId: "ORDER_ID", carId: "CAR_ID", ownerToken: "OWNER_TOKEN") {
+      tick
+      cars { id x y state queuedMove lastReject }
+      orders { id state assignedCar ticksLeft }
+    }
+  }
+}
+```
+
+Assign when the order fits beside the car's carried boxes and the boxes already
+reserved by other orders assigned to that car; the error names the carried,
+assigned and capacity figures otherwise. `unassignOrder(id, orderId, ownerToken)`
+releases it and its reserved space.
+
+### 4. Preload steps, then advance the clock
+
+Each `moveCar` appends one step; repeat it for the route you want, then `tick`.
+Queued steps run one per tick, in order. `cars[].queuedMoves` is the plan in
+execution order (`queuedMove` is its head).
+
+```graphql
+mutation {
+  delivery {
+    moveCar(id: "SESSION_ID", carId: "CAR_ID", direction: NORTH, ownerToken: "OWNER_TOKEN") {
+      tick
+      cars { id x y battery queuedMove queuedMoves lastReject }
+    }
+  }
+}
+```
+
+```graphql
+mutation {
+  delivery {
+    tick(id: "SESSION_ID", count: 3, ownerToken: "OWNER_TOKEN") {
+      tick
+      cars { id x y battery state queuedMove queuedMoves lastReject }
+      orders { id state ticksLeft }
+      ledger { money deliveries lateDeliveries expiredOrders reputation payMultiplier }
+    }
+  }
+}
+```
+
+Directions: `NORTH` `SOUTH` `EAST` `WEST`. Check the post-tick `lastReject` and
+`cars[].x/y`; a rejected move costs nothing, so choose another route. If a
+preloaded route is invalidated, `clearMoves(id, carId, ownerToken)` empties the
+queue before you replan. Repeat until the order is `DONE`.
+
+### 5. Other mutations
+
+```graphql
+mutation Pause { delivery { setSpeed(id: "SESSION_ID", speed: 0, ownerToken: "OWNER_TOKEN") { tick paused speed } } }
+mutation Clear { delivery { clearMoves(id: "SESSION_ID", carId: "CAR_ID", ownerToken: "OWNER_TOKEN") { tick cars { id x y queuedMove queuedMoves lastReject } } } }
+mutation Tow { delivery { towCar(id: "SESSION_ID", carId: "CAR_ID", ownerToken: "OWNER_TOKEN") { tick cars { id x y state battery } ledger { money towFees } } } }
+mutation Buy { delivery { buyCar(id: "SESSION_ID", className: "van", depotId: "d_main", ownerToken: "OWNER_TOKEN") { tick cars { id name className capacity load freeBoxes state } ledger { money } } } }
+mutation Save { delivery { saveSession(id: "SESSION_ID", ownerToken: "OWNER_TOKEN") { id tick } } }
+mutation Wait { delivery { waitUntil(id: "SESSION_ID", ticks: 5, ownerToken: "OWNER_TOKEN") { tick paused cars { id x y state } orders { id state ticksLeft } } } }
+```
+
+`buyCar` needs a depot id from `session.city.depots`; `d_main` is the shipped
+city's depot. `evictSession` saves and unloads; `deleteSession` permanently
+removes the save.
+
+### 6. Cheap polling and streaming
+
+```graphql
+query {
+  delivery {
+    carView(id: "SESSION_ID", carId: "CAR_ID", radius: 2) {
+      rowSpan colSpan rows originX originY
+      car { id name className x y battery maxBattery capacity load freeBoxes state queuedMove queuedMoves lastReject chargeDue }
+      visibleCars { id name className x y battery maxBattery capacity load freeBoxes state queuedMove queuedMoves lastReject chargeDue }
+      nearbyOrders { id itemName quantity kitchenId kitchenName customerId customerName state assignedCar ticksLeft reward }
+    }
+  }
+}
+```
+
+```graphql
+query {
+  delivery {
+    events(id: "SESSION_ID", sinceTick: 100) {
+      oldestTick truncated capacity
+      events { tick type message carId x y }
+    }
+  }
+}
+```
+
+The subscription sends the same snapshot shape as `session` (finished orders are
+trimmed to the most recent few):
+
+```graphql
+subscription {
+  deliverySession(id: "SESSION_ID") {
+    tick paused speed
+    cars { id x y battery state queuedMove queuedMoves lastReject }
+    orders { id state ticksLeft assignedCar }
+    ledger { money deliveries expiredOrders reputation }
+  }
+}
+```
+
+## City authoring (optional)
+
+Authenticated players can create drafts; publication runs the full startup
+validation (grid, districts, orders, reachability, charging, growth).
+
+```graphql
+mutation {
+  delivery {
+    validateCity(config: "<raw city JSON>") { valid publishable issues }
+    createCity(id: "my-city", config: "<raw city JSON>") { id name status }
+    publishCity(id: "my-city") { id status }
+  }
+}
+```
+
+`cityConfig(id)` returns the decoded, defaulted authoring document. Builtin
+cities and ownerless legacy cities need `X-Admin-Key` for writes; community
+drafts need their owner. Sessions already started keep their city snapshot.
+
+## Goal
+
+Keep the fleet moving: assign each live order to a car that can carry it, drive
+to the kitchen and then the customer, watch the deadline, and charge or tow when
+needed. Report the final tick, money, reputation, deliveries, late deliveries and
+expired orders. Do not delete the save or guess other sessions' ids.

@@ -1,0 +1,12 @@
+# Mazes map validation.
+#
+# The server runs from the repo root (`just start`). Platform-wide operations
+# (database, build, tests, fmt/vet/lint, schema regen) live in the root justfile.
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+default:
+    @just --list
+
+# Validate every shipped map against its reference solution
+validate:
+    go run ./cmd/validate -maps-dir maps -solutions-dir solutions

@@ -1,7 +1,7 @@
 {
   "name": "DrBrain City",
   "grid_size": 22,
-  "tick_ms": 300,
+  "tick_ms": 600,
   "ground_extra_step_cost": 1,
   "ticks_per_month": 600,
   "max_events": 500,
@@ -172,7 +172,6 @@
         "x": 3,
         "y": 3
       },
-      "capacity": 4,
       "charge_slots": 4
     }
   ],
@@ -209,19 +208,19 @@
       "capacity": 4,
       "max_battery": 24,
       "step_cost": 1,
-      "price": 0
+      "price": 250
     },
     "van": {
       "capacity": 24,
       "max_battery": 36,
       "step_cost": 1,
-      "price": 1000
+      "price": 600
     },
     "truck": {
       "capacity": 40,
       "max_battery": 48,
       "step_cost": 1,
-      "price": 3500
+      "price": 2100
     }
   },
   "districts": {
@@ -295,7 +294,7 @@
       1.8
     ],
     "distance_bonus_per_tile": 3,
-    "expire_penalty_reputation": 0.05,
+    "expire_penalty_reputation": 0.10,
     "late_pay_multiplier": 0.6,
     "force_first_order_at_tick": 0,
     "reputation_per_delivery": 0.02,
@@ -311,18 +310,20 @@
         "min_size": 5,
         "max_size": 10,
         "from_progress": 0.175,
+        "early_weight": 1,
         "weight": 35
       },
       {
         "min_size": 13,
         "max_size": 24,
-        "from_progress": 0.30,
+        "from_progress": 0.3,
+        "early_weight": 1,
         "weight": 25
       },
       {
         "min_size": 30,
         "max_size": 40,
-        "from_progress": 0.70,
+        "from_progress": 0.7,
         "weight": 30
       }
     ]
@@ -567,7 +568,6 @@
         {
           "type": "upgrade_depot",
           "depot": "d_main",
-          "capacity": 8,
           "charge_slots": 8
         },
         {

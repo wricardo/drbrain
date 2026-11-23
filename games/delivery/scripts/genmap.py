@@ -90,7 +90,7 @@ GROWTH = [
     {"id": "g05_hilltop_kitchen", "tick": 1680, "title": "Hilltop Kitchen",
      "description": "The depot adds charging bays; a new kitchen and home open on the ridge.",
      "effects": [
-         {"type": "upgrade_depot", "depot": "d_main", "capacity": 8, "charge_slots": 8},
+         {"type": "upgrade_depot", "depot": "d_main", "charge_slots": 8},
          {"type": "pave_road", "tiles": [
              {"x": 12, "y": 15, "terrain": "kitchen"},
              {"x": 12, "y": 21, "terrain": "house"}]},
@@ -220,7 +220,7 @@ def city_config(rows):
              "demands": ["meds", "pizza"], "order_interval_ticks": 75, "jitter_ticks": 20},
         ],
         "depots": [
-            {"id": "d_main", "pos": {"x": 3, "y": 3}, "capacity": 4, "charge_slots": 4},
+            {"id": "d_main", "pos": {"x": 3, "y": 3}, "charge_slots": 4},
         ],
         "chargers": [
             {"id": "ch_downtown", "pos": {"x": 9, "y": 9}, "capacity": 1},
