@@ -57,6 +57,13 @@ describe('delivery api owner tokens', () => {
 		mockFetch({ sessions: [] });
 		await api.sessions();
 		expect(calls[0].query).toContain('ownerDisplayName ownerHandle mine');
+		expect(calls[0].variables).toEqual({ sort: null, limit: null, mine: null });
+	});
+
+	it('sessions passes the sort, limit and mine filter', async () => {
+		mockFetch({ sessions: [] });
+		await api.sessions({ sort: 'TICK', limit: 25, mine: true });
+		expect(calls[0].variables).toEqual({ sort: 'TICK', limit: 25, mine: true });
 	});
 
 	it('deleteSession forgets the token', async () => {

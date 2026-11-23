@@ -6,6 +6,7 @@
 	const game = games.find((item) => item.id === 'delivery')!;
 	const tabs = [
 		{ href: '/delivery', label: 'Play' },
+		{ href: '/delivery/sessions', label: 'Sessions' },
 		{ href: '/delivery/analytics', label: 'Analytics' },
 		{ href: '/delivery/cities', label: 'Cities' },
 		{ href: '/delivery/editor', label: 'Editor' }

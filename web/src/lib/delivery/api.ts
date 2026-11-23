@@ -20,6 +20,7 @@ import type {
 	Delivery_Direction as Direction,
 	Delivery_EventView as EventView,
 	Delivery_MoneyHistory as MoneyHistory,
+	Delivery_SessionSort as SessionSort,
 	Delivery_SessionSummary as SessionSummary,
 	Delivery_Snapshot as Snapshot,
 	Delivery_ValuePoint as ValuePoint,
@@ -48,6 +49,7 @@ export type {
 	Delivery_OrderState as OrderState,
 	Delivery_OrderView as OrderView,
 	Delivery_MoneyHistory as MoneyHistory,
+	Delivery_SessionSort as SessionSort,
 	Delivery_SessionSummary as SessionSummary,
 	Delivery_Snapshot as Snapshot,
 	Delivery_ValuePoint as ValuePoint,
@@ -129,6 +131,12 @@ const CAR_FIELDS = `
 	battery maxBattery batteryPct capacity load freeBoxes
 	cargo state queuedMove queuedMoves lastReject
 	chargeDue
+`;
+
+/** SESSION_SUMMARY_FIELDS is the save-picker row, shared by the list queries. */
+export const SESSION_SUMMARY_FIELDS = `
+	id createdAt displayName tick speed money reputation deliveries loaded
+	ownerDisplayName ownerHandle mine cursor
 `;
 
 const ORDER_FIELDS = `
@@ -227,10 +235,18 @@ export const api = {
 		return d.city;
 	},
 
-	sessions: async (): Promise<SessionSummary[]> => {
-		const d = await post<{ sessions: SessionSummary[] }>(`query {
-			delivery { sessions { id createdAt displayName tick speed money reputation deliveries loaded ownerDisplayName ownerHandle mine } }
-		}`);
+	/** Saved sessions; `mine` keeps the signed-in viewer's saves and needs auth. */
+	sessions: async (options: {
+		sort?: SessionSort;
+		limit?: number;
+		mine?: boolean;
+	} = {}): Promise<SessionSummary[]> => {
+		const d = await post<{ sessions: SessionSummary[] }>(
+			`query ($sort: Delivery_SessionSort, $limit: Int, $mine: Boolean) {
+				delivery { sessions(sort: $sort, limit: $limit, mine: $mine) { ${SESSION_SUMMARY_FIELDS} } }
+			}`,
+			{ sort: options.sort ?? null, limit: options.limit ?? null, mine: options.mine ?? null }
+		);
 		return d.sessions ?? [];
 	},
 
