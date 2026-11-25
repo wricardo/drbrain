@@ -220,7 +220,7 @@ func TestListSortsAndFilters(t *testing.T) {
 func TestSavePublishesCountersAndName(t *testing.T) {
 	city, cfg := testCity(t)
 	store := newCountingStore()
-	s, err := newWithStore("savename", city, cfg, "city", 1, store, acctSeven, "hash")
+	s, err := newWithStore("savename", city, cfg, "city", 1, store, acctSeven, "hash", nil)
 	if err != nil {
 		t.Fatalf("new session: %v", err)
 	}
@@ -260,7 +260,7 @@ func TestSavePublishesCountersAndName(t *testing.T) {
 func TestRenameSurvivesReload(t *testing.T) {
 	city, cfg := testCity(t)
 	store := newCountingStore()
-	s, err := newWithStore("renameload", city, cfg, "city", 1, store, "", "")
+	s, err := newWithStore("renameload", city, cfg, "city", 1, store, "", "", nil)
 	if err != nil {
 		t.Fatalf("new session: %v", err)
 	}
@@ -317,7 +317,7 @@ func TestStreamCarriesTheSameStatementWindow(t *testing.T) {
 func TestListDefaultOrderPreservesLiveAndLegacyRows(t *testing.T) {
 	city, cfg := testCity(t)
 	store := newCountingStore()
-	live, err := newWithStore("live1", city, cfg, "city", 1, store, "", "hash")
+	live, err := newWithStore("live1", city, cfg, "city", 1, store, "", "hash", nil)
 	if err != nil {
 		t.Fatalf("new session: %v", err)
 	}

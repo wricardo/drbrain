@@ -40,6 +40,7 @@ type Config struct {
 }
 
 type ResolverRoot interface {
+	Admin() AdminResolver
 	Mutation() MutationResolver
 	Query() QueryResolver
 	Subscription() SubscriptionResolver
@@ -49,6 +50,11 @@ type DirectiveRoot struct {
 }
 
 type ComplexityRoot struct {
+	Admin struct {
+		DeleteSession func(childComplexity int, id string) int
+		RenameSession func(childComplexity int, id string, displayName string) int
+	}
+
 	AdminMap struct {
 		Description     func(childComplexity int) int
 		Difficulty      func(childComplexity int) int
@@ -132,6 +138,7 @@ type ComplexityRoot struct {
 	}
 
 	Mutation struct {
+		Admin         func(childComplexity int, key string) int
 		BulkMove      func(childComplexity int, sessionID string, directions []model.Direction, stopOnBlocked *bool, ownerToken *string) int
 		CreateMap     func(childComplexity int, mapArg model.MapInput) int
 		CreateSession func(childComplexity int, mapID string, displayName *string) int
@@ -192,6 +199,10 @@ type ComplexityRoot struct {
 	}
 }
 
+type AdminResolver interface {
+	DeleteSession(ctx context.Context, obj *model.Admin, id string) (bool, error)
+	RenameSession(ctx context.Context, obj *model.Admin, id string, displayName string) (*model.Session, error)
+}
 type MutationResolver interface {
 	CreateSession(ctx context.Context, mapID string, displayName *string) (*model.CreateSessionResult, error)
 	DeleteSession(ctx context.Context, id string, ownerToken *string) (bool, error)
@@ -204,6 +215,7 @@ type MutationResolver interface {
 	PublishMap(ctx context.Context, id string) (*model.AdminMap, error)
 	DeleteMap(ctx context.Context, id string) (bool, error)
 	ValidateMap(ctx context.Context, mapArg model.MapInput) (*model.MapValidationResult, error)
+	Admin(ctx context.Context, key string) (*model.Admin, error)
 }
 type QueryResolver interface {
 	Maps(ctx context.Context) ([]*model.Map, error)
@@ -235,6 +247,30 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 	ec := executionContext{nil, e, 0, 0, nil}
 	_ = ec
 	switch typeName + "." + field {
+
+	case "Admin.deleteSession":
+		if e.complexity.Admin.DeleteSession == nil {
+			break
+		}
+
+		args, err := ec.field_Admin_deleteSession_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Admin.DeleteSession(childComplexity, args["id"].(string)), true
+
+	case "Admin.renameSession":
+		if e.complexity.Admin.RenameSession == nil {
+			break
+		}
+
+		args, err := ec.field_Admin_renameSession_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Admin.RenameSession(childComplexity, args["id"].(string), args["displayName"].(string)), true
 
 	case "AdminMap.description":
 		if e.complexity.AdminMap.Description == nil {
@@ -641,6 +677,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.MoveEvent.Via(childComplexity), true
+
+	case "Mutation.admin":
+		if e.complexity.Mutation.Admin == nil {
+			break
+		}
+
+		args, err := ec.field_Mutation_admin_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Mutation.Admin(childComplexity, args["key"].(string)), true
 
 	case "Mutation.bulkMove":
 		if e.complexity.Mutation.BulkMove == nil {
@@ -1626,6 +1674,22 @@ type CreateSessionResult {
 	"""
 	ownerToken: String!
 }
+"""
+Administrative operations that bypass ownership checks. This object can only be
+reached through ` + "`" + `Mutation.mazes.admin(key)` + "`" + `, which validates the admin key, so
+every field here is already authorized.
+"""
+type Admin {
+	"""
+	Delete a session permanently, bypassing the owner-token/account check of
+	` + "`" + `deleteSession` + "`" + `. Idempotent: an unknown or already-deleted id returns true.
+	"""
+	deleteSession(id: ID!): Boolean!
+	"""
+	Rename any session for moderation, bypassing the owner check.
+	"""
+	renameSession(id: ID!, displayName: String!): Session!
+}
 scalar Time
 """
 Mazes reads: catalogue, one session and the save list. Reads are public.
@@ -1725,6 +1789,13 @@ type Mutation {
 	gate: a map is publishable when it is structurally valid and the finish can be reached.
 	"""
 	validateMap(map: MapInput!): MapValidationResult!
+	"""
+	Administrative operations. ` + "`" + `key` + "`" + ` must match ADMIN_API_KEY (the same secret
+	X-Admin-Key carries); a wrong or missing key is FORBIDDEN and never reveals
+	whether a session exists. When no key is configured, the explicit
+	ALLOW_UNAUTHENTICATED_ADMIN opt-out still applies.
+	"""
+	admin(key: String!): Admin!
 }
 type Subscription {
 	"""
@@ -1739,6 +1810,113 @@ var parsedSchema = gqlparser.MustLoadSchema(sources...)
 // endregion ************************** generated!.gotpl **************************
 
 // region    ***************************** args.gotpl *****************************
+
+func (ec *executionContext) field_Admin_deleteSession_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Admin_deleteSession_argsID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	return args, nil
+}
+func (ec *executionContext) field_Admin_deleteSession_argsID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["id"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
+	if tmp, ok := rawArgs["id"]; ok {
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Admin_renameSession_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Admin_renameSession_argsID(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	arg1, err := ec.field_Admin_renameSession_argsDisplayName(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["displayName"] = arg1
+	return args, nil
+}
+func (ec *executionContext) field_Admin_renameSession_argsID(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["id"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("id"))
+	if tmp, ok := rawArgs["id"]; ok {
+		return ec.unmarshalNID2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Admin_renameSession_argsDisplayName(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["displayName"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("displayName"))
+	if tmp, ok := rawArgs["displayName"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
+
+func (ec *executionContext) field_Mutation_admin_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := ec.field_Mutation_admin_argsKey(ctx, rawArgs)
+	if err != nil {
+		return nil, err
+	}
+	args["key"] = arg0
+	return args, nil
+}
+func (ec *executionContext) field_Mutation_admin_argsKey(
+	ctx context.Context,
+	rawArgs map[string]any,
+) (string, error) {
+	if _, ok := rawArgs["key"]; !ok {
+		var zeroVal string
+		return zeroVal, nil
+	}
+
+	ctx = graphql.WithPathContext(ctx, graphql.NewPathWithField("key"))
+	if tmp, ok := rawArgs["key"]; ok {
+		return ec.unmarshalNString2string(ctx, tmp)
+	}
+
+	var zeroVal string
+	return zeroVal, nil
+}
 
 func (ec *executionContext) field_Mutation_bulkMove_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
@@ -2662,6 +2840,142 @@ func (ec *executionContext) field___Type_fields_argsIncludeDeprecated(
 // endregion ************************** directives.gotpl **************************
 
 // region    **************************** field.gotpl *****************************
+
+func (ec *executionContext) _Admin_deleteSession(ctx context.Context, field graphql.CollectedField, obj *model.Admin) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Admin_deleteSession(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Admin().DeleteSession(rctx, obj, fc.Args["id"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Admin_deleteSession(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Admin",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Admin_deleteSession_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Admin_renameSession(ctx context.Context, field graphql.CollectedField, obj *model.Admin) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Admin_renameSession(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Admin().RenameSession(rctx, obj, fc.Args["id"].(string), fc.Args["displayName"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.Session)
+	fc.Result = res
+	return ec.marshalNSession2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐSession(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Admin_renameSession(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Admin",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Session_id(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Session_displayName(ctx, field)
+			case "mapId":
+				return ec.fieldContext_Session_mapId(ctx, field)
+			case "map":
+				return ec.fieldContext_Session_map(ctx, field)
+			case "view":
+				return ec.fieldContext_Session_view(ctx, field)
+			case "state":
+				return ec.fieldContext_Session_state(ctx, field)
+			case "seq":
+				return ec.fieldContext_Session_seq(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Session_createdAt(ctx, field)
+			case "lastActionAt":
+				return ec.fieldContext_Session_lastActionAt(ctx, field)
+			case "attempts":
+				return ec.fieldContext_Session_attempts(ctx, field)
+			case "bestMoves":
+				return ec.fieldContext_Session_bestMoves(ctx, field)
+			case "lastEvent":
+				return ec.fieldContext_Session_lastEvent(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Session", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Admin_renameSession_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
 
 func (ec *executionContext) _AdminMap_id(ctx context.Context, field graphql.CollectedField, obj *model.AdminMap) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_AdminMap_id(ctx, field)
@@ -6115,6 +6429,67 @@ func (ec *executionContext) fieldContext_Mutation_validateMap(ctx context.Contex
 	}()
 	ctx = graphql.WithFieldContext(ctx, fc)
 	if fc.Args, err = ec.field_Mutation_validateMap_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Mutation_admin(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Mutation_admin(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (any, error) {
+		ctx = rctx // use context from middleware stack in children
+		return ec.resolvers.Mutation().Admin(rctx, fc.Args["key"].(string))
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(*model.Admin)
+	fc.Result = res
+	return ec.marshalNAdmin2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐAdmin(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Mutation_admin(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "deleteSession":
+				return ec.fieldContext_Admin_deleteSession(ctx, field)
+			case "renameSession":
+				return ec.fieldContext_Admin_renameSession(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Admin", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Mutation_admin_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
 		ec.Error(ctx, err)
 		return fc, err
 	}
@@ -9854,6 +10229,112 @@ func (ec *executionContext) unmarshalInputMapInput(ctx context.Context, obj any)
 
 // region    **************************** object.gotpl ****************************
 
+var adminImplementors = []string{"Admin"}
+
+func (ec *executionContext) _Admin(ctx context.Context, sel ast.SelectionSet, obj *model.Admin) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, adminImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Admin")
+		case "deleteSession":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Admin_deleteSession(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "renameSession":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Admin_renameSession(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var adminMapImplementors = []string{"AdminMap"}
 
 func (ec *executionContext) _AdminMap(ctx context.Context, sel ast.SelectionSet, obj *model.AdminMap) graphql.Marshaler {
@@ -10475,6 +10956,13 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 		case "validateMap":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_validateMap(ctx, field)
+			})
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "admin":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_admin(ctx, field)
 			})
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
@@ -11258,6 +11746,20 @@ func (ec *executionContext) ___Type(ctx context.Context, sel ast.SelectionSet, o
 // endregion **************************** object.gotpl ****************************
 
 // region    ***************************** type.gotpl *****************************
+
+func (ec *executionContext) marshalNAdmin2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐAdmin(ctx context.Context, sel ast.SelectionSet, v model.Admin) graphql.Marshaler {
+	return ec._Admin(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNAdmin2ᚖgithubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐAdmin(ctx context.Context, sel ast.SelectionSet, v *model.Admin) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			ec.Errorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Admin(ctx, sel, v)
+}
 
 func (ec *executionContext) marshalNAdminMap2githubᚗcomᚋwricardoᚋdrbrainᚋgamesᚋmazesᚋgraphᚋmodelᚐAdminMap(ctx context.Context, sel ast.SelectionSet, v model.AdminMap) graphql.Marshaler {
 	return ec._AdminMap(ctx, sel, &v)

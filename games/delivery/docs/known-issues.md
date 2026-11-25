@@ -252,8 +252,81 @@ against a mid-edit tree:
   detour, budget on the straight route  198 delivered  /  89 expired / 84 tows
   ```
 
-- **Seed spread is larger than the rule's cost.** Same driver both sides, 3000
-  ticks: 247/245/240 with collision on against 269/240/253 with it off, at seeds
-  0x5eed5eed/7/99. Reputation 4.83/5.00/4.90. A single-seed before/after is not
-  evidence here; the per-seed gap between two runs of the *same* build is wider
-  than the rule's effect.
+  These three were measured on an older engine and bot and have not been re-run.
+  The wait-behind-traffic driver as it stands now (3000 ticks), delivered /
+  expired / tows / reputation:
+
+  ```
+  seed 0x5eed5eed   325 / 14 / 17 / 5.00     (154 / 111 / 36 / 0.61 before #8)
+  seed 1            316 / 25 /  5 / 5.00     (45 / 184 / 1 / 0.03 before #8)
+  seed 2            286 / 28 / 20 / 4.96
+  seed 3            329 / 15 / 10 / 5.00
+  seed 99           324 / 18 / 11 / 5.00
+  ```
+
+- **Seed spread is larger than the rule's cost.** The collision on/off comparison
+  (247/245/240 against 269/240/253, seeds 0x5eed5eed/7/99, reputation
+  4.83/5.00/4.90) is from the older engine and has not been re-measured. A
+  single-seed before/after is not evidence here; the per-seed gap between two
+  runs of the *same* build is wider than the rule's effect (286 to 329 delivered
+  across the five seeds above).
+
+## 8. The `sim` bot deadlocked head-on, abandoned chargers and over-assigned — FIXED
+
+**Severity:** low for the game, high for anyone reading the pacing table as
+evidence. Found by reviewing `cmd/drbrain/sim.go`; the bot, not the engine, was
+at fault.
+
+Five defects in the harness driver, each measured before it was fixed:
+
+- **Head-on lock in a one-lane street.** Two cars wanting each other's tile can
+  never resolve by waiting, because the engine refuses a swap and the bot
+  re-queued the same step. On seed 1 a scooter and a van sat locked for 2000+
+  ticks and the fleet never grew past two cars (45 delivered, 155 unclaimed
+  expiries). One car of the pair now steps aside (`headOnSidestep`).
+- **Idle cars left the charger they stood on.** 1136 of 1136 idle-on-charger
+  car-ticks (default seed) pointed the car at a different tile.
+- **Orders were assigned without checking battery.** Half-charged cars took
+  orders they could not finish. `canServe` now requires car to kitchen to
+  customer to a charger within the present charge, or a full battery.
+- **Idle cars picked a free charger without checking they could reach it** and
+  ran dry on the way, which was the main source of tows (61 to 86 per run once
+  the deadlock was gone, 8 to 20 after).
+- **Cars parked on a kitchen never collected their order.** Pickup fires when a
+  car steps onto the kitchen tile, not when an order is assigned to a car
+  already standing there (the engine's rule: assignment alone must not complete
+  work). The nearest free car was often the one parked on the kitchen, so it sat
+  still until the order expired. The bot now steps off and back on. Together
+  with the other fixes this took expiries on the five seeds from 121 to 100.
+
+The deadline is not checked at assignment: `AssignOrder` only ever extends it.
+A head-on pair with no free neighbour tile on either side still stays locked;
+the bot does not tow for that.
+
+Tried and dropped, each measured over the same five seeds against the build as it
+stood at the time:
+
+- Heading for a reachable charger even when it has no room: 1504 delivered, 49
+  tows, against 1549 and 56 without it (measured before the kitchen fix).
+- Hopping charger to charger when one battery cannot cover a trip: 1551
+  delivered, 84 tows, against 1580 and 63 without it.
+- Refusing orders a full battery cannot cover: starved the default seed to one
+  scooter, 30 delivered and 215 expired. The full-battery exemption in
+  `canServe` is load-bearing.
+- Not sending a full car off a depot, and treating a battery within two units
+  of full as topped up: 1533 and 1182 delivered respectively, against 1580.
+  A flat 60% top-up bar starved every seed down to one delivery: a car parked
+  at 62% could not serve any order and never went to charge.
+
+Still open: a two-car livelock. A car at a 1-slot charger steps off when full,
+reads 97% (the step cost a unit) and steps back, so the charger's room flips
+every tick. A second car choosing between that charger and another flips its
+goal with it, and a third car head-on with it yields back and forth in a
+one-lane street, burning battery until it strands or the order expires
+(default seed, ticks 2440 to 2466, a 40-box order). The bot has no memory
+between ticks, so it cannot commit to a goal; the straightforward cures above
+each cost more throughput than they saved.
+
+A zero-expiry run is not expected from this bot. Early orders (5 to 9 boxes
+with a 25-tick life) arrive while the fleet is one scooter carrying 4 boxes,
+demand is meant to outrun the fleet, and the bot keeps one order per car.

@@ -84,6 +84,15 @@ func testRoute(rows []string, from, to engine.Position) []engine.Direction {
 // newTestServer wires the real GraphQL handler over a fresh test schema.
 func newTestServer(t *testing.T) *httptest.Server {
 	t.Helper()
+	ts, _ := newTestServerAndManager(t)
+	return ts
+}
+
+// newTestServerAndManager adds the live session manager to the plain test
+// server so a test can step the world directly. The API has no manual tick:
+// tests that need a later world state drive it the way the clock does.
+func newTestServerAndManager(t *testing.T) (*httptest.Server, *session.Manager) {
+	t.Helper()
 
 	city, err := filepath.Abs(filepath.Join("..", "maps", "city.json"))
 	if err != nil {
@@ -102,7 +111,23 @@ func newTestServer(t *testing.T) *httptest.Server {
 
 	ts := httptest.NewServer(testHandler(mgr, cat))
 	t.Cleanup(ts.Close)
-	return ts
+	return ts, mgr
+}
+
+// advanceTicks steps a live session's world n times, exactly as its clock
+// does. Production exposes no manual tick; this is the test-only replacement
+// used to reach later world states without waiting on wall-clock time.
+func advanceTicks(t *testing.T, mgr *session.Manager, id string, n int) {
+	t.Helper()
+	sess, ok := mgr.Get(id)
+	if !ok {
+		t.Fatalf("session %q is not live", id)
+	}
+	sess.Do(func(w *engine.World) {
+		for range n {
+			w.Advance()
+		}
+	})
 }
 
 // newCityCatalog serves the repo's shipped city as builtin id "city" and, when
@@ -262,8 +287,8 @@ func TestCreateSessionReturnsSnapshot(t *testing.T) {
 	}
 }
 
-func TestMoveQueuesAndTickApplies(t *testing.T) {
-	ts := newTestServer(t)
+func TestMoveQueuesAndWorldStepApplies(t *testing.T) {
+	ts, mgr := newTestServerAndManager(t)
 	tok := createSession(t, ts, "m1", 1)
 	_ = tok
 
@@ -278,17 +303,15 @@ func TestMoveQueuesAndTickApplies(t *testing.T) {
 	// Queue only: position must not change.
 	var queued struct {
 		MoveCar struct {
-			Cars []struct {
-				X, Y        int
-				QueuedMove  *string  `json:"queuedMove"`
-				QueuedMoves []string `json:"queuedMoves"`
-			}
+			X, Y        int
+			QueuedMove  *string  `json:"queuedMove"`
+			QueuedMoves []string `json:"queuedMoves"`
 		}
 	}
 	mustQuery(t, ts, `mutation { moveCar(id: "m1", carId: "car_1", direction: SOUTH`+`, ownerToken: "`+tok+`") {
-		cars { x y queuedMove queuedMoves }
+		x y queuedMove queuedMoves
 	} }`, nil, &queued)
-	c := queued.MoveCar.Cars[0]
+	c := queued.MoveCar
 	if c.X != startX || c.Y != startY {
 		t.Fatalf("car moved on command: (%d,%d) -> (%d,%d)", startX, startY, c.X, c.Y)
 	}
@@ -301,16 +324,16 @@ func TestMoveQueuesAndTickApplies(t *testing.T) {
 
 	// A second command appends: the backlog is two steps, head still SOUTH.
 	mustQuery(t, ts, `mutation { moveCar(id: "m1", carId: "car_1", direction: SOUTH`+`, ownerToken: "`+tok+`") {
-		cars { queuedMove queuedMoves }
+		queuedMove queuedMoves
 	} }`, nil, &queued)
-	c = queued.MoveCar.Cars[0]
+	c = queued.MoveCar
 	if c.QueuedMove == nil || *c.QueuedMove != "SOUTH" || len(c.QueuedMoves) != 2 {
 		t.Fatalf("after second command queuedMove = %v, queuedMoves = %v, want SOUTH and two steps", c.QueuedMove, c.QueuedMoves)
 	}
 
-	// Tick applies the head and promotes the tail.
+	// One world step applies the head and promotes the tail.
 	var after struct {
-		Tick struct {
+		Session struct {
 			Tick int
 			Cars []struct {
 				X, Y        int
@@ -320,46 +343,52 @@ func TestMoveQueuesAndTickApplies(t *testing.T) {
 			}
 		}
 	}
-	mustQuery(t, ts, `mutation { tick(id: "m1", count: 1`+`, ownerToken: "`+tok+`") { tick cars { x y battery queuedMove queuedMoves } } }`, nil, &after)
-	if after.Tick.Tick != 1 {
-		t.Errorf("tick = %d, want 1", after.Tick.Tick)
+	advanceTicks(t, mgr, "m1", 1)
+	mustQuery(t, ts, `query { session(id: "m1") { tick cars { x y battery queuedMove queuedMoves } } }`, nil, &after)
+	if after.Session.Tick != 1 {
+		t.Errorf("tick = %d, want 1", after.Session.Tick)
 	}
-	if after.Tick.Cars[0].Y != startY+1 {
-		t.Errorf("y after tick = %d, want %d", after.Tick.Cars[0].Y, startY+1)
+	if after.Session.Cars[0].Y != startY+1 {
+		t.Errorf("y after step = %d, want %d", after.Session.Cars[0].Y, startY+1)
 	}
-	if len(after.Tick.Cars[0].QueuedMoves) != 1 || after.Tick.Cars[0].QueuedMoves[0] != "SOUTH" {
-		t.Errorf("queuedMoves after tick = %v, want [SOUTH]", after.Tick.Cars[0].QueuedMoves)
+	if len(after.Session.Cars[0].QueuedMoves) != 1 || after.Session.Cars[0].QueuedMoves[0] != "SOUTH" {
+		t.Errorf("queuedMoves after step = %v, want [SOUTH]", after.Session.Cars[0].QueuedMoves)
 	}
 
 	// clearMoves drops the rest, so the next tick moves nothing.
 	var cleared struct {
 		ClearMoves struct {
-			Cars []struct {
-				QueuedMove  *string  `json:"queuedMove"`
-				QueuedMoves []string `json:"queuedMoves"`
-			}
+			QueuedMove  *string  `json:"queuedMove"`
+			QueuedMoves []string `json:"queuedMoves"`
 		}
 	}
 	mustQuery(t, ts, `mutation { clearMoves(id: "m1", carId: "car_1"`+`, ownerToken: "`+tok+`") {
-		cars { queuedMove queuedMoves }
+		queuedMove queuedMoves
 	} }`, nil, &cleared)
-	if cleared.ClearMoves.Cars[0].QueuedMove != nil || len(cleared.ClearMoves.Cars[0].QueuedMoves) != 0 {
-		t.Fatalf("after clear queuedMove = %v, queuedMoves = %v, want empty", cleared.ClearMoves.Cars[0].QueuedMove, cleared.ClearMoves.Cars[0].QueuedMoves)
+	if cleared.ClearMoves.QueuedMove != nil || len(cleared.ClearMoves.QueuedMoves) != 0 {
+		t.Fatalf("after clear queuedMove = %v, queuedMoves = %v, want empty", cleared.ClearMoves.QueuedMove, cleared.ClearMoves.QueuedMoves)
 	}
-	mustQuery(t, ts, `mutation { tick(id: "m1", count: 1`+`, ownerToken: "`+tok+`") { tick cars { y } } }`, nil, &after)
-	if after.Tick.Cars[0].Y != startY+1 {
-		t.Errorf("y after cleared tick = %d, want %d (no queued step)", after.Tick.Cars[0].Y, startY+1)
+	advanceTicks(t, mgr, "m1", 1)
+	var still struct {
+		Session struct {
+			Cars []struct{ Y int }
+		}
+	}
+	mustQuery(t, ts, `query { session(id: "m1") { cars { y } } }`, nil, &still)
+	if still.Session.Cars[0].Y != startY+1 {
+		t.Errorf("y after cleared step = %d, want %d (no queued step)", still.Session.Cars[0].Y, startY+1)
 	}
 }
 
 func TestFullDeliveryThroughGraphQL(t *testing.T) {
-	ts := newTestServer(t)
+	ts, mgr := newTestServerAndManager(t)
 	tok := createSession(t, ts, "d1", 5)
 	_ = tok
 
-	// Force the first order.
+	// Let the first world step spawn an order.
+	advanceTicks(t, mgr, "d1", 1)
 	var ticked struct {
-		Tick struct {
+		Session struct {
 			Orders []struct {
 				ID         string
 				State      string
@@ -369,13 +398,11 @@ func TestFullDeliveryThroughGraphQL(t *testing.T) {
 			}
 		}
 	}
-	mustQuery(t, ts, `mutation { tick(id: "d1", count: 1`+`, ownerToken: "`+tok+`") {
-		orders { id state itemName kitchenId customerId }
-	} }`, nil, &ticked)
-	if len(ticked.Tick.Orders) == 0 {
+	mustQuery(t, ts, `query { session(id: "d1") { orders { id state itemName kitchenId customerId } } }`, nil, &ticked)
+	if len(ticked.Session.Orders) == 0 {
 		t.Fatal("no order spawned")
 	}
-	o := ticked.Tick.Orders[0]
+	o := ticked.Session.Orders[0]
 	if o.ItemName == "" || o.KitchenID == "" || o.CustomerID == "" {
 		t.Fatalf("order missing display data: %+v", o)
 	}
@@ -390,8 +417,8 @@ func TestFullDeliveryThroughGraphQL(t *testing.T) {
 	} }`, nil, &assigned)
 
 	drive := func(dir string) {
-		mustQuery(t, ts, `mutation { moveCar(id: "d1", carId: "car_1", direction: `+dir+``+`, ownerToken: "`+tok+`") { tick } }`, nil, nil)
-		mustQuery(t, ts, `mutation { tick(id: "d1", count: 1`+`, ownerToken: "`+tok+`") { tick } }`, nil, nil)
+		mustQuery(t, ts, `mutation { moveCar(id: "d1", carId: "car_1", direction: `+dir+``+`, ownerToken: "`+tok+`") { id } }`, nil, nil)
+		advanceTicks(t, mgr, "d1", 1)
 	}
 
 	// Read the city once: rows let the test plan a real route, and the entity
@@ -663,21 +690,11 @@ func TestSpeedValidation(t *testing.T) {
 	}
 }
 
-func TestTickCountIsCapped(t *testing.T) {
-	ts := newTestServer(t)
-	tok := createSession(t, ts, "c1", 1)
-	_ = tok
-	res := query(t, ts, `mutation { tick(id: "c1", count: 5000`+`, ownerToken: "`+tok+`") { tick } }`, nil)
-	if len(res.Errors) == 0 {
-		t.Fatal("expected an oversized tick count to be rejected")
-	}
-}
-
 func TestEventsSinceTick(t *testing.T) {
-	ts := newTestServer(t)
+	ts, mgr := newTestServerAndManager(t)
 	tok := createSession(t, ts, "e1", 1)
 	_ = tok
-	mustQuery(t, ts, `mutation { tick(id: "e1", count: 5`+`, ownerToken: "`+tok+`") { tick } }`, nil, nil)
+	advanceTicks(t, mgr, "e1", 5)
 
 	var all struct {
 		Events struct{ Events []struct{ Tick int } }
@@ -702,10 +719,10 @@ func TestEventsSinceTick(t *testing.T) {
 }
 
 func TestPersistAcrossReload(t *testing.T) {
-	ts := newTestServer(t)
+	ts, mgr := newTestServerAndManager(t)
 	tok := createSession(t, ts, "p1", 11)
 	_ = tok
-	mustQuery(t, ts, `mutation { tick(id: "p1", count: 10`+`, ownerToken: "`+tok+`") { tick } }`, nil, nil)
+	advanceTicks(t, mgr, "p1", 10)
 	mustQuery(t, ts, `mutation { saveSession(id: "p1"`+`, ownerToken: "`+tok+`") { tick } }`, nil, nil)
 	mustQuery(t, ts, `mutation { evictSession(id: "p1"`+`, ownerToken: "`+tok+`") }`, nil, nil)
 
@@ -908,110 +925,77 @@ func TestRejectClosedIsMapped(t *testing.T) {
 	}
 }
 
-// TestMoneyHistoryQuery exercises the projection-backed money-by-tick root
-// field through the generated executor.
-func TestMoneyHistoryQuery(t *testing.T) {
-	ts := newTestServer(t)
-	token := createSession(t, ts, "moneyhist", 5)
-	mustQuery(t, ts, `mutation ($id: ID!, $token: String) {
-		tick(id: $id, count: 50, ownerToken: $token) { tick }
-	}`, map[string]any{"id": "moneyhist", "token": token}, nil)
+// TestMetricHistoryQuery exercises every projection-backed analytics series
+// through the generated executor.
+func TestMetricHistoryQuery(t *testing.T) {
+	ts, mgr := newTestServerAndManager(t)
+	token := createSession(t, ts, "metric-hist", 5)
+	advanceTicks(t, mgr, "metric-hist", 50)
 	mustQuery(t, ts, `mutation ($id: ID!, $token: String) {
 		saveSession(id: $id, ownerToken: $token) { tick }
-	}`, map[string]any{"id": "moneyhist", "token": token}, nil)
+	}`, map[string]any{"id": "metric-hist", "token": token}, nil)
 
+	type series struct {
+		SessionID string `json:"sessionId"`
+		CityID    string `json:"cityId"`
+		Points    []struct {
+			Tick  int
+			Value float64
+		}
+	}
 	var out struct {
-		MoneyHistory []struct {
-			SessionID string `json:"sessionId"`
-			CityID    string `json:"cityId"`
-			Points    []struct {
-				Tick  int
-				Money int
-			}
-		} `json:"moneyHistory"`
-		ItemsHistory []struct {
-			SessionID string `json:"sessionId"`
-			CityID    string `json:"cityId"`
-			Points    []struct {
-				Tick  int
-				Value float64
-			}
-		} `json:"itemsHistory"`
-		ReputationHistory []struct {
-			SessionID string `json:"sessionId"`
-			CityID    string `json:"cityId"`
-			Points    []struct {
-				Tick  int
-				Value float64
-			}
-		} `json:"reputationHistory"`
-		DeliveriesHistory []struct {
-			SessionID string `json:"sessionId"`
-			CityID    string `json:"cityId"`
-			Points    []struct {
-				Tick  int
-				Value float64
-			}
-		} `json:"deliveriesHistory"`
+		Money      []series `json:"money"`
+		Boxes      []series `json:"boxes"`
+		Reputation []series `json:"reputation"`
+		Deliveries []series `json:"deliveries"`
 	}
 	mustQuery(t, ts, `query ($ids: [ID!]) {
-		moneyHistory(ids: $ids, maxPoints: 50) {
-			sessionId
-			cityId
-			points { tick money }
-		}
-		itemsHistory(ids: $ids, maxPoints: 50) {
+		money: metricHistory(metric: MONEY, ids: $ids, maxPoints: 50) {
 			sessionId
 			cityId
 			points { tick value }
 		}
-		reputationHistory(ids: $ids, maxPoints: 50) {
+		boxes: metricHistory(metric: BOXES_DELIVERED, ids: $ids, maxPoints: 50) {
 			sessionId
 			cityId
 			points { tick value }
 		}
-		deliveriesHistory: metricHistory(metric: DELIVERIES, ids: $ids, maxPoints: 50) {
+		reputation: metricHistory(metric: REPUTATION, ids: $ids, maxPoints: 50) {
 			sessionId
 			cityId
 			points { tick value }
 		}
-	}`, map[string]any{"ids": []string{"moneyhist"}}, &out)
+		deliveries: metricHistory(metric: DELIVERIES, ids: $ids, maxPoints: 50) {
+			sessionId
+			cityId
+			points { tick value }
+		}
+	}`, map[string]any{"ids": []string{"metric-hist"}}, &out)
 
-	if len(out.MoneyHistory) != 1 {
-		t.Fatalf("money series = %d, want 1", len(out.MoneyHistory))
+	for name, rows := range map[string][]series{
+		"money": out.Money, "boxes": out.Boxes, "reputation": out.Reputation, "deliveries": out.Deliveries,
+	} {
+		if len(rows) != 1 {
+			t.Fatalf("%s series = %d, want 1", name, len(rows))
+		}
+		got := rows[0]
+		if got.SessionID != "metric-hist" || got.CityID != "city" {
+			t.Fatalf("%s series = %+v, want metric-hist/city", name, got)
+		}
+		if len(got.Points) < 2 {
+			t.Fatalf("%s points = %d, want start and current", name, len(got.Points))
+		}
+		if first, last := got.Points[0], got.Points[len(got.Points)-1]; first.Tick != 0 || last.Tick != 50 {
+			t.Fatalf("%s first/last = %+v/%+v, want ticks 0 and 50", name, first, last)
+		}
 	}
-	h := out.MoneyHistory[0]
-	if h.SessionID != "moneyhist" || h.CityID != "city" {
-		t.Fatalf("series = %+v, want moneyhist/city", h)
+	if last := out.Money[0].Points[len(out.Money[0].Points)-1]; last.Value != 0 {
+		t.Fatalf("money last = %+v, want 0", last)
 	}
-	if len(h.Points) < 2 {
-		t.Fatalf("points = %d, want at least start and current", len(h.Points))
+	if last := out.Boxes[0].Points[len(out.Boxes[0].Points)-1]; last.Value != 0 {
+		t.Fatalf("boxes last = %+v, want 0 delivered", last)
 	}
-	if first, last := h.Points[0], h.Points[len(h.Points)-1]; first.Tick != 0 || last.Tick != 50 || last.Money != 0 {
-		t.Fatalf("first/last = %+v/%+v, want tick 0 and tick 50 money 0", first, last)
-	}
-
-	if len(out.ItemsHistory) != 1 || len(out.ItemsHistory[0].Points) < 2 {
-		t.Fatalf("items series = %+v, want one series with start/current", out.ItemsHistory)
-	}
-	if last := out.ItemsHistory[0].Points[len(out.ItemsHistory[0].Points)-1]; last.Value != 0 {
-		t.Fatalf("items last = %+v, want 0 delivered", last)
-	}
-	if len(out.ReputationHistory) != 1 || len(out.ReputationHistory[0].Points) < 2 {
-		t.Fatalf("reputation series = %+v, want one series with history", out.ReputationHistory)
-	}
-	rep := out.ReputationHistory[0]
-	if first, last := rep.Points[0], rep.Points[len(rep.Points)-1]; first.Tick != 0 || last.Tick != 50 || last.Value < 0 || last.Value > 5 {
-		t.Fatalf("reputation first/last = %+v/%+v", first, last)
-	}
-	if len(out.DeliveriesHistory) != 1 || len(out.DeliveriesHistory[0].Points) < 2 {
-		t.Fatalf("deliveries series = %+v, want one series with start/current", out.DeliveriesHistory)
-	}
-	del := out.DeliveriesHistory[0]
-	if del.SessionID != "moneyhist" || del.CityID != "city" {
-		t.Fatalf("deliveries series = %+v, want moneyhist/city", del)
-	}
-	if first, last := del.Points[0], del.Points[len(del.Points)-1]; first.Tick != 0 || first.Value != 0 || last.Tick != 50 || last.Value != 0 {
-		t.Fatalf("deliveries first/last = %+v/%+v, want zero at ticks 0 and 50", first, last)
+	if rep := out.Reputation[0].Points; rep[0].Value < 0 || rep[0].Value > 5 || rep[len(rep)-1].Value < 0 || rep[len(rep)-1].Value > 5 {
+		t.Fatalf("reputation = %+v, want 0..5", rep)
 	}
 }

@@ -1,5 +1,7 @@
 package engine
 
+import "fmt"
+
 // Save state.
 //
 // A save is (city file, SavedState). The city file stays the terrain truth and
@@ -41,6 +43,9 @@ type SavedState struct {
 	NextCarSeq int `json:"next_car_seq"`
 	OrderSeq   int `json:"order_seq"`
 
+	// PlacedChargers are the player-bought chargers, replayed after growth.
+	PlacedChargers []ChargerConfig `json:"placed_chargers,omitempty"`
+
 	// Growth is deliberately NOT stored: stage application is a pure function
 	// of the tick, so ImportState replays every stage due by the saved tick and
 	// derives districts, roads, licensed classes and chargers from the content.
@@ -58,8 +63,21 @@ type SavedState struct {
 // ExportState returns a deep copy of the restartable world state, so a caller
 // can serialise it without holding a lock and without the tick loop mutating
 // what is being written.
-func (w *World) ExportState() SavedState {
-	ledger := w.Ledger.Clone()
+func (w *World) ExportState() SavedState { return w.exportState(true) }
+
+// ExportFrame returns the per-tick snapshot shape: the restartable state with
+// the parts that already have their own per-event storage removed.
+//
+// The cash and reputation ledgers are append-only and projected per movement
+// (delivery_cash_entries, delivery_reputation_entries), so copying their whole
+// history into every tick would make storage quadratic in session length. The
+// retained event feed is a rolling log rather than state for the same reason.
+// What remains is everything that cannot be derived: cars, orders, balances,
+// counters and the order-spawner memory.
+func (w *World) ExportFrame() SavedState { return w.exportState(false) }
+
+func (w *World) exportState(history bool) SavedState {
+	ledger := w.Ledger.clone(history)
 	s := SavedState{
 		Tick:             w.Tick,
 		Seed:             w.Seed,
@@ -68,10 +86,14 @@ func (w *World) ExportState() SavedState {
 		Orders:           make([]*Order, len(w.Orders)),
 		NextCarSeq:       w.NextCarSeq,
 		OrderSeq:         w.orderSeq,
+		PlacedChargers:   append([]ChargerConfig(nil), w.PlacedChargers...),
 		NextEligibleTick: make(map[string]int64, len(w.spawn.NextEligibleTick)),
 		LastSpawnTick:    w.spawn.LastSpawnTick,
 		HasSpawned:       w.spawn.HasSpawned,
 		Events:           append([]Event(nil), w.Events...),
+	}
+	if !history {
+		s.Events = nil
 	}
 	for i, c := range w.Cars {
 		s.Cars[i] = c.Clone()
@@ -145,6 +167,15 @@ func (w *World) ImportState(s SavedState) error {
 	w.buyableClasses = map[string]bool{}
 	w.applyGrowth()
 
+	// Player-bought chargers are not derivable from the tick, so replay them.
+	w.PlacedChargers = nil
+	for _, cfg := range s.PlacedChargers {
+		if _, err := w.installCharger(cfg); err != nil {
+			return fmt.Errorf("restore charger %q: %w", cfg.ID, err)
+		}
+		w.PlacedChargers = append(w.PlacedChargers, cfg)
+	}
+
 	w.spawn.NextEligibleTick = orEmptyInt64(s.NextEligibleTick)
 	w.spawn.LastSpawnTick = s.LastSpawnTick
 	w.spawn.HasSpawned = s.HasSpawned
@@ -154,6 +185,18 @@ func (w *World) ImportState(s SavedState) error {
 	// here is what keeps it derived state rather than a second source of truth
 	// that a reload could silently disagree with.
 	for _, c := range w.Cars {
+		// A save written before PurchasePrice existed decodes it as 0. The
+		// cash ledger still names the car on its purchase entry, so recover
+		// the true price there; starter and granted cars have no such entry
+		// and stay worth nothing.
+		if c.PurchasePrice == 0 {
+			for _, e := range w.Ledger.Cash {
+				if e.Kind == CashCarPurchase && e.CarID == c.ID && e.Amount < 0 {
+					c.PurchasePrice = -e.Amount
+					break
+				}
+			}
+		}
 		// A queue is a head plus a tail; a save can only be written between
 		// ticks, so an empty head with a non-empty tail means the file was
 		// hand-edited. Promote rather than run a route with no head.
@@ -208,11 +251,22 @@ func (w *World) GrantClasses(classes []string) {
 
 // Clone returns a deep copy of the ledger, including its per-item counters,
 // cash statement and the monthly summaries derived from it.
-func (l *Ledger) Clone() Ledger {
+func (l *Ledger) Clone() Ledger { return l.clone(true) }
+
+// clone copies the ledger. history=false skips the append-only statement and
+// the derived monthly summaries, which is what a per-tick frame needs: those
+// rows already have their own storage.
+func (l *Ledger) clone(history bool) Ledger {
 	out := *l
 	out.DeliveriesByItem = make(map[string]int, len(l.DeliveriesByItem))
 	for k, v := range l.DeliveriesByItem {
 		out.DeliveriesByItem[k] = v
+	}
+	if !history {
+		out.Cash = nil
+		out.ReputationEntries = nil
+		out.Months = nil
+		return out
 	}
 	out.Cash = append([]CashEntry(nil), l.Cash...)
 	out.ReputationEntries = append([]ReputationEntry(nil), l.ReputationEntries...)

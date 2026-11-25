@@ -36,7 +36,7 @@ flowchart LR
 - Games are compiled in by `cmd/drbrain.builtinGames()` in order mazes, motor, delivery, tesla, music; `DRBRAIN_GAMES` or `--games` selects at runtime. Unselected games 404 under their prefix and their namespace returns `game is not enabled`.
 - Every `Game.Mount` runs **before** the listener binds, so bad maps, city files, or DB settings fail startup with the game named.
 - `cmd/drbrain.builtinGraphQL()` type-asserts each game's `*graph.Resolver` into `host.GraphQLBindings`, adds the global `platform/account/graph` resolver, then builds `graph.New(...)` and `graph.NewHandler(...)`; `host.mount` registers it with `Router.MountPlatform("/graphql", ...)`.
-- Canonical schema is `graph/schema.graphqls`: types prefixed `Global_`, `Delivery_`, `Mazes_`, `Motor_`, `Tesla_`, `Music_`; `Query`/`Mutation` expose the `account` global namespace plus the five games; subscriptions are flat roots (`deliverySession`, `mazesSessionUpdated`, `motorProgrammingSessionUpdated`, `teslaSessionUpdated`, `teslaLobbyUpdated`, `musicSessionUpdated`) because GraphQL only streams at the operation root.
+- Canonical schema is `graph/schema.graphqls`: types prefixed `Global_`, `Delivery_`, `Mazes_`, `Motor_`, `Tesla_`, `Music_`; `Query`/`Mutation` expose the `account` global namespace plus the five games, except that every Delivery mutation is a flat root field named `deliveryXxx` (e.g. `deliveryMoveCar`) so aliased mutations run serially in order (nested namespace objects resolve concurrently); subscriptions are flat roots (`deliverySession`, `mazesSessionUpdated`, `motorProgrammingSessionUpdated`, `teslaSessionUpdated`, `teslaLobbyUpdated`, `musicSessionUpdated`) because GraphQL only streams at the operation root.
 - Gateways live at `/<game>/<api>` only: tesla `/tesla/mcp`, and `/<game>/llms.txt` rendered from embedded `llms.txt.tmpl`. Global sign-in is mounted by the host at `/auth/...`.
 - Sessions embed a map snapshot; map edits never change running sessions. Broadcasts carry a monotonic `seq`; hubs are latest-wins and drop intermediate snapshots for slow clients. Service mutation pattern: lock → mutate → bump seq → clone → unlock → persist → broadcast; never do I/O under a session lock.
 
@@ -61,7 +61,8 @@ Root `justfile` owns platform-wide operations (database, build, tests, lint, sch
 just db-up / just db-down # dev PostgreSQL from docker-compose.yaml (:55432)
 just restart             # stop, regen, build web, build binary, start detached
 just port=8081 restart   # same on another port (DRBRAIN_PORT)
-just regen               # go run ./cmd/split-schema && go generate ./graph
+just generate            # split SDL -> merge schema/config -> gqlgen -> TS types
+just regen               # alias for just generate
 just build-web           # npm run build -> web/build
 just build               # go build -o tmp/drbrain ./cmd/drbrain
 just start / just stop   # detached server in tmp/, log tmp/drbrain.log
@@ -127,7 +128,7 @@ Issue tracking uses Beads: `bd ready`, `bd show <id>`, `bd update <id> --claim`,
 
 - Required runtimes: Go per `go.mod` (1.27.2) and Node 22 (CI). Package manager is npm with workspaces declared in root `package.json`; one root `package-lock.json` (`web/` and `web/packages/*` are workspaces). Do not introduce pnpm/yarn.
 - SvelteKit uses `@sveltejs/adapter-static`; `web/build` is gitignored and built by CI — never commit it. The Go binary serves it from `DRBRAIN_STATIC_DIR` (default `static`; `just start` sets `web/build`), 404 once missing so the API still runs.
-- gqlgen 0.17.73 + gqlparser v2.5.60 are pinned. Generated code is committed. Do not run codegen variants that skip `cmd/split-schema`/`cmd/gentypes`; `just regen` alone does not run per-game gqlgen for newly added local types, so prefer `go generate ./games/... ./graph`.
+- gqlgen 0.17.73 + gqlparser v2.5.60 are pinned. Generated code is committed. Do not run codegen variants that skip `cmd/split-schema`/`cmd/gentypes`; `just generate` runs split-schema, merge-schema (which rewrites `graph/gqlgen.yml`), per-game gqlgen and the unified gqlgen.
 - No Dockerfile; production is systemd + nginx templates under `deploy/`. Never delete file-backed `/var/lib/drbrain` state (the music score library); accounts, sessions and custom maps/cities live in PostgreSQL and are backed up with `pg_dump`.
 - Shell operations must be non-interactive: `cp -f`, `mv -f`, `rm -f`, `rm -rf`, `ssh -o BatchMode=yes`, `apt-get -y`.
 

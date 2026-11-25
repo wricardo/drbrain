@@ -1,14 +1,15 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { api, ApiError, type SessionSummary } from '$lib/delivery/api';
 	import {
-		api,
-		ApiError,
-		type AnalyticsMetric,
-		type MoneyHistory,
-		type SessionSummary,
-		type ValueSeries
-	} from '$lib/delivery/api';
-	import { defaultSelection, sessionLabel } from '$lib/delivery/analytics';
+		defaultSelection,
+		emptyMetrics,
+		formatMetric,
+		latestSeriesTotal,
+		MONEY_CHARTS,
+		ORDER_CHARTS,
+		sessionLabel
+	} from '$lib/delivery/analytics';
 	import { formatCount, formatMoney, formatReputation } from '$lib/delivery/analytics-format';
 	import type { SeriesInput } from '$lib/delivery/series-chart';
 	import { pageTitle } from '$lib/delivery/brand';
@@ -16,95 +17,9 @@
 	import Button from '@drbrain/ui/components/Button.svelte';
 	import EmptyState from '@drbrain/ui/components/EmptyState.svelte';
 	import Skeleton from '@drbrain/ui/components/Skeleton.svelte';
+	import { absoluteTime, relativeTime } from '@drbrain/ui/time';
 
 	const MAX_SELECTED = 6;
-
-	interface MetricChart {
-		metric: AnalyticsMetric;
-		id: string;
-		title: string;
-		description: string;
-		money?: boolean;
-	}
-
-	const ORDER_CHARTS: MetricChart[] = [
-		{
-			metric: 'DELIVERIES',
-			id: 'deliveries',
-			title: 'Deliveries by tick',
-			description: 'Cumulative on-time orders completed, counted at the delivery tick.'
-		},
-		{
-			metric: 'LATE_DELIVERIES',
-			id: 'late-deliveries',
-			title: 'Late deliveries by tick',
-			description: 'Cumulative orders completed after their deadline.'
-		},
-		{
-			metric: 'EXPIRED_ORDERS',
-			id: 'expired-orders',
-			title: 'Expired orders by tick',
-			description: 'Cumulative orders that expired undelivered, counted just after the deadline.'
-		},
-		{
-			metric: 'ORDERS_CREATED',
-			id: 'orders-created',
-			title: 'Orders raised by tick',
-			description: 'Every customer order ever raised, including later expired ones.'
-		}
-	];
-
-	const MONEY_CHARTS: MetricChart[] = [
-		{
-			metric: 'DELIVERY_INCOME',
-			id: 'delivery-income',
-			title: 'Delivery income by tick',
-			description: 'Cumulative cash paid by completed orders, on time and late.',
-			money: true
-		},
-		{
-			metric: 'ORDER_FINES',
-			id: 'order-fines',
-			title: 'Expired-order fines by tick',
-			description: 'Cumulative fines charged for expired orders, as spend.',
-			money: true
-		},
-		{
-			metric: 'UPKEEP_SPEND',
-			id: 'upkeep-spend',
-			title: 'Upkeep spend by tick',
-			description: 'Cumulative fleet running cost paid, as spend.',
-			money: true
-		},
-		{
-			metric: 'CHARGING_SPEND',
-			id: 'charging-spend',
-			title: 'Charging spend by tick',
-			description: 'Cumulative paid charging on chargers and depots, as spend.',
-			money: true
-		},
-		{
-			metric: 'TOW_SPEND',
-			id: 'tow-spend',
-			title: 'Tow spend by tick',
-			description: 'Cumulative tow fees paid, as spend.',
-			money: true
-		}
-	];
-
-	function emptyMetrics(): Record<AnalyticsMetric, ValueSeries[]> {
-		return {
-			DELIVERIES: [],
-			LATE_DELIVERIES: [],
-			EXPIRED_ORDERS: [],
-			ORDERS_CREATED: [],
-			DELIVERY_INCOME: [],
-			ORDER_FINES: [],
-			UPKEEP_SPEND: [],
-			CHARGING_SPEND: [],
-			TOW_SPEND: []
-		};
-	}
 
 	let saves = $state<SessionSummary[]>([]);
 	let loading = $state(true);
@@ -112,16 +27,16 @@
 	let error = $state<string | null>(null);
 
 	let selected = $state<string[]>([]);
-	let money = $state<SeriesInput[]>([]);
-	let items = $state<SeriesInput[]>([]);
-	let reputation = $state<SeriesInput[]>([]);
-	let metrics = $state<Record<AnalyticsMetric, ValueSeries[]>>(emptyMetrics());
+	let metrics = $state(emptyMetrics());
 	let chartLoading = $state(false);
 	let chartError = $state<string | null>(null);
 	let requestSeq = 0;
 
 	const labels = $derived(Object.fromEntries(saves.map((s) => [s.id, sessionLabel(s)])));
 	const metricsEmpty = $derived(Object.values(metrics).every((rows) => rows.length === 0));
+	const money = $derived<SeriesInput[]>(metrics.MONEY);
+	const items = $derived(metrics.BOXES_DELIVERED);
+	const reputation = $derived(metrics.REPUTATION);
 	const latestCash = $derived(
 		money.reduce((sum, h) => sum + (h.points[h.points.length - 1]?.value ?? 0), 0)
 	);
@@ -129,32 +44,13 @@
 		items.reduce((sum, h) => sum + (h.points[h.points.length - 1]?.value ?? 0), 0)
 	);
 
-	function latestTotal(series: ValueSeries[]): number {
-		return series.reduce((sum, h) => sum + (h.points[h.points.length - 1]?.value ?? 0), 0);
-	}
-
-	function formatMetric(chart: MetricChart, value: number): string {
-		return chart.money ? formatMoney(value) : formatCount(value);
-	}
-
 	function message(e: unknown): string {
 		return e instanceof ApiError ? `${e.message} (${e.code})` : String(e);
-	}
-
-	function moneySeries(rows: MoneyHistory[]): SeriesInput[] {
-		return rows.map((h) => ({
-			sessionId: h.sessionId,
-			cityId: h.cityId,
-			points: h.points.map((p) => ({ tick: p.tick, value: p.money }))
-		}));
 	}
 
 	async function loadSeries() {
 		const ids = selected.slice();
 		if (ids.length === 0) {
-			money = [];
-			items = [];
-			reputation = [];
 			metrics = emptyMetrics();
 			chartError = null;
 			chartLoading = false;
@@ -164,22 +60,11 @@
 		chartLoading = true;
 		chartError = null;
 		try {
-			const [moneyRows, itemRows, reputationRows, metricRows] = await Promise.all([
-				api.moneyHistory(ids, { maxPoints: 500 }),
-				api.itemsHistory(ids, { maxPoints: 500 }),
-				api.reputationHistory(ids, { maxPoints: 500 }),
-				api.metricsHistory(ids, { maxPoints: 500 })
-			]);
+			const rows = await api.metricsHistory(ids, { maxPoints: 500 });
 			if (seq !== requestSeq) return;
-			money = moneySeries(moneyRows);
-			items = itemRows;
-			reputation = reputationRows;
-			metrics = metricRows;
+			metrics = rows;
 		} catch (e) {
 			if (seq !== requestSeq) return;
-			money = [];
-			items = [];
-			reputation = [];
 			metrics = emptyMetrics();
 			chartError = message(e);
 		} finally {
@@ -231,7 +116,6 @@
 				Tick 0 is each session’s start, so sessions played at different times line up.
 			</p>
 		</div>
-		<Button variant="secondary" href="/delivery">Back to play</Button>
 	</header>
 
 	{#if error}
@@ -290,6 +174,9 @@
 										tick {s.tick.toLocaleString('en-US')} · {formatMoney(s.money)}
 										{#if s.loaded}· live{/if}
 									</span>
+									<span class="block truncate text-xs text-faint" title={absoluteTime(s.createdAt)}>
+										created {relativeTime(s.createdAt)}
+									</span>
 								</span>
 							</label>
 						</li>
@@ -312,6 +199,11 @@
 					/>
 				{:else if chartLoading && money.length === 0 && items.length === 0 && reputation.length === 0 && metricsEmpty}
 					<Skeleton label="Loading analytics…" />
+				{:else if metricsEmpty}
+					<EmptyState
+						title="No saved history in this window"
+						description="Charts appear after a session autosaves. A city that has never saved has no projection yet."
+					/>
 				{:else}
 					<section class="db-panel min-w-0 p-4 sm:p-6" aria-labelledby="chart-money">
 						<div class="mb-3">
@@ -373,7 +265,7 @@
 										<h3 id={`chart-${chart.id}`} class="text-sm font-bold">{chart.title}</h3>
 										<p class="mt-0.5 text-xs text-muted">
 											{chart.description} Latest in view:
-											{formatMetric(chart, latestTotal(series))}.
+											{formatMetric(chart, latestSeriesTotal(series))}.
 										</p>
 									</div>
 									<SeriesChart
@@ -404,7 +296,7 @@
 										<h3 id={`chart-${chart.id}`} class="text-sm font-bold">{chart.title}</h3>
 										<p class="mt-0.5 text-xs text-muted">
 											{chart.description} Latest in view:
-											{formatMetric(chart, latestTotal(series))}.
+											{formatMetric(chart, latestSeriesTotal(series))}.
 										</p>
 									</div>
 									<SeriesChart

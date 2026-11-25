@@ -32,6 +32,23 @@ models:
     model: github.com/99designs/gqlgen/graphql.Boolean
   Time:
     model: github.com/99designs/gqlgen/graphql.Time
+  Delivery_Admin:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.Admin
+    fields:
+      deleteSession:
+        resolver: true
+      deleteSessions:
+        resolver: true
+      pauseSession:
+        resolver: true
+      evictSession:
+        resolver: true
+      saveSession:
+        resolver: true
+      saveAll:
+        resolver: true
+  Delivery_AdminDeleteResult:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.AdminDeleteResult
   Delivery_AnalyticsMetric:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.AnalyticsMetric
   Delivery_CarClassView:
@@ -50,6 +67,8 @@ models:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.CashEntryView
   Delivery_CashKind:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.CashKind
+  Delivery_ChargingView:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.ChargingView
   Delivery_CityInfo:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.CityInfo
   Delivery_CityStatus:
@@ -85,57 +104,10 @@ models:
         resolver: true
       cars:
         resolver: true
-  Delivery_MoneyHistory:
-    model: github.com/wricardo/drbrain/games/delivery/graph/model.MoneyHistory
-  Delivery_MoneyPoint:
-    model: github.com/wricardo/drbrain/games/delivery/graph/model.MoneyPoint
   Delivery_MonthCategoryView:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.MonthCategoryView
   Delivery_MonthView:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.MonthView
-  Delivery_Mutation:
-    model: github.com/wricardo/drbrain/games/delivery/graph.Resolver
-    fields:
-      createSession:
-        resolver: true
-      moveCar:
-        resolver: true
-      clearMoves:
-        resolver: true
-      tick:
-        resolver: true
-      waitUntil:
-        resolver: true
-      setSpeed:
-        resolver: true
-      assignOrder:
-        resolver: true
-      unassignOrder:
-        resolver: true
-      buyCar:
-        resolver: true
-      towCar:
-        resolver: true
-      saveSession:
-        resolver: true
-      renameSession:
-        resolver: true
-      evictSession:
-        resolver: true
-      deleteSession:
-        resolver: true
-      claimSessions:
-        resolver: true
-      createCity:
-        resolver: true
-      updateCity:
-        resolver: true
-      publishCity:
-        resolver: true
-      deleteCity:
-        resolver: true
-      validateCity:
-        resolver: true
   Delivery_OrderState:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.OrderState
   Delivery_OrderView:
@@ -155,15 +127,11 @@ models:
         resolver: true
       sessions:
         resolver: true
-      moneyHistory:
-        resolver: true
-      itemsHistory:
-        resolver: true
-      reputationHistory:
-        resolver: true
       metricHistory:
         resolver: true
       session:
+        resolver: true
+      tickSnapshots:
         resolver: true
       carView:
         resolver: true
@@ -188,6 +156,12 @@ models:
         resolver: true
       openOrders:
         resolver: true
+  Delivery_TickCar:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.TickCar
+  Delivery_TickOrder:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.TickOrder
+  Delivery_TickSnapshot:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.TickSnapshot
   Delivery_ValuePoint:
     model: github.com/wricardo/drbrain/games/delivery/graph/model.ValuePoint
   Delivery_ValueSeries:
@@ -226,6 +200,13 @@ models:
         resolver: true
   Global_User:
     model: github.com/wricardo/drbrain/platform/account/graph/model.User
+  Mazes_Admin:
+    model: github.com/wricardo/drbrain/games/mazes/graph/model.Admin
+    fields:
+      deleteSession:
+        resolver: true
+      renameSession:
+        resolver: true
   Mazes_AdminMap:
     model: github.com/wricardo/drbrain/games/mazes/graph/model.AdminMap
   Mazes_CreateSessionResult:
@@ -275,6 +256,8 @@ models:
         resolver: true
       validateMap:
         resolver: true
+      admin:
+        resolver: true
   Mazes_Portal:
     model: github.com/wricardo/drbrain/games/mazes/graph/model.Portal
   Mazes_Position:
@@ -304,6 +287,13 @@ models:
     model: github.com/wricardo/drbrain/games/mazes/graph/model.Status
   Mazes_Via:
     model: github.com/wricardo/drbrain/games/mazes/graph/model.Via
+  Motor_Admin:
+    model: github.com/wricardo/drbrain/games/motor/graph/model.Admin
+    fields:
+      deleteSession:
+        resolver: true
+      pauseSession:
+        resolver: true
   Motor_ClaimStatus:
     model: github.com/wricardo/drbrain/games/motor/graph/model.ClaimStatus
   Motor_Conveyor:
@@ -373,6 +363,8 @@ models:
       publishMap:
         resolver: true
       deleteMap:
+        resolver: true
+      admin:
         resolver: true
   Motor_PlayerRun:
     model: github.com/wricardo/drbrain/games/motor/graph/model.PlayerRun

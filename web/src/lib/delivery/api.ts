@@ -12,6 +12,7 @@ import { getAdminKey } from './admin';
 import { forgetOwnerTokens, ownerTokenFor, rememberSession } from './ownerTokens';
 import type {
 	Delivery_AnalyticsMetric as AnalyticsMetric,
+	Delivery_CarView as CarView,
 	Delivery_CarWindow as CarWindow,
 	Delivery_ClaimStatus as ClaimStatus,
 	Delivery_CityInfo as CityInfo,
@@ -19,7 +20,6 @@ import type {
 	Delivery_CityView as CityView,
 	Delivery_Direction as Direction,
 	Delivery_EventView as EventView,
-	Delivery_MoneyHistory as MoneyHistory,
 	Delivery_SessionSort as SessionSort,
 	Delivery_SessionSummary as SessionSummary,
 	Delivery_Snapshot as Snapshot,
@@ -48,7 +48,6 @@ export type {
 	Delivery_Direction as Direction,
 	Delivery_OrderState as OrderState,
 	Delivery_OrderView as OrderView,
-	Delivery_MoneyHistory as MoneyHistory,
 	Delivery_SessionSort as SessionSort,
 	Delivery_SessionSummary as SessionSummary,
 	Delivery_Snapshot as Snapshot,
@@ -76,13 +75,15 @@ interface GraphQLResponse<T> {
 }
 
 /**
- * post sends one operation and unwraps the GraphQL envelope.
+ * mutate sends one operation and returns the GraphQL `data` object.
+ * Delivery mutations are flat root fields (deliveryMoveCar, ...) so aliased
+ * operations in one document run in order; queries go through post below.
  *
  * Errors are surfaced as ApiError with a code, because the resolvers prefix
  * messages with one ("not_found: …"). That keeps client branching possible
  * without inventing an extensions scheme the schema does not declare.
  */
-async function post<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
+async function mutate<D>(query: string, variables?: Record<string, unknown>): Promise<D> {
 	const adminKey = getAdminKey();
 	const res = await fetch(ENDPOINT, {
 		method: 'POST',
@@ -98,7 +99,7 @@ async function post<T>(query: string, variables?: Record<string, unknown>): Prom
 		throw new ApiError(`HTTP ${res.status} ${res.statusText}`, 'http_error');
 	}
 
-	const body = (await res.json()) as GraphQLResponse<{ delivery?: T }>;
+	const body = (await res.json()) as GraphQLResponse<D>;
 	if (body.errors && body.errors.length > 0) {
 		const first = body.errors[0];
 		const msg = first.message;
@@ -114,7 +115,15 @@ async function post<T>(query: string, variables?: Record<string, unknown>): Prom
 		}
 		throw new ApiError(msg, 'graphql_error');
 	}
-	const data = body.data?.delivery;
+	if (!body.data) {
+		throw new ApiError('empty GraphQL response', 'empty_response');
+	}
+	return body.data;
+}
+
+/** post sends a namespaced query and returns the contents of its `delivery` object. */
+async function post<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
+	const data = (await mutate<{ delivery?: T }>(query, variables)).delivery;
 	if (!data) {
 		throw new ApiError('empty GraphQL response', 'empty_response');
 	}
@@ -130,7 +139,7 @@ const CAR_FIELDS = `
 	id name className x y
 	battery maxBattery batteryPct capacity load freeBoxes
 	cargo state queuedMove queuedMoves lastReject
-	chargeDue
+	chargeDue purchasePrice resaleValue
 `;
 
 /** SESSION_SUMMARY_FIELDS is the save-picker row, shared by the list queries. */
@@ -154,6 +163,7 @@ export const CITY_VIEW_FIELDS = `
 	customers { id name x y }
 	depots { id name x y }
 	chargers { id name x y }
+	charging { depotRate chargerRate chargerPricePerTick chargerPurchasePrice maxPurchasedChargers }
 `;
 
 /**
@@ -169,6 +179,7 @@ export const SNAPSHOT_FIELDS = `
 		name gridSize rows hiddenTiles
 		kitchens { id name x y }
 		customers { id name x y }
+		charging { depotRate chargerRate chargerPricePerTick chargerPurchasePrice maxPurchasedChargers }
 		depots { id name x y }
 		chargers { id name x y }
 	}
@@ -251,90 +262,18 @@ export const api = {
 	},
 
 	/**
-	 * Money-by-tick series for up to 20 sessions, read from the indexed history
-	 * projection. Omitted ids select the newest sessions; maxPoints downsamples
-	 * each series into tick buckets.
-	 */
-	moneyHistory: async (
-		ids: string[],
-		options: { cityId?: string; fromTick?: number; toTick?: number; maxPoints?: number } = {}
-	): Promise<MoneyHistory[]> => {
-		const d = await post<{ moneyHistory: MoneyHistory[] }>(
-			`query ($ids: [ID!], $cityId: ID, $fromTick: Int, $toTick: Int, $maxPoints: Int) {
-				delivery {
-					moneyHistory(ids: $ids, cityId: $cityId, fromTick: $fromTick, toTick: $toTick, maxPoints: $maxPoints) {
-						sessionId cityId points { tick money }
-					}
-				}
-			}`,
-			{
-				ids,
-				cityId: options.cityId ?? null,
-				fromTick: options.fromTick ?? null,
-				toTick: options.toTick ?? null,
-				maxPoints: options.maxPoints ?? 500
-			}
-		);
-		return d.moneyHistory ?? [];
-	},
-
-	/** Cumulative boxes delivered by tick, from done orders. */
-	itemsHistory: async (
-		ids: string[],
-		options: { cityId?: string; fromTick?: number; toTick?: number; maxPoints?: number } = {}
-	): Promise<ValueSeries[]> => {
-		const d = await post<{ itemsHistory: ValueSeries[] }>(
-			`query ($ids: [ID!], $cityId: ID, $fromTick: Int, $toTick: Int, $maxPoints: Int) {
-				delivery {
-					itemsHistory(ids: $ids, cityId: $cityId, fromTick: $fromTick, toTick: $toTick, maxPoints: $maxPoints) {
-						sessionId cityId points { tick value }
-					}
-				}
-			}`,
-			{
-				ids,
-				cityId: options.cityId ?? null,
-				fromTick: options.fromTick ?? null,
-				toTick: options.toTick ?? null,
-				maxPoints: options.maxPoints ?? 500
-			}
-		);
-		return d.itemsHistory ?? [];
-	},
-
-	/** Recorded reputation by tick; pre-ledger saves expose one current point. */
-	reputationHistory: async (
-		ids: string[],
-		options: { cityId?: string; fromTick?: number; toTick?: number; maxPoints?: number } = {}
-	): Promise<ValueSeries[]> => {
-		const d = await post<{ reputationHistory: ValueSeries[] }>(
-			`query ($ids: [ID!], $cityId: ID, $fromTick: Int, $toTick: Int, $maxPoints: Int) {
-				delivery {
-					reputationHistory(ids: $ids, cityId: $cityId, fromTick: $fromTick, toTick: $toTick, maxPoints: $maxPoints) {
-						sessionId cityId points { tick value }
-					}
-				}
-			}`,
-			{
-				ids,
-				cityId: options.cityId ?? null,
-				fromTick: options.fromTick ?? null,
-				toTick: options.toTick ?? null,
-				maxPoints: options.maxPoints ?? 500
-			}
-		);
-		return d.reputationHistory ?? [];
-	},
-
-	/**
-	 * Cumulative operational series for the analytics page, fetched in one
-	 * request. Spending metrics return positive magnitudes.
+	 * Every analytics series in one request: balances, delivered boxes,
+	 * reputation, and the cumulative operational counters. Spending metrics
+	 * return positive magnitudes.
 	 */
 	metricsHistory: async (
 		ids: string[],
 		options: { cityId?: string; fromTick?: number; toTick?: number; maxPoints?: number } = {}
 	): Promise<Record<AnalyticsMetric, ValueSeries[]>> => {
 		const d = await post<{
+			money: ValueSeries[];
+			boxesDelivered: ValueSeries[];
+			reputation: ValueSeries[];
 			deliveries: ValueSeries[];
 			lateDeliveries: ValueSeries[];
 			expiredOrders: ValueSeries[];
@@ -347,6 +286,15 @@ export const api = {
 		}>(
 			`query ($ids: [ID!], $cityId: ID, $fromTick: Int, $toTick: Int, $maxPoints: Int) {
 				delivery {
+					money: metricHistory(metric: MONEY, ids: $ids, cityId: $cityId, fromTick: $fromTick, toTick: $toTick, maxPoints: $maxPoints) {
+						sessionId cityId points { tick value }
+					}
+					boxesDelivered: metricHistory(metric: BOXES_DELIVERED, ids: $ids, cityId: $cityId, fromTick: $fromTick, toTick: $toTick, maxPoints: $maxPoints) {
+						sessionId cityId points { tick value }
+					}
+					reputation: metricHistory(metric: REPUTATION, ids: $ids, cityId: $cityId, fromTick: $fromTick, toTick: $toTick, maxPoints: $maxPoints) {
+						sessionId cityId points { tick value }
+					}
 					deliveries: metricHistory(metric: DELIVERIES, ids: $ids, cityId: $cityId, fromTick: $fromTick, toTick: $toTick, maxPoints: $maxPoints) {
 						sessionId cityId points { tick value }
 					}
@@ -385,6 +333,9 @@ export const api = {
 			}
 		);
 		return {
+			MONEY: d.money ?? [],
+			BOXES_DELIVERED: d.boxesDelivered ?? [],
+			REPUTATION: d.reputation ?? [],
 			DELIVERIES: d.deliveries ?? [],
 			LATE_DELIVERIES: d.lateDeliveries ?? [],
 			EXPIRED_ORDERS: d.expiredOrders ?? [],
@@ -438,171 +389,185 @@ export const api = {
 
 	/** Creates a session on a city (omitted = server default) and keeps the owner token. */
 	createSession: async (id?: string, seed?: number, cityId?: string): Promise<Snapshot> => {
-		const d = await post<{ createSession: { session: Snapshot; ownerToken: string } }>(
+		const d = await mutate<{ deliveryCreateSession: { session: Snapshot; ownerToken: string } }>(
 			`mutation ($id: ID, $seed: Int, $cityId: ID) {
-				delivery { createSession(id: $id, seed: $seed, cityId: $cityId) { session { ${SNAPSHOT_FIELDS} } ownerToken } }
+				deliveryCreateSession(id: $id, seed: $seed, cityId: $cityId) { session { ${SNAPSHOT_FIELDS} } ownerToken }
 			}`,
 			{ id: id ?? null, seed: seed ?? null, cityId: cityId ?? null }
 		);
-		const { session, ownerToken } = d.createSession;
+		const { session, ownerToken } = d.deliveryCreateSession;
 		rememberSession(session.id, ownerToken);
 		return session;
 	},
 
 	/** Saves a new owned DRAFT city. config is raw city JSON. */
 	createCity: async (id: string, config: string): Promise<CityView> => {
-		const d = await post<{ createCity: CityView }>(
+		const d = await mutate<{ deliveryCreateCity: CityView }>(
 			`mutation ($id: ID!, $config: String!) {
-				delivery { createCity(id: $id, config: $config) { ${CITY_VIEW_FIELDS} } }
+				deliveryCreateCity(id: $id, config: $config) { ${CITY_VIEW_FIELDS} }
 			}`,
 			{ id, config }
 		);
-		return d.createCity;
+		return d.deliveryCreateCity;
 	},
 
 	/** Replaces an owned city (or a shipped/legacy city with an admin key); owners get DRAFT back. */
 	updateCity: async (id: string, config: string): Promise<CityView> => {
-		const d = await post<{ updateCity: CityView }>(
+		const d = await mutate<{ deliveryUpdateCity: CityView }>(
 			`mutation ($id: ID!, $config: String!) {
-				delivery { updateCity(id: $id, config: $config) { ${CITY_VIEW_FIELDS} } }
+				deliveryUpdateCity(id: $id, config: $config) { ${CITY_VIEW_FIELDS} }
 			}`,
 			{ id, config }
 		);
-		return d.updateCity;
+		return d.deliveryUpdateCity;
 	},
 
 	/** Publishes an owner's draft after full validation. */
 	publishCity: async (id: string): Promise<CityView> => {
-		const d = await post<{ publishCity: CityView }>(
-			`mutation ($id: ID!) { delivery { publishCity(id: $id) { ${CITY_VIEW_FIELDS} } } }`,
+		const d = await mutate<{ deliveryPublishCity: CityView }>(
+			`mutation ($id: ID!) { deliveryPublishCity(id: $id) { ${CITY_VIEW_FIELDS} } }`,
 			{ id }
 		);
-		return d.publishCity;
+		return d.deliveryPublishCity;
 	},
 
 	/** Deletes an owned city (or a shipped/legacy city with an admin key). */
 	deleteCity: async (id: string): Promise<boolean> => {
-		const d = await post<{ deleteCity: boolean }>(
-			`mutation ($id: ID!) { delivery { deleteCity(id: $id) } }`,
+		const d = await mutate<{ deliveryDeleteCity: boolean }>(
+			`mutation ($id: ID!) { deliveryDeleteCity(id: $id) }`,
 			{ id }
 		);
-		return d.deleteCity;
+		return d.deliveryDeleteCity;
 	},
 
 	/** Checks raw city JSON without storing it. */
 	validateCity: async (config: string): Promise<CityValidationResult> => {
-		const d = await post<{ validateCity: CityValidationResult }>(
-			`mutation ($config: String!) { delivery { validateCity(config: $config) { valid publishable issues } } }`,
+		const d = await mutate<{ deliveryValidateCity: CityValidationResult }>(
+			`mutation ($config: String!) { deliveryValidateCity(config: $config) { valid publishable issues } }`,
 			{ config }
 		);
-		return d.validateCity;
+		return d.deliveryValidateCity;
 	},
 
-	/** Queue one step for one car. Does not advance the clock. */
-	moveCar: async (id: string, carId: string, direction: Direction): Promise<Snapshot> => {
-		const d = await post<{ moveCar: Snapshot }>(
+	/**
+	 * Queue one step for one car. Does not advance the clock. Returns that car
+	 * only: position is unchanged until the next tick, and `lastReject` is still
+	 * the previous tick's.
+	 */
+	moveCar: async (id: string, carId: string, direction: Direction): Promise<CarView> => {
+		const d = await mutate<{ deliveryMoveCar: CarView }>(
 			`mutation ($id: ID!, $ownerToken: String, $carId: ID!, $direction: Delivery_Direction!) {
-				delivery { moveCar(id: $id, ownerToken: $ownerToken, carId: $carId, direction: $direction) { ${SNAPSHOT_FIELDS} } }
+				deliveryMoveCar(id: $id, ownerToken: $ownerToken, carId: $carId, direction: $direction) { ${CAR_FIELDS} }
 			}`,
 			{ id, ownerToken: ownerTokenFor(id), carId, direction }
 		);
-		return d.moveCar;
-	},
-
-	tick: async (id: string, count = 1): Promise<Snapshot> => {
-		const d = await post<{ tick: Snapshot }>(
-			`mutation ($id: ID!, $ownerToken: String, $count: Int!) {
-				delivery { tick(id: $id, ownerToken: $ownerToken, count: $count) { ${SNAPSHOT_FIELDS} } }
-			}`,
-			{ id, ownerToken: ownerTokenFor(id), count }
-		);
-		return d.tick;
+		return d.deliveryMoveCar;
 	},
 
 	setSpeed: async (id: string, speed: number): Promise<Snapshot> => {
-		const d = await post<{ setSpeed: Snapshot }>(
+		const d = await mutate<{ deliverySetSpeed: Snapshot }>(
 			`mutation ($id: ID!, $ownerToken: String, $speed: Int!) {
-				delivery { setSpeed(id: $id, ownerToken: $ownerToken, speed: $speed) { ${SNAPSHOT_FIELDS} } }
+				deliverySetSpeed(id: $id, ownerToken: $ownerToken, speed: $speed) { ${SNAPSHOT_FIELDS} }
 			}`,
 			{ id, ownerToken: ownerTokenFor(id), speed }
 		);
-		return d.setSpeed;
+		return d.deliverySetSpeed;
 	},
 
-	/** Drop a car's queued steps so drive() can move it now, not through an old plan. */
-	clearMoves: async (id: string, carId: string): Promise<Snapshot> => {
-		const d = await post<{ clearMoves: Snapshot }>(
+	/** Drop a car's queued steps so a replanned route starts from the next tick. */
+	clearMoves: async (id: string, carId: string): Promise<CarView> => {
+		const d = await mutate<{ deliveryClearMoves: CarView }>(
 			`mutation ($id: ID!, $ownerToken: String, $carId: ID!) {
-				delivery { clearMoves(id: $id, ownerToken: $ownerToken, carId: $carId) { ${SNAPSHOT_FIELDS} } }
+				deliveryClearMoves(id: $id, ownerToken: $ownerToken, carId: $carId) { ${CAR_FIELDS} }
 			}`,
 			{ id, ownerToken: ownerTokenFor(id), carId }
 		);
-		return d.clearMoves;
+		return d.deliveryClearMoves;
 	},
 
 	assignOrder: async (id: string, orderId: string, carId: string): Promise<Snapshot> => {
-		const d = await post<{ assignOrder: Snapshot }>(
+		const d = await mutate<{ deliveryAssignOrder: Snapshot }>(
 			`mutation ($id: ID!, $ownerToken: String, $orderId: ID!, $carId: ID!) {
-				delivery { assignOrder(id: $id, ownerToken: $ownerToken, orderId: $orderId, carId: $carId) { ${SNAPSHOT_FIELDS} } }
+				deliveryAssignOrder(id: $id, ownerToken: $ownerToken, orderId: $orderId, carId: $carId) { ${SNAPSHOT_FIELDS} }
 			}`,
 			{ id, ownerToken: ownerTokenFor(id), orderId, carId }
 		);
-		return d.assignOrder;
+		return d.deliveryAssignOrder;
 	},
 
 	unassignOrder: async (id: string, orderId: string): Promise<Snapshot> => {
-		const d = await post<{ unassignOrder: Snapshot }>(
+		const d = await mutate<{ deliveryUnassignOrder: Snapshot }>(
 			`mutation ($id: ID!, $ownerToken: String, $orderId: ID!) {
-				delivery { unassignOrder(id: $id, ownerToken: $ownerToken, orderId: $orderId) { ${SNAPSHOT_FIELDS} } }
+				deliveryUnassignOrder(id: $id, ownerToken: $ownerToken, orderId: $orderId) { ${SNAPSHOT_FIELDS} }
 			}`,
 			{ id, ownerToken: ownerTokenFor(id), orderId }
 		);
-		return d.unassignOrder;
+		return d.deliveryUnassignOrder;
 	},
 
 	buyCar: async (id: string, className: string, depotId = 'd_main'): Promise<Snapshot> => {
-		const d = await post<{ buyCar: Snapshot }>(
+		const d = await mutate<{ deliveryBuyCar: Snapshot }>(
 			`mutation ($id: ID!, $ownerToken: String, $className: String!, $depotId: String!) {
-				delivery { buyCar(id: $id, ownerToken: $ownerToken, className: $className, depotId: $depotId) { ${SNAPSHOT_FIELDS} } }
+				deliveryBuyCar(id: $id, ownerToken: $ownerToken, className: $className, depotId: $depotId) { ${SNAPSHOT_FIELDS} }
 			}`,
 			{ id, ownerToken: ownerTokenFor(id), className, depotId }
 		);
-		return d.buyCar;
+		return d.deliveryBuyCar;
 	},
 
-	towCar: async (id: string, carId: string): Promise<Snapshot> => {
-		const d = await post<{ towCar: Snapshot }>(
+	buyCharger: async (id: string, x: number, y: number): Promise<Snapshot> => {
+		const d = await mutate<{ deliveryBuyCharger: Snapshot }>(
+			`mutation ($id: ID!, $ownerToken: String, $x: Int!, $y: Int!) {
+				deliveryBuyCharger(id: $id, ownerToken: $ownerToken, x: $x, y: $y) { ${SNAPSHOT_FIELDS} }
+			}`,
+			{ id, ownerToken: ownerTokenFor(id), x, y }
+		);
+		return d.deliveryBuyCharger;
+	},
+
+	sellCar: async (id: string, carId: string): Promise<Snapshot> => {
+		const d = await mutate<{ deliverySellCar: Snapshot }>(
 			`mutation ($id: ID!, $ownerToken: String, $carId: ID!) {
-				delivery { towCar(id: $id, ownerToken: $ownerToken, carId: $carId) { ${SNAPSHOT_FIELDS} } }
+				deliverySellCar(id: $id, ownerToken: $ownerToken, carId: $carId) { ${SNAPSHOT_FIELDS} }
 			}`,
 			{ id, ownerToken: ownerTokenFor(id), carId }
 		);
-		return d.towCar;
+		return d.deliverySellCar;
+	},
+
+	towCar: async (id: string, carId: string): Promise<Snapshot> => {
+		const d = await mutate<{ deliveryTowCar: Snapshot }>(
+			`mutation ($id: ID!, $ownerToken: String, $carId: ID!) {
+				deliveryTowCar(id: $id, ownerToken: $ownerToken, carId: $carId) { ${SNAPSHOT_FIELDS} }
+			}`,
+			{ id, ownerToken: ownerTokenFor(id), carId }
+		);
+		return d.deliveryTowCar;
 	},
 
 	saveSession: async (id: string): Promise<Snapshot> => {
-		const d = await post<{ saveSession: Snapshot }>(
-			`mutation ($id: ID!, $ownerToken: String) { delivery { saveSession(id: $id, ownerToken: $ownerToken) { ${SNAPSHOT_FIELDS} } } }`,
+		const d = await mutate<{ deliverySaveSession: Snapshot }>(
+			`mutation ($id: ID!, $ownerToken: String) { deliverySaveSession(id: $id, ownerToken: $ownerToken) { ${SNAPSHOT_FIELDS} } }`,
 			{ id, ownerToken: ownerTokenFor(id) }
 		);
-		return d.saveSession;
+		return d.deliverySaveSession;
 	},
 
 	renameSession: async (id: string, displayName: string): Promise<Snapshot> => {
-		const d = await post<{ renameSession: Snapshot }>(
-			`mutation ($id: ID!, $displayName: String!, $ownerToken: String) { delivery { renameSession(id: $id, displayName: $displayName, ownerToken: $ownerToken) { ${SNAPSHOT_FIELDS} } } }`,
+		const d = await mutate<{ deliveryRenameSession: Snapshot }>(
+			`mutation ($id: ID!, $displayName: String!, $ownerToken: String) { deliveryRenameSession(id: $id, displayName: $displayName, ownerToken: $ownerToken) { ${SNAPSHOT_FIELDS} } }`,
 			{ id, displayName, ownerToken: ownerTokenFor(id) }
 		);
-		return d.renameSession;
+		return d.deliveryRenameSession;
 	},
 
 	deleteSession: async (id: string): Promise<boolean> => {
-		const d = await post<{ deleteSession: boolean }>(
-			`mutation ($id: ID!, $ownerToken: String) { delivery { deleteSession(id: $id, ownerToken: $ownerToken) } }`,
+		const d = await mutate<{ deliveryDeleteSession: boolean }>(
+			`mutation ($id: ID!, $ownerToken: String) { deliveryDeleteSession(id: $id, ownerToken: $ownerToken) }`,
 			{ id, ownerToken: ownerTokenFor(id) }
 		);
-		if (d.deleteSession) forgetOwnerTokens([id]);
-		return d.deleteSession;
+		if (d.deliveryDeleteSession) forgetOwnerTokens([id]);
+		return d.deliveryDeleteSession;
 	},
 
 	/** Whether this browser may change the session; false means spectate. Never an error. */
@@ -616,10 +581,10 @@ export const api = {
 
 	/** Attaches this browser's guest sessions to the signed-in account. */
 	claimSessions: async (claims: { sessionID: string; ownerToken: string }[]): Promise<{ sessionID: string; status: ClaimStatus }[]> => {
-		const d = await post<{ claimSessions: { sessionID: string; status: ClaimStatus }[] }>(
-			`mutation ($claims: [Delivery_SessionClaimInput!]!) { delivery { claimSessions(claims: $claims) { sessionID status } } }`,
+		const d = await mutate<{ deliveryClaimSessions: { sessionID: string; status: ClaimStatus }[] }>(
+			`mutation ($claims: [Delivery_SessionClaimInput!]!) { deliveryClaimSessions(claims: $claims) { sessionID status } }`,
 			{ claims }
 		);
-		return d.claimSessions ?? [];
+		return d.deliveryClaimSessions ?? [];
 	}
 };

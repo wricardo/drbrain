@@ -38,6 +38,8 @@ func main() {
 		os.Exit(cmdPlay(os.Args[2:]))
 	case "sim":
 		os.Exit(cmdSim(os.Args[2:]))
+	case "perfect":
+		os.Exit(cmdPerfect(os.Args[2:]))
 	case "-h", "--help", "help":
 		usage()
 	default:
@@ -60,6 +62,12 @@ usage:
   drbrain sim [-f city.json] [-ticks N] [-every N] [-seed N]
       Run a scripted bot and print a pacing table. Use it to answer
       "is the queue starved or drowning?" with numbers.
+
+  drbrain perfect [-f city.json] [-ticks N] [-every N] [-seed N] [-v] [-handback]
+      Run the planning driver (space-time routes, tour insertion, no head-on
+      locks) and print the same table plus expiries by cause. The ceiling to
+      read the sim's numbers against. -handback lets cars return late orders
+      to the queue, which also re-quotes their deadlines.
 
 flags for map:
   -f           path to the city file (default maps/city.json)

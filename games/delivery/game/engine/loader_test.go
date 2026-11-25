@@ -52,7 +52,7 @@ func TestDecodeCityConfigRejectsMissingKnobs(t *testing.T) {
 	if err == nil {
 		t.Fatal("missing required knobs were accepted")
 	}
-	for _, want := range []string{"tick_ms", "orders.max_active_orders", "fleet block is required", "closures block is required"} {
+	for _, want := range []string{"tick_ms", "orders.ramp_ticks", "fleet block is required", "closures block is required"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("error %q does not name %s", err, want)
 		}

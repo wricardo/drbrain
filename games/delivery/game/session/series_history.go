@@ -6,10 +6,6 @@ import (
 	"sort"
 )
 
-// SeriesRequest selects sessions and a tick window for analytics. It is the
-// same shape for every metric so the chart controls are shared.
-type SeriesRequest = MoneyHistoryRequest
-
 // SeriesPoint is one downsampled value at a tick.
 type SeriesPoint struct {
 	Tick  int64
@@ -57,15 +53,15 @@ func (m *Manager) prepareSeriesWindow(ctx context.Context, req SeriesRequest) (s
 	if maxPoints < 10 {
 		maxPoints = 10
 	}
-	if maxPoints > maxMoneyHistoryPoints {
-		maxPoints = maxMoneyHistoryPoints
+	if maxPoints > maxHistoryPoints {
+		maxPoints = maxHistoryPoints
 	}
 
 	var idsArg []string
 	if len(ids) > 0 {
 		idsArg = ids
 	}
-	limit := maxMoneyHistorySessions
+	limit := maxHistorySessions
 	if req.Visible != nil {
 		limit = maxVisibleHistoryScan
 	}
@@ -96,8 +92,8 @@ LIMIT $3`, idsArg, req.CityID, limit)
 		return seriesWindow{}, fmt.Errorf("series history: select sessions: %w", err)
 	}
 	rows.Close()
-	if len(summaries) > maxMoneyHistorySessions {
-		summaries = summaries[:maxMoneyHistorySessions]
+	if len(summaries) > maxHistorySessions {
+		summaries = summaries[:maxHistorySessions]
 	}
 	if len(summaries) == 0 {
 		return seriesWindow{}, nil
@@ -196,196 +192,16 @@ func assembleSeries(
 	return out
 }
 
-// ItemsHistory is the cumulative number of boxes delivered at each tick,
-// derived from done orders. Expired and open orders never contribute.
-func (m *Manager) ItemsHistory(ctx context.Context, req SeriesRequest) ([]SeriesHistory, error) {
-	ctx, cancel := context.WithTimeout(ctx, historyTimeout)
-	defer cancel()
-	w, err := m.prepareSeriesWindow(ctx, req)
-	if err != nil || len(w.ordered) == 0 {
-		return []SeriesHistory{}, err
-	}
-
-	anchors := map[string]float64{}
-	rows, err := m.history.pool.Query(ctx, `
-SELECT session_id, COALESCE(SUM(quantity), 0)
-FROM delivery_order_history
-WHERE session_id = ANY($1)
-  AND state = 'done'
-  AND delivered_tick < $2
-GROUP BY session_id`, w.sessionIDs, w.lo)
-	if err != nil {
-		return nil, fmt.Errorf("items history: select anchors: %w", err)
-	}
-	for rows.Next() {
-		var id string
-		var items int64
-		if err := rows.Scan(&id, &items); err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("items history: scan anchor: %w", err)
-		}
-		anchors[id] = float64(items)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, fmt.Errorf("items history: select anchors: %w", err)
-	}
-	rows.Close()
-
-	// Collect per-bucket item counts first; the running total is applied after
-	// the rows are grouped so each point is the cumulative delivery count.
-	buckets := map[string]map[int64]float64{}
-	order := map[string][]int64{}
-	rows, err = m.history.pool.Query(ctx, `
-SELECT session_id, delivered_tick, SUM(quantity)
-FROM delivery_order_history
-WHERE session_id = ANY($1)
-  AND state = 'done'
-  AND delivered_tick >= $2
-  AND delivered_tick <= $3
-GROUP BY session_id, delivered_tick
-ORDER BY session_id, delivered_tick`, w.sessionIDs, w.lo, w.hi)
-	if err != nil {
-		return nil, fmt.Errorf("items history: select points: %w", err)
-	}
-	for rows.Next() {
-		var id string
-		var tick int64
-		var items int64
-		if err := rows.Scan(&id, &tick, &items); err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("items history: scan point: %w", err)
-		}
-		bucket := (tick / w.width) * w.width
-		if buckets[id] == nil {
-			buckets[id] = map[int64]float64{}
-		}
-		if _, seen := buckets[id][bucket]; !seen {
-			order[id] = append(order[id], bucket)
-		}
-		buckets[id][bucket] += float64(items)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, fmt.Errorf("items history: select points: %w", err)
-	}
-	rows.Close()
-
-	points := map[string][]SeriesPoint{}
-	for id, ticks := range order {
-		running := anchors[id]
-		for _, tick := range ticks {
-			running += buckets[id][tick]
-			points[id] = append(points[id], SeriesPoint{Tick: tick, Value: running})
-		}
-	}
-
-	current := map[string]float64{}
-	rows, err = m.history.pool.Query(ctx, `
-SELECT session_id, COALESCE(SUM(quantity), 0)
-FROM delivery_order_history
-WHERE session_id = ANY($1) AND state = 'done'
-GROUP BY session_id`, w.sessionIDs)
-	if err != nil {
-		return nil, fmt.Errorf("items history: select current: %w", err)
-	}
-	for rows.Next() {
-		var id string
-		var items int64
-		if err := rows.Scan(&id, &items); err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("items history: scan current: %w", err)
-		}
-		current[id] = float64(items)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, fmt.Errorf("items history: select current: %w", err)
-	}
-	rows.Close()
-
-	zero := 0.0
-	return assembleSeries(w.ordered, points, anchors, current, req, w.lo, &zero), nil
-}
-
-// ReputationHistory is the recorded standing balance at each tick. Sessions
-// saved before the reputation ledger existed return one current point until
-// their next change.
-func (m *Manager) ReputationHistory(ctx context.Context, req SeriesRequest) ([]SeriesHistory, error) {
-	ctx, cancel := context.WithTimeout(ctx, historyTimeout)
-	defer cancel()
-	w, err := m.prepareSeriesWindow(ctx, req)
-	if err != nil || len(w.ordered) == 0 {
-		return []SeriesHistory{}, err
-	}
-
-	points := map[string][]SeriesPoint{}
-	rows, err := m.history.pool.Query(ctx, `
-SELECT session_id,
-       (tick / $2) * $2 AS tick_bucket,
-       (array_agg(balance ORDER BY tick DESC, seq DESC))[1] AS value
-FROM delivery_reputation_entries
-WHERE session_id = ANY($1)
-  AND tick >= $3
-  AND tick <= $4
-GROUP BY session_id, (tick / $2) * $2
-ORDER BY session_id, tick_bucket`, w.sessionIDs, w.width, w.lo, w.hi)
-	if err != nil {
-		return nil, fmt.Errorf("reputation history: select points: %w", err)
-	}
-	for rows.Next() {
-		var id string
-		var p SeriesPoint
-		if err := rows.Scan(&id, &p.Tick, &p.Value); err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("reputation history: scan point: %w", err)
-		}
-		points[id] = append(points[id], p)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, fmt.Errorf("reputation history: select points: %w", err)
-	}
-	rows.Close()
-
-	anchors := map[string]float64{}
-	rows, err = m.history.pool.Query(ctx, `
-SELECT DISTINCT ON (session_id) session_id, balance
-FROM delivery_reputation_entries
-WHERE session_id = ANY($1)
-  AND tick <= $2
-ORDER BY session_id, tick DESC, seq DESC`, w.sessionIDs, w.lo)
-	if err != nil {
-		return nil, fmt.Errorf("reputation history: select anchors: %w", err)
-	}
-	for rows.Next() {
-		var id string
-		var value float64
-		if err := rows.Scan(&id, &value); err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("reputation history: scan anchor: %w", err)
-		}
-		anchors[id] = value
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, fmt.Errorf("reputation history: select anchors: %w", err)
-	}
-	rows.Close()
-
-	current := make(map[string]float64, len(w.ordered))
-	for _, s := range w.ordered {
-		current[s.id] = s.reputation
-	}
-	return assembleSeries(w.ordered, points, anchors, current, req, w.lo, nil), nil
-}
-
-// Metric identifies one cumulative operational series. Every metric counts
-// events at a tick; spending metrics accumulate spend as a positive magnitude
-// so one chart scale works for income and costs.
+// Metric identifies one analytics series. Money, delivered boxes and
+// reputation are the original three; the rest are cumulative operational
+// counters. Keeping one enum means one request contract for every chart.
 type Metric string
 
 const (
+	MetricMoney          Metric = "MONEY"
+	MetricBoxesDelivered Metric = "BOXES_DELIVERED"
+	MetricReputation     Metric = "REPUTATION"
+
 	MetricDeliveries     Metric = "DELIVERIES"
 	MetricLateDeliveries Metric = "LATE_DELIVERIES"
 	MetricExpiredOrders  Metric = "EXPIRED_ORDERS"
@@ -397,59 +213,106 @@ const (
 	MetricTowSpend       Metric = "TOW_SPEND"
 )
 
-// metricSpec is the SQL shape of one cumulative series: which projection
-// table, the tick an event belongs to, the signed value it contributes, and
-// the terminal-state filter. All strings are package constants, never input.
+// metricMode decides what a tick bucket means: a running total of events, or
+// the last recorded value in the bucket (balances).
+type metricMode int
+
+const (
+	metricCumulative metricMode = iota
+	metricLatest
+)
+
+// metricSpec is the SQL shape of one series: which projection table, the tick
+// an event belongs to, the value it contributes, terminal-state filter, and
+// how buckets and anchors are aggregated. All strings are package constants,
+// never input.
 type metricSpec struct {
 	table     string
 	tickExpr  string
 	valueExpr string
 	where     string
+	mode      metricMode
+	// fallback is the value before the first event. Nil means the metric has
+	// no knowable earlier value (a pre-ledger reputation save).
+	fallback *float64
+	// summaryValue, when set, supplies the current point from the session
+	// summary instead of aggregating the projection.
+	summaryValue func(seriesSummary) float64
 }
 
+var metricZero = 0.0
+
 var metricSpecs = map[Metric]metricSpec{
+	MetricMoney: {
+		table: "delivery_cash_entries", tickExpr: "tick", valueExpr: "balance",
+		where: "TRUE", mode: metricLatest, fallback: &metricZero,
+		summaryValue: func(s seriesSummary) float64 { return float64(s.money) },
+	},
+	MetricBoxesDelivered: {
+		table: "delivery_order_history", tickExpr: "delivered_tick",
+		valueExpr: "quantity::double precision", where: "state = 'done'",
+		mode: metricCumulative, fallback: &metricZero,
+	},
+	MetricReputation: {
+		table: "delivery_reputation_entries", tickExpr: "tick", valueExpr: "balance",
+		where: "TRUE", mode: metricLatest,
+		summaryValue: func(s seriesSummary) float64 { return s.reputation },
+	},
 	MetricDeliveries: {
 		table: "delivery_order_history", tickExpr: "delivered_tick",
 		valueExpr: "1::double precision", where: "state = 'done' AND NOT late",
+		mode: metricCumulative, fallback: &metricZero,
 	},
 	MetricLateDeliveries: {
 		table: "delivery_order_history", tickExpr: "delivered_tick",
 		valueExpr: "1::double precision", where: "state = 'done' AND late",
+		mode: metricCumulative, fallback: &metricZero,
 	},
 	MetricExpiredOrders: {
 		// Expiry lands on the first tick after the deadline.
 		table: "delivery_order_history", tickExpr: "deadline_tick + 1",
 		valueExpr: "1::double precision", where: "state = 'expired'",
+		mode: metricCumulative, fallback: &metricZero,
 	},
 	MetricOrdersCreated: {
 		table: "delivery_order_history", tickExpr: "created_tick",
 		valueExpr: "1::double precision", where: "TRUE",
+		mode: metricCumulative, fallback: &metricZero,
 	},
 	MetricDeliveryIncome: {
 		table: "delivery_order_history", tickExpr: "delivered_tick",
 		valueExpr: "paid::double precision", where: "state = 'done'",
+		mode: metricCumulative, fallback: &metricZero,
 	},
 	MetricOrderFines: {
-		table: "delivery_order_history", tickExpr: "deadline_tick + 1",
-		valueExpr: "penalty::double precision", where: "state = 'expired'",
+		// The cash ledger is authoritative: a fine is clamped to the balance,
+		// so summing nominal penalties would overstate what was charged.
+		table: "delivery_cash_entries", tickExpr: "tick",
+		valueExpr: "(-amount)::double precision", where: "kind = 'order_fine'",
+		mode: metricCumulative, fallback: &metricZero,
 	},
 	MetricUpkeepSpend: {
 		table: "delivery_cash_entries", tickExpr: "tick",
 		valueExpr: "(-amount)::double precision", where: "kind = 'upkeep'",
+		mode: metricCumulative, fallback: &metricZero,
 	},
 	MetricChargingSpend: {
 		table: "delivery_cash_entries", tickExpr: "tick",
 		valueExpr: "(-amount)::double precision", where: "kind = 'charging'",
+		mode: metricCumulative, fallback: &metricZero,
 	},
 	MetricTowSpend: {
 		table: "delivery_cash_entries", tickExpr: "tick",
 		valueExpr: "(-amount)::double precision", where: "kind = 'tow'",
+		mode: metricCumulative, fallback: &metricZero,
 	},
 }
 
-// MetricHistory is the cumulative operational series selected by metric.
-// Anchors before the window and the current total are read alongside the
-// bucketed events, so a window starting mid-save still draws the right level.
+// MetricHistory is the analytics series selected by metric. Balances
+// (MONEY, REPUTATION) keep the last value in each bucket; the rest sum events
+// into a running total. Anchors before the window and the current total are
+// read alongside the bucketed events, so a window starting mid-save still
+// draws the right level.
 func (m *Manager) MetricHistory(ctx context.Context, metric Metric, req SeriesRequest) ([]SeriesHistory, error) {
 	ctx, cancel := context.WithTimeout(ctx, historyTimeout)
 	defer cancel()
@@ -462,25 +325,34 @@ func (m *Manager) MetricHistory(ctx context.Context, metric Metric, req SeriesRe
 		return []SeriesHistory{}, err
 	}
 
-	points, anchors, current, err := m.cumulativeSeries(ctx, w, spec)
+	points, anchors, current, err := m.metricSeries(ctx, w, spec)
 	if err != nil {
 		return nil, err
 	}
-	zero := 0.0
-	return assembleSeries(w.ordered, points, anchors, current, req, w.lo, &zero), nil
+	return assembleSeries(w.ordered, points, anchors, current, req, w.lo, spec.fallback), nil
 }
 
-// cumulativeSeries reads the three queries every cumulative metric needs:
-// totals before the window, per-bucket sums inside it, and the all-time total.
-func (m *Manager) cumulativeSeries(ctx context.Context, w seriesWindow, spec metricSpec) (map[string][]SeriesPoint, map[string]float64, map[string]float64, error) {
+// metricSeries reads the three queries every series needs: totals before the
+// window, per-bucket aggregates inside it, and the current value.
+func (m *Manager) metricSeries(ctx context.Context, w seriesWindow, spec metricSpec) (map[string][]SeriesPoint, map[string]float64, map[string]float64, error) {
 	anchors := map[string]float64{}
-	rows, err := m.history.pool.Query(ctx, fmt.Sprintf(`
+	anchorSQL := fmt.Sprintf(`
 SELECT session_id, COALESCE(SUM(%s), 0)::double precision
 FROM %s
 WHERE session_id = ANY($1)
   AND (%s)
   AND (%s) < $2
-GROUP BY session_id`, spec.valueExpr, spec.table, spec.where, spec.tickExpr), w.sessionIDs, w.lo)
+GROUP BY session_id`, spec.valueExpr, spec.table, spec.where, spec.tickExpr)
+	if spec.mode == metricLatest {
+		anchorSQL = fmt.Sprintf(`
+SELECT DISTINCT ON (session_id) session_id, %s::double precision
+FROM %s
+WHERE session_id = ANY($1)
+  AND (%s)
+  AND (%s) <= $2
+ORDER BY session_id, (%s) DESC, seq DESC`, spec.valueExpr, spec.table, spec.where, spec.tickExpr, spec.tickExpr)
+	}
+	rows, err := m.history.pool.Query(ctx, anchorSQL, w.sessionIDs, w.lo)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("metric history: select anchors: %w", err)
 	}
@@ -501,7 +373,7 @@ GROUP BY session_id`, spec.valueExpr, spec.table, spec.where, spec.tickExpr), w.
 
 	buckets := map[string]map[int64]float64{}
 	order := map[string][]int64{}
-	rows, err = m.history.pool.Query(ctx, fmt.Sprintf(`
+	pointSQL := fmt.Sprintf(`
 SELECT session_id, ((%s) / $2) * $2 AS tick_bucket, SUM(%s)::double precision
 FROM %s
 WHERE session_id = ANY($1)
@@ -509,7 +381,20 @@ WHERE session_id = ANY($1)
   AND (%s) >= $3
   AND (%s) <= $4
 GROUP BY session_id, tick_bucket
-ORDER BY session_id, tick_bucket`, spec.tickExpr, spec.valueExpr, spec.table, spec.where, spec.tickExpr, spec.tickExpr), w.sessionIDs, w.width, w.lo, w.hi)
+ORDER BY session_id, tick_bucket`, spec.tickExpr, spec.valueExpr, spec.table, spec.where, spec.tickExpr, spec.tickExpr)
+	if spec.mode == metricLatest {
+		pointSQL = fmt.Sprintf(`
+SELECT session_id, ((%s) / $2) * $2 AS tick_bucket,
+       (array_agg(%s ORDER BY (%s) DESC, seq DESC))[1]::double precision
+FROM %s
+WHERE session_id = ANY($1)
+  AND (%s)
+  AND (%s) >= $3
+  AND (%s) <= $4
+GROUP BY session_id, tick_bucket
+ORDER BY session_id, tick_bucket`, spec.tickExpr, spec.valueExpr, spec.tickExpr, spec.table, spec.where, spec.tickExpr, spec.tickExpr)
+	}
+	rows, err = m.history.pool.Query(ctx, pointSQL, w.sessionIDs, w.width, w.lo, w.hi)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("metric history: select points: %w", err)
 	}
@@ -537,6 +422,12 @@ ORDER BY session_id, tick_bucket`, spec.tickExpr, spec.valueExpr, spec.table, sp
 
 	points := map[string][]SeriesPoint{}
 	for id, ticks := range order {
+		if spec.mode == metricLatest {
+			for _, tick := range ticks {
+				points[id] = append(points[id], SeriesPoint{Tick: tick, Value: buckets[id][tick]})
+			}
+			continue
+		}
 		running := anchors[id]
 		for _, tick := range ticks {
 			running += buckets[id][tick]
@@ -545,6 +436,13 @@ ORDER BY session_id, tick_bucket`, spec.tickExpr, spec.valueExpr, spec.table, sp
 	}
 
 	current := map[string]float64{}
+	if spec.summaryValue != nil {
+		for _, s := range w.ordered {
+			current[s.id] = spec.summaryValue(s)
+		}
+		return points, anchors, current, nil
+	}
+
 	rows, err = m.history.pool.Query(ctx, fmt.Sprintf(`
 SELECT session_id, COALESCE(SUM(%s), 0)::double precision
 FROM %s

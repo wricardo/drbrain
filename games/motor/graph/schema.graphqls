@@ -780,6 +780,23 @@ type SessionClaimResult {
 	"""
 	status: ClaimStatus!
 }
+"""
+Administrative operations that bypass ownership checks. This object can only be
+reached through `Mutation.motorProgramming.admin(key)`, which validates the
+admin key, so every field here is already authorized.
+"""
+type Admin {
+	"""
+	Delete a session permanently, bypassing the owner-token/account check of
+	`deleteSession` and stopping any running program. Idempotent: an unknown or
+	already-deleted id returns true.
+	"""
+	deleteSession(id: ID!): Boolean!
+	"""
+	Stop a running program without an owner token. Idempotent.
+	"""
+	pauseSession(id: ID!): Session!
+}
 scalar Time
 """
 Motor reads: maps, sessions, leaderboards and a player's runs.
@@ -893,6 +910,13 @@ type Mutation {
 	Removes a map. Community maps need their owner; shipped and legacy unowned maps need X-Admin-Key.
 	"""
 	deleteMap(id: ID!): Boolean!
+	"""
+	Administrative operations. `key` must match ADMIN_API_KEY (the same secret
+	X-Admin-Key carries); a wrong or missing key is FORBIDDEN and never reveals
+	whether a session exists. When no key is configured, the explicit
+	ALLOW_UNAUTHENTICATED_ADMIN opt-out still applies.
+	"""
+	admin(key: String!): Admin!
 }
 type Subscription {
 	"""

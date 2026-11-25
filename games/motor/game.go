@@ -131,7 +131,7 @@ func (g *Game) Mount(mux *http.ServeMux, deps platform.Deps) error {
 
 	resolver := graph.NewResolver(svc, hub)
 	resolver.Accounts = deps.Accounts
-	resolver.Admin = graph.Admin{
+	resolver.AdminPolicy = graph.Admin{
 		Key:                  cfg.AdminKey,
 		AllowUnauthenticated: cfg.AllowUnauthenticatedAdmin.Bool(),
 	}

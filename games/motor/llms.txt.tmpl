@@ -192,6 +192,10 @@ and `deleteSession` on a session belonging to a signed-in human needs their logi
 `ownerToken` argument (`deleteSession(id, ownerToken: "...")`), otherwise `FORBIDDEN`. Query
 `sessions(sort: RECENT, limit: 50, mapId: "...")` lists sessions.
 
+Operator calls: `mutation { motorProgramming { admin(key: "…") { deleteSession(id) pauseSession(id) { id } } } }`.
+`key` must match `ADMIN_API_KEY` (or the local `ALLOW_UNAUTHENTICATED_ADMIN=true` opt-out);
+no ownerToken is needed, delete is idempotent, and pause stops a running program.
+
 ---
 
 ## Creating maps

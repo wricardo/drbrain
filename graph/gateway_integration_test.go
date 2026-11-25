@@ -1,18 +1,22 @@
 package graph
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	cityconfig "github.com/wricardo/drbrain/games/delivery/game/config"
+	"github.com/wricardo/drbrain/games/delivery/game/session"
 	deliverygraph "github.com/wricardo/drbrain/games/delivery/graph"
 	mazesgraph "github.com/wricardo/drbrain/games/mazes/graph"
 	motorgraph "github.com/wricardo/drbrain/games/motor/graph"
 	teslagraph "github.com/wricardo/drbrain/games/tesla/graph"
 	"github.com/wricardo/drbrain/platform/account"
 	"github.com/wricardo/drbrain/platform/auth"
+	"github.com/wricardo/drbrain/platform/pgdb/pgtest"
 )
 
 // TestDeliveryCitiesThroughUnifiedGateway exercises the generated adapter for a
@@ -46,6 +50,115 @@ func TestDeliveryCitiesThroughUnifiedGateway(t *testing.T) {
 		if !ids[id] {
 			t.Fatalf("shipped city %q missing from %v", id, ids)
 		}
+	}
+}
+
+// TestDeliveryAdminThroughUnifiedGateway proves the admin mutation is wired
+// through the generated adapter: a wrong key reaches the game resolver and is
+// refused instead of panicking as "not implemented".
+func TestDeliveryAdminThroughUnifiedGateway(t *testing.T) {
+	d := &deliverygraph.Resolver{AdminKey: "sekret"}
+	h := NewHandler(Options{Resolver: New(nil, d, nil, nil, nil, nil)})
+
+	out := postJSON(t, h, `{"query":"mutation { deliveryAdmin(key: \"nope\") { deleteSession(id: \"x\") } }"}`)
+	errs, ok := out["errors"].([]any)
+	if !ok || len(errs) == 0 {
+		t.Fatalf("wrong admin key accepted: %v", out)
+	}
+	msg, _ := errs[0].(map[string]any)["message"].(string)
+	if !strings.Contains(msg, "admin key") {
+		t.Fatalf("wrong-key message = %q", msg)
+	}
+}
+
+// TestDeliveryAliasedMovesRunInOrder guards why delivery mutations are flat
+// root fields: gqlgen resolves a nested object's fields concurrently, which
+// scrambled a route queued as aliased moveCar calls inside delivery { }. Root
+// mutation fields run serially, so the queue must equal the document order.
+func TestDeliveryAliasedMovesRunInOrder(t *testing.T) {
+	pool := pgtest.Pool(t)
+	cat, err := cityconfig.Open(cityconfig.Options{
+		BuiltinDir:    "../games/delivery/maps",
+		DefaultCityID: "city",
+		Pool:          pool,
+	})
+	if err != nil {
+		t.Fatalf("open city catalogue: %v", err)
+	}
+	mgr, err := session.NewManager(cat, pool)
+	if err != nil {
+		t.Fatalf("manager: %v", err)
+	}
+	t.Cleanup(func() { _ = mgr.Close() })
+	d := &deliverygraph.Resolver{Mgr: mgr, Catalog: cat}
+	h := NewHandler(Options{Resolver: New(nil, d, nil, nil, nil, nil)})
+
+	created := postJSON(t, h, `{"query":"mutation { deliveryCreateSession(cityId: \"city\") { session { id } ownerToken } }"}`)
+	res, ok := created["data"].(map[string]any)["deliveryCreateSession"].(map[string]any)
+	if !ok {
+		t.Fatalf("create session: %v", created)
+	}
+	id := res["session"].(map[string]any)["id"].(string)
+	token := res["ownerToken"].(string)
+
+	route := []string{"EAST", "EAST", "EAST", "SOUTH", "SOUTH", "SOUTH", "WEST", "WEST", "WEST"}
+	var doc strings.Builder
+	doc.WriteString("mutation {")
+	for i, dir := range route {
+		fmt.Fprintf(&doc, ` m%d: deliveryMoveCar(id: %q, carId: "car_1", direction: %s, ownerToken: %q) { id }`, i, id, dir, token)
+	}
+	doc.WriteString(" }")
+	body, _ := json.Marshal(map[string]string{"query": doc.String()})
+	if out := postJSON(t, h, string(body)); out["errors"] != nil {
+		t.Fatalf("queue route: %v", out["errors"])
+	}
+
+	readBody, _ := json.Marshal(map[string]string{
+		"query": fmt.Sprintf(`{ delivery { session(id: %q) { cars { queuedMoves } } } }`, id),
+	})
+	read := postJSON(t, h, string(readBody))
+	data, _ := read["data"].(map[string]any)
+	if data == nil {
+		t.Fatalf("read session: %v", read)
+	}
+	cars := data["delivery"].(map[string]any)["session"].(map[string]any)["cars"].([]any)
+	var got []string
+	for _, m := range cars[0].(map[string]any)["queuedMoves"].([]any) {
+		got = append(got, m.(string))
+	}
+	if strings.Join(got, ",") != strings.Join(route, ",") {
+		t.Fatalf("queuedMoves = %v, want %v", got, route)
+	}
+}
+
+// TestMazesAdminThroughUnifiedGateway proves the mazes admin namespace reaches
+// the per-game resolver instead of panicking as "not implemented".
+func TestMazesAdminThroughUnifiedGateway(t *testing.T) {
+	t.Setenv("ADMIN_API_KEY", "sekret")
+	h := NewHandler(Options{Resolver: New(nil, nil, &mazesgraph.Resolver{}, nil, nil, nil)})
+
+	out := postJSON(t, h, `{"query":"mutation { mazes { admin(key: \"nope\") { deleteSession(id: \"x\") } } }"}`)
+	assertAdminKeyError(t, out)
+}
+
+// TestMotorAdminThroughUnifiedGateway does the same for motorProgramming.
+func TestMotorAdminThroughUnifiedGateway(t *testing.T) {
+	m := &motorgraph.Resolver{AdminPolicy: motorgraph.Admin{Key: "sekret"}}
+	h := NewHandler(Options{Resolver: New(nil, nil, nil, m, nil, nil)})
+
+	out := postJSON(t, h, `{"query":"mutation { motorProgramming { admin(key: \"nope\") { pauseSession(id: \"x\") { id } } } }"}`)
+	assertAdminKeyError(t, out)
+}
+
+func assertAdminKeyError(t *testing.T, out map[string]any) {
+	t.Helper()
+	errs, ok := out["errors"].([]any)
+	if !ok || len(errs) == 0 {
+		t.Fatalf("wrong admin key accepted: %v", out)
+	}
+	msg, _ := errs[0].(map[string]any)["message"].(string)
+	if !strings.Contains(msg, "admin key") {
+		t.Fatalf("wrong-key message = %q", msg)
 	}
 }
 

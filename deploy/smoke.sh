@@ -56,11 +56,11 @@ check_delivery() {
 		fi
 	done
 	if [ -n "$second" ]; then
-		body='{"query":"mutation { delivery { createSession(cityId: \"SECOND_CITY\") { session { id } } } }"}'
+		body='{"query":"mutation { deliveryCreateSession(cityId: \"SECOND_CITY\") { session { id } } }"}'
 		body=$(printf '%s' "$body" | sed "s/SECOND_CITY/$second/")
 		echo "smoke: delivery created a session on builtin city $second"
 	else
-		body='{"query":"mutation { delivery { createSession { session { id } } } }"}'
+		body='{"query":"mutation { deliveryCreateSession { session { id } } }"}'
 		echo "smoke: delivery created a session on the default city"
 	fi
 	created=$(gql_post delivery-session "$body")

@@ -51,7 +51,7 @@ Watch this city live: ${origin}/delivery?city=${encodeURIComponent(s.id)}
 ${authNote}
 
 ## Explore the schema first
-Introspection is enabled and the SDL descriptions are the source of truth. At the Playground or endpoint run \`{ __schema { types { name } } }\` / \`{ __type(name: "Delivery_Mutation") { fields { name args { name } } } }\` whenever a field, argument, enum or return shape is unclear. Everything is under the \`delivery\` namespace, so all operations look like \`{ delivery { ... } }\`.
+Introspection is enabled and the SDL descriptions are the source of truth. At the Playground or endpoint run \`{ __schema { types { name } } }\` / \`{ __type(name: "Mutation") { fields { name args { name } } } }\` whenever a field, argument, enum or return shape is unclear. Queries are namespaced under \`delivery\`, so they look like \`query { delivery { ... } }\`. Mutations are flat root fields named \`delivery\` + the capitalized operation (\`moveCar\` is \`deliveryMoveCar\`), so they look like \`mutation { deliveryMoveCar(...) { id queuedMoves } }\`.
 
 Main queries:
 - \`session(id: ID!): Delivery_Snapshot!\` — full current state: tick, speed, city view, cars, orders/openOrders, ledger, carClasses, growth, events, closures.
@@ -62,16 +62,17 @@ Main queries:
 
 Subscription root \`deliverySession(id: ID!): Delivery_Snapshot!\` streams snapshots when the client supports graphql-ws.
 
-Main mutations (all creator-only, all return the updated \`Delivery_Snapshot\` unless noted):
+Main mutations (root fields, written below without the \`delivery\` prefix: \`assignOrder\` is \`deliveryAssignOrder\`, etc.; all creator-only, all return the updated \`Delivery_Snapshot\` unless noted; \`moveCar\` and \`clearMoves\` return only the \`Delivery_CarView\`). Several mutations in one document run in order when aliased at the root, e.g. \`mutation { m0: deliveryMoveCar(...) { id queuedMoves } m1: deliveryMoveCar(...) { id queuedMoves } }\`:
 - \`assignOrder(id, orderId, carId, ownerToken)\` — point an order at a car and refresh its deadline from that car's position.
 - \`unassignOrder(id, orderId, ownerToken)\` — return the order to PENDING.
-- \`moveCar(id, carId, direction: NORTH|SOUTH|EAST|WEST, ownerToken)\` — append one step to the car's queue; does not advance the clock.
+- \`moveCar(id, carId, direction: NORTH|SOUTH|EAST|WEST, ownerToken)\` — append one step to the car's queue; does not advance the clock. Returns that car (\`queuedMoves\` shows the plan; position and \`lastReject\` are unchanged until a tick).
 - \`clearMoves(id, carId, ownerToken)\` — drop the whole queued route.
-- \`tick(id, count: Int = 1, ownerToken)\` — advance the world manually; one queued step runs per tick.
-- \`setSpeed(id, speed: Int, ownerToken)\` — clock multiplier; 0 pauses.
-- \`waitUntil(id, tick, ticks, ownerToken)\` — block until the running clock reaches an absolute future \`tick\` or \`ticks\` from now (max 1000); pass exactly one. Fails with INVALID_ARGUMENT if the session is paused, including when paused mid-wait; use \`tick\` to advance without a clock.
+- \`setSpeed(id, speed: Int, ownerToken)\` — clock multiplier; 0 pauses, 1/2/4 run.
+- \`waitUntil(id, tick, ticks, ownerToken)\` — block until the running clock reaches an absolute future \`tick\` or \`ticks\` from now (max 1000); pass exactly one. Fails with INVALID_ARGUMENT if the session is paused, including when paused mid-wait; resume it with \`setSpeed\` first.
 - \`towCar(id, carId, ownerToken)\` — return a stranded car to its nearest depot for a fee.
 - \`buyCar(id, className, depotId = "d_main", ownerToken)\` — buy a vehicle at a depot.
+- \`buyCharger(id, x, y, ownerToken)\` — buy and build a charger (price \`city.charging.chargerPurchasePrice\`, cap \`city.charging.maxPurchasedChargers\`) on a revealed open road/ground tile reachable from a depot (no car on it).
+- \`sellCar(id, carId, ownerToken)\` — sell a vehicle and bank 70% of what it cost; refused for the last vehicle or while it carries cargo or has an order assigned. \`cars[].resaleValue\` is the exact payout.
 - \`saveSession(id, ownerToken)\`, \`renameSession(id, displayName, ownerToken)\` — save now / name the save.
 - \`evictSession(id, ownerToken)\`, \`deleteSession(id, ownerToken)\` — save-then-unload / delete permanently; both return Boolean, not a snapshot.
 - \`createSession(id, seed, cityId)\` — start a new game; returns the secret \`ownerToken\`. \`claimSessions(claims)\` attaches guest saves to the signed-in account.
@@ -81,8 +82,8 @@ query {
   delivery {
     session(id: "${s.id}") {
       tick paused speed
-      city { name gridSize rows hiddenTiles kitchens { id name x y } customers { id name x y } depots { id name x y } chargers { id name x y } }
-      cars { id name className x y battery maxBattery capacity load freeBoxes state queuedMove queuedMoves lastReject }
+      city { name gridSize rows hiddenTiles kitchens { id name x y } customers { id name x y } depots { id name x y } chargers { id name x y } charging { depotRate chargerRate chargerPricePerTick chargerPurchasePrice maxPurchasedChargers } }
+      cars { id name className x y battery maxBattery capacity load freeBoxes purchasePrice resaleValue state queuedMove queuedMoves lastReject }
       openOrders { id itemName quantity kitchenId kitchenName customerId customerName state assignedCar ticksLeft reward }
       ledger { money reputation deliveries lateDeliveries expiredOrders onTimeStreak tows }
       growth { id tick title description done }
@@ -94,7 +95,7 @@ query {
 ## Game manual
 Delivery is a manual fleet game. Assign orders to cars, drive each car to the order's kitchen (pickup is automatic on entry), then to its customer (dropoff is automatic on entry), and deliver before the deadline. Expired orders cost reputation. There is no win condition: keep profitable orders flowing and grow the fleet.
 
-Coordinates and movement: coordinates are (x,y) with row 0 at the TOP and y growing DOWNWARD. NORTH = y-1, SOUTH = y+1, EAST = x+1, WEST = x-1. \`moveCar\` queues a step; \`tick\` applies queued steps in order, one per tick. Up to 64 steps can be queued per car (\`LIMIT_REACHED\` beyond that). A rejected step is spent, not retried, and sets \`lastReject\` on the next tick; use \`clearMoves\` to replan when traffic or closures invalidate a route.
+Coordinates and movement: coordinates are (x,y) with row 0 at the TOP and y growing DOWNWARD. NORTH = y-1, SOUTH = y+1, EAST = x+1, WEST = x-1. \`moveCar\` queues a step; the running clock applies one queued step per car per tick, in order. Up to 64 steps can be queued per car (\`LIMIT_REACHED\` beyond that). A rejected step is spent, not retried, and sets \`lastReject\` on the next tick; use \`clearMoves\` to replan when traffic or closures invalidate a route.
 
 Map glyphs: '.' road, ',' ground (costs one extra battery), '#' water (blocked), 'B' building (blocked), 'D' depot (free charging and parking), 'C' charger (paid charging), 'K' kitchen, 'H' customer waiting, 'h' customer house with no live order, '?' unexplored (blocked), 'X' closed for street works (blocked), digits are cars. Moving into water, a building, an unexplored tile, a closed tile, or off the map is rejected and costs nothing. A car may always leave a closed tile it already occupies. Cars cannot share a road tile; depots hold any number and chargers hold their capacity.
 
@@ -105,10 +106,10 @@ Battery: every step spends the car's \`stepCost\`, plus the city's ground surcha
 Growth and closures: growth stages open districts, kitchens, customers, chargers and depot bays automatically; hidden tiles become passable only when a stage reveals them. Street works ('X' and \`closures\`) are temporary and block entry.
 
 ## How to play
-1. Keep the clock deterministic: call \`setSpeed(id: "${s.id}", speed: 0${tokenArg})\` if it is running.
+1. Sessions start paused, so reading and planning are safe. Resume the clock with \`deliverySetSpeed(id: "${s.id}", speed: 4${tokenArg})\`; pause it again with speed 0 when you need to replan without time passing.
 2. Read the session (or \`carView\` for a large city) and note the city rows, cars and open orders.
-3. Assign a live order to a car that can carry it with \`assignOrder\`.
-4. Queue one step at a time with \`moveCar\`, then call \`tick(id: "${s.id}", count: 1${tokenArg})\`; inspect the returned snapshot.
+3. Assign a live order to a car that can carry it with \`deliveryAssignOrder\`.
+4. Queue steps with \`deliveryMoveCar\` (one step per tick, up to 64 per car), then block for the next tick with \`deliveryWaitUntil(id: "${s.id}", ticks: 1${tokenArg})\` and inspect the returned snapshot (\`deliveryMoveCar\` returns just the car, not the world).
 5. If \`lastReject\` is BLOCKED, CLOSED, OCCUPIED, NO_BATTERY or OFF_GRID, replan; the rejected move spent no battery. Repeat until the order is DONE, then take the next one.
 6. Use \`carView(id, carId, radius)\` for cheap polling and \`events(id, sinceTick)\` for deltas.
 

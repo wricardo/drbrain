@@ -524,14 +524,12 @@
         "min_size": 5,
         "max_size": 10,
         "from_progress": 0.18,
-        "early_weight": 1,
         "weight": 35
       },
       {
         "min_size": 13,
         "max_size": 24,
         "from_progress": 0.35,
-        "early_weight": 1,
         "weight": 25
       },
       {
@@ -547,7 +545,9 @@
   "charging": {
     "depot_rate": 12,
     "charger_rate": 4,
-    "charger_price_per_tick": 1
+    "charger_price_per_tick": 1,
+    "charger_purchase_price": 150,
+    "max_purchased_chargers": 6
   },
   "fleet": {
     "upkeep_interval_ticks": 120,

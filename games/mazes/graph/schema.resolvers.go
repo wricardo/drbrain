@@ -13,6 +13,29 @@ import (
 	"github.com/wricardo/drbrain/games/mazes/validate"
 )
 
+// DeleteSession is the resolver for the deleteSession field. The admin key was
+// already validated by Mutation.admin, so this bypasses the owner check.
+// Idempotent: a missing session is true.
+func (r *adminResolver) DeleteSession(ctx context.Context, obj *model.Admin, id string) (bool, error) {
+	if err := r.Service.DeleteSession(id); err != nil {
+		if isNotFound(err) {
+			return true, nil
+		}
+		return false, toGQLError(err)
+	}
+	return true, nil
+}
+
+// RenameSession is the resolver for the renameSession field. Unlike the player
+// mutation it needs no owner token; the admin key already authorized the change.
+func (r *adminResolver) RenameSession(ctx context.Context, obj *model.Admin, id string, displayName string) (*model.Session, error) {
+	s, err := r.Service.RenameSession(id, displayName)
+	if err != nil {
+		return nil, toGQLError(err)
+	}
+	return r.sessionView(ctx, s), nil
+}
+
 // CreateSession is the resolver for the createSession field.
 func (r *mutationResolver) CreateSession(ctx context.Context, mapID string, displayName *string) (*model.CreateSessionResult, error) {
 	name := ""
@@ -189,6 +212,15 @@ func (r *mutationResolver) ValidateMap(ctx context.Context, mapArg model.MapInpu
 	return out, nil
 }
 
+// Admin is the resolver for the admin field. It validates the key before the
+// admin object exists, so no field on it can run unauthorized.
+func (r *mutationResolver) Admin(ctx context.Context, key string) (*model.Admin, error) {
+	if err := adminForKey(key); err != nil {
+		return nil, err
+	}
+	return &model.Admin{}, nil
+}
+
 // Maps is the resolver for the maps field: published maps plus the caller's
 // own drafts.
 func (r *queryResolver) Maps(ctx context.Context) ([]*model.Map, error) {
@@ -316,6 +348,9 @@ func (r *subscriptionResolver) SessionUpdated(ctx context.Context, sessionID str
 	return r.forwardSessionUpdates(ctx, s, updates, subscriptionBuffer), nil
 }
 
+// Admin returns generated.AdminResolver implementation.
+func (r *Resolver) Admin() generated.AdminResolver { return &adminResolver{r} }
+
 // Mutation returns generated.MutationResolver implementation.
 func (r *Resolver) Mutation() generated.MutationResolver { return &mutationResolver{r} }
 
@@ -325,6 +360,7 @@ func (r *Resolver) Query() generated.QueryResolver { return &queryResolver{r} }
 // Subscription returns generated.SubscriptionResolver implementation.
 func (r *Resolver) Subscription() generated.SubscriptionResolver { return &subscriptionResolver{r} }
 
+type adminResolver struct{ *Resolver }
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
 type subscriptionResolver struct{ *Resolver }

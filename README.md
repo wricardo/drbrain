@@ -46,7 +46,8 @@ One listener, one process, one port, one GraphQL API:
 | `/_app/...`, `/favicon.svg` | SvelteKit assets |
 
 Queries and mutations select a game namespace (`delivery`, `mazes`,
-`motorProgramming`, `tesla`, `music`) or the global `account` namespace.
+`motorProgramming`, `tesla`, `music`) or the global `account` namespace, except
+Delivery mutations, which are flat root fields named `deliveryXxx`.
 Subscriptions use flat prefixed roots because GraphQL streams only at the
 operation root. Games keep ordinary muxes with absolute paths for non-GraphQL
 routes; the host mounts those under the game prefix with `http.StripPrefix`.
@@ -87,7 +88,8 @@ just db-up               # start the dev PostgreSQL from docker-compose.yaml (:5
 just db-down             # stop it; the pgdata volume keeps the data
 just restart             # stop, regenerate schema, build web + binary, start detached
 just port=8081 restart   # same on another port
-just regen               # split/merge schema and regenerate Go + TypeScript
+just generate            # split SDL -> merged schema/config -> gqlgen -> TS types
+just regen               # alias for just generate
 just build               # go build -o tmp/drbrain ./cmd/drbrain
 just build-web           # npm run build -> web/build
 just test                # go test ./...

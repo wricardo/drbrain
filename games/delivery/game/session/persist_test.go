@@ -214,6 +214,12 @@ func TestClassNameSurvivesPersistence(t *testing.T) {
 		if c.Class != "van" {
 			t.Errorf("van class after reload = %q, want \"van\"", c.Class)
 		}
+		if c.PurchasePrice <= 0 {
+			t.Errorf("van purchase price after reload = %d, want the paid price", c.PurchasePrice)
+		}
+		if c.ResaleValue != c.PurchasePrice*engine.CarResalePercent/100 {
+			t.Errorf("van resale = %d for a %d purchase, want 70%%", c.ResaleValue, c.PurchasePrice)
+		}
 	}
 }
 

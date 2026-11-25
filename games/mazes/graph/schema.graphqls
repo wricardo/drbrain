@@ -501,6 +501,22 @@ type CreateSessionResult {
 	"""
 	ownerToken: String!
 }
+"""
+Administrative operations that bypass ownership checks. This object can only be
+reached through `Mutation.mazes.admin(key)`, which validates the admin key, so
+every field here is already authorized.
+"""
+type Admin {
+	"""
+	Delete a session permanently, bypassing the owner-token/account check of
+	`deleteSession`. Idempotent: an unknown or already-deleted id returns true.
+	"""
+	deleteSession(id: ID!): Boolean!
+	"""
+	Rename any session for moderation, bypassing the owner check.
+	"""
+	renameSession(id: ID!, displayName: String!): Session!
+}
 scalar Time
 """
 Mazes reads: catalogue, one session and the save list. Reads are public.
@@ -600,6 +616,13 @@ type Mutation {
 	gate: a map is publishable when it is structurally valid and the finish can be reached.
 	"""
 	validateMap(map: MapInput!): MapValidationResult!
+	"""
+	Administrative operations. `key` must match ADMIN_API_KEY (the same secret
+	X-Admin-Key carries); a wrong or missing key is FORBIDDEN and never reveals
+	whether a session exists. When no key is configured, the explicit
+	ALLOW_UNAUTHENTICATED_ADMIN opt-out still applies.
+	"""
+	admin(key: String!): Admin!
 }
 type Subscription {
 	"""

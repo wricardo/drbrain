@@ -10,6 +10,15 @@ import (
 	"time"
 )
 
+// Outcome of an admin bulk delete. Iteration order matches the input with
+// duplicates removed.
+type AdminDeleteResult struct {
+	// Ids that had a live or stored session and are now deleted.
+	Deleted []string `json:"deleted"`
+	// Ids that had neither a live nor a stored session.
+	Missing []string `json:"missing"`
+}
+
 // One purchasable vehicle class, with this session's unlock and affordability
 // flags.
 type CarClassView struct {
@@ -86,6 +95,12 @@ type CarView struct {
 	// Unpaid balance of a charging session in progress, in dollars. Zero when the
 	// car is not charging or the session has already been billed.
 	ChargeDue int `json:"chargeDue"`
+	// What the player actually paid for this car, in dollars. Zero for starter and
+	// granted cars.
+	PurchasePrice int `json:"purchasePrice"`
+	// Cash a sale would bank now: 70% of the purchase price, rounded down. Zero for
+	// a car that cost nothing.
+	ResaleValue int `json:"resaleValue"`
 }
 
 // A window of the city around one car, for cheap polling.
@@ -132,6 +147,20 @@ type CashEntryView struct {
 	OrderID *string `json:"orderId,omitempty"`
 	// Short human-readable detail, e.g. "pizza to Rosa's" or "fleet upkeep".
 	Memo string `json:"memo"`
+}
+
+// The city's charging table. Rates are battery units restored per tick.
+type ChargingView struct {
+	// Battery restored per tick on a depot tile.
+	DepotRate int `json:"depotRate"`
+	// Battery restored per tick on a standalone charger.
+	ChargerRate int `json:"chargerRate"`
+	// Default dollars for one full tick at a standalone charger. Zero is free.
+	ChargerPricePerTick int `json:"chargerPricePerTick"`
+	// Dollars buyCharger charges to place one charger. Zero is free.
+	ChargerPurchasePrice int `json:"chargerPurchasePrice"`
+	// How many chargers may be bought in this city. Zero disables buying.
+	MaxPurchasedChargers int `json:"maxPurchasedChargers"`
 }
 
 // One entry in the city catalogue: a published city or the caller's own draft.
@@ -202,6 +231,8 @@ type CityView struct {
 	Depots []*PointView `json:"depots"`
 	// Standalone charging points (slower than a depot).
 	Chargers []*PointView `json:"chargers"`
+	// The city's charging economy: rates, price and the charger-buying cap.
+	Charging *ChargingView `json:"charging"`
 }
 
 // A stretch of street closed for works.
@@ -299,27 +330,6 @@ type ItemCount struct {
 	Count int `json:"count"`
 }
 
-// A session's money-by-tick series, read from the indexed delivery history
-// projection. Points are downsampled to at most the requested maxPoints; when the
-// window reaches the session's current tick, the last point is its current
-// balance.
-type MoneyHistory struct {
-	// Session the series belongs to.
-	SessionID string `json:"sessionId"`
-	// City the session was created from.
-	CityID string `json:"cityId"`
-	// Sampled balances, oldest first.
-	Points []*MoneyPoint `json:"points"`
-}
-
-// One balance point in a session's money-by-tick curve.
-type MoneyPoint struct {
-	// Tick of the sampled balance.
-	Tick int `json:"tick"`
-	// Balance at that tick, in dollars.
-	Money int `json:"money"`
-}
-
 // One economic bucket's totals within a month.
 type MonthCategoryView struct {
 	// Bucket this row describes.
@@ -348,8 +358,6 @@ type MonthView struct {
 	Categories []*MonthCategoryView `json:"categories"`
 }
 
-// Delivery writes and lifecycle. Every session mutation requires the creator's
-// owner token or the owning account; reads stay public.
 type Mutation struct {
 }
 
@@ -462,16 +470,114 @@ type SessionSummary struct {
 type Subscription struct {
 }
 
-// One value at a tick in a non-money analytics series.
+// One car inside a recorded frame.
+type TickCar struct {
+	// Stable car id.
+	ID string `json:"id"`
+	// Display name.
+	Name string `json:"name"`
+	// Catalogue class key the car was built from.
+	ClassName string `json:"className"`
+	// Tile column.
+	X int `json:"x"`
+	// Tile row.
+	Y int `json:"y"`
+	// Charge at this tick.
+	Battery int `json:"battery"`
+	// Order ids on board.
+	Cargo []string `json:"cargo"`
+	// Open paid-charging bill at this tick.
+	ChargeDue int `json:"chargeDue"`
+	// Direction queued for the next tick, or null when standing still.
+	QueuedMove *Direction `json:"queuedMove,omitempty"`
+	// Why the last attempted move failed, or empty.
+	LastReject string `json:"lastReject"`
+	// Successful moves taken by this tick.
+	StepsTaken int `json:"stepsTaken"`
+}
+
+// One order inside a recorded frame.
+type TickOrder struct {
+	// Stable order id.
+	ID string `json:"id"`
+	// Item code.
+	Item string `json:"item"`
+	// Boxes requested.
+	Quantity int `json:"quantity"`
+	// Authored pickup site.
+	KitchenID string `json:"kitchenId"`
+	// Authored dropoff site.
+	CustomerID string `json:"customerId"`
+	// Car allowed to collect it, or empty while pending.
+	AssignedCar string `json:"assignedCar"`
+	// Lifecycle position at this tick.
+	State OrderState `json:"state"`
+	// Tick the order was raised.
+	CreatedTick int `json:"createdTick"`
+	// On-time cutoff.
+	DeadlineTick int `json:"deadlineTick"`
+	// Tick it was delivered, or zero.
+	DeliveredTick int `json:"deliveredTick"`
+	// Full on-time payment.
+	Reward int `json:"reward"`
+	// Cash fine on expiry.
+	Penalty int `json:"penalty"`
+	// Amount actually paid, or zero.
+	Paid int `json:"paid"`
+	// True when the delivery landed after the deadline.
+	Late bool `json:"late"`
+}
+
+// One recorded world frame from the per-tick log. It is the compact state at a
+// completed tick: the append-only cash and reputation statements and the event
+// feed are stored separately and are not repeated here.
+type TickSnapshot struct {
+	// Session this frame belongs to.
+	SessionID string `json:"sessionId"`
+	// Completed world tick.
+	Tick int `json:"tick"`
+	// When the frame was written (UTC).
+	RecordedAt time.Time `json:"recordedAt"`
+	// Spendable balance at this tick.
+	Money int `json:"money"`
+	// Lifetime income at this tick.
+	MoneyEarned int `json:"moneyEarned"`
+	// Standing score at this tick.
+	Reputation float64 `json:"reputation"`
+	// On-time deliveries completed by this tick.
+	Deliveries int `json:"deliveries"`
+	// Late deliveries completed by this tick.
+	LateDeliveries int `json:"lateDeliveries"`
+	// Orders that expired undelivered by this tick.
+	ExpiredOrders int `json:"expiredOrders"`
+	// Orders raised by this tick.
+	OrdersSpawned int `json:"ordersSpawned"`
+	// Current run of consecutive on-time deliveries.
+	OnTimeStreak int `json:"onTimeStreak"`
+	// Paid tows taken by this tick.
+	Tows int `json:"tows"`
+	// Lifetime fleet upkeep paid by this tick.
+	UpkeepPaid int `json:"upkeepPaid"`
+	// Lifetime tow fees paid by this tick.
+	TowFees int `json:"towFees"`
+	// Delivered orders per item by this tick, in item-id order.
+	DeliveriesByItem []*ItemCount `json:"deliveriesByItem"`
+	// The fleet at this tick.
+	Cars []*TickCar `json:"cars"`
+	// Every order raised by this tick.
+	Orders []*TickOrder `json:"orders"`
+}
+
+// One value at a tick in an analytics series.
 type ValuePoint struct {
 	// Tick of the sample.
 	Tick int `json:"tick"`
-	// Sample value: cumulative boxes for itemsHistory, reputation for
-	// reputationHistory.
+	// Sample value: a count or cash amount for metricHistory, the balance for
+	// MONEY and REPUTATION.
 	Value float64 `json:"value"`
 }
 
-// One session's downsampled items-or-reputation series.
+// One session's downsampled analytics series.
 type ValueSeries struct {
 	// Session the series belongs to.
 	SessionID string `json:"sessionId"`
@@ -485,6 +591,13 @@ type ValueSeries struct {
 type AnalyticsMetric string
 
 const (
+	// Cash balance from every checking-account movement, keeping the last
+	// balance in each tick bucket.
+	AnalyticsMetricMoney AnalyticsMetric = "MONEY"
+	// Cumulative boxes delivered from done orders, at delivery tick.
+	AnalyticsMetricBoxesDelivered AnalyticsMetric = "BOXES_DELIVERED"
+	// Recorded reputation balance, keeping the last value in each tick bucket.
+	AnalyticsMetricReputation AnalyticsMetric = "REPUTATION"
 	// On-time orders completed, counted at delivery tick.
 	AnalyticsMetricDeliveries AnalyticsMetric = "DELIVERIES"
 	// Orders completed after their deadline, counted at delivery tick.
@@ -495,7 +608,8 @@ const (
 	AnalyticsMetricOrdersCreated AnalyticsMetric = "ORDERS_CREATED"
 	// Cash paid by completed orders (on time and late), counted at delivery tick.
 	AnalyticsMetricDeliveryIncome AnalyticsMetric = "DELIVERY_INCOME"
-	// Cash fined for expired orders, as a positive spend magnitude.
+	// Cash actually charged for expired orders, clamped to the balance, as a
+	// positive spend magnitude.
 	AnalyticsMetricOrderFines AnalyticsMetric = "ORDER_FINES"
 	// Fleet upkeep paid, as a positive spend magnitude.
 	AnalyticsMetricUpkeepSpend AnalyticsMetric = "UPKEEP_SPEND"
@@ -506,6 +620,9 @@ const (
 )
 
 var AllAnalyticsMetric = []AnalyticsMetric{
+	AnalyticsMetricMoney,
+	AnalyticsMetricBoxesDelivered,
+	AnalyticsMetricReputation,
 	AnalyticsMetricDeliveries,
 	AnalyticsMetricLateDeliveries,
 	AnalyticsMetricExpiredOrders,
@@ -519,7 +636,7 @@ var AllAnalyticsMetric = []AnalyticsMetric{
 
 func (e AnalyticsMetric) IsValid() bool {
 	switch e {
-	case AnalyticsMetricDeliveries, AnalyticsMetricLateDeliveries, AnalyticsMetricExpiredOrders, AnalyticsMetricOrdersCreated, AnalyticsMetricDeliveryIncome, AnalyticsMetricOrderFines, AnalyticsMetricUpkeepSpend, AnalyticsMetricChargingSpend, AnalyticsMetricTowSpend:
+	case AnalyticsMetricMoney, AnalyticsMetricBoxesDelivered, AnalyticsMetricReputation, AnalyticsMetricDeliveries, AnalyticsMetricLateDeliveries, AnalyticsMetricExpiredOrders, AnalyticsMetricOrdersCreated, AnalyticsMetricDeliveryIncome, AnalyticsMetricOrderFines, AnalyticsMetricUpkeepSpend, AnalyticsMetricChargingSpend, AnalyticsMetricTowSpend:
 		return true
 	}
 	return false
@@ -646,6 +763,8 @@ const (
 	CashCategoryTows CashCategory = "TOWS"
 	// Vehicle purchases.
 	CashCategoryCarPurchases CashCategory = "CAR_PURCHASES"
+	// Vehicle sale proceeds.
+	CashCategoryCarSales CashCategory = "CAR_SALES"
 	// Builds and city upgrades.
 	CashCategoryBuilds CashCategory = "BUILDS"
 	// Anything that does not fit another bucket.
@@ -661,13 +780,14 @@ var AllCashCategory = []CashCategory{
 	CashCategoryCharging,
 	CashCategoryTows,
 	CashCategoryCarPurchases,
+	CashCategoryCarSales,
 	CashCategoryBuilds,
 	CashCategoryOther,
 }
 
 func (e CashCategory) IsValid() bool {
 	switch e {
-	case CashCategoryOpening, CashCategoryDeliveryIncome, CashCategoryRewards, CashCategoryOrderFines, CashCategoryUpkeep, CashCategoryCharging, CashCategoryTows, CashCategoryCarPurchases, CashCategoryBuilds, CashCategoryOther:
+	case CashCategoryOpening, CashCategoryDeliveryIncome, CashCategoryRewards, CashCategoryOrderFines, CashCategoryUpkeep, CashCategoryCharging, CashCategoryTows, CashCategoryCarPurchases, CashCategoryCarSales, CashCategoryBuilds, CashCategoryOther:
 		return true
 	}
 	return false
@@ -729,6 +849,8 @@ const (
 	CashKindTow CashKind = "TOW"
 	// Vehicle purchase.
 	CashKindCarPurchase CashKind = "CAR_PURCHASE"
+	// Vehicle sale proceeds.
+	CashKindCarSale CashKind = "CAR_SALE"
 	// Build or city upgrade purchase.
 	CashKindBuild CashKind = "BUILD"
 	// Reward or grant (achievement, opening bonus).
@@ -744,13 +866,14 @@ var AllCashKind = []CashKind{
 	CashKindCharging,
 	CashKindTow,
 	CashKindCarPurchase,
+	CashKindCarSale,
 	CashKindBuild,
 	CashKindGrant,
 }
 
 func (e CashKind) IsValid() bool {
 	switch e {
-	case CashKindOpening, CashKindDelivery, CashKindLateDelivery, CashKindOrderFine, CashKindUpkeep, CashKindCharging, CashKindTow, CashKindCarPurchase, CashKindBuild, CashKindGrant:
+	case CashKindOpening, CashKindDelivery, CashKindLateDelivery, CashKindOrderFine, CashKindUpkeep, CashKindCharging, CashKindTow, CashKindCarPurchase, CashKindCarSale, CashKindBuild, CashKindGrant:
 		return true
 	}
 	return false

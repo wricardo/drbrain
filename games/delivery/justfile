@@ -18,3 +18,7 @@ play *args:
 # Run the scripted bot and print a pacing table
 sim *args:
     go run ./cmd/drbrain sim {{args}}
+
+# Run the planning driver (the ceiling to read the sim against)
+perfect *args:
+    go run ./cmd/drbrain perfect {{args}}

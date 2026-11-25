@@ -119,11 +119,12 @@ const (
 	CashCharging     CashEntryKind = "charging"
 	CashTow          CashEntryKind = "tow"
 	CashCarPurchase  CashEntryKind = "car_purchase"
+	CashCarSale      CashEntryKind = "car_sale"
 	CashGrant        CashEntryKind = "grant"
 
-	// CashBuild is no longer written: city expansion is a scheduled growth
-	// stage, not a purchase. It stays so statements saved before that change
-	// keep their BUILD rows and category instead of silently becoming OTHER.
+	// CashBuild records player-bought chargers (BuyCharger). City expansion
+	// itself is a scheduled growth stage, not a purchase; older statements
+	// also keep their BUILD rows under this kind.
 	CashBuild CashEntryKind = "build"
 )
 
@@ -142,6 +143,7 @@ const (
 	CashCategoryCharging       CashCategory = "charging"
 	CashCategoryTows           CashCategory = "tows"
 	CashCategoryCarPurchases   CashCategory = "car_purchases"
+	CashCategoryCarSales       CashCategory = "car_sales"
 	CashCategoryBuilds         CashCategory = "builds"
 	CashCategoryOther          CashCategory = "other"
 )
@@ -167,6 +169,8 @@ func (k CashEntryKind) Category() CashCategory {
 		return CashCategoryTows
 	case CashCarPurchase:
 		return CashCategoryCarPurchases
+	case CashCarSale:
+		return CashCategoryCarSales
 	case CashBuild:
 		return CashCategoryBuilds
 	}
@@ -184,6 +188,7 @@ var cashCategoryOrder = []CashCategory{
 	CashCategoryCharging,
 	CashCategoryTows,
 	CashCategoryCarPurchases,
+	CashCategoryCarSales,
 	CashCategoryBuilds,
 	CashCategoryOther,
 	CashCategoryOpening,

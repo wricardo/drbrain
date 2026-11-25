@@ -262,10 +262,12 @@
     }
   },
   "orders": {
-    "max_active_orders": 10,
+    "max_active_orders": 0,
     "target_orders_per_customer": 0.6,
+    "target_growth_per_1000_ticks": 0.5,
     "ramp_ticks": 2400,
     "customer_cooldown_min_scale": 0.75,
+    "cooldown_decay_per_1000_ticks": 1,
     "min_spawn_gap_ticks": 12,
     "deadline_slack": 3.0,
     "deadline_slack_by_chapter": [
@@ -310,14 +312,12 @@
         "min_size": 5,
         "max_size": 10,
         "from_progress": 0.175,
-        "early_weight": 1,
         "weight": 35
       },
       {
         "min_size": 13,
         "max_size": 24,
         "from_progress": 0.3,
-        "early_weight": 1,
         "weight": 25
       },
       {
@@ -331,7 +331,9 @@
   "charging": {
     "depot_rate": 6,
     "charger_rate": 2,
-    "charger_price_per_tick": 1
+    "charger_price_per_tick": 1,
+    "charger_purchase_price": 150,
+    "max_purchased_chargers": 6
   },
   "fleet": {
     "upkeep_interval_ticks": 120,

@@ -137,6 +137,14 @@ type cityViewJSON struct {
 	Rows      []string `json:"rows"`
 }
 
+type chargingViewJSON struct {
+	DepotRate            int `json:"depotRate"`
+	ChargerRate          int `json:"chargerRate"`
+	ChargerPricePerTick  int `json:"chargerPricePerTick"`
+	ChargerPurchasePrice int `json:"chargerPurchasePrice"`
+	MaxPurchasedChargers int `json:"maxPurchasedChargers"`
+}
+
 type cityInfoJSON struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
@@ -240,6 +248,29 @@ func createCityAs(t *testing.T, env *testCityEnv, account, id, config string) ci
 func publishCityAs(t *testing.T, env *testCityEnv, account, id string, headers map[string]string) gqlResponse {
 	t.Helper()
 	return gqlAsHeaders(t, env.ts, account, headers, publishCityMutation, map[string]any{"id": id})
+}
+
+// TestCityViewExposesCharging proves a client can price a top-up and learn the
+// charger-buying cap from the view, without reading the map file. The builtin
+// city is the repo map, which sets $150 and 6.
+func TestCityViewExposesCharging(t *testing.T) {
+	env := newTestCityEnv(t, "", false)
+	res := gqlAs(t, env.ts, env.alice, `query { city(id: "city") { charging { depotRate chargerRate chargerPricePerTick chargerPurchasePrice maxPurchasedChargers } } }`, nil)
+	var detail struct {
+		City *struct {
+			Charging chargingViewJSON `json:"charging"`
+		}
+	}
+	if err := json.Unmarshal(res.Data, &detail); err != nil {
+		t.Fatalf("decode: %v (%s)", err, errText(res))
+	}
+	if detail.City == nil {
+		t.Fatalf("no city in %s", errText(res))
+	}
+	want := chargingViewJSON{DepotRate: 6, ChargerRate: 2, ChargerPricePerTick: 1, ChargerPurchasePrice: 150, MaxPurchasedChargers: 6}
+	if detail.City.Charging != want {
+		t.Fatalf("charging = %+v, want %+v", detail.City.Charging, want)
+	}
 }
 
 func TestCityMutationsRequireSignedIn(t *testing.T) {
@@ -752,10 +783,10 @@ func TestDraftCitySessionVisibility(t *testing.T) {
 	if res := read(env.alice, sid); len(res.Errors) > 0 {
 		t.Fatalf("owner session read: %v", res.Errors)
 	}
-	tick := gqlAs(t, env.ts, "", `mutation ($id: ID!, $t: String) { tick(id: $id, count: 1, ownerToken: $t) { tick } }`,
+	paused := gqlAs(t, env.ts, "", `mutation ($id: ID!, $t: String) { setSpeed(id: $id, speed: 0, ownerToken: $t) { tick } }`,
 		map[string]any{"id": sid, "t": ownerToken})
-	if len(tick.Errors) > 0 {
-		t.Fatalf("owner-token mutation on draft-city session: %v", tick.Errors)
+	if len(paused.Errors) > 0 {
+		t.Fatalf("owner-token mutation on draft-city session: %v", paused.Errors)
 	}
 	if ids := sessionIDs(t, gqlAs(t, env.ts, env.alice, `query { sessions { id } }`, nil)); !containsID(ids, sid) {
 		t.Fatal("owner's draft-city session missing from sessions")

@@ -76,6 +76,13 @@ type Car struct {
 	// Class is the copied catalogue entry (capacity, battery, step cost,
 	// price) so a car keeps the stats it was built with.
 	Class CarClassConfig
+	// PurchasePrice is what the player actually paid for this car, kept so a
+	// resale can return a share of that amount rather than the current list
+	// price. It is -1 for authored, granted and starter cars, which cost
+	// nothing and have no resale value. Saves written before this field
+	// existed decode as 0; ImportState backfills those from the car's purchase
+	// entry in the cash ledger, so a legacy bought car keeps its true price.
+	PurchasePrice int `json:"purchase_price,omitempty"`
 
 	// Pos is the car's current tile. Movement is one grid step per tick.
 	Pos Position
@@ -146,6 +153,31 @@ func (c *Car) State(city *City) CarState {
 // not stop charging. Full cars skip a charging tick and do not occupy a charge
 // slot.
 func (c *Car) Full() bool { return c.Battery >= c.Class.MaxBattery }
+
+// CarResalePercent is the share of the purchase price a player gets back when
+// selling a vehicle. The loss is the point: buying and flipping must not be a
+// money loop.
+const CarResalePercent = 70
+
+// PaidPrice is what the player paid, with free authored/starter cars reported
+// as 0 rather than the internal "not bought" sentinel.
+func (c *Car) PaidPrice() int {
+	if c.PurchasePrice < 0 {
+		return 0
+	}
+	return c.PurchasePrice
+}
+
+// SaleValue is the cash returned by selling this car: CarResalePercent of what
+// the player paid, rounded down to whole dollars. Starter, granted and legacy
+// cars with no recorded price are worth nothing: the class list price is not
+// evidence of a payment.
+func (c *Car) SaleValue() int {
+	if c.PurchasePrice <= 0 {
+		return 0
+	}
+	return c.PurchasePrice * CarResalePercent / 100
+}
 
 // Load is how many boxes the car is carrying right now.
 //
@@ -244,12 +276,13 @@ func NewCar(id, name, class string, pos Position, classes map[string]CarClassCon
 		cc.StepCost = 1
 	}
 	return &Car{
-		ID:        id,
-		Name:      name,
-		ClassName: class,
-		Class:     cc,
-		Pos:       pos,
-		Battery:   cc.MaxBattery,
+		ID:            id,
+		Name:          name,
+		ClassName:     class,
+		Class:         cc,
+		Pos:           pos,
+		Battery:       cc.MaxBattery,
+		PurchasePrice: -1, // authored/starter car until BuyCar records a price
 	}, nil
 }
 

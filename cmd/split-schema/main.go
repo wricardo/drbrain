@@ -132,6 +132,31 @@ func build(defs ast.DefinitionList, g merge.Game) (string, error) {
 		}
 	}
 
+	// A flat-mutation game's operations live on the unified root Mutation as
+	// namespace-prefixed fields (deliveryMoveCar); rebuild its own Mutation.
+	if g.FlatMutation {
+		var fields []*ast.FieldDefinition
+		for _, d := range defs {
+			if d.Name != "Mutation" {
+				continue
+			}
+			for _, f := range d.Fields {
+				rest := strings.TrimPrefix(f.Name, g.Namespace)
+				if rest == f.Name || rest == "" || !unicode.IsUpper(rune(rest[0])) {
+					continue
+				}
+				nf := cloneField(f)
+				nf.Name = lowerFirst(rest)
+				rewriteType(nf.Type, prefix, &usesTime)
+				rewriteArgs(nf, prefix, &usesTime)
+				fields = append(fields, nf)
+			}
+		}
+		if len(fields) > 0 {
+			mutation = &ast.Definition{Kind: ast.Object, Name: "Mutation", Fields: fields}
+		}
+	}
+
 	doc := &ast.SchemaDocument{Definitions: body}
 	if usesTime {
 		doc.Definitions = append(doc.Definitions, &ast.Definition{Kind: ast.Scalar, Name: "Time"})

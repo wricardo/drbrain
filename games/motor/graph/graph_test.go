@@ -227,7 +227,7 @@ func TestAdminGate(t *testing.T) {
 				builtin: map[string]bool{"existing": true},
 			}
 			ctx := withViewer(tc.ctx)
-			m := &mutationResolver{&Resolver{Service: fs, Admin: Admin{Key: tc.adminKey, AllowUnauthenticated: tc.allowOpen}}}
+			m := &mutationResolver{&Resolver{Service: fs, AdminPolicy: Admin{Key: tc.adminKey, AllowUnauthenticated: tc.allowOpen}}}
 
 			check := func(op string, err error) {
 				t.Helper()

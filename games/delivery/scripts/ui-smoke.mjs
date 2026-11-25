@@ -134,20 +134,24 @@ class Page {
 
 const sessionId = `smoke${Date.now()}`;
 const created = await gql(
-	`mutation ($id: ID, $seed: Int) { delivery { createSession(id: $id, seed: $seed) { session { id } ownerToken } } }`,
+	`mutation ($id: ID, $seed: Int) { deliveryCreateSession(id: $id, seed: $seed) { session { id } ownerToken } }`,
 	{ id: sessionId, seed: 12345 }
 );
-const ownerToken = created.delivery.createSession.ownerToken;
+const ownerToken = created.deliveryCreateSession.ownerToken;
 if (!ownerToken) throw new Error('createSession returned no ownerToken');
-// Pause so the screenshot is deterministic, then step so orders and movement
-// exist. (New sessions already start paused; explicit for clarity.)
+// Let the world run so orders and movement exist, then pause for the
+// screenshot. There is no manual tick: the clock is the only way to advance.
 await gql(
-	`mutation ($id: ID!, $ownerToken: String, $speed: Int!) { delivery { setSpeed(id: $id, ownerToken: $ownerToken, speed: $speed) { tick } } }`,
-	{ id: sessionId, ownerToken, speed: 0 }
+	`mutation ($id: ID!, $ownerToken: String, $speed: Int!) { deliverySetSpeed(id: $id, ownerToken: $ownerToken, speed: $speed) { tick } }`,
+	{ id: sessionId, ownerToken, speed: 4 }
 );
 await gql(
-	`mutation ($id: ID!, $ownerToken: String, $count: Int!) { delivery { tick(id: $id, ownerToken: $ownerToken, count: $count) { tick } } }`,
-	{ id: sessionId, ownerToken, count: 6 }
+	`mutation ($id: ID!, $ownerToken: String, $ticks: Int!) { deliveryWaitUntil(id: $id, ownerToken: $ownerToken, ticks: $ticks) { tick } }`,
+	{ id: sessionId, ownerToken, ticks: 6 }
+);
+await gql(
+	`mutation ($id: ID!, $ownerToken: String, $speed: Int!) { deliverySetSpeed(id: $id, ownerToken: $ownerToken, speed: $speed) { tick } }`,
+	{ id: sessionId, ownerToken, speed: 0 }
 );
 
 // --- launch chrome ---------------------------------------------------------
@@ -314,7 +318,14 @@ try {
 
 	// Focus the page body so keydown lands on the window listener.
 	await page.eval('document.body.focus()');
-	// A direction key now drives AND steps, so one keypress must move the car.
+	// The key queues a step; resume the clock from the UI so it applies.
+	await page.eval(`(() => {
+		const btn = [...document.querySelectorAll('button')].find(
+			(b) => (b.getAttribute('title') ?? '') === 'Run at 1× speed'
+		);
+		if (!btn) throw new Error('1x speed button not found');
+		btn.click();
+	})()`);
 	await page.send('Input.dispatchKeyEvent', {
 		type: 'keyDown',
 		key: 's',
@@ -322,10 +333,24 @@ try {
 		windowsVirtualKeyCode: 83
 	});
 	await page.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 's', code: 'KeyS' });
-	await sleep(600); // let the move+tick round trip and the UI re-render
+	const moved = await page.waitFor(`(() => {
+		const el =
+			document.querySelector('button[aria-label*=" car at "]') ||
+			document.querySelector('button[aria-label*=" cars at "]');
+		if (!el) return false;
+		const m = /at (\\d+),(\\d+)/.exec(el.getAttribute('aria-label') || '');
+		return !!m && (Number(m[1]) !== ${before[0]} || Number(m[2]) !== ${before[1]});
+	})()`, 4000);
+	await page.eval(`(() => {
+		const btn = [...document.querySelectorAll('button')].find((b) =>
+			/Pause the clock/.test(b.getAttribute('title') ?? '')
+		);
+		if (btn) btn.click();
+	})()`);
+	await sleep(200); // let the pause land and the UI re-render
 
 	const after = await carPos();
-	console.log('car position:', before, '->', after);
+	console.log('car position:', before, '->', after, moved ? '(moved)' : '(STALE)');
 
 	// --- fleet upkeep is visible, not just charged -------------------------
 	//
@@ -341,12 +366,13 @@ try {
 	const upkeepAfterMove = await upkeepChip();
 	console.log('upkeep chip after leaving depot:', upkeepAfterMove);
 
-	// --- live refresh: a tick from another client must reach this tab --------
+	// --- live refresh: an external clock change must reach this tab ----------
 	//
-	// The session stays paused here, which is exactly the case that used to
-	// freeze: the page only polled while the clock ran, so ticks stepped by the
-	// CLI, an agent or a second browser never showed up. Read the tick number
-	// from the header, step from outside, and expect the page to catch up.
+	// The session sits paused here, which is exactly the case that used to
+	// freeze: the page only polled while the clock ran, so movement driven by
+	// the CLI, an agent or a second browser never showed up. Read the tick
+	// number from the header, resume the clock from outside, and expect the
+	// page to catch up through the subscription.
 	const headerTick = () =>
 		page.eval(`(() => {
 			const m = /tick\\s*(\\d+)/i.exec(document.body.innerText);
@@ -355,54 +381,57 @@ try {
 
 	const tickBefore = await headerTick();
 	await gql(
-		`mutation ($id: ID!, $ownerToken: String, $count: Int!) { delivery { tick(id: $id, ownerToken: $ownerToken, count: $count) { tick } } }`,
-		{ id: sessionId, ownerToken, count: 3 }
+		`mutation ($id: ID!, $ownerToken: String, $speed: Int!) { deliverySetSpeed(id: $id, ownerToken: $ownerToken, speed: $speed) { tick } }`,
+		{ id: sessionId, ownerToken, speed: 4 }
 	);
 	const refreshOk = await page.waitFor(`(() => {
 		const m = /tick\\s*(\\d+)/i.exec(document.body.innerText);
 		return m && Number(m[1]) > ${tickBefore};
 	})()`, 4000);
+	await gql(
+		`mutation ($id: ID!, $ownerToken: String, $speed: Int!) { deliverySetSpeed(id: $id, ownerToken: $ownerToken, speed: $speed) { tick } }`,
+		{ id: sessionId, ownerToken, speed: 0 }
+	);
 	const tickAfter = await headerTick();
-	console.log('external tick while paused:', tickBefore, '->', tickAfter, refreshOk ? '(refreshed)' : '(STALE)');
+	console.log('external clock while paused:', tickBefore, '->', tickAfter, refreshOk ? '(refreshed)' : '(STALE)');
 
-	// --- touch path: the "Queue only" toggle stands in for Shift+arrow ------
+	// --- touch path: a D-pad press queues, the clock applies ---------------
 	//
-	// Shift+arrow is keyboard-only, so a touch player needs a control that
-	// queues without advancing the clock. Pressing a D-pad direction with the
-	// toggle on must leave the tick and the car where they were; "step" must
-	// then advance the tick and apply the queued move.
+	// There is no manual tick. Pressing a D-pad direction while paused must
+	// leave the tick and the car where they were; resuming the clock from the
+	// UI must then run the queued step and update the page.
 	const queueTickBefore = await headerTick();
 	const queuePosBefore = await carPos();
-	const pressToggle = () =>
-		page.eval(`(() => {
-			const toggle = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Queue only');
-			if (!toggle) throw new Error('Queue only toggle not found');
-			toggle.click();
-		})()`);
-	await pressToggle();
-	await sleep(100);
-	const queuePressed = await page.eval(`(() => {
-		const toggle = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Queue only');
-		return toggle ? toggle.getAttribute('aria-pressed') : null;
-	})()`);
 	await page.eval(`document.querySelector('button[aria-label="Move north"]').click()`);
 	await sleep(600);
 	const queueTickAfter = await headerTick();
 	const queuePosAfter = await carPos();
 	await page.eval(`(() => {
-		const btn = [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === 'step');
-		if (!btn) throw new Error('step button not found');
+		const btn = [...document.querySelectorAll('button')].find(
+			(b) => (b.getAttribute('title') ?? '') === 'Run at 1× speed'
+		);
+		if (!btn) throw new Error('1x speed button not found');
 		btn.click();
 	})()`);
-	await sleep(600);
-	const queueTickAfterStep = await headerTick();
-	const queuePosAfterStep = await carPos();
+	const moved = await page.waitFor(`(() => {
+		const m = /tick\\s*(\\d+)/i.exec(document.body.innerText);
+		return m && Number(m[1]) > ${queueTickBefore};
+	})()`, 4000);
+	await page.eval(`(() => {
+		const btn = [...document.querySelectorAll('button')].find((b) =>
+			/Pause the clock/.test(b.getAttribute('title') ?? '')
+		);
+		if (btn) btn.click();
+	})()`);
+	await sleep(200);
+	const queueTickAfterRun = await headerTick();
+	const queuePosAfterRun = await carPos();
 	console.log(
-		'queue-only report:',
+		'touch report:',
 		JSON.stringify({
-			pressed: queuePressed,
-			tick: [queueTickBefore, queueTickAfter, queueTickAfterStep],
-			position: [queuePosBefore, queuePosAfter, queuePosAfterStep]
+			moved,
+			tick: [queueTickBefore, queueTickAfter, queueTickAfterRun],
+			position: [queuePosBefore, queuePosAfter, queuePosAfterRun]
 		})
 	);
 
@@ -591,7 +620,7 @@ try {
 	// Best-effort session cleanup; the save file is harmless if this fails.
 	try {
 		await gql(
-			`mutation ($id: ID!, $ownerToken: String) { delivery { deleteSession(id: $id, ownerToken: $ownerToken) } }`,
+			`mutation ($id: ID!, $ownerToken: String) { deliveryDeleteSession(id: $id, ownerToken: $ownerToken) }`,
 			{ id: sessionId, ownerToken }
 		);
 	} catch {

@@ -351,7 +351,7 @@ func TestSessionAutosavesWhileRunning(t *testing.T) {
 	cfg.TickMS = 10
 	city.TickMS = 10
 	store := sessionstore.NewMemory(sessionstore.Options{})
-	s, err := newWithStore("auto1", city, cfg, "city", 7, store, "", "")
+	s, err := newWithStore("auto1", city, cfg, "city", 7, store, "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -388,7 +388,7 @@ func TestSessionAutosavesWhileRunning(t *testing.T) {
 func TestPausedSessionSavesOnPause(t *testing.T) {
 	city, cfg := testCity(t)
 	store := sessionstore.NewMemory(sessionstore.Options{})
-	s, err := newWithStore("auto2", city, cfg, "city", 8, store, "", "")
+	s, err := newWithStore("auto2", city, cfg, "city", 8, store, "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

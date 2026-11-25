@@ -14,8 +14,9 @@ import (
 //	   of every gate, so a player never starts in an empty world
 //	1. anti-dead-air — if nothing is live, nobody is carrying anything, and
 //	   MinSpawnGapTicks has elapsed, raise one immediately
-//	2. GATE 3 — the queue is below the demand target (visible customers)
-//	3. GATE 2 — the global cap MaxActiveOrders is not reached
+//	2. GATE 3 — the queue is below the demand target (visible customers plus
+//	   the unbounded TargetGrowthPer1000Ticks term)
+//	3. GATE 2 — a positive MaxActiveOrders is not reached (zero means no cap)
 //	4. GATE 1 — one site is drawn at random from those whose cooldown has
 //	   elapsed and that have no live order
 //
@@ -24,7 +25,8 @@ import (
 // sized by the visible customer population, not by the player's fleet: buying a
 // car must add throughput, not create the work that justifies itself. A growing
 // city adds customers on its own schedule, so the fleet has to catch up or
-// orders expire.
+// orders expire. Once the schedule ends, TargetGrowthPer1000Ticks keeps raising
+// the target so the queue does not settle at a constant depth.
 //
 // At most one order is raised per tick. The eligible sites are sorted by id and
 // the winner is picked with Roll(seed, tick, "customer", len), so a replay of
@@ -70,7 +72,9 @@ type spawnState struct {
 // fleet (or a big enough vehicle) to serve them before deadlines expire.
 //
 // The chapter floor keeps a very small map from going quiet after a growth
-// stage; MaxActiveOrders is still the hard ceiling.
+// stage; MaxActiveOrders is still the hard ceiling when the map sets one.
+// TargetGrowthPer1000Ticks is the only term that never settles, so a long
+// session keeps raising the bar after the last customer appears.
 func (w *World) targetActive() int {
 	ratio := w.ordersCfg.TargetOrdersPerCustomer
 	if ratio <= 0 {
@@ -91,6 +95,13 @@ func (w *World) targetActive() int {
 	if ch := w.Chapter(); (ch+1)/2 > target {
 		target = (ch + 1) / 2
 	}
+	// The unbounded term: after the schedule and ramp end, the queue target
+	// keeps rising with the clock. This is what stops a finished map from
+	// settling at round(visible × ratio) forever.
+	if g := w.ordersCfg.TargetGrowthPer1000Ticks; g > 0 {
+		target += int(float64(w.Tick) * g / 1000)
+	}
+	// A positive MaxActiveOrders stays a hard ceiling; zero means no cap.
 	if w.ordersCfg.MaxActiveOrders > 0 && target > w.ordersCfg.MaxActiveOrders {
 		target = w.ordersCfg.MaxActiveOrders
 	}
@@ -122,7 +133,7 @@ func (w *World) spawnOrders() {
 	if active >= w.targetActive() {
 		return
 	}
-	// GATE 2.
+	// GATE 2: only a positive cap binds; zero means the target is the bound.
 	if w.ordersCfg.MaxActiveOrders > 0 && active >= w.ordersCfg.MaxActiveOrders {
 		return
 	}
@@ -395,7 +406,9 @@ func (w *World) rollQuantity(cu Customer) int {
 
 // advanceCooldown pushes a customer's next eligibility forward by its own
 // interval plus jitter. Both are scaled by ramp progress, so order frequency
-// grows over the session instead of stepping at a chapter boundary.
+// grows over the session instead of stepping at a chapter boundary. After the
+// ramp, CooldownDecayPer1000Ticks keeps shaving the interval down to a 1-tick
+// floor; that is the arrival-rate half of the endless difficulty curve.
 func (w *World) advanceCooldown(cu Customer, item string) {
 	interval := cu.OrderIntervalTicks
 	if interval <= 0 {
@@ -407,6 +420,9 @@ func (w *World) advanceCooldown(cu Customer, item string) {
 	}
 	scale := 1 - (1-minScale)*w.Progress()
 	interval = int(float64(interval)*scale + 0.5)
+	if d := w.ordersCfg.CooldownDecayPer1000Ticks; d > 0 {
+		interval -= int(float64(w.Tick) * d / 1000)
+	}
 	if interval < 1 {
 		interval = 1
 	}

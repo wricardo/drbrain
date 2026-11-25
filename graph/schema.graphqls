@@ -582,6 +582,35 @@ type Delivery_CityView {
 	Standalone charging points (slower than a depot).
 	"""
 	chargers: [Delivery_PointView!]!
+	"""
+	The city's charging economy: rates, price and the charger-buying cap.
+	"""
+	charging: Delivery_ChargingView!
+}
+"""
+The city's charging table. Rates are battery units restored per tick.
+"""
+type Delivery_ChargingView {
+	"""
+	Battery restored per tick on a depot tile.
+	"""
+	depotRate: Int!
+	"""
+	Battery restored per tick on a standalone charger.
+	"""
+	chargerRate: Int!
+	"""
+	Default dollars for one full tick at a standalone charger. Zero is free.
+	"""
+	chargerPricePerTick: Int!
+	"""
+	Dollars buyCharger charges to place one charger. Zero is free.
+	"""
+	chargerPurchasePrice: Int!
+	"""
+	How many chargers may be bought in this city. Zero disables buying.
+	"""
+	maxPurchasedChargers: Int!
 }
 """
 The outcome of validateCity: valid means the JSON parses into a city; publishable means the
@@ -699,6 +728,16 @@ type Delivery_CarView {
 	car is not charging or the session has already been billed.
 	"""
 	chargeDue: Int!
+	"""
+	What the player actually paid for this car, in dollars. Zero for starter and
+	granted cars.
+	"""
+	purchasePrice: Int!
+	"""
+	Cash a sale would bank now: 70% of the purchase price, rounded down. Zero for
+	a car that cost nothing.
+	"""
+	resaleValue: Int!
 }
 """
 What a car is doing right now.
@@ -1104,6 +1143,10 @@ enum Delivery_CashKind {
 	"""
 	CAR_PURCHASE
 	"""
+	Vehicle sale proceeds.
+	"""
+	CAR_SALE
+	"""
 	Build or city upgrade purchase.
 	"""
 	BUILD
@@ -1149,6 +1192,10 @@ enum Delivery_CashCategory {
 	Vehicle purchases.
 	"""
 	CAR_PURCHASES
+	"""
+	Vehicle sale proceeds.
+	"""
+	CAR_SALES
 	"""
 	Builds and city upgrades.
 	"""
@@ -1222,40 +1269,192 @@ type Delivery_ItemCount {
 	count: Int!
 }
 """
-One balance point in a session's money-by-tick curve.
+One recorded world frame from the per-tick log. It is the compact state at a
+completed tick: the append-only cash and reputation statements and the event
+feed are stored separately and are not repeated here.
 """
-type Delivery_MoneyPoint {
+type Delivery_TickSnapshot {
 	"""
-	Tick of the sampled balance.
-	"""
-	tick: Int!
-	"""
-	Balance at that tick, in dollars.
-	"""
-	money: Int!
-}
-"""
-A session's money-by-tick series, read from the indexed delivery history
-projection. Points are downsampled to at most the requested maxPoints; when the
-window reaches the session's current tick, the last point is its current
-balance.
-"""
-type Delivery_MoneyHistory {
-	"""
-	Session the series belongs to.
+	Session this frame belongs to.
 	"""
 	sessionId: ID!
 	"""
-	City the session was created from.
+	Completed world tick.
 	"""
-	cityId: ID!
+	tick: Int!
 	"""
-	Sampled balances, oldest first.
+	When the frame was written (UTC).
 	"""
-	points: [Delivery_MoneyPoint!]!
+	recordedAt: Time!
+	"""
+	Spendable balance at this tick.
+	"""
+	money: Int!
+	"""
+	Lifetime income at this tick.
+	"""
+	moneyEarned: Int!
+	"""
+	Standing score at this tick.
+	"""
+	reputation: Float!
+	"""
+	On-time deliveries completed by this tick.
+	"""
+	deliveries: Int!
+	"""
+	Late deliveries completed by this tick.
+	"""
+	lateDeliveries: Int!
+	"""
+	Orders that expired undelivered by this tick.
+	"""
+	expiredOrders: Int!
+	"""
+	Orders raised by this tick.
+	"""
+	ordersSpawned: Int!
+	"""
+	Current run of consecutive on-time deliveries.
+	"""
+	onTimeStreak: Int!
+	"""
+	Paid tows taken by this tick.
+	"""
+	tows: Int!
+	"""
+	Lifetime fleet upkeep paid by this tick.
+	"""
+	upkeepPaid: Int!
+	"""
+	Lifetime tow fees paid by this tick.
+	"""
+	towFees: Int!
+	"""
+	Delivered orders per item by this tick, in item-id order.
+	"""
+	deliveriesByItem: [Delivery_ItemCount!]!
+	"""
+	The fleet at this tick.
+	"""
+	cars: [Delivery_TickCar!]!
+	"""
+	Every order raised by this tick.
+	"""
+	orders: [Delivery_TickOrder!]!
 }
 """
-One value at a tick in a non-money analytics series.
+One car inside a recorded frame.
+"""
+type Delivery_TickCar {
+	"""
+	Stable car id.
+	"""
+	id: ID!
+	"""
+	Display name.
+	"""
+	name: String!
+	"""
+	Catalogue class key the car was built from.
+	"""
+	className: String!
+	"""
+	Tile column.
+	"""
+	x: Int!
+	"""
+	Tile row.
+	"""
+	y: Int!
+	"""
+	Charge at this tick.
+	"""
+	battery: Int!
+	"""
+	Order ids on board.
+	"""
+	cargo: [ID!]!
+	"""
+	Open paid-charging bill at this tick.
+	"""
+	chargeDue: Int!
+	"""
+	Direction queued for the next tick, or null when standing still.
+	"""
+	queuedMove: Delivery_Direction
+	"""
+	Why the last attempted move failed, or empty.
+	"""
+	lastReject: String!
+	"""
+	Successful moves taken by this tick.
+	"""
+	stepsTaken: Int!
+}
+"""
+One order inside a recorded frame.
+"""
+type Delivery_TickOrder {
+	"""
+	Stable order id.
+	"""
+	id: ID!
+	"""
+	Item code.
+	"""
+	item: String!
+	"""
+	Boxes requested.
+	"""
+	quantity: Int!
+	"""
+	Authored pickup site.
+	"""
+	kitchenId: String!
+	"""
+	Authored dropoff site.
+	"""
+	customerId: String!
+	"""
+	Car allowed to collect it, or empty while pending.
+	"""
+	assignedCar: String!
+	"""
+	Lifecycle position at this tick.
+	"""
+	state: Delivery_OrderState!
+	"""
+	Tick the order was raised.
+	"""
+	createdTick: Int!
+	"""
+	On-time cutoff.
+	"""
+	deadlineTick: Int!
+	"""
+	Tick it was delivered, or zero.
+	"""
+	deliveredTick: Int!
+	"""
+	Full on-time payment.
+	"""
+	reward: Int!
+	"""
+	Cash fine on expiry.
+	"""
+	penalty: Int!
+	"""
+	Amount actually paid, or zero.
+	"""
+	paid: Int!
+	"""
+	True when the delivery landed after the deadline.
+	"""
+	late: Boolean!
+}
+"""
+One value at a tick in an analytics series.
 """
 type Delivery_ValuePoint {
 	"""
@@ -1263,13 +1462,13 @@ type Delivery_ValuePoint {
 	"""
 	tick: Int!
 	"""
-	Sample value: cumulative boxes for itemsHistory, reputation for
-	reputationHistory.
+	Sample value: a count or cash amount for metricHistory, the balance for
+	MONEY and REPUTATION.
 	"""
 	value: Float!
 }
 """
-One session's downsampled items-or-reputation series.
+One session's downsampled analytics series.
 """
 type Delivery_ValueSeries {
 	"""
@@ -1289,6 +1488,19 @@ type Delivery_ValueSeries {
 Cumulative operational series available from metricHistory.
 """
 enum Delivery_AnalyticsMetric {
+	"""
+	Cash balance from every checking-account movement, keeping the last
+	balance in each tick bucket.
+	"""
+	MONEY
+	"""
+	Cumulative boxes delivered from done orders, at delivery tick.
+	"""
+	BOXES_DELIVERED
+	"""
+	Recorded reputation balance, keeping the last value in each tick bucket.
+	"""
+	REPUTATION
 	"""
 	On-time orders completed, counted at delivery tick.
 	"""
@@ -1310,7 +1522,8 @@ enum Delivery_AnalyticsMetric {
 	"""
 	DELIVERY_INCOME
 	"""
-	Cash fined for expired orders, as a positive spend magnitude.
+	Cash actually charged for expired orders, clamped to the balance, as a
+	positive spend magnitude.
 	"""
 	ORDER_FINES
 	"""
@@ -1427,6 +1640,62 @@ type Delivery_ClosureView {
 	maxY: Int!
 }
 """
+Administrative operations that bypass ownership checks. This object can only be
+reached through `Mutation.deliveryAdmin(key)`, which validates the admin key, so
+every field here is already authorized.
+"""
+type Delivery_Admin {
+	"""
+	Delete a save permanently, bypassing the owner-token/account check of
+	`deleteSession`. Also drops the live session and its tick log. Idempotent:
+	an unknown or already-deleted id returns true.
+	"""
+	deleteSession(id: ID!): Boolean!
+	"""
+	Bulk delete. Bypasses ownership like `deleteSession`. Ids are processed in
+	order and deduplicated; `deleted` holds the ids that had a live or stored
+	session, `missing` those that had neither. At most 500 ids per call.
+	A failure part-way through is an error, and the ids already deleted stay
+	deleted.
+	"""
+	deleteSessions(ids: [ID!]!): Delivery_AdminDeleteResult!
+	"""
+	Set the clock multiplier to 0 without an owner token, then return the
+	snapshot. Loading a saved session already starts it paused, so this is
+	mainly for stopping a live session left running. Idempotent.
+	"""
+	pauseSession(id: ID!): Delivery_Snapshot!
+	"""
+	Save the session if it is live, then drop it from memory. A save that
+	exists only on disk is a no-op: there is nothing to flush. Idempotent.
+	"""
+	evictSession(id: ID!): Boolean!
+	"""
+	Persist one live session now. A session that is not in memory is a no-op
+	success; it has nothing newer to write.
+	"""
+	saveSession(id: ID!): Boolean!
+	"""
+	Persist every live session, returning how many were flushed. Stored-only
+	saves are untouched. Fails on the first save error.
+	"""
+	saveAll: Int!
+}
+"""
+Outcome of an admin bulk delete. Iteration order matches the input with
+duplicates removed.
+"""
+type Delivery_AdminDeleteResult {
+	"""
+	Ids that had a live or stored session and are now deleted.
+	"""
+	deleted: [ID!]!
+	"""
+	Ids that had neither a live nor a stored session.
+	"""
+	missing: [ID!]!
+}
+"""
 Delivery reads: cities, saves, live snapshots, event deltas and money history.
 Reads are public; mutations are creator-only.
 """
@@ -1485,38 +1754,50 @@ type Delivery_Query {
 		mine: Boolean
 	): [Delivery_SessionSummary!]!
 	"""
-	Money-by-tick series for up to 20 delivery sessions, read from the indexed
-	delivery history projection rather than from live sessions or Prometheus.
-	
-	Omitted ids select the most recently created sessions. cityId narrows the
-	set. fromTick/toTick are inclusive; an omitted toTick runs to each session's
-	current tick. maxPoints downsamples each series into tick buckets and keeps
-	the last balance in each bucket, so a long session stays bounded.
-	"""
-	moneyHistory(ids: [ID!], cityId: ID, fromTick: Int, toTick: Int, maxPoints: Int = 500): [Delivery_MoneyHistory!]!
-	"""
-	Cumulative boxes delivered at each tick, from done orders in the indexed
-	delivery history projection. Expired and open orders do not contribute.
-	Same window and downsampling contract as moneyHistory.
-	"""
-	itemsHistory(ids: [ID!], cityId: ID, fromTick: Int, toTick: Int, maxPoints: Int = 500): [Delivery_ValueSeries!]!
-	"""
-	Recorded reputation at each tick. Sessions saved before the reputation
-	ledger existed return one current point until their next reputation change.
-	Same window and downsampling contract as moneyHistory.
-	"""
-	reputationHistory(ids: [ID!], cityId: ID, fromTick: Int, toTick: Int, maxPoints: Int = 500): [Delivery_ValueSeries!]!
-	"""
-	Cumulative operational metrics at each tick, read from the indexed delivery
-	history projection. Every metric is monotonic from tick 0 except the
-	spending series, which accumulate spend as a positive magnitude.
-	Same window and downsampling contract as moneyHistory.
+	One analytics series at each tick, read from the indexed delivery history
+	projection. MONEY and REPUTATION keep the last balance in each tick bucket;
+	BOXES_DELIVERED and the operational counters accumulate a running total.
+	Spending metrics accumulate spend as a positive magnitude. Every metric uses
+	the same window and downsampling contract.
 	"""
 	metricHistory(metric: Delivery_AnalyticsMetric!, ids: [ID!], cityId: ID, fromTick: Int, toTick: Int, maxPoints: Int = 500): [Delivery_ValueSeries!]!
 	"""
 	One session's full state. Loads the PostgreSQL row when not in memory.
 	"""
 	session(id: ID!): Delivery_Snapshot!
+	"""
+	Per-tick world frames recorded for one session, oldest first. This is the
+	replayable tick log, not the save: the authoritative latest state is
+	`session`. Frames carry cars, orders, balances and counters; the append-only
+	cash/reputation statements and the event feed are not repeated per frame.
+	
+	`fromTick`/`toTick` are inclusive tick bounds. `afterTick` is a keyset
+	cursor returning only frames with tick > afterTick, which makes forward
+	paging exact and cheap: pass the last returned tick. `limit` defaults to 100
+	and is capped at 500. An unknown session or a disabled tick log returns an
+	empty list.
+	"""
+	tickSnapshots(sessionId: ID!,
+		"""
+		First tick to include, inclusive. Omitted means no lower bound.
+		"""
+		fromTick: Int
+
+		"""
+		Last tick to include, inclusive. Omitted means no upper bound.
+		"""
+		toTick: Int
+
+		"""
+		Keyset cursor: keep ticks strictly greater than this value.
+		"""
+		afterTick: Int
+
+		"""
+		Frames to return, capped at 500.
+		"""
+		limit: Int = 100
+	): [Delivery_TickSnapshot!]!
 	"""
 	A window of the city around one car, for cheap agent polling.
 	
@@ -1539,123 +1820,6 @@ type Delivery_Query {
 	false. Reads stay public, so this decides between playing and spectating.
 	"""
 	canPlaySession(id: ID!, ownerToken: String): Boolean!
-}
-"""
-Delivery writes and lifecycle. Every session mutation requires the creator's
-owner token or the owning account; reads stay public.
-"""
-type Delivery_Mutation {
-	"""
-	Start a new city. Every argument is optional; a seed makes it reproducible, and an omitted id is
-	generated. cityId selects the city config to snapshot (omitted = the default city); the
-	session keeps that snapshot, so later city edits never change a running game. A signed-in
-	creator's session belongs to their account. The response carries the secret ownerToken,
-	needed to change the session later, so keep it.
-	"""
-	createSession(id: ID, seed: Int, cityId: ID): Delivery_CreateSessionResult!
-	"""
-	Queue one step for one car by appending it to that car's movement queue.
-	Does NOT advance the clock: queued steps run one per tick, in order, so a
-	client can preload a route and then call tick. A rejected step (wall,
-	battery, closure, traffic) is spent, not retried. At most 64 steps may be
-	queued per car; the overflow is LIMIT_REACHED. Only the session's
-	creator may change it: pass the ownerToken from createSession, or be signed in
-	to the account that owns the session (FORBIDDEN otherwise). Sessions created
-	before owner tokens stay open.
-	"""
-	moveCar(id: ID!, carId: ID!, direction: Delivery_Direction!, ownerToken: String): Delivery_Snapshot!
-	"""
-	Drop a car's entire movement queue, including the step for the next tick.
-	Use it to replan: a preloaded route must not keep steering after traffic or
-	closures change. Creator-only, as moveCar.
-	"""
-	clearMoves(id: ID!, carId: ID!, ownerToken: String): Delivery_Snapshot!
-	"""
-	Advance the world manually. Useful when paused. Creator-only, as moveCar.
-	"""
-	tick(id: ID!, count: Int! = 1, ownerToken: String): Delivery_Snapshot!
-	"""
-	Wait for the running clock to reach a target tick, then return that snapshot.
-	Pass exactly one of `tick` (an absolute tick in the future) or `ticks` (a
-	count from the tick when the call starts, at most 1000). The clock must be
-	running: a paused session never advances, so the call fails with
-	INVALID_ARGUMENT instead of hanging, and pausing while it waits ends it the
-	same way. Creator-only, as moveCar.
-	"""
-	waitUntil(id: ID!, tick: Int, ticks: Int, ownerToken: String): Delivery_Snapshot!
-	"""
-	Set the clock multiplier. 0 pauses. Creator-only, as moveCar.
-	"""
-	setSpeed(id: ID!, speed: Int!, ownerToken: String): Delivery_Snapshot!
-	"""
-	Point an order at a car; refreshes its deadline from that car's position.
-	Creator-only, as moveCar.
-	"""
-	assignOrder(id: ID!, orderId: ID!, carId: ID!, ownerToken: String): Delivery_Snapshot!
-	"""
-	Remove the car from an order, returning it to PENDING. Creator-only, as moveCar.
-	"""
-	unassignOrder(id: ID!, orderId: ID!, ownerToken: String): Delivery_Snapshot!
-	"""
-	Buy a vehicle at a depot. Creator-only, as moveCar.
-	"""
-	buyCar(id: ID!, className: String!, depotId: String! = "d_main", ownerToken: String): Delivery_Snapshot!
-	"""
-	Return a stranded car to its nearest depot for a fee. Creator-only, as moveCar.
-	"""
-	towCar(id: ID!, carId: ID!, ownerToken: String): Delivery_Snapshot!
-	"""
-	Persist the save to PostgreSQL now. Creator-only, as moveCar.
-	"""
-	saveSession(id: ID!, ownerToken: String): Delivery_Snapshot!
-	"""
-	Name this save for the player. Creator-only, as moveCar. A blank name clears
-	it and every view falls back to the city name. Persisted immediately, so the
-	name survives a restart and shows in the session list before the save loads.
-	"""
-	renameSession(id: ID!, displayName: String!, ownerToken: String): Delivery_Snapshot!
-	"""
-	Save, then drop from memory. The next read rehydrates. Creator-only: evicting
-	someone else's session would stop their clock.
-	"""
-	evictSession(id: ID!, ownerToken: String): Boolean!
-	"""
-	Delete the save row permanently. Needs the ownerToken (or the owning account)
-	even for a guest session; only a save created before owner tokens is open.
-	"""
-	deleteSession(id: ID!, ownerToken: String): Boolean!
-	"""
-	Attaches guest sessions of this browser to the signed-in account; each needs
-	its owner token (up to 100 per call). UNAUTHENTICATED when not signed in.
-	"""
-	claimSessions(claims: [Delivery_SessionClaimInput!]!): [Delivery_SessionClaimResult!]!
-	"""
-	Saves a new DRAFT city owned by the signed-in player (UNAUTHENTICATED otherwise). config is
-	the raw city JSON; it is stored as written, so validateCity and publishCity can report every
-	problem.
-	"""
-	createCity(id: ID!, config: String!): Delivery_CityView!
-	"""
-	Replaces the caller's own city and puts it back into DRAFT. Only the owner may edit a
-	community city; shipped and legacy unowned cities need X-Admin-Key.
-	"""
-	updateCity(id: ID!, config: String!): Delivery_CityView!
-	"""
-	Publishes a draft after the full startup validation (grid, districts, orders and
-	reachability). Only the owner may do it, and an invalid city is refused with
-	INVALID_ARGUMENT.
-	"""
-	publishCity(id: ID!): Delivery_CityView!
-	"""
-	Removes a city. Community cities need their owner; shipped and legacy unowned cities need
-	X-Admin-Key. Sessions already started keep their snapshot.
-	"""
-	deleteCity(id: ID!): Boolean!
-	"""
-	Checks raw city JSON and stores nothing. Signed-in players only. valid means it parses into a
-	city; publishable means publishCity would accept it.
-	"""
-	validateCity(config: String!): Delivery_CityValidationResult!
 }
 """
 A step direction. UP decreases y, RIGHT increases x, DOWN increases y, LEFT
@@ -2159,6 +2323,22 @@ type Mazes_CreateSessionResult {
 	ownerToken: String!
 }
 """
+Administrative operations that bypass ownership checks. This object can only be
+reached through `Mutation.mazes.admin(key)`, which validates the admin key, so
+every field here is already authorized.
+"""
+type Mazes_Admin {
+	"""
+	Delete a session permanently, bypassing the owner-token/account check of
+	`deleteSession`. Idempotent: an unknown or already-deleted id returns true.
+	"""
+	deleteSession(id: ID!): Boolean!
+	"""
+	Rename any session for moderation, bypassing the owner check.
+	"""
+	renameSession(id: ID!, displayName: String!): Mazes_Session!
+}
+"""
 Mazes reads: catalogue, one session and the save list. Reads are public.
 """
 type Mazes_Query {
@@ -2256,6 +2436,13 @@ type Mazes_Mutation {
 	gate: a map is publishable when it is structurally valid and the finish can be reached.
 	"""
 	validateMap(map: Mazes_MapInput!): Mazes_MapValidationResult!
+	"""
+	Administrative operations. `key` must match ADMIN_API_KEY (the same secret
+	X-Admin-Key carries); a wrong or missing key is FORBIDDEN and never reveals
+	whether a session exists. When no key is configured, the explicit
+	ALLOW_UNAUTHENTICATED_ADMIN opt-out still applies.
+	"""
+	admin(key: String!): Mazes_Admin!
 }
 """
 One tape slot. EMPTY is a no-op that still spends a step.
@@ -3038,6 +3225,23 @@ type Motor_SessionClaimResult {
 	status: Motor_ClaimStatus!
 }
 """
+Administrative operations that bypass ownership checks. This object can only be
+reached through `Mutation.motorProgramming.admin(key)`, which validates the
+admin key, so every field here is already authorized.
+"""
+type Motor_Admin {
+	"""
+	Delete a session permanently, bypassing the owner-token/account check of
+	`deleteSession` and stopping any running program. Idempotent: an unknown or
+	already-deleted id returns true.
+	"""
+	deleteSession(id: ID!): Boolean!
+	"""
+	Stop a running program without an owner token. Idempotent.
+	"""
+	pauseSession(id: ID!): Motor_Session!
+}
+"""
 Motor reads: maps, sessions, leaderboards and a player's runs.
 """
 type Motor_Query {
@@ -3149,6 +3353,13 @@ type Motor_Mutation {
 	Removes a map. Community maps need their owner; shipped and legacy unowned maps need X-Admin-Key.
 	"""
 	deleteMap(id: ID!): Boolean!
+	"""
+	Administrative operations. `key` must match ADMIN_API_KEY (the same secret
+	X-Admin-Key carries); a wrong or missing key is FORBIDDEN and never reveals
+	whether a session exists. When no key is configured, the explicit
+	ALLOW_UNAUTHENTICATED_ADMIN opt-out still applies.
+	"""
+	admin(key: String!): Motor_Admin!
 }
 """
 One grid step. UP decreases y, DOWN increases y, LEFT decreases x, RIGHT
@@ -4386,7 +4597,139 @@ type Query {
 }
 type Mutation {
 	account: Global_Mutation!
-	delivery: Delivery_Mutation!
+	"""
+	Start a new city. Every argument is optional; a seed makes it reproducible, and an omitted id is
+	generated. cityId selects the city config to snapshot (omitted = the default city); the
+	session keeps that snapshot, so later city edits never change a running game. A signed-in
+	creator's session belongs to their account. The response carries the secret ownerToken,
+	needed to change the session later, so keep it.
+	"""
+	deliveryCreateSession(id: ID, seed: Int, cityId: ID): Delivery_CreateSessionResult!
+	"""
+	Queue one step for one car by appending it to that car's movement queue.
+	Does NOT advance the clock: queued steps run one per tick, in order, so a
+	client can preload a route for the running clock. A rejected step (wall,
+	battery, closure, traffic) is spent, not retried. At most 64 steps may be
+	queued per car; the overflow is LIMIT_REACHED. Only the session's
+	creator may change it: pass the ownerToken from createSession, or be signed in
+	to the account that owns the session (FORBIDDEN otherwise). Sessions created
+	before owner tokens stay open.
+	
+	Returns that car only, with the step appended to `queuedMoves`. Position and
+	battery are unchanged until the clock ticks, and `lastReject` still reports
+	the previous tick's move, not this call. Read the world with `session`.
+	"""
+	deliveryMoveCar(id: ID!, carId: ID!, direction: Delivery_Direction!, ownerToken: String): Delivery_CarView!
+	"""
+	Drop a car's entire movement queue, including the step for the next tick.
+	Use it to replan: a preloaded route must not keep steering after traffic or
+	closures change. Creator-only, as moveCar. Returns that car, with empty
+	`queuedMove`/`queuedMoves`.
+	"""
+	deliveryClearMoves(id: ID!, carId: ID!, ownerToken: String): Delivery_CarView!
+	"""
+	Wait for the running clock to reach a target tick, then return that snapshot.
+	Pass exactly one of `tick` (an absolute tick in the future) or `ticks` (a
+	count from the tick when the call starts, at most 1000). The clock must be
+	running: a paused session never advances, so the call fails with
+	INVALID_ARGUMENT instead of hanging, and pausing while it waits ends it the
+	same way. Creator-only, as moveCar.
+	"""
+	deliveryWaitUntil(id: ID!, tick: Int, ticks: Int, ownerToken: String): Delivery_Snapshot!
+	"""
+	Set the clock multiplier. 0 pauses. Creator-only, as moveCar.
+	"""
+	deliverySetSpeed(id: ID!, speed: Int!, ownerToken: String): Delivery_Snapshot!
+	"""
+	Point an order at a car; refreshes its deadline from that car's position.
+	Creator-only, as moveCar.
+	"""
+	deliveryAssignOrder(id: ID!, orderId: ID!, carId: ID!, ownerToken: String): Delivery_Snapshot!
+	"""
+	Remove the car from an order, returning it to PENDING. Creator-only, as moveCar.
+	"""
+	deliveryUnassignOrder(id: ID!, orderId: ID!, ownerToken: String): Delivery_Snapshot!
+	"""
+	Buy a vehicle at a depot. Creator-only, as moveCar.
+	"""
+	deliveryBuyCar(id: ID!, className: String!, depotId: String! = "d_main", ownerToken: String): Delivery_Snapshot!
+	"""
+	Buy a standalone charger and build it on tile (x, y) in one step. The tile
+	must be a revealed open road or ground tile, free of buildings and cars, and
+	reachable from a depot. Price and limit come from the city config
+	(charging.charger_purchase_price, charging.max_purchased_chargers; 0 max disables). Creator-only, as
+	moveCar.
+	"""
+	deliveryBuyCharger(id: ID!, x: Int!, y: Int!, ownerToken: String): Delivery_Snapshot!
+	"""
+	Sell a vehicle and bank 70% of what it originally cost. Any open charging
+	bill is settled first. Refused while the car is carrying cargo or has an order
+	assigned, so an order can never be orphaned. Creator-only, as moveCar.
+	"""
+	deliverySellCar(id: ID!, carId: ID!, ownerToken: String): Delivery_Snapshot!
+	"""
+	Return a stranded car to its nearest depot for a fee. Creator-only, as moveCar.
+	"""
+	deliveryTowCar(id: ID!, carId: ID!, ownerToken: String): Delivery_Snapshot!
+	"""
+	Persist the save to PostgreSQL now. Creator-only, as moveCar.
+	"""
+	deliverySaveSession(id: ID!, ownerToken: String): Delivery_Snapshot!
+	"""
+	Name this save for the player. Creator-only, as moveCar. A blank name clears
+	it and every view falls back to the city name. Persisted immediately, so the
+	name survives a restart and shows in the session list before the save loads.
+	"""
+	deliveryRenameSession(id: ID!, displayName: String!, ownerToken: String): Delivery_Snapshot!
+	"""
+	Save, then drop from memory. The next read rehydrates. Creator-only: evicting
+	someone else's session would stop their clock.
+	"""
+	deliveryEvictSession(id: ID!, ownerToken: String): Boolean!
+	"""
+	Delete the save row permanently. Needs the ownerToken (or the owning account)
+	even for a guest session; only a save created before owner tokens is open.
+	"""
+	deliveryDeleteSession(id: ID!, ownerToken: String): Boolean!
+	"""
+	Attaches guest sessions of this browser to the signed-in account; each needs
+	its owner token (up to 100 per call). UNAUTHENTICATED when not signed in.
+	"""
+	deliveryClaimSessions(claims: [Delivery_SessionClaimInput!]!): [Delivery_SessionClaimResult!]!
+	"""
+	Saves a new DRAFT city owned by the signed-in player (UNAUTHENTICATED otherwise). config is
+	the raw city JSON; it is stored as written, so validateCity and publishCity can report every
+	problem.
+	"""
+	deliveryCreateCity(id: ID!, config: String!): Delivery_CityView!
+	"""
+	Replaces the caller's own city and puts it back into DRAFT. Only the owner may edit a
+	community city; shipped and legacy unowned cities need X-Admin-Key.
+	"""
+	deliveryUpdateCity(id: ID!, config: String!): Delivery_CityView!
+	"""
+	Publishes a draft after the full startup validation (grid, districts, orders and
+	reachability). Only the owner may do it, and an invalid city is refused with
+	INVALID_ARGUMENT.
+	"""
+	deliveryPublishCity(id: ID!): Delivery_CityView!
+	"""
+	Removes a city. Community cities need their owner; shipped and legacy unowned cities need
+	X-Admin-Key. Sessions already started keep their snapshot.
+	"""
+	deliveryDeleteCity(id: ID!): Boolean!
+	"""
+	Checks raw city JSON and stores nothing. Signed-in players only. valid means it parses into a
+	city; publishable means publishCity would accept it.
+	"""
+	deliveryValidateCity(config: String!): Delivery_CityValidationResult!
+	"""
+	Administrative operations. `key` must match DELIVERY_ADMIN_API_KEY (the
+	same secret X-Admin-Key carries); a wrong or missing key is FORBIDDEN and
+	never reveals whether a save exists. When no key is configured, the
+	explicit local-development opt-out still applies.
+	"""
+	deliveryAdmin(key: String!): Delivery_Admin!
 	mazes: Mazes_Mutation!
 	motorProgramming: Motor_Mutation!
 	tesla: Tesla_Mutation!

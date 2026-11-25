@@ -27,6 +27,7 @@ func CityOnlyView(city *engine.City) CityView {
 		Customers: []PointView{},
 		Depots:    []PointView{},
 		Chargers:  []PointView{},
+		Charging:  chargingView(city.Charging),
 	}
 	for _, k := range city.Kitchens {
 		v.Kitchens = append(v.Kitchens, PointView{ID: k.ID, Name: k.Name, X: k.Pos.X, Y: k.Pos.Y})

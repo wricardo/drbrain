@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sort"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -345,21 +344,21 @@ const (
 	// MaxHistorySessions bounds one analytics read to at most this many
 	// sessions; the GraphQL layer validates it before calling.
 	MaxHistorySessions = 20
-	// maxMoneyHistorySessions bounds one analytics query so a client cannot
-	// ask for an unbounded overlay.
-	maxMoneyHistorySessions = MaxHistorySessions
+	// maxHistorySessions bounds one analytics query so a client cannot ask
+	// for an unbounded overlay.
+	maxHistorySessions = MaxHistorySessions
 	// maxVisibleHistoryScan is the row budget when visibility filtering is on:
 	// extra rows are scanned so hidden draft sessions cannot starve the
-	// displayed overlay, which stays capped at maxMoneyHistorySessions.
-	maxVisibleHistoryScan = maxMoneyHistorySessions * 10
-	// maxMoneyHistoryPoints bounds one session's downsampled series.
-	maxMoneyHistoryPoints = 2000
+	// displayed overlay, which stays capped at maxHistorySessions.
+	maxVisibleHistoryScan = maxHistorySessions * 10
+	// maxHistoryPoints bounds one session's downsampled series.
+	maxHistoryPoints = 2000
 )
 
-// MoneyHistoryRequest selects sessions and a tick window for analytics.
+// SeriesRequest selects sessions and a tick window for analytics.
 // FromTick and ToTick are pointers so an explicit zero is distinguishable from
 // "unset".
-type MoneyHistoryRequest struct {
+type SeriesRequest struct {
 	IDs       []string
 	CityID    string
 	FromTick  *int64
@@ -371,238 +370,15 @@ type MoneyHistoryRequest struct {
 	Visible func(cityID string) bool
 }
 
-// MoneyHistory is one session's downsampled money-by-tick series.
-type MoneyHistory struct {
-	SessionID string
-	CityID    string
-	Points    []MoneyPoint
-}
-
-// MoneyPoint is one balance at a tick.
-type MoneyPoint struct {
-	Tick  int64
-	Money int
-}
-
-// MoneyHistory reads the indexed projection, never the session payloads or
-// live session tickers. Points are bucketed across the requested window, and
-// each bucket keeps the last balance in it; the current balance is appended
-// when the window reaches the session's current tick.
-func (m *Manager) MoneyHistory(ctx context.Context, req MoneyHistoryRequest) ([]MoneyHistory, error) {
-	if m.history == nil {
-		return nil, fmt.Errorf("money history: history store is unavailable")
-	}
-	ctx, cancel := context.WithTimeout(ctx, historyTimeout)
-	defer cancel()
-
-	ids, err := validHistoryIDs(req.IDs)
-	if err != nil {
-		return nil, err
-	}
-	maxPoints := req.MaxPoints
-	if maxPoints <= 0 {
-		maxPoints = 500
-	}
-	if maxPoints < 10 {
-		maxPoints = 10
-	}
-	if maxPoints > maxMoneyHistoryPoints {
-		maxPoints = maxMoneyHistoryPoints
-	}
-
-	var idsArg []string
-	if len(ids) > 0 {
-		idsArg = ids
-	}
-	limit := maxMoneyHistorySessions
-	if req.Visible != nil {
-		limit = maxVisibleHistoryScan
-	}
-	rows, err := m.history.pool.Query(ctx, `
-SELECT id, city_id, tick, money
-FROM delivery_sessions
-WHERE ($1::text[] IS NULL OR id = ANY($1))
-  AND ($2 = '' OR city_id = $2)
-ORDER BY created_at DESC
-LIMIT $3`, idsArg, req.CityID, limit)
-	if err != nil {
-		return nil, fmt.Errorf("money history: select sessions: %w", err)
-	}
-	type summary struct {
-		id    string
-		city  string
-		tick  int64
-		money int
-	}
-	var summaries []summary
-	for rows.Next() {
-		var s summary
-		if err := rows.Scan(&s.id, &s.city, &s.tick, &s.money); err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("money history: scan session: %w", err)
-		}
-		if req.Visible != nil && !req.Visible(s.city) {
-			continue
-		}
-		summaries = append(summaries, s)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, fmt.Errorf("money history: select sessions: %w", err)
-	}
-	rows.Close()
-	if len(summaries) > maxMoneyHistorySessions {
-		summaries = summaries[:maxMoneyHistorySessions]
-	}
-	if len(summaries) == 0 {
-		return []MoneyHistory{}, nil
-	}
-
-	// Preserve the caller's order when ids are explicit; otherwise keep the
-	// newest-created order from the query.
-	ordered := summaries
-	if len(ids) > 0 {
-		byID := make(map[string]summary, len(summaries))
-		for _, s := range summaries {
-			byID[s.id] = s
-		}
-		ordered = make([]summary, 0, len(ids))
-		for _, id := range ids {
-			if s, ok := byID[id]; ok {
-				ordered = append(ordered, s)
-			}
-		}
-		if len(ordered) == 0 {
-			return []MoneyHistory{}, nil
-		}
-	}
-
-	var hi int64
-	for _, s := range ordered {
-		if s.tick > hi {
-			hi = s.tick
-		}
-	}
-	lo := int64(0)
-	if req.FromTick != nil {
-		lo = *req.FromTick
-		if lo < 0 {
-			lo = 0
-		}
-	}
-	if req.ToTick != nil && *req.ToTick < hi {
-		hi = *req.ToTick
-	}
-	if hi < lo {
-		return []MoneyHistory{}, nil
-	}
-	span := hi - lo
-	width := int64(1)
-	if span > int64(maxPoints) {
-		width = (span + int64(maxPoints) - 1) / int64(maxPoints)
-	}
-	lo = (lo / width) * width
-
-	sessionIDs := make([]string, 0, len(ordered))
-	for _, s := range ordered {
-		sessionIDs = append(sessionIDs, s.id)
-	}
-	points := map[string][]MoneyPoint{}
-	rows, err = m.history.pool.Query(ctx, `
-SELECT session_id,
-       (tick / $2) * $2 AS tick_bucket,
-       (array_agg(balance ORDER BY tick DESC, seq DESC))[1] AS money
-FROM delivery_cash_entries
-WHERE session_id = ANY($1)
-  AND tick >= $3
-  AND tick <= $4
-GROUP BY session_id, (tick / $2) * $2
-ORDER BY session_id, tick_bucket`, sessionIDs, width, lo, hi)
-	if err != nil {
-		return nil, fmt.Errorf("money history: select points: %w", err)
-	}
-	for rows.Next() {
-		var id string
-		var p MoneyPoint
-		if err := rows.Scan(&id, &p.Tick, &p.Money); err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("money history: scan point: %w", err)
-		}
-		points[id] = append(points[id], p)
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, fmt.Errorf("money history: select points: %w", err)
-	}
-	rows.Close()
-
-	anchors := map[string]int{}
-	rows, err = m.history.pool.Query(ctx, `
-SELECT DISTINCT ON (session_id) session_id, balance
-FROM delivery_cash_entries
-WHERE session_id = ANY($1)
-  AND tick <= $2
-ORDER BY session_id, tick DESC, seq DESC`, sessionIDs, lo)
-	if err != nil {
-		return nil, fmt.Errorf("money history: select anchors: %w", err)
-	}
-	for rows.Next() {
-		var id string
-		var money int
-		if err := rows.Scan(&id, &money); err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("money history: scan anchor: %w", err)
-		}
-		anchors[id] = money
-	}
-	if err := rows.Err(); err != nil {
-		rows.Close()
-		return nil, fmt.Errorf("money history: select anchors: %w", err)
-	}
-	rows.Close()
-
-	out := make([]MoneyHistory, 0, len(ordered))
-	for _, s := range ordered {
-		series := points[s.id]
-		if series == nil {
-			series = []MoneyPoint{}
-		}
-		if anchor, ok := anchors[s.id]; ok {
-			if len(series) == 0 || series[0].Tick > lo {
-				series = append([]MoneyPoint{{Tick: lo, Money: anchor}}, series...)
-			}
-		} else if len(series) == 0 || series[0].Tick > lo {
-			// No cash movement had happened by lo, so the balance was zero.
-			series = append([]MoneyPoint{{Tick: lo, Money: 0}}, series...)
-		}
-		if req.ToTick == nil || *req.ToTick >= s.tick {
-			if len(series) == 0 || series[len(series)-1].Tick < s.tick {
-				series = append(series, MoneyPoint{Tick: s.tick, Money: s.money})
-			}
-		}
-		sort.SliceStable(series, func(i, j int) bool { return series[i].Tick < series[j].Tick })
-		deduped := series[:0]
-		for _, p := range series {
-			if n := len(deduped); n > 0 && deduped[n-1].Tick == p.Tick {
-				deduped[n-1] = p
-				continue
-			}
-			deduped = append(deduped, p)
-		}
-		out = append(out, MoneyHistory{SessionID: s.id, CityID: s.city, Points: deduped})
-	}
-	return out, nil
-}
-
 func validHistoryIDs(ids []string) ([]string, error) {
-	if len(ids) > maxMoneyHistorySessions {
-		return nil, fmt.Errorf("money history: at most %d sessions per query", maxMoneyHistorySessions)
+	if len(ids) > maxHistorySessions {
+		return nil, fmt.Errorf("history: at most %d sessions per query", maxHistorySessions)
 	}
 	seen := make(map[string]bool, len(ids))
 	out := make([]string, 0, len(ids))
 	for _, id := range ids {
 		if !ValidID(id) {
-			return nil, fmt.Errorf("money history: invalid session id %q", id)
+			return nil, fmt.Errorf("history: invalid session id %q", id)
 		}
 		if seen[id] {
 			continue

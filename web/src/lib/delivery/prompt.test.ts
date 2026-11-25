@@ -45,7 +45,7 @@ describe('buildSessionPrompt', () => {
 		expect(p).toContain('unassignOrder');
 		expect(p).toContain('moveCar');
 		expect(p).toContain('clearMoves');
-		expect(p).toContain('`tick(id, count: Int = 1');
+		expect(p).toContain('waitUntil');
 		expect(p).toContain('setSpeed');
 		expect(p).toContain('towCar');
 		expect(p).toContain('buyCar');

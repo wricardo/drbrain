@@ -45,22 +45,27 @@ func requireViewer(ctx context.Context) (*account.Account, error) {
 	return nil, prefixedCodedErr("unauthenticated", codeUnauthenticated, "sign in first")
 }
 
-// adminAuthorized reports whether the request carries the delivery admin key.
-// With no key configured, the explicit local-development opt-out is the only
-// way to authorize an admin operation.
-func (r *Resolver) adminAuthorized(ctx context.Context) bool {
+// adminKeyMatches reports whether key is this resolver's admin secret. With no
+// key configured, the explicit local-development opt-out is the only way to
+// authorize an admin operation.
+func (r *Resolver) adminKeyMatches(key string) bool {
 	if r.AdminKey == "" {
 		return r.AllowUnauthenticatedAdmin
 	}
-	req := auth.RequestFrom(ctx)
-	if req == nil {
-		return false
-	}
 	// Compare fixed-length digests so the configured key's length is not
 	// leaked through timing.
-	got := sha256.Sum256([]byte(req.Header.Get("X-Admin-Key")))
+	got := sha256.Sum256([]byte(key))
 	want := sha256.Sum256([]byte(r.AdminKey))
 	return subtle.ConstantTimeCompare(got[:], want[:]) == 1
+}
+
+// adminAuthorized reports whether the request carries the delivery admin key.
+func (r *Resolver) adminAuthorized(ctx context.Context) bool {
+	req := auth.RequestFrom(ctx)
+	if req == nil {
+		return r.adminKeyMatches("")
+	}
+	return r.adminKeyMatches(req.Header.Get("X-Admin-Key"))
 }
 
 // requireAdmin returns a FORBIDDEN error unless adminAuthorized. Sign-in is

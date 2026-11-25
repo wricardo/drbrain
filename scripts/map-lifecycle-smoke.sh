@@ -119,7 +119,7 @@ cleanup() {
 		'mutation($id:ID!,$t:String!){ mazes { deleteSession(id:$id,ownerToken:$t) } }' \
 		"$(jq -n --arg id "$MAZES_SESSION" --arg t "$MAZES_OWNER" '{id:$id,t:$t}')" >/dev/null 2>&1 || true
 	[ -n "$CITY_SESSION" ] && gql "$TOKEN_A" \
-		'mutation($id:ID!,$t:String!){ delivery { deleteSession(id:$id,ownerToken:$t) } }' \
+		'mutation($id:ID!,$t:String!){ deliveryDeleteSession(id:$id,ownerToken:$t) }' \
 		"$(jq -n --arg id "$CITY_SESSION" --arg t "$CITY_OWNER" '{id:$id,t:$t}')" >/dev/null 2>&1 || true
 	[ -n "$CREATED_TESLA" ] && gql "$TOKEN_A" \
 		'mutation($n:String!){ tesla { deleteMap(name:$n){ message } } }' \
@@ -128,7 +128,7 @@ cleanup() {
 		'mutation($id:ID!){ mazes { deleteMap(id:$id) } }' \
 		"$(jq -n --arg id "$MAZES_ID" '{id:$id}')" >/dev/null 2>&1 || true
 	[ -n "$CREATED_CITY" ] && gql "$TOKEN_A" \
-		'mutation($id:ID!){ delivery { deleteCity(id:$id) } }' \
+		'mutation($id:ID!){ deliveryDeleteCity(id:$id) }' \
 		"$(jq -n --arg id "$CITY_ID" '{id:$id}')" >/dev/null 2>&1 || true
 }
 TESLA_ID=$tesla_id
@@ -251,13 +251,13 @@ echo "smoke: mazes lifecycle ok (session $MAZES_SESSION)"
 CITY_CONFIG=$(cat "$DELIVERY_FIXTURE")
 city_vars=$(jq -n --arg id "$city_id" --arg c "$CITY_CONFIG" '{id:$id,c:$c}')
 
-resp=$(gql "" 'mutation($id:ID!,$c:String!){ delivery { createCity(id:$id,config:$c){ id status } } }' "$city_vars")
+resp=$(gql "" 'mutation($id:ID!,$c:String!){ deliveryCreateCity(id:$id,config:$c){ id status } }' "$city_vars")
 check_code "delivery guest create" "$resp" UNAUTHENTICATED
 
-resp=$(gql "$TOKEN_A" 'mutation($id:ID!,$c:String!){ delivery { createCity(id:$id,config:$c){ id name status ownedByMe } } }' "$city_vars")
+resp=$(gql "$TOKEN_A" 'mutation($id:ID!,$c:String!){ deliveryCreateCity(id:$id,config:$c){ id name status ownedByMe } }' "$city_vars")
 check_ok "delivery createCity" "$resp"
 CREATED_CITY=1
-assert_jq "delivery createCity draft" "$resp" '.data.delivery.createCity.status=="DRAFT" and .data.delivery.createCity.ownedByMe==true'
+assert_jq "delivery createCity draft" "$resp" '.data.deliveryCreateCity.status=="DRAFT" and .data.deliveryCreateCity.ownedByMe==true'
 
 resp=$(gql "$TOKEN_A" 'query { delivery { cities { id name status ownedByMe } } }')
 check_ok "delivery A cities" "$resp"
@@ -267,15 +267,15 @@ resp=$(gql "$TOKEN_B" 'query { delivery { cities { id name status ownedByMe } } 
 check_ok "delivery B cities" "$resp"
 assert_jq "delivery B cannot see A draft" "$resp" --arg id "$city_id" '[.data.delivery.cities[] | select(.id==$id)] | length==0'
 
-resp=$(gql "$TOKEN_B" 'mutation($id:ID!,$c:String!){ delivery { updateCity(id:$id,config:$c){ id } } }' "$city_vars")
+resp=$(gql "$TOKEN_B" 'mutation($id:ID!,$c:String!){ deliveryUpdateCity(id:$id,config:$c){ id } }' "$city_vars")
 check_code_any "delivery B update" "$resp" "FORBIDDEN NOT_FOUND"
-resp=$(gql "$TOKEN_B" 'mutation($id:ID!){ delivery { deleteCity(id:$id) } }' "$(jq -n --arg id "$city_id" '{id:$id}')")
+resp=$(gql "$TOKEN_B" 'mutation($id:ID!){ deliveryDeleteCity(id:$id) }' "$(jq -n --arg id "$city_id" '{id:$id}')")
 check_code_any "delivery B delete" "$resp" "FORBIDDEN NOT_FOUND"
 
-resp=$(gql "$TOKEN_A" 'mutation($id:ID!){ delivery { publishCity(id:$id){ id status } } }' "$(jq -n --arg id "$city_id" '{id:$id}')")
+resp=$(gql "$TOKEN_A" 'mutation($id:ID!){ deliveryPublishCity(id:$id){ id status } }' "$(jq -n --arg id "$city_id" '{id:$id}')")
 check_ok "delivery publish" "$resp"
-assert_jq "delivery published" "$resp" '.data.delivery.publishCity.status=="PUBLISHED"'
-resp=$(gql "$TOKEN_B" 'mutation($id:ID!){ delivery { publishCity(id:$id){ id } } }' "$(jq -n --arg id "$city_id" '{id:$id}')")
+assert_jq "delivery published" "$resp" '.data.deliveryPublishCity.status=="PUBLISHED"'
+resp=$(gql "$TOKEN_B" 'mutation($id:ID!){ deliveryPublishCity(id:$id){ id } }' "$(jq -n --arg id "$city_id" '{id:$id}')")
 check_code "delivery B publish" "$resp" FORBIDDEN
 
 resp=$(gql "$TOKEN_B" 'query { delivery { cities { id name status ownedByMe } } }')
@@ -286,10 +286,10 @@ resp=$(gql "$TOKEN_A" 'query($id:ID!){ delivery { cityConfig(id:$id) } }' "$(jq 
 check_ok "delivery cityConfig" "$resp"
 assert_jq "delivery cityConfig JSON" "$resp" '(.data.delivery.cityConfig | fromjson | .name) == "Harbor"'
 
-resp=$(gql "$TOKEN_A" 'mutation($id:ID!){ delivery { createSession(cityId:$id){ session { id } ownerToken } } }' "$(jq -n --arg id "$city_id" '{id:$id}')")
+resp=$(gql "$TOKEN_A" 'mutation($id:ID!){ deliveryCreateSession(cityId:$id){ session { id } ownerToken } }' "$(jq -n --arg id "$city_id" '{id:$id}')")
 check_ok "delivery createSession" "$resp"
-CITY_SESSION=$(printf '%s' "$resp" | jq -r '.data.delivery.createSession.session.id')
-CITY_OWNER=$(printf '%s' "$resp" | jq -r '.data.delivery.createSession.ownerToken')
+CITY_SESSION=$(printf '%s' "$resp" | jq -r '.data.deliveryCreateSession.session.id')
+CITY_OWNER=$(printf '%s' "$resp" | jq -r '.data.deliveryCreateSession.ownerToken')
 [ -n "$CITY_SESSION" ] && [ "$CITY_SESSION" != "null" ] || fail "delivery session id missing"
 echo "smoke: delivery lifecycle ok (session $CITY_SESSION)"
 

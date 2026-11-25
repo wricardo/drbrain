@@ -63,7 +63,7 @@ func Complexity() generated.ComplexityRoot {
 	c.Motor_Mutation.ClaimSessions = func(child int, claims []*motormodel.SessionClaimInput) int {
 		return safeMul(child, len(claims)) + 1
 	}
-	c.Delivery_Mutation.ClaimSessions = func(child int, claims []*deliverymodel.SessionClaimInput) int {
+	c.Mutation.DeliveryClaimSessions = func(child int, claims []*deliverymodel.SessionClaimInput) int {
 		return safeMul(child, len(claims)) + 1
 	}
 	c.Delivery_Query.Sessions = func(child int, _ *deliverymodel.SessionSort, limit *int, _ *time.Time, _ *string, _ *bool) int {

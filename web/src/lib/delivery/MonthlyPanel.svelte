@@ -20,6 +20,7 @@
 		CHARGING: 'Charging',
 		TOWS: 'Tows',
 		CAR_PURCHASES: 'Car purchases',
+		CAR_SALES: 'Car sales',
 		BUILDS: 'City builds',
 		OTHER: 'Other'
 	};

@@ -1,9 +1,11 @@
 package session
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -44,31 +46,53 @@ type CityCatalog interface {
 
 // Manager owns the live sessions and their durable store.
 type Manager struct {
-	catalog CityCatalog
-	store   sessionstore.Store
-	history *historyWriter
+	catalog   CityCatalog
+	store     sessionstore.Store
+	history   *historyWriter
+	snapshots *tickSnapshotRecorder
 
 	mu       sync.RWMutex
 	sessions map[string]*Session
+}
+
+// ManagerOptions tunes optional delivery infrastructure. The zero value is the
+// historical behaviour: no tick snapshots are recorded.
+type ManagerOptions struct {
+	// TickSnapshots is how many per-tick frames to retain per session. Zero
+	// disables the tick log entirely; positive values bound each session's
+	// rows to that many newest ticks.
+	TickSnapshots int
 }
 
 // NewManager creates a manager backed by catalog and the shared PostgreSQL
 // session store. Each session snapshots the city it selects; the catalogue is
 // only consulted at creation and when rehydrating a save.
 func NewManager(catalog CityCatalog, pool *pgxpool.Pool) (*Manager, error) {
+	return NewManagerWithOptions(catalog, pool, ManagerOptions{})
+}
+
+// NewManagerWithOptions is NewManager with optional per-tick snapshots.
+func NewManagerWithOptions(catalog CityCatalog, pool *pgxpool.Pool, opts ManagerOptions) (*Manager, error) {
 	if catalog == nil {
 		return nil, fmt.Errorf("city catalog is required")
+	}
+	if opts.TickSnapshots < 0 {
+		return nil, fmt.Errorf("tick snapshot retention must not be negative")
 	}
 	store, err := sessionstore.Open(sessionstore.Options{Pool: pool, Game: "delivery"})
 	if err != nil {
 		return nil, err
 	}
-	return &Manager{
+	m := &Manager{
 		catalog:  catalog,
 		store:    store,
 		history:  newHistoryWriter(pool),
 		sessions: map[string]*Session{},
-	}, nil
+	}
+	if opts.TickSnapshots > 0 {
+		m.snapshots = newTickSnapshotRecorder(pool, opts.TickSnapshots)
+	}
+	return m, nil
 }
 
 // Create starts a new session with the given id (or a random one when empty),
@@ -115,7 +139,7 @@ func (m *Manager) Create(id string, seed uint64, accountID, cityID string) (*Ses
 	if err != nil {
 		return nil, "", err
 	}
-	s, err := newWithStore(id, city, cfg, cityID, seed, m.store, accountID, hash)
+	s, err := newWithStore(id, city, cfg, cityID, seed, m.store, accountID, hash, m.snapshots)
 	if err != nil {
 		return nil, "", err
 	}
@@ -235,7 +259,7 @@ func (m *Manager) load(id string) (*Session, error) {
 		return nil, fmt.Errorf("session %s city %q: %w", id, cityID, err)
 	}
 	s, err := newWithStore(id, city, cfg, cityID, p.World.Seed, m.store,
-		sanitizeAccountID(p.AccountID), sanitizeHash(p.OwnerHash))
+		sanitizeAccountID(p.AccountID), sanitizeHash(p.OwnerHash), m.snapshots)
 	if err != nil {
 		return nil, err
 	}
@@ -632,7 +656,59 @@ func (m *Manager) Delete(id string) error {
 	if err := m.store.Delete(id); err != nil && !errors.Is(err, sessionstore.ErrNotFound) {
 		return fmt.Errorf("delete save: %w", err)
 	}
+	// The tick log has no foreign key to the save (a session ticks before its
+	// first save), so removing the save must remove its frames too.
+	if err := m.snapshots.deleteSession(id); err != nil {
+		slog.Default().Warn("delivery tick snapshot: delete", "session", id, "err", err)
+	}
 	return nil
+}
+
+// LiveCount is the number of sessions currently resident in memory.
+func (m *Manager) LiveCount() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.sessions)
+}
+
+// DeleteMany deletes each id and reports which had a live or stored session.
+// Ids are processed in input order; the caller dedupes them.
+//
+// Existence is a snapshot taken before any delete, so a session created
+// concurrently between the snapshot and its delete can be reported missing
+// while still being deleted here. A store failure returns before anything is
+// deleted.
+func (m *Manager) DeleteMany(ids []string) (deleted, missing []string, err error) {
+	live := make(map[string]bool, len(m.sessions))
+	m.mu.RLock()
+	for id := range m.sessions {
+		live[id] = true
+	}
+	m.mu.RUnlock()
+
+	metas, err := m.store.List()
+	if err != nil {
+		return nil, nil, fmt.Errorf("list saves: %w", err)
+	}
+	stored := make(map[string]bool, len(metas))
+	for _, meta := range metas {
+		stored[meta.ID] = true
+	}
+
+	deleted = make([]string, 0, len(ids))
+	missing = make([]string, 0)
+	for _, id := range ids {
+		existed := live[id] || stored[id]
+		if err := m.Delete(id); err != nil {
+			return deleted, missing, err
+		}
+		if existed {
+			deleted = append(deleted, id)
+		} else {
+			missing = append(missing, id)
+		}
+	}
+	return deleted, missing, nil
 }
 
 // DeleteByCity destroys every delivery session created on cityID, live or
@@ -712,7 +788,19 @@ func (m *Manager) Close() error {
 	for _, s := range list {
 		s.Close()
 	}
-	return err
+	// Sessions are stopped, so no more frames can arrive; this drains what is
+	// queued and stops the writer goroutine.
+	return errors.Join(err, m.snapshots.Close())
+}
+
+// TickSnapshots returns one page of retained per-tick frames for a session,
+// oldest first. It returns ErrSnapshotsDisabled when the tick log is not
+// configured.
+func (m *Manager) TickSnapshots(ctx context.Context, id string, q TickSnapshotQuery) ([]TickSnapshot, error) {
+	if !ValidID(id) {
+		return nil, fmt.Errorf("invalid session id %q", id)
+	}
+	return m.snapshots.Load(ctx, id, q)
 }
 
 // Summary is the list-view of a session: what a save picker shows.

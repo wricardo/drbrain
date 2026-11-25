@@ -165,30 +165,97 @@ func botStep(w *engine.World) {
 		_ = w.AssignOrder(o.ID, car.ID)
 	}
 
-	// 3. Drive each car toward its current goal.
+	// 3. Drive each car toward its current goal. A head-on pair (each wants the
+	// tile the other stands on) can never resolve by waiting: the engine refuses
+	// a swap, so both re-queue the same refused step forever. Measured on seed
+	// 1: a scooter and a van locked head-on in a one-lane street for 2000+
+	// ticks, the fleet never grew past two cars and 155 of 184 expiries were
+	// unclaimed. One of the pair steps aside.
 	for _, c := range w.Cars {
 		if c.State(w.City) == engine.CarStranded {
 			continue
 		}
-		goal, ok := carGoal(w, c)
-		if !ok {
+		step := driveStep(w, c)
+		if step == "" {
 			continue
 		}
-		// Battery planning over the WHOLE remaining route, not just the next
-		// leg. The failure this fixes: a car reaches the kitchen on fumes,
-		// picks up automatically, then cannot possibly reach the customer, so
-		// it strands holding cargo and the order expires in transit. Charging
-		// up first is what a competent player would do.
-		if !canCompleteRoute(w, c, goal) {
-			if stop := bestChargeStop(w, c); stop != nil {
-				goal = *stop
-			}
+		if side, ok := headOnSidestep(w, c, step); ok {
+			step = side
 		}
-		step := nextStepToward(w, c.Pos, goal)
-		if step != "" {
-			_ = w.QueueMove(c.ID, step)
+		_ = w.QueueMove(c.ID, step)
+	}
+}
+
+// driveStep is the direction the car would queue this tick, or "" for none.
+func driveStep(w *engine.World, c *engine.Car) engine.Direction {
+	goal, ok := carGoal(w, c)
+	if !ok {
+		return ""
+	}
+	// Battery planning over the WHOLE remaining route, not just the next
+	// leg. The failure this fixes: a car reaches the kitchen on fumes,
+	// picks up automatically, then cannot possibly reach the customer, so
+	// it strands holding cargo and the order expires in transit. Charging
+	// up first is what a competent player would do.
+	if !canCompleteRoute(w, c, goal) {
+		if stop := bestChargeStop(w, c); stop != nil {
+			goal = *stop
 		}
 	}
+	return nextStepToward(w, c.Pos, goal)
+}
+
+// headOnSidestep returns a step aside when c's step runs into a car that wants
+// c's tile, and it is c's turn to yield. The car carrying less yields (ties:
+// the later id), so a loaded car keeps its route; if the preferred yielder has
+// nowhere to go the other one steps aside instead. A pair with no free
+// neighbour tile on either side stays locked; a tow is the engine's escape for
+// that and is not spent here.
+func headOnSidestep(w *engine.World, c *engine.Car, step engine.Direction) (engine.Direction, bool) {
+	next, ok := c.Pos.Neighbour(step)
+	if !ok {
+		return "", false
+	}
+	var other *engine.Car
+	for _, o := range w.Cars {
+		if o != c && o.Pos == next {
+			other = o
+			break
+		}
+	}
+	if other == nil {
+		return "", false
+	}
+	back := driveStep(w, other)
+	if back == "" {
+		return "", false
+	}
+	if p, ok := other.Pos.Neighbour(back); !ok || p != c.Pos {
+		return "", false
+	}
+	mine, hasMine := sidestep(w, c, next)
+	if !hasMine {
+		return "", false
+	}
+	if _, hasTheirs := sidestep(w, other, c.Pos); hasTheirs {
+		lc, lo := len(c.Cargo), len(other.Cargo)
+		if lc > lo || (lc == lo && c.ID < other.ID) {
+			return "", false
+		}
+	}
+	return mine, true
+}
+
+// sidestep picks a neighbour of c with room that is not avoid.
+func sidestep(w *engine.World, c *engine.Car, avoid engine.Position) (engine.Direction, bool) {
+	for _, d := range engine.AllDirections {
+		n, ok := c.Pos.Neighbour(d)
+		if !ok || n == avoid || !w.RouteWalkable(n) || !w.HasRoom(n) {
+			continue
+		}
+		return d, true
+	}
+	return "", false
 }
 
 // canCompleteRoute reports whether the car can reach goal and then still get
@@ -260,6 +327,17 @@ func carGoal(w *engine.World, c *engine.Car) (engine.Position, bool) {
 	for _, o := range w.OpenOrders() {
 		if o.State == engine.OrderAssigned && o.AssignedCar == c.ID {
 			if k, ok := findKitchen(w, o.KitchenID); ok {
+				// Pickup fires when a car steps ONTO the kitchen tile, not when
+				// an order is assigned to a car already standing there (the
+				// engine's rule: assignment alone must not complete work). The
+				// bot used to assign to the nearest car, often the one parked
+				// on the kitchen, and then sat still until the order expired.
+				// Step off; the next tick the goal is the kitchen again.
+				if k.Pos == c.Pos {
+					if p, ok := vacateStep(w, c); ok {
+						return p, true
+					}
+				}
 				return k.Pos, true
 			}
 		}
@@ -285,17 +363,36 @@ func carGoal(w *engine.World, c *engine.Car) (engine.Position, bool) {
 	// battery at the kitchen, which looked like a pacing collapse but was the
 	// driver never asking it to charge.
 	if c.BatteryPct() < 99 {
-		// A charger another car has already taken is not a valid goal: queueing
-		// at it would burn the tick driving into a tile that is full.
-		for _, tile := range w.NearestChargers(c.Pos, 4) {
-			if tile == c.Pos || !w.HasRoom(tile) {
-				continue
-			}
-			return tile, true
-		}
-		// No free charger, but already parked on one: stay and charge.
+		// Already standing on a charging tile: stay and charge. Looking for
+		// another charger here used to skip the car's own tile and send it to a
+		// different one, so an idle car never finished charging where it stood
+		// (measured: 1136 of 1136 idle-on-charger car-ticks over 3000 ticks
+		// pointed the car away).
 		if w.City.ChargingAt(c.Pos) {
 			return engine.Position{}, false
+		}
+		// A charger another car has already taken is not a valid goal: queueing
+		// at it would burn the tick driving into a tile that is full. Nor is one
+		// the battery cannot reach: the old pick took the first free charger
+		// whatever its distance, and idle cars ran dry on the way (stranded at 0
+		// battery 2 to 6 tiles short, the main source of tows). With no free
+		// charger in range, aim at the nearest reachable one and wait beside it.
+		var reachableFull *engine.Position
+		for _, tile := range w.NearestChargers(c.Pos, 4) {
+			d := w.RouteDistance(c.Pos, tile)
+			if d < 0 || d > c.Battery {
+				continue
+			}
+			if w.HasRoom(tile) {
+				return tile, true
+			}
+			if reachableFull == nil {
+				t := tile
+				reachableFull = &t
+			}
+		}
+		if reachableFull != nil {
+			return *reachableFull, true
 		}
 		// Nothing to charge on and nothing to do. Head back to the depot rather
 		// than sleeping in the road: with a car capacity per tile, an idle car in
@@ -354,7 +451,9 @@ func vacateStep(w *engine.World, c *engine.Car) (engine.Position, bool) {
 // It does NOT detour around cars, and that is the important decision here. The
 // engine refuses a move into a full tile but keeps the queued direction, so a
 // blocked car simply tries the same step again next tick — it waits, and waiting
-// is free. Two alternatives were measured on the shipped map, 3000 ticks:
+// is free. Two alternatives were measured on the shipped map, 3000 ticks, on an
+// older engine and bot (not re-run; the wait-behind driver now gives 325
+// delivered, 14 expired, 17 tows, rep 5.00 on the default seed):
 //
 //	wait behind traffic (this)       250 delivered,  49 expired,  0 tows, rep 4.83
 //	detour, budget on driven route    79 delivered, 177 expired, 34 tows
@@ -385,6 +484,9 @@ func nearestFreeCar(w *engine.World, o *engine.Order) *engine.Car {
 		if !c.SpaceFor(o.Boxes()) || c.State(w.City) == engine.CarStranded {
 			continue
 		}
+		if !canServe(w, c, k.Pos, o) {
+			continue
+		}
 		if carBusy(w, c) {
 			continue
 		}
@@ -397,6 +499,45 @@ func nearestFreeCar(w *engine.World, o *engine.Order) *engine.Car {
 		}
 	}
 	return best
+}
+
+// canServe reports whether the car can take the order on its present charge:
+// car -> kitchen -> customer -> a charger, with the same one-unit reserve as
+// canCompleteRoute. Assigning regardless used to send half-charged cars after
+// orders they could not finish, so they detoured to charge with the order
+// already assigned and it expired there (73 of 111 expiries were
+// assigned-not-picked-up). A car at full charge is always accepted, so an order
+// whose route exceeds the battery range is not starved forever; carGoal's
+// route-completion check then charges it en route.
+//
+// Deadline is deliberately not checked: AssignOrder re-quotes DeadlineTick from
+// the assigned car's position and only ever extends it.
+func canServe(w *engine.World, c *engine.Car, kitchen engine.Position, o *engine.Order) bool {
+	if c.Full() {
+		return true
+	}
+	cu, ok := findCustomer(w, o.CustomerID)
+	if !ok {
+		return false
+	}
+	toKitchen := w.RouteDistance(c.Pos, kitchen)
+	leg := w.RouteDistance(kitchen, cu.Pos)
+	if toKitchen < 0 || leg < 0 {
+		return false
+	}
+	need := toKitchen + leg
+	if !w.City.ChargingAt(cu.Pos) {
+		next := w.NearestChargers(cu.Pos, 1)
+		if len(next) == 0 {
+			return false
+		}
+		back := w.RouteDistance(cu.Pos, next[0])
+		if back < 0 {
+			return false
+		}
+		need += back
+	}
+	return need <= c.Battery-1
 }
 
 // carBusy reports whether the car already holds or owes a delivery.

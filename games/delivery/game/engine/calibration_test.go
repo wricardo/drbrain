@@ -120,9 +120,13 @@ func TestShippedOrderLadderKeepsVehiclesRelevant(t *testing.T) {
 }
 
 // TestShippedCityDemandFollowsPopulation guards queue depth on the shipped map:
-// it follows the scheduled city population, not the player's fleet.
+// it follows the scheduled city population, not the player's fleet. The
+// unbounded time term is switched off here so this test measures the
+// population anchor alone; TestShippedCityDemandKeepsGrowing covers the time
+// term.
 func TestShippedCityDemandFollowsPopulation(t *testing.T) {
 	city, cfg := shippedCity(t)
+	cfg.Orders.TargetGrowthPer1000Ticks = 0
 	w, err := NewWorldSeeded(city, cfg, 1)
 	if err != nil {
 		t.Fatal(err)

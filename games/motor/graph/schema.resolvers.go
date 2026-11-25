@@ -14,6 +14,29 @@ import (
 	"github.com/wricardo/drbrain/games/motor/validate"
 )
 
+// DeleteSession is the resolver for the deleteSession field. The admin key was
+// already validated by Mutation.admin, so this bypasses the owner check and
+// stops any running program. Idempotent: a missing session is true.
+func (r *adminResolver) DeleteSession(ctx context.Context, obj *model.Admin, id string) (bool, error) {
+	if err := r.Service.DeleteSession(id); err != nil {
+		if isNotFound(err) {
+			return true, nil
+		}
+		return false, toGQLError(err)
+	}
+	return true, nil
+}
+
+// PauseSession is the resolver for the pauseSession field. No owner token is
+// needed, and a session that is not playing is a no-op.
+func (r *adminResolver) PauseSession(ctx context.Context, obj *model.Admin, id string) (*model.Session, error) {
+	s, err := r.Service.Pause(id)
+	if err != nil {
+		return nil, toGQLError(err)
+	}
+	return toSession(s, true), nil
+}
+
 // Builtin is the resolver for the builtin field. Provenance is not part of the
 // map snapshot, so it is looked up live; a map that is no longer stored (a
 // session snapshot of a deleted map) reports false, and writes to it fail with
@@ -257,6 +280,15 @@ func (r *mutationResolver) DeleteMap(ctx context.Context, id string) (bool, erro
 	return true, nil
 }
 
+// Admin is the resolver for the admin field. It validates the key before the
+// admin object exists, so no field on it can run unauthorized.
+func (r *mutationResolver) Admin(ctx context.Context, key string) (*model.Admin, error) {
+	if err := r.requireAdminKey(key); err != nil {
+		return nil, err
+	}
+	return &model.Admin{}, nil
+}
+
 // Maps is the resolver for the maps field: published maps plus the caller's
 // own drafts.
 func (r *queryResolver) Maps(ctx context.Context) ([]*model.Map, error) {
@@ -423,6 +455,9 @@ func (r *subscriptionResolver) SessionUpdated(ctx context.Context, sessionID str
 	return forwardSessionUpdates(ctx, s, updates, subscriptionBuffer, r.mayEdit(ctx, sessionID, ownerToken)), nil
 }
 
+// Admin returns generated.AdminResolver implementation.
+func (r *Resolver) Admin() generated.AdminResolver { return &adminResolver{r} }
+
 // Map returns generated.MapResolver implementation.
 func (r *Resolver) Map() generated.MapResolver { return &mapResolver{r} }
 
@@ -435,6 +470,7 @@ func (r *Resolver) Query() generated.QueryResolver { return &queryResolver{r} }
 // Subscription returns generated.SubscriptionResolver implementation.
 func (r *Resolver) Subscription() generated.SubscriptionResolver { return &subscriptionResolver{r} }
 
+type adminResolver struct{ *Resolver }
 type mapResolver struct{ *Resolver }
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }

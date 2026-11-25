@@ -1,0 +1,512 @@
+{
+  "name": "São Paulo II",
+  "grid_size": 40,
+  "tick_ms": 600,
+  "ground_extra_step_cost": 1,
+  "ticks_per_month": 600,
+  "max_events": 500,
+  "max_reputation": 5.0,
+  "max_chapter": 5,
+  "autosave_ticks": 60,
+  "starting_money": 0,
+  "legend": {
+    "W": "water",
+    "B": "building",
+    "R": "road",
+    "G": "ground",
+    "D": "depot",
+    "C": "charger",
+    "K": "kitchen",
+    "H": "house"
+  },
+  "layout": [
+    "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR",
+    "RBBBRBBBRBBHRBBBRBBBRWBBRBBBRBBBRBBBRBBR",
+    "RBBBRBBBRBBBRBBBRBBBRWBBRBBBRBBBRBBBRBBR",
+    "RBBBRBBBRBBBRBBBRBBBRWBBRBBBRBBBRBBBRBBR",
+    "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR",
+    "RBBBRKBBRBBBRBBBRBBHRWBBRBBBRBBBRBBHRBBR",
+    "RBBBRBBBRBBBRBBBRBBBRWBBRBBBRBBBRBBBRBBR",
+    "RBBBRBBBRBBBRBBBRBBBRWBBRBBBRBBBRBBBRBBR",
+    "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR",
+    "RCBBRBBBRBBBRKBBRBBBRWBBRBBBRKBBRBBBRBBR",
+    "RBBBRBBBRBBBRBBBRBBBRWBBRBBBRBBBRBBBRBBR",
+    "RHBBRBBBRBBBRBBBRBBBRWBBRBBBRBBBRBBBRBBR",
+    "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR",
+    "RBBBRBBBRCBBRBBBRBBBRWBBRBBBRBBBRHBBRBBR",
+    "RBBBRBBBRBBBRBBBRBBBRWBBRBBBRBBBRBBBRBBR",
+    "RBBBRBBBRBBBRBBBRBBBRWBBRBBBRBBBRBBBRBBR",
+    "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR",
+    "RBBBRBBBRBBBRBBBRKBBRWBHRBBBRCBBRBBBRBBR",
+    "RBBBRBBBRBBBRBBBRBBBRWBBRBBBRBBBRBBBRBBR",
+    "RBBBRBBBRBBBRBBBRBBDRWBBRBBBRBBBRBBBRBBR",
+    "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR",
+    "RBBBRBBBRHBBRBBBRBBBRWBBRBBBRBBBRBBBRBBR",
+    "RBBBRBBBRBBBRBBBRBBBRWBBRBBBRBBBRBBBRBBR",
+    "RBBBRBBBRBBBRBBBRBBBRWBBRBBBRBBBRBBBRBBR",
+    "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR",
+    "RBBBRBBBRBBBRBBBRCBBRWBBRBBBRBBBRBBHRBBR",
+    "RBBBRBBBRBBBRBBBRBBBRWBBRBBBRBBBRBBBRBBR",
+    "RBBBRBBBRBBBRBBBRBBBRWBBRBBBRBBBRBBBRBBR",
+    "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR",
+    "RBBBRBBBRBBBRBBBRBBBRWBBRKBBRBBBRBBBRBBR",
+    "RBBBRBBBRBBBRBBBRBBBRWBBRBBBRBBBRBBBRBBR",
+    "RBBBRBBBRBBBRBBBRBBHRWBBRBBBRBBBRBBBRBBR",
+    "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR",
+    "RBBBRCBBRBBBRBBBRBBBRWBBRBBBRBBBRBBBRBBR",
+    "RBBBRBBBRBBBRBBBRBBBRWBBRBBBRBBBRBBBRBBR",
+    "RBBBRBBBRBBHRBBBRBBBRWBBRBBBRBBBRKBBRBBR",
+    "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR",
+    "RBBBRBBBRBBBRBBBRBBBRWBBRBBBRBBBRBBBRBBR",
+    "RBBBRBBBRBBBRBBBRBBBRWBBRBBBRBBBRBBBRBBR",
+    "RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR"
+  ],
+  "items": {
+    "pizza": "Pizza",
+    "pastel": "Pastel de Feira",
+    "cafe": "Café Coado"
+  },
+  "kitchens": [
+    {
+      "id": "k_se",
+      "name": "Sé Padaria",
+      "pos": {
+        "x": 5,
+        "y": 5
+      },
+      "menu": [
+        "cafe",
+        "pastel"
+      ]
+    },
+    {
+      "id": "k_mercado",
+      "name": "Mercado Municipal",
+      "pos": {
+        "x": 13,
+        "y": 9
+      },
+      "menu": [
+        "pastel",
+        "cafe"
+      ]
+    },
+    {
+      "id": "k_feira",
+      "name": "Feira da Liberdade",
+      "pos": {
+        "x": 17,
+        "y": 17
+      },
+      "menu": [
+        "pastel"
+      ]
+    },
+    {
+      "id": "k_leste",
+      "name": "Braz Pizzaria",
+      "pos": {
+        "x": 29,
+        "y": 9
+      },
+      "menu": [
+        "pizza",
+        "cafe"
+      ]
+    },
+    {
+      "id": "k_jardins",
+      "name": "Café dos Jardins",
+      "pos": {
+        "x": 25,
+        "y": 29
+      },
+      "menu": [
+        "cafe",
+        "pizza"
+      ]
+    },
+    {
+      "id": "k_ibirapuera",
+      "name": "Quiosque do Ibirapuera",
+      "pos": {
+        "x": 33,
+        "y": 35
+      },
+      "menu": [
+        "cafe",
+        "pastel"
+      ]
+    }
+  ],
+  "customers": [
+    {
+      "id": "c_luz",
+      "name": "Estação da Luz",
+      "pos": {
+        "x": 11,
+        "y": 1
+      },
+      "demands": [
+        "pastel"
+      ],
+      "order_interval_ticks": 90,
+      "jitter_ticks": 20
+    },
+    {
+      "id": "c_se",
+      "name": "Pátio do Colégio",
+      "pos": {
+        "x": 1,
+        "y": 11
+      },
+      "demands": [
+        "cafe"
+      ],
+      "order_interval_ticks": 85,
+      "jitter_ticks": 20
+    },
+    {
+      "id": "c_sanfran",
+      "name": "Largo São Francisco",
+      "pos": {
+        "x": 9,
+        "y": 21
+      },
+      "demands": [
+        "cafe",
+        "pastel"
+      ],
+      "order_interval_ticks": 100,
+      "jitter_ticks": 25
+    },
+    {
+      "id": "c_theatro",
+      "name": "Theatro Municipal",
+      "pos": {
+        "x": 19,
+        "y": 5
+      },
+      "demands": [
+        "cafe"
+      ],
+      "order_interval_ticks": 80,
+      "jitter_ticks": 15
+    },
+    {
+      "id": "c_copan",
+      "name": "Edifício Copan",
+      "pos": {
+        "x": 35,
+        "y": 5
+      },
+      "demands": [
+        "pizza"
+      ],
+      "order_interval_ticks": 70,
+      "jitter_ticks": 15
+    },
+    {
+      "id": "c_republica",
+      "name": "Praça da República",
+      "pos": {
+        "x": 33,
+        "y": 13
+      },
+      "demands": [
+        "pastel",
+        "pizza"
+      ],
+      "order_interval_ticks": 95,
+      "jitter_ticks": 20
+    },
+    {
+      "id": "c_galeria",
+      "name": "Galeria do Rock",
+      "pos": {
+        "x": 23,
+        "y": 17
+      },
+      "demands": [
+        "pizza"
+      ],
+      "order_interval_ticks": 90,
+      "jitter_ticks": 20
+    },
+    {
+      "id": "c_paulista",
+      "name": "Avenida Paulista",
+      "pos": {
+        "x": 35,
+        "y": 25
+      },
+      "demands": [
+        "cafe",
+        "pizza"
+      ],
+      "order_interval_ticks": 75,
+      "jitter_ticks": 15
+    },
+    {
+      "id": "c_masp",
+      "name": "MASP",
+      "pos": {
+        "x": 19,
+        "y": 31
+      },
+      "demands": [
+        "pastel"
+      ],
+      "order_interval_ticks": 95,
+      "jitter_ticks": 20
+    },
+    {
+      "id": "c_ibira",
+      "name": "Parque Ibirapuera",
+      "pos": {
+        "x": 11,
+        "y": 35
+      },
+      "demands": [
+        "cafe",
+        "pastel"
+      ],
+      "order_interval_ticks": 100,
+      "jitter_ticks": 25
+    }
+  ],
+  "depots": [
+    {
+      "id": "d_main",
+      "pos": {
+        "x": 19,
+        "y": 19
+      },
+      "charge_slots": 4
+    }
+  ],
+  "chargers": [
+    {
+      "id": "ch_marginal",
+      "pos": {
+        "x": 1,
+        "y": 9
+      },
+      "capacity": 1
+    },
+    {
+      "id": "ch_centro",
+      "pos": {
+        "x": 9,
+        "y": 13
+      },
+      "capacity": 1
+    },
+    {
+      "id": "ch_pinheiros",
+      "pos": {
+        "x": 17,
+        "y": 25
+      },
+      "capacity": 1
+    },
+    {
+      "id": "ch_leste",
+      "pos": {
+        "x": 29,
+        "y": 17
+      },
+      "capacity": 1
+    },
+    {
+      "id": "ch_sul",
+      "pos": {
+        "x": 5,
+        "y": 33
+      },
+      "capacity": 1
+    }
+  ],
+  "initial_cars": [
+    {
+      "class": "scooter",
+      "name": "Scooter Sé",
+      "pos": {
+        "x": 19,
+        "y": 19
+      }
+    }
+  ],
+  "car_classes": {
+    "scooter": {
+      "capacity": 4,
+      "max_battery": 48,
+      "step_cost": 1,
+      "price": 250
+    },
+    "van": {
+      "capacity": 24,
+      "max_battery": 72,
+      "step_cost": 1,
+      "price": 600
+    },
+    "truck": {
+      "capacity": 40,
+      "max_battery": 96,
+      "step_cost": 1,
+      "price": 2100
+    }
+  },
+  "districts": {
+    "centro": {
+      "description": "Sé, Luz and the Anhangabaú: the depot and the first regulars.",
+      "hidden": false,
+      "rects": [
+        [
+          0,
+          0,
+          20,
+          23
+        ]
+      ]
+    },
+    "leste": {
+      "description": "República, Copan and Galeria across the river. Closed until the leste bridges are paved.",
+      "hidden": true,
+      "rects": [
+        [
+          22,
+          0,
+          39,
+          23
+        ]
+      ]
+    },
+    "sul": {
+      "description": "Paulista and the south: Jardins, MASP and Ibirapuera. Dark until the avenue lights up.",
+      "hidden": true,
+      "rects": [
+        [
+          0,
+          24,
+          39,
+          39
+        ]
+      ]
+    }
+  },
+  "orders": {
+    "max_active_orders": 6,
+    "target_orders_per_customer": 0.2,
+    "min_spawn_gap_ticks": 12,
+    "deadline_slack": 3.0,
+    "deadline_slack_by_chapter": [
+      3.0,
+      2.9,
+      2.8,
+      2.7,
+      2.6
+    ],
+    "reward_base": {
+      "pizza": 45,
+      "pastel": 40,
+      "cafe": 50
+    },
+    "reward_bulk_base": 0.6,
+    "reward_bulk_per_box": 0.4,
+    "expire_fine_divisor": 4,
+    "min_route_ticks": 5,
+    "min_deadline_ticks": 10,
+    "unreachable_leg_ticks": 20,
+    "chapter_reward_multiplier": [
+      1.0,
+      1.1,
+      1.25,
+      1.5,
+      1.8
+    ],
+    "distance_bonus_per_tile": 3,
+    "expire_penalty_reputation": 0.1,
+    "late_pay_multiplier": 0.6,
+    "force_first_order_at_tick": 0,
+    "reputation_per_delivery": 0.02,
+    "reputation_per_late": 0.05,
+    "quantity_bands": [
+      {
+        "min_size": 1,
+        "max_size": 3,
+        "from_progress": 0.0,
+        "weight": 40
+      },
+      {
+        "min_size": 5,
+        "max_size": 10,
+        "from_progress": 0.18,
+        "weight": 35
+      },
+      {
+        "min_size": 13,
+        "max_size": 24,
+        "from_progress": 0.35,
+        "weight": 25
+      },
+      {
+        "min_size": 30,
+        "max_size": 40,
+        "from_progress": 0.72,
+        "weight": 30
+      }
+    ],
+    "ramp_ticks": 3000,
+    "customer_cooldown_min_scale": 0.5
+  },
+  "charging": {
+    "depot_rate": 12,
+    "charger_rate": 4,
+    "charger_price_per_tick": 1,
+    "charger_purchase_price": 150,
+    "max_purchased_chargers": 6
+  },
+  "fleet": {
+    "upkeep_interval_ticks": 120,
+    "upkeep_per_box_per_interval": 1,
+    "upkeep_box_divisor": 4,
+    "default_upkeep_per_interval": 1,
+    "tow_fee_per_tile": 2,
+    "tow_fee_min": 25
+  },
+  "closures": {
+    "enabled": true,
+    "from_chapter": 1,
+    "every_ticks": 900,
+    "duration_ticks": 260,
+    "max_concurrent": 1,
+    "segment_tiles": 3
+  },
+  "growth": [
+    {
+      "id": "g01_leste",
+      "tick": 180,
+      "title": "Praça da República",
+      "description": "The leste district opens across the river: Copan, República and the Galeria.",
+      "effects": [
+        {
+          "type": "reveal_district",
+          "district": "leste"
+        }
+      ]
+    },
+    {
+      "id": "g02_sul",
+      "tick": 600,
+      "title": "Avenida Paulista",
+      "description": "The avenue lights up and the south opens: MASP, Jardins and Ibirapuera.",
+      "effects": [
+        {
+          "type": "reveal_district",
+          "district": "sul"
+        }
+      ]
+    }
+  ]
+}

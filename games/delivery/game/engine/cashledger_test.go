@@ -313,3 +313,248 @@ func TestCashLedgerSurvivesSaveRoundTrip(t *testing.T) {
 		t.Errorf("nextCashSeq = %d, want %d", restored.Ledger.NextCashSeq, w.Ledger.NextCashSeq)
 	}
 }
+
+// TestSellCarBanksSeventyPercentAndRemovesTheCar pins the resale rule and the
+// statement line: a sale is income tagged to the car, not a purchase refund.
+func TestSellCarBanksSeventyPercentAndRemovesTheCar(t *testing.T) {
+	w := tinyWorld(t)
+	w.carClasses["van"] = CarClassConfig{
+		Capacity: 3, MaxBattery: 20, StepCost: 1, Price: 400,
+	}
+	w.Ledger.Money = 1000
+	van, err := w.BuyCar("van", "d1")
+	if err != nil {
+		t.Fatalf("buy car: %v", err)
+	}
+	if van.PurchasePrice != 400 {
+		t.Fatalf("purchase price = %d, want 400", van.PurchasePrice)
+	}
+	if got := van.SaleValue(); got != 280 {
+		t.Fatalf("sale value = %d, want 70%% of 400", got)
+	}
+
+	sold, refund, err := w.SellCar(van.ID)
+	if err != nil {
+		t.Fatalf("sell car: %v", err)
+	}
+	if sold != van || refund != 280 {
+		t.Fatalf("sold %v for $%d, want the van for $280", sold, refund)
+	}
+	if _, ok := w.Car(van.ID); ok {
+		t.Fatal("sold car is still in the fleet")
+	}
+	if w.Ledger.Money != 880 {
+		t.Fatalf("money = %d, want 1000 - 400 + 280", w.Ledger.Money)
+	}
+	sale := w.Ledger.Cash[len(w.Ledger.Cash)-1]
+	if sale.Kind != CashCarSale || sale.Amount != 280 || sale.CarID != van.ID {
+		t.Fatalf("sale entry = %+v, want +280 tagged to %s", sale, van.ID)
+	}
+	if w.Ledger.MoneyEarned != 0 {
+		t.Fatalf("moneyEarned = %d, want sale proceeds excluded from lifetime earnings", w.Ledger.MoneyEarned)
+	}
+	if last := w.Events[len(w.Events)-1]; last.Type != EventSoldCar {
+		t.Fatalf("last event = %q, want %q", last.Type, EventSoldCar)
+	}
+	checkCashChain(t, w)
+}
+
+// TestSellCarSettlesChargingDebtFirst stops a charge-then-sell loop from
+// erasing the bill.
+func TestSellCarSettlesChargingDebtFirst(t *testing.T) {
+	w := tinyWorld(t)
+	addFreeCar(t, w)
+	car := w.Cars[0]
+	car.PurchasePrice = 100
+	car.ChargeDue = 50
+	car.ChargeUnits = 10
+	car.ChargeSource = "ch1"
+	w.Ledger.Money = 100
+
+	if _, _, err := w.SellCar(car.ID); err != nil {
+		t.Fatalf("sell car: %v", err)
+	}
+	if w.Ledger.Money != 120 {
+		t.Fatalf("money = %d, want 100 - 50 + 70", w.Ledger.Money)
+	}
+	kinds := make([]CashEntryKind, 0, len(w.Ledger.Cash))
+	for _, e := range w.Ledger.Cash {
+		kinds = append(kinds, e.Kind)
+	}
+	want := []CashEntryKind{CashCharging, CashCarSale}
+	if len(kinds) != len(want) || kinds[0] != want[0] || kinds[1] != want[1] {
+		t.Fatalf("cash kinds = %v, want charging then sale", kinds)
+	}
+}
+
+// TestSellCarRefusesAnOrderTheCarStillOwes keeps orders from being orphaned.
+func TestSellCarRefusesAnOrderTheCarStillOwes(t *testing.T) {
+	w := tinyWorld(t)
+	addFreeCar(t, w)
+	car := w.Cars[0]
+
+	car.Cargo = []string{"o1"}
+	if _, _, err := w.SellCar(car.ID); err == nil {
+		t.Fatal("sold a car with cargo aboard")
+	}
+	car.Cargo = nil
+
+	w.Orders = append(w.Orders, &Order{ID: "o1", State: OrderAssigned, AssignedCar: car.ID})
+	if _, _, err := w.SellCar(car.ID); err == nil {
+		t.Fatal("sold a car with an assigned order")
+	}
+	if _, ok := w.Car(car.ID); !ok {
+		t.Fatal("refused sale still removed the car")
+	}
+}
+
+// TestSellCarIgnoresDeliveredHistory proves DONE orders are history only: a
+// car that finished its trips must still be sellable.
+func TestSellCarIgnoresDeliveredHistory(t *testing.T) {
+	w := tinyWorld(t)
+	addFreeCar(t, w)
+	car := w.Cars[0]
+	w.Orders = append(w.Orders, &Order{ID: "o1", State: OrderDone, AssignedCar: car.ID})
+	if _, _, err := w.SellCar(car.ID); err != nil {
+		t.Fatalf("sell car after delivered order: %v", err)
+	}
+	if _, ok := w.Car(car.ID); ok {
+		t.Fatal("sold car is still in the fleet")
+	}
+}
+
+// TestExpiredOrderFreesTheCarForSale pins the whole expiry→sale path: an
+// expired order is terminal, so both of SellCar's guards lapse. A car that only
+// had the order assigned becomes sellable once the deadline passes, and a car
+// that had already picked it up has its cargo dropped by expireOrders, so it is
+// sellable too. Nothing else about the car changes: it keeps its position and
+// battery and is IDLE again.
+func TestExpiredOrderFreesTheCarForSale(t *testing.T) {
+	t.Run("assigned but never picked up", func(t *testing.T) {
+		w := orderWorld(t)
+		w.Advance()
+		o := firstOrder(t, w)
+		car := w.Cars[0]
+		if err := w.AssignOrder(o.ID, car.ID); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := w.BuyCar("scooter", "d1"); err != nil {
+			t.Fatalf("buy second car: %v", err)
+		}
+		if _, _, err := w.SellCar(car.ID); err == nil {
+			t.Fatal("sold a car with a live assigned order")
+		}
+
+		w.Tick = o.DeadlineTick + 1
+		w.Advance()
+
+		if o.State != OrderExpired {
+			t.Fatalf("state = %s, want expired", o.State)
+		}
+		if len(car.Cargo) != 0 {
+			t.Fatalf("cargo = %v, want empty", car.Cargo)
+		}
+		if got := car.State(w.City); got != CarIdle {
+			t.Fatalf("car state = %s, want idle after expiry", got)
+		}
+		if _, _, err := w.SellCar(car.ID); err != nil {
+			t.Fatalf("sell after expiry: %v", err)
+		}
+	})
+
+	t.Run("picked up then expired", func(t *testing.T) {
+		w := orderWorld(t)
+		w.Advance()
+		o := firstOrder(t, w)
+		car := w.Cars[0]
+		if err := w.AssignOrder(o.ID, car.ID); err != nil {
+			t.Fatal(err)
+		}
+		driveTo(t, w, car, Position{2, 1})
+		if o.State != OrderPickedUp {
+			t.Fatalf("state = %s, want picked_up", o.State)
+		}
+		x, y := car.Pos.X, car.Pos.Y
+		battery := car.Battery
+		if _, err := w.BuyCar("scooter", "d1"); err != nil {
+			t.Fatalf("buy second car: %v", err)
+		}
+		if _, _, err := w.SellCar(car.ID); err == nil {
+			t.Fatal("sold a car carrying an order")
+		}
+
+		w.Tick = o.DeadlineTick + 1
+		w.Advance()
+
+		if o.State != OrderExpired {
+			t.Fatalf("state = %s, want expired", o.State)
+		}
+		if len(car.Cargo) != 0 || car.Load() != 0 {
+			t.Fatalf("cargo = %v load = %d, want the expired boxes dropped", car.Cargo, car.Load())
+		}
+		if car.Pos.X != x || car.Pos.Y != y {
+			t.Errorf("position moved to (%d,%d), want (%d,%d)", car.Pos.X, car.Pos.Y, x, y)
+		}
+		if car.Battery != battery {
+			t.Errorf("battery = %d, want %d unchanged", car.Battery, battery)
+		}
+		if got := car.State(w.City); got != CarIdle {
+			t.Fatalf("car state = %s, want idle after expiry", got)
+		}
+		if _, _, err := w.SellCar(car.ID); err != nil {
+			t.Fatalf("sell after expiry: %v", err)
+		}
+	})
+}
+
+// addFreeCar gives a test world a second vehicle so a sale can leave one
+// behind; the engine refuses to sell the last car.
+func addFreeCar(t *testing.T, w *World) {
+	t.Helper()
+	if _, err := w.BuyCar("scooter", "d1"); err != nil {
+		t.Fatalf("buy second scooter: %v", err)
+	}
+}
+
+// TestSellCarKeepsTheLastVehicle avoids a fleet-less save with no way to earn.
+func TestSellCarKeepsTheLastVehicle(t *testing.T) {
+	w := tinyWorld(t)
+	if _, _, err := w.SellCar(w.Cars[0].ID); err == nil {
+		t.Fatal("sold the only vehicle")
+	}
+	if len(w.Cars) != 1 {
+		t.Fatalf("cars = %d, want the last vehicle kept", len(w.Cars))
+	}
+}
+
+// TestStarterCarHasNoResaleValue: the free starter scooter must not be worth
+// 70% of its class list price, because the player never paid that price.
+func TestStarterCarHasNoResaleValue(t *testing.T) {
+	w := tinyWorld(t)
+	car := w.Cars[0]
+	if car.PaidPrice() != 0 || car.SaleValue() != 0 {
+		t.Fatalf("starter car paid %d sale %d, want 0/0", car.PaidPrice(), car.SaleValue())
+	}
+}
+
+// TestImportBackfillsLegacyPurchasePrice recovers a pre-field save's paid price
+// from its own cash ledger, so old bought cars keep the 70% rule while a free
+// starter still has no resale value.
+func TestImportBackfillsLegacyPurchasePrice(t *testing.T) {
+	w := tinyWorld(t)
+	car := w.Cars[0]
+	car.PurchasePrice = 0 // what an old save decodes as
+	w.Ledger.Cash = append(w.Ledger.Cash, CashEntry{
+		Seq: 1, Kind: CashCarPurchase, Amount: -400, CarID: car.ID, Balance: 100,
+	})
+	saved := w.ExportState()
+
+	restored := tinyWorld(t)
+	if err := restored.ImportState(saved); err != nil {
+		t.Fatal(err)
+	}
+	got := restored.Cars[0]
+	if got.PurchasePrice != 400 || got.SaleValue() != 280 {
+		t.Fatalf("restored paid %d sale %d, want 400/280", got.PurchasePrice, got.SaleValue())
+	}
+}

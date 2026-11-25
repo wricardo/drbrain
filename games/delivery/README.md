@@ -51,6 +51,16 @@ to the last stage's tick, and new customers and kitchens are placed in the newly
 opened district so demand and restaurants spread out instead of cramming the
 starting blocks.
 
+The schedule ends, demand does not. `city.json` sets `max_active_orders` to 0
+(no ceiling), `target_growth_per_1000_ticks: 0.5` and
+`cooldown_decay_per_1000_ticks: 1`, so after tick 2400 the queue target keeps
+rising by one standing order every 2000 ticks and every customer cooldown loses
+one tick per 1000 ticks (down to a 1-tick floor). Measured on the default seed
+with the pacing harness: 150, 202 and 250 orders spawned per 1000 ticks in the
+0–6000, 6000–12000 and 12000–24000 windows — the ramp no longer flattens. The
+São Paulo maps keep their explicit `max_active_orders: 6` ceiling; giving them
+the same knobs is a three-line change.
+
 | Stage | Tick | Opens |
 |---|---|---|
 | Corner Charger | 180 | charger + **Corner Cafe** customer |
@@ -93,13 +103,15 @@ already in use rather than deferring to the process holding it.
 - **Start screen** lists your saved cities with tick, deliveries, reputation and
   money, or says plainly that there are none yet.
 - **Drive** with `w a s d`, the arrow keys, or the on-screen D-pad (so mouse and
-  touch work). A direction key queues the move *and* advances one tick, because
-  pressing `s` should move the car.
-- **Shift plus a direction** queues the step *without* advancing the clock. That
-  is how you set up simultaneous moves for several cars: Shift into place with
-  each car, then `space` to advance once and resolve them together.
-- **`space`** (or `Enter`) advances a tick without moving anything.
+  touch work). A direction key queues one step for the selected car; the clock
+  applies it on the next tick.
+- **The clock is the only thing that advances the world.** Sessions start paused,
+  so nothing moves until you pick `1×`, `2×` or `4×` in the header. Queue steps
+  for each car first, then resume the clock: all of them resolve together, one
+  queued step per tick. There is no manual tick in the UI or the API.
 - **`c`** cycles cars (Shift+C goes backwards), **`p`** pauses/resumes.
+- **The `clear` link** next to the queued count drops the selected car's queue
+  when traffic or a closure invalidates the plan.
 - **[cities]** is a button in the header, not a key: it saves and returns to the
   picker.
 - **Clicking an order** outlines its kitchen and customer on the map, so you can
@@ -169,6 +181,30 @@ DRBRAIN_DATABASE_URL=... drbrain backfill-delivery-history --dry-run
 DRBRAIN_DATABASE_URL=... drbrain backfill-delivery-history
 ```
 
+## Per-tick snapshots
+
+`delivery_tick_snapshots` is the replayable tick log: one row per completed
+tick, keyed by `(session_id, tick)`, written from the engine tick hook rather
+than from the autosave path. It exists so intra-save history — car positions,
+order assignments, battery, cargo — can be inspected after the fact; the
+authoritative save still holds only the latest state.
+
+`state` is a compact `engine.SavedState`: cars, orders, balances, counters and
+spawner memory. The append-only cash/reputation statements and the retained
+event feed are **not** duplicated per tick; they already have their own tables
+(or are rolling logs), and copying them would make storage quadratic in session
+length.
+
+The writer is asynchronous and never blocks the clock: a queue overflow drops
+frames and logs once. Rows are pruned to the newest `DELIVERY_TICK_SNAPSHOTS`
+ticks per session (default 1800, `0` disables the tick log) and are deleted with
+their session. Because a session ticks before its first save, there is no
+foreign key to `platform_sessions`; cleanup is explicit in `Manager.Delete`.
+
+Read them with `delivery { tickSnapshots(sessionId, fromTick, toTick, afterTick,
+limit) }` (inclusive bounds, exclusive keyset cursor, limit capped at 500) or
+`Manager.TickSnapshots` in Go.
+
 The backfill is idempotent. Delete `delivery_*` rows freely if a projection needs
 to be rebuilt; the session payloads are the source of truth.
 
@@ -198,7 +234,7 @@ stale process is the obvious suspect.
 
 ```bash
 curl -s -X POST http://127.0.0.1:8181/graphql -H 'Content-Type: application/json' \
-  -d '{"query":"mutation { delivery { createSession(id:\"demo\", seed:7) { session { id paused } ownerToken } } }"}'
+  -d '{"query":"mutation { deliveryCreateSession(id:\"demo\", seed:7) { session { id paused } ownerToken } }"}'
 ```
 
 Interactive playground: http://127.0.0.1:8181/graphql/playground
@@ -229,9 +265,10 @@ t / ttt   advance one / three ticks
 q         quit
 ```
 
-Queuing a move does **not** advance the clock — that is deliberate, and it is
-exactly how the API will behave. You can queue moves for several cars, then
-advance once, and all of them step together.
+Queuing a move does **not** advance the clock — that is deliberate, and the API
+behaves the same way. You can queue moves for several cars, then resume the
+clock and all of them step together, one queued step per tick. This CLI is the
+only place with a manual tick: the GraphQL API has no `tick` mutation.
 
 `go run ./games/delivery/cmd/drbrain sim` drives a scripted bot and prints a pacing table. It exists to
 answer "is the queue starved or drowning?" with numbers. This is the shape of
@@ -245,8 +282,9 @@ quoting this:
   1000     3     8     81     1       8       0    9716   4.17    2    0
 ```
 
-What is stable about it, and worth reading the columns for: `open` and `tgt`
-converge by tick 1000, deliveries roughly double between the two rows, and
+What is stable about it, and worth reading the columns for: `open` tracks `tgt`
+when the fleet can keep up, `tgt` keeps rising after the ramp on maps that set
+the demand-growth knobs, deliveries roughly double between the two rows, and
 expiries stay in single digits this early. Re-run the same command to refresh the
 numbers; they move with every pacing change.
 
@@ -258,9 +296,68 @@ evidence the harness ran twice, and do not paste it into a doc as two samples.
 
 `open` is live orders, `tgt` is the engine's actual demand target
 (`World.TargetActive()` — visible customers × `target_orders_per_customer`,
-rounded), `box` is the box count of the **largest open order** (so the table
-shows whether quantity bands are actually rolling), and `cls` is the number of
-**active street closures** — not a car class index, despite the name.
+rounded, plus `floor(tick/1000 × target_growth_per_1000_ticks)`, and capped only
+by a positive `max_active_orders`), `box` is the box count of the **largest open
+order** (so the table shows whether quantity bands are actually rolling), and
+`cls` is the number of **active street closures** — not a car class index,
+despite the name.
+
+`go run ./games/delivery/cmd/drbrain perfect` is the same harness with a planning
+driver instead of the reactive bot, and is the ceiling to read the sim against.
+It takes the same `-f`, `-ticks`, `-every` and `-seed`, plus `-v` to log
+assignments, purchases and every expiry, and prints the same table (with `cars`
+and `blocked` in place of `box` and `cls`) and a summary that adds **expiries by
+cause** and how many of them were avoidable.
+
+What it does that the sim bot does not (`cmd/drbrain/perfect.go`): every car keeps
+an ordered stop list and a committed route across ticks; routes are planned in
+space and time against every other car's route, so a one-car tile is never
+double-booked and a head-on swap, which the engine refuses, is never planned; new
+orders are inserted at the cheapest place in the cheapest car's tour after
+simulating legs, battery (ground tiles cost more battery than time), charge
+detours, hold space and every deadline; idle cars park on the depot; and spare
+money buys chargers where they cut the trip to charge the most (up to the city's
+limit of six). It still sees an order only when the engine raises it, so it is a
+ceiling for planning, not an oracle.
+
+On 3000 ticks of the shipped map, delivered / expired (avoidable) / tows:
+
+```
+seed 0x5eed5eed   344 / 0 (0) / 0
+seed 1            348 / 0 (0) / 0
+seed 2            344 / 0 (0) / 0
+seed 3            346 / 0 (0) / 0
+seed 99           346 / 0 (0) / 0
+seed 7            345 / 1 (1) / 0
+seed 42           345 / 0 (0) / 0
+seed 123          348 / 0 (0) / 0
+```
+
+Over seeds 1 to 48 it delivers 16631 orders and expires 10, all of them orders it
+accepted and then delivered a few ticks late, with 1 tow and no refused move; 40 of
+the 48 seeds have no expiry at all. None of the expiries is unavoidable: the
+summary classifies an order that nothing in the fleet could carry and no balance
+could buy as `unavoidable`, and since the 5 to 24 box bands lost their
+`early_weight` (below) there are none. On the two São Paulo maps it expires nothing
+in seeds 1 to 24 (7318 and 3373 orders delivered), with a few refused moves per
+run on `saopaulo.json` (8 on seed 1, each replanned the next tick). The sim bot,
+on seeds 1 to 3, 99 and the default, delivers 286 to 329 and expires 14 to 28.
+
+Three planner faults only showed up with distance and took `saopaulo.json` from 8
+to 20 expiries a run down to none. A car kept a charge decided for its old tour
+and drove across the map to charge before a pickup next to it. A kitchen with one
+access tile left two cars each waiting for the other, because the car with the
+nearer deadline planned first and the one inside then had no way out. And a car
+was recharged to full at a charger from which it could not set off, because the
+address was more than one battery plus its reserve away.
+
+`-handback` lets a car return an order it has not collected to the queue when its
+tour would now reach the customer late, so another car can take it. It cuts the
+avoidable expiries over the same 48 seeds from 10 to 6 (43 seeds have none), and
+it is **off by default** because part of that gain is a loophole: the engine
+re-quotes an order's deadline on every assignment and only ever extends it, so an
+order that is handed back and assigned again gets more time than it was
+quoted. The default numbers above do not use it.
 
 ```
 $ go run ./games/delivery/cmd/drbrain map -f games/delivery/maps/city.json
@@ -384,12 +481,15 @@ adapters over `game/engine`, which knows nothing about HTTP or rendering.
     costs ticks rather than battery. (At the engine level a rejected step is
     spent, so a manual or agent client that preloaded a route should check
     `lastReject` and re-queue or `clearMoves` before continuing.) Measured three
-    ways over 3000 ticks on the shipped map: waiting
-    behind traffic 250 delivered / 49 expired / 0 tows; detouring while pricing
-    the detour 79 / 177 / 34; detouring while pricing the straight route
-    198 / 89 / 84. Cost of the rule itself, same driver on both sides, three
-    seeds: 247/245/240 with collision against 269/240/253 without — inside noise,
-    with reputation at 4.83/5.00/4.90.
+    ways over 3000 ticks on the shipped map: waiting behind traffic was
+    250 delivered / 49 expired / 0 tows on the engine of the time; detouring
+    while pricing the detour 79 / 177 / 34; detouring while pricing the straight
+    route 198 / 89 / 84. Those three were not re-run since: the same wait-behind
+    driver now measures 325 delivered / 14 expired / 17 tows / reputation 5.00
+    on the default seed (154 / 111 / 36 / 0.61 before the harness fixes in
+    known-issues #8), and 316 / 286 / 329 / 324 delivered at seeds 1 / 2 / 3 / 99.
+    The collision on/off comparison (247/245/240 against 269/240/253, reputation
+    4.83/5.00/4.90) is likewise from the older engine and not re-measured.
 - **Charging takes time and, away from home, money.** Depots restore the map's
   `charging.depot_rate` for free; standalone chargers restore
   `charging.charger_rate` (6 and 2 per tick on the shipped map) and bill per
@@ -420,21 +520,31 @@ adapters over `game/engine`, which knows nothing about HTTP or rendering.
   the order assigned collects it; driving onto the customer delivers it. No
   separate verbs, so a delivery costs two routes rather than four API calls.
 - **Orders carry a quantity, and pay scales sublinearly.** Quantity bands are
-  paced by session progress, not by chapter or the current fleet. The scooter
-  and van bands carry a small `early_weight` from tick 0 and take their full
-  weight at their `from_progress` gate, so a late-game city still asks for 1–3
-  box scooter work and a 5-box job can appear before the player owns a van. The
-  30–40 truck band has **no** early floor: it is deliberately absent until its
-  gate, because a truck is unaffordable at tick 0 and every early truck order
-  would only expire. Pay is
+  paced by session progress, not by chapter or the current fleet. Only the 1–3
+  box band has an early share; the 5–10, 13–24 and 30–40 box bands are
+  **absent until their `from_progress` gate**. A city starts with one 4-box
+  scooter and $0, and a van ($600) or truck ($2100) cannot be bought before an
+  early order's 25–35 tick window closes, so an oversized order in the first
+  few hundred ticks could only expire (about one run in two). The gates sit
+  after the point a good run has earned the price: $650 is earned by tick
+  ~200–260 in `city.json` and ~215–395 in the São Paulo maps, against van gates
+  at tick 420 and 540; $2150 by ~480–840, against truck gates at 1680 and 2160. Pay is
   `base × chapter × (0.6 + 0.4×qty)` plus a per-tile distance bonus: linear
   per-box pay would make bulk strictly better and order choice a non-decision.
 - **Orders are raised on tick boundaries through three gates**: the customer's
-  own cooldown, the global cap, and a target queue depth derived from the
+  own cooldown, an optional hard cap, and a target queue depth derived from the
   **visible customer population** (`round(customers × 0.6)`). Buying cars must
   add throughput, not create more work. Customer cooldowns also scale with
   progress, falling to 75% of their base interval at 100% ramp, so order
   frequency grows over the session instead of stepping at a chapter boundary.
+- **Demand has no ceiling unless the map asks for one.** `max_active_orders: 0`
+  removes the hard cap, `target_growth_per_1000_ticks` adds `floor(tick/1000 ×
+  value)` standing orders forever, and `cooldown_decay_per_1000_ticks` shaves
+  `floor(tick/1000 × value)` ticks off every cooldown down to a 1-tick floor.
+  The target term deepens the queue; the cooldown term is what keeps the
+  *arrival rate* rising once the player's fleet keeps up. Both default to 0
+  (old behaviour) so existing custom cities keep their pacing; `city.json`
+  enables them and the São Paulo maps keep an explicit cap.
 - **The vehicle ladder is capacity-driven, with work bands on a progress
   curve.** Scooter 4 boxes, van 24, truck 40; all three are purchasable with
   money alone, and the depot parks any number of cars. The bands reach full
@@ -514,6 +624,16 @@ omitting `rate` inherits `charging.charger_rate`; omitting `price_per_tick`
 inherits `charging.charger_price_per_tick`; an explicit `0` makes that charger
 free. `charging.charger_price_per_tick` itself is required: an explicit `0`
 keeps a custom map's chargers free, while the shipped maps set $1/tick.
+
+Players can buy and place a charger with `deliveryBuyCharger`. The price is
+`charging.charger_purchase_price` and the per-session cap is
+`charging.max_purchased_chargers`; a cap of `0` (the default when omitted)
+disables buying. The shipped maps set $150 and 6.
+
+Both are per-city, and the client can read them without the map file:
+`CityView.charging` carries `depotRate`, `chargerRate`, `chargerPricePerTick`,
+`chargerPurchasePrice` and `maxPurchasedChargers`, on the static `city` query
+and inside every session snapshot.
 
 Charging is not a flat per-tick fee because the last tick is usually partial:
 billing a full tick for one missing unit overcharges the player. Charging per

@@ -23,6 +23,36 @@ import (
 	model4 "github.com/wricardo/drbrain/platform/account/graph/model"
 )
 
+// DeleteSession is the resolver for the deleteSession field.
+func (r *delivery_AdminResolver) DeleteSession(ctx context.Context, obj *model.Admin, id string) (bool, error) {
+	return r.Delivery.Admin().DeleteSession(ctx, obj, id)
+}
+
+// DeleteSessions is the resolver for the deleteSessions field.
+func (r *delivery_AdminResolver) DeleteSessions(ctx context.Context, obj *model.Admin, ids []string) (*model.AdminDeleteResult, error) {
+	return r.Delivery.Admin().DeleteSessions(ctx, obj, ids)
+}
+
+// PauseSession is the resolver for the pauseSession field.
+func (r *delivery_AdminResolver) PauseSession(ctx context.Context, obj *model.Admin, id string) (*model.Snapshot, error) {
+	return r.Delivery.Admin().PauseSession(ctx, obj, id)
+}
+
+// EvictSession is the resolver for the evictSession field.
+func (r *delivery_AdminResolver) EvictSession(ctx context.Context, obj *model.Admin, id string) (bool, error) {
+	return r.Delivery.Admin().EvictSession(ctx, obj, id)
+}
+
+// SaveSession is the resolver for the saveSession field.
+func (r *delivery_AdminResolver) SaveSession(ctx context.Context, obj *model.Admin, id string) (bool, error) {
+	return r.Delivery.Admin().SaveSession(ctx, obj, id)
+}
+
+// SaveAll is the resolver for the saveAll field.
+func (r *delivery_AdminResolver) SaveAll(ctx context.Context, obj *model.Admin) (int, error) {
+	return r.Delivery.Admin().SaveAll(ctx, obj)
+}
+
 // CashEntries is the resolver for the cashEntries field.
 func (r *delivery_LedgerViewResolver) CashEntries(ctx context.Context, obj *model.LedgerView, month *int, fromTick *int, toTick *int, category *model.CashCategory, carID *string, limit *int) ([]*model.CashEntryView, error) {
 	return r.Delivery.LedgerView().CashEntries(ctx, obj, month, fromTick, toTick, category, carID, limit)
@@ -36,106 +66,6 @@ func (r *delivery_LedgerViewResolver) Months(ctx context.Context, obj *model.Led
 // Cars is the resolver for the cars field.
 func (r *delivery_LedgerViewResolver) Cars(ctx context.Context, obj *model.LedgerView, month *int, fromTick *int, toTick *int, limit *int) ([]*model.CarLedgerView, error) {
 	return r.Delivery.LedgerView().Cars(ctx, obj, month, fromTick, toTick, limit)
-}
-
-// CreateSession is the resolver for the createSession field.
-func (r *delivery_MutationResolver) CreateSession(ctx context.Context, obj *graph.Resolver, id *string, seed *int, cityID *string) (*model.CreateSessionResult, error) {
-	return obj.Mutation().CreateSession(ctx, id, seed, cityID)
-}
-
-// MoveCar is the resolver for the moveCar field.
-func (r *delivery_MutationResolver) MoveCar(ctx context.Context, obj *graph.Resolver, id string, carID string, direction model.Direction, ownerToken *string) (*model.Snapshot, error) {
-	return obj.Mutation().MoveCar(ctx, id, carID, direction, ownerToken)
-}
-
-// ClearMoves is the resolver for the clearMoves field.
-func (r *delivery_MutationResolver) ClearMoves(ctx context.Context, obj *graph.Resolver, id string, carID string, ownerToken *string) (*model.Snapshot, error) {
-	return obj.Mutation().ClearMoves(ctx, id, carID, ownerToken)
-}
-
-// Tick is the resolver for the tick field.
-func (r *delivery_MutationResolver) Tick(ctx context.Context, obj *graph.Resolver, id string, count int, ownerToken *string) (*model.Snapshot, error) {
-	return obj.Mutation().Tick(ctx, id, count, ownerToken)
-}
-
-// WaitUntil is the resolver for the waitUntil field.
-func (r *delivery_MutationResolver) WaitUntil(ctx context.Context, obj *graph.Resolver, id string, tick *int, ticks *int, ownerToken *string) (*model.Snapshot, error) {
-	return obj.Mutation().WaitUntil(ctx, id, tick, ticks, ownerToken)
-}
-
-// SetSpeed is the resolver for the setSpeed field.
-func (r *delivery_MutationResolver) SetSpeed(ctx context.Context, obj *graph.Resolver, id string, speed int, ownerToken *string) (*model.Snapshot, error) {
-	return obj.Mutation().SetSpeed(ctx, id, speed, ownerToken)
-}
-
-// AssignOrder is the resolver for the assignOrder field.
-func (r *delivery_MutationResolver) AssignOrder(ctx context.Context, obj *graph.Resolver, id string, orderID string, carID string, ownerToken *string) (*model.Snapshot, error) {
-	return obj.Mutation().AssignOrder(ctx, id, orderID, carID, ownerToken)
-}
-
-// UnassignOrder is the resolver for the unassignOrder field.
-func (r *delivery_MutationResolver) UnassignOrder(ctx context.Context, obj *graph.Resolver, id string, orderID string, ownerToken *string) (*model.Snapshot, error) {
-	return obj.Mutation().UnassignOrder(ctx, id, orderID, ownerToken)
-}
-
-// BuyCar is the resolver for the buyCar field.
-func (r *delivery_MutationResolver) BuyCar(ctx context.Context, obj *graph.Resolver, id string, className string, depotID string, ownerToken *string) (*model.Snapshot, error) {
-	return obj.Mutation().BuyCar(ctx, id, className, depotID, ownerToken)
-}
-
-// TowCar is the resolver for the towCar field.
-func (r *delivery_MutationResolver) TowCar(ctx context.Context, obj *graph.Resolver, id string, carID string, ownerToken *string) (*model.Snapshot, error) {
-	return obj.Mutation().TowCar(ctx, id, carID, ownerToken)
-}
-
-// SaveSession is the resolver for the saveSession field.
-func (r *delivery_MutationResolver) SaveSession(ctx context.Context, obj *graph.Resolver, id string, ownerToken *string) (*model.Snapshot, error) {
-	return obj.Mutation().SaveSession(ctx, id, ownerToken)
-}
-
-// RenameSession is the resolver for the renameSession field.
-func (r *delivery_MutationResolver) RenameSession(ctx context.Context, obj *graph.Resolver, id string, displayName string, ownerToken *string) (*model.Snapshot, error) {
-	return obj.Mutation().RenameSession(ctx, id, displayName, ownerToken)
-}
-
-// EvictSession is the resolver for the evictSession field.
-func (r *delivery_MutationResolver) EvictSession(ctx context.Context, obj *graph.Resolver, id string, ownerToken *string) (bool, error) {
-	return obj.Mutation().EvictSession(ctx, id, ownerToken)
-}
-
-// DeleteSession is the resolver for the deleteSession field.
-func (r *delivery_MutationResolver) DeleteSession(ctx context.Context, obj *graph.Resolver, id string, ownerToken *string) (bool, error) {
-	return obj.Mutation().DeleteSession(ctx, id, ownerToken)
-}
-
-// ClaimSessions is the resolver for the claimSessions field.
-func (r *delivery_MutationResolver) ClaimSessions(ctx context.Context, obj *graph.Resolver, claims []*model.SessionClaimInput) ([]*model.SessionClaimResult, error) {
-	return obj.Mutation().ClaimSessions(ctx, claims)
-}
-
-// CreateCity is the resolver for the createCity field.
-func (r *delivery_MutationResolver) CreateCity(ctx context.Context, obj *graph.Resolver, id string, config string) (*model.CityView, error) {
-	return obj.Mutation().CreateCity(ctx, id, config)
-}
-
-// UpdateCity is the resolver for the updateCity field.
-func (r *delivery_MutationResolver) UpdateCity(ctx context.Context, obj *graph.Resolver, id string, config string) (*model.CityView, error) {
-	return obj.Mutation().UpdateCity(ctx, id, config)
-}
-
-// PublishCity is the resolver for the publishCity field.
-func (r *delivery_MutationResolver) PublishCity(ctx context.Context, obj *graph.Resolver, id string) (*model.CityView, error) {
-	return obj.Mutation().PublishCity(ctx, id)
-}
-
-// DeleteCity is the resolver for the deleteCity field.
-func (r *delivery_MutationResolver) DeleteCity(ctx context.Context, obj *graph.Resolver, id string) (bool, error) {
-	return obj.Mutation().DeleteCity(ctx, id)
-}
-
-// ValidateCity is the resolver for the validateCity field.
-func (r *delivery_MutationResolver) ValidateCity(ctx context.Context, obj *graph.Resolver, config string) (*model.CityValidationResult, error) {
-	return obj.Mutation().ValidateCity(ctx, config)
 }
 
 // Health is the resolver for the health field.
@@ -163,21 +93,6 @@ func (r *delivery_QueryResolver) Sessions(ctx context.Context, obj *graph.Resolv
 	return obj.Query().Sessions(ctx, sort, limit, before, cursor, mine)
 }
 
-// MoneyHistory is the resolver for the moneyHistory field.
-func (r *delivery_QueryResolver) MoneyHistory(ctx context.Context, obj *graph.Resolver, ids []string, cityID *string, fromTick *int, toTick *int, maxPoints *int) ([]*model.MoneyHistory, error) {
-	return obj.Query().MoneyHistory(ctx, ids, cityID, fromTick, toTick, maxPoints)
-}
-
-// ItemsHistory is the resolver for the itemsHistory field.
-func (r *delivery_QueryResolver) ItemsHistory(ctx context.Context, obj *graph.Resolver, ids []string, cityID *string, fromTick *int, toTick *int, maxPoints *int) ([]*model.ValueSeries, error) {
-	return obj.Query().ItemsHistory(ctx, ids, cityID, fromTick, toTick, maxPoints)
-}
-
-// ReputationHistory is the resolver for the reputationHistory field.
-func (r *delivery_QueryResolver) ReputationHistory(ctx context.Context, obj *graph.Resolver, ids []string, cityID *string, fromTick *int, toTick *int, maxPoints *int) ([]*model.ValueSeries, error) {
-	return obj.Query().ReputationHistory(ctx, ids, cityID, fromTick, toTick, maxPoints)
-}
-
 // MetricHistory is the resolver for the metricHistory field.
 func (r *delivery_QueryResolver) MetricHistory(ctx context.Context, obj *graph.Resolver, metric model.AnalyticsMetric, ids []string, cityID *string, fromTick *int, toTick *int, maxPoints *int) ([]*model.ValueSeries, error) {
 	return obj.Query().MetricHistory(ctx, metric, ids, cityID, fromTick, toTick, maxPoints)
@@ -186,6 +101,11 @@ func (r *delivery_QueryResolver) MetricHistory(ctx context.Context, obj *graph.R
 // Session is the resolver for the session field.
 func (r *delivery_QueryResolver) Session(ctx context.Context, obj *graph.Resolver, id string) (*model.Snapshot, error) {
 	return obj.Query().Session(ctx, id)
+}
+
+// TickSnapshots is the resolver for the tickSnapshots field.
+func (r *delivery_QueryResolver) TickSnapshots(ctx context.Context, obj *graph.Resolver, sessionID string, fromTick *int, toTick *int, afterTick *int, limit *int) ([]*model.TickSnapshot, error) {
+	return obj.Query().TickSnapshots(ctx, sessionID, fromTick, toTick, afterTick, limit)
 }
 
 // CarView is the resolver for the carView field.
@@ -258,6 +178,16 @@ func (r *global_QueryResolver) Profile(ctx context.Context, obj *graph4.Resolver
 	return obj.Query().Profile(ctx, handle)
 }
 
+// DeleteSession is the resolver for the deleteSession field.
+func (r *mazes_AdminResolver) DeleteSession(ctx context.Context, obj *model1.Admin, id string) (bool, error) {
+	return r.Mazes.Admin().DeleteSession(ctx, obj, id)
+}
+
+// RenameSession is the resolver for the renameSession field.
+func (r *mazes_AdminResolver) RenameSession(ctx context.Context, obj *model1.Admin, id string, displayName string) (*model1.Session, error) {
+	return r.Mazes.Admin().RenameSession(ctx, obj, id, displayName)
+}
+
 // CreateSession is the resolver for the createSession field.
 func (r *mazes_MutationResolver) CreateSession(ctx context.Context, obj *graph1.Resolver, mapID string, displayName *string) (*model1.CreateSessionResult, error) {
 	return obj.Mutation().CreateSession(ctx, mapID, displayName)
@@ -313,6 +243,11 @@ func (r *mazes_MutationResolver) ValidateMap(ctx context.Context, obj *graph1.Re
 	return obj.Mutation().ValidateMap(ctx, mapArg)
 }
 
+// Admin is the resolver for the admin field.
+func (r *mazes_MutationResolver) Admin(ctx context.Context, obj *graph1.Resolver, key string) (*model1.Admin, error) {
+	return obj.Mutation().Admin(ctx, key)
+}
+
 // Maps is the resolver for the maps field.
 func (r *mazes_QueryResolver) Maps(ctx context.Context, obj *graph1.Resolver) ([]*model1.Map, error) {
 	return obj.Query().Maps(ctx)
@@ -341,6 +276,16 @@ func (r *mazes_QueryResolver) Sessions(ctx context.Context, obj *graph1.Resolver
 // CanPlaySession is the resolver for the canPlaySession field.
 func (r *mazes_QueryResolver) CanPlaySession(ctx context.Context, obj *graph1.Resolver, id string, ownerToken *string) (bool, error) {
 	return obj.Query().CanPlaySession(ctx, id, ownerToken)
+}
+
+// DeleteSession is the resolver for the deleteSession field.
+func (r *motor_AdminResolver) DeleteSession(ctx context.Context, obj *model2.Admin, id string) (bool, error) {
+	return r.Motor.Admin().DeleteSession(ctx, obj, id)
+}
+
+// PauseSession is the resolver for the pauseSession field.
+func (r *motor_AdminResolver) PauseSession(ctx context.Context, obj *model2.Admin, id string) (*model2.Session, error) {
+	return r.Motor.Admin().PauseSession(ctx, obj, id)
 }
 
 // Builtin is the resolver for the builtin field.
@@ -421,6 +366,11 @@ func (r *motor_MutationResolver) PublishMap(ctx context.Context, obj *graph2.Res
 // DeleteMap is the resolver for the deleteMap field.
 func (r *motor_MutationResolver) DeleteMap(ctx context.Context, obj *graph2.Resolver, id string) (bool, error) {
 	return obj.Mutation().DeleteMap(ctx, id)
+}
+
+// Admin is the resolver for the admin field.
+func (r *motor_MutationResolver) Admin(ctx context.Context, obj *graph2.Resolver, key string) (*model2.Admin, error) {
+	return obj.Mutation().Admin(ctx, key)
 }
 
 // Maps is the resolver for the maps field.
@@ -526,12 +476,202 @@ func (r *mutationResolver) Account(ctx context.Context) (*graph4.Resolver, error
 	return r.Resolver.Account, nil
 }
 
-// Delivery is the resolver for the delivery field.
-func (r *mutationResolver) Delivery(ctx context.Context) (*graph.Resolver, error) {
-	if r.Resolver.Delivery == nil {
-		return nil, errGameDisabled
+// DeliveryCreateSession is the resolver for the deliveryCreateSession field.
+func (r *mutationResolver) DeliveryCreateSession(ctx context.Context, id *string, seed *int, cityID *string) (*model.CreateSessionResult, error) {
+	m, err := r.deliveryMutation()
+	if err != nil {
+		return nil, err
 	}
-	return r.Resolver.Delivery, nil
+	return m.CreateSession(ctx, id, seed, cityID)
+}
+
+// DeliveryMoveCar is the resolver for the deliveryMoveCar field.
+func (r *mutationResolver) DeliveryMoveCar(ctx context.Context, id string, carID string, direction model.Direction, ownerToken *string) (*model.CarView, error) {
+	m, err := r.deliveryMutation()
+	if err != nil {
+		return nil, err
+	}
+	return m.MoveCar(ctx, id, carID, direction, ownerToken)
+}
+
+// DeliveryClearMoves is the resolver for the deliveryClearMoves field.
+func (r *mutationResolver) DeliveryClearMoves(ctx context.Context, id string, carID string, ownerToken *string) (*model.CarView, error) {
+	m, err := r.deliveryMutation()
+	if err != nil {
+		return nil, err
+	}
+	return m.ClearMoves(ctx, id, carID, ownerToken)
+}
+
+// DeliveryWaitUntil is the resolver for the deliveryWaitUntil field.
+func (r *mutationResolver) DeliveryWaitUntil(ctx context.Context, id string, tick *int, ticks *int, ownerToken *string) (*model.Snapshot, error) {
+	m, err := r.deliveryMutation()
+	if err != nil {
+		return nil, err
+	}
+	return m.WaitUntil(ctx, id, tick, ticks, ownerToken)
+}
+
+// DeliverySetSpeed is the resolver for the deliverySetSpeed field.
+func (r *mutationResolver) DeliverySetSpeed(ctx context.Context, id string, speed int, ownerToken *string) (*model.Snapshot, error) {
+	m, err := r.deliveryMutation()
+	if err != nil {
+		return nil, err
+	}
+	return m.SetSpeed(ctx, id, speed, ownerToken)
+}
+
+// DeliveryAssignOrder is the resolver for the deliveryAssignOrder field.
+func (r *mutationResolver) DeliveryAssignOrder(ctx context.Context, id string, orderID string, carID string, ownerToken *string) (*model.Snapshot, error) {
+	m, err := r.deliveryMutation()
+	if err != nil {
+		return nil, err
+	}
+	return m.AssignOrder(ctx, id, orderID, carID, ownerToken)
+}
+
+// DeliveryUnassignOrder is the resolver for the deliveryUnassignOrder field.
+func (r *mutationResolver) DeliveryUnassignOrder(ctx context.Context, id string, orderID string, ownerToken *string) (*model.Snapshot, error) {
+	m, err := r.deliveryMutation()
+	if err != nil {
+		return nil, err
+	}
+	return m.UnassignOrder(ctx, id, orderID, ownerToken)
+}
+
+// DeliveryBuyCar is the resolver for the deliveryBuyCar field.
+func (r *mutationResolver) DeliveryBuyCar(ctx context.Context, id string, className string, depotID string, ownerToken *string) (*model.Snapshot, error) {
+	m, err := r.deliveryMutation()
+	if err != nil {
+		return nil, err
+	}
+	return m.BuyCar(ctx, id, className, depotID, ownerToken)
+}
+
+// DeliveryBuyCharger is the resolver for the deliveryBuyCharger field.
+func (r *mutationResolver) DeliveryBuyCharger(ctx context.Context, id string, x int, y int, ownerToken *string) (*model.Snapshot, error) {
+	m, err := r.deliveryMutation()
+	if err != nil {
+		return nil, err
+	}
+	return m.BuyCharger(ctx, id, x, y, ownerToken)
+}
+
+// DeliverySellCar is the resolver for the deliverySellCar field.
+func (r *mutationResolver) DeliverySellCar(ctx context.Context, id string, carID string, ownerToken *string) (*model.Snapshot, error) {
+	m, err := r.deliveryMutation()
+	if err != nil {
+		return nil, err
+	}
+	return m.SellCar(ctx, id, carID, ownerToken)
+}
+
+// DeliveryTowCar is the resolver for the deliveryTowCar field.
+func (r *mutationResolver) DeliveryTowCar(ctx context.Context, id string, carID string, ownerToken *string) (*model.Snapshot, error) {
+	m, err := r.deliveryMutation()
+	if err != nil {
+		return nil, err
+	}
+	return m.TowCar(ctx, id, carID, ownerToken)
+}
+
+// DeliverySaveSession is the resolver for the deliverySaveSession field.
+func (r *mutationResolver) DeliverySaveSession(ctx context.Context, id string, ownerToken *string) (*model.Snapshot, error) {
+	m, err := r.deliveryMutation()
+	if err != nil {
+		return nil, err
+	}
+	return m.SaveSession(ctx, id, ownerToken)
+}
+
+// DeliveryRenameSession is the resolver for the deliveryRenameSession field.
+func (r *mutationResolver) DeliveryRenameSession(ctx context.Context, id string, displayName string, ownerToken *string) (*model.Snapshot, error) {
+	m, err := r.deliveryMutation()
+	if err != nil {
+		return nil, err
+	}
+	return m.RenameSession(ctx, id, displayName, ownerToken)
+}
+
+// DeliveryEvictSession is the resolver for the deliveryEvictSession field.
+func (r *mutationResolver) DeliveryEvictSession(ctx context.Context, id string, ownerToken *string) (bool, error) {
+	m, err := r.deliveryMutation()
+	if err != nil {
+		return false, err
+	}
+	return m.EvictSession(ctx, id, ownerToken)
+}
+
+// DeliveryDeleteSession is the resolver for the deliveryDeleteSession field.
+func (r *mutationResolver) DeliveryDeleteSession(ctx context.Context, id string, ownerToken *string) (bool, error) {
+	m, err := r.deliveryMutation()
+	if err != nil {
+		return false, err
+	}
+	return m.DeleteSession(ctx, id, ownerToken)
+}
+
+// DeliveryClaimSessions is the resolver for the deliveryClaimSessions field.
+func (r *mutationResolver) DeliveryClaimSessions(ctx context.Context, claims []*model.SessionClaimInput) ([]*model.SessionClaimResult, error) {
+	m, err := r.deliveryMutation()
+	if err != nil {
+		return nil, err
+	}
+	return m.ClaimSessions(ctx, claims)
+}
+
+// DeliveryCreateCity is the resolver for the deliveryCreateCity field.
+func (r *mutationResolver) DeliveryCreateCity(ctx context.Context, id string, config string) (*model.CityView, error) {
+	m, err := r.deliveryMutation()
+	if err != nil {
+		return nil, err
+	}
+	return m.CreateCity(ctx, id, config)
+}
+
+// DeliveryUpdateCity is the resolver for the deliveryUpdateCity field.
+func (r *mutationResolver) DeliveryUpdateCity(ctx context.Context, id string, config string) (*model.CityView, error) {
+	m, err := r.deliveryMutation()
+	if err != nil {
+		return nil, err
+	}
+	return m.UpdateCity(ctx, id, config)
+}
+
+// DeliveryPublishCity is the resolver for the deliveryPublishCity field.
+func (r *mutationResolver) DeliveryPublishCity(ctx context.Context, id string) (*model.CityView, error) {
+	m, err := r.deliveryMutation()
+	if err != nil {
+		return nil, err
+	}
+	return m.PublishCity(ctx, id)
+}
+
+// DeliveryDeleteCity is the resolver for the deliveryDeleteCity field.
+func (r *mutationResolver) DeliveryDeleteCity(ctx context.Context, id string) (bool, error) {
+	m, err := r.deliveryMutation()
+	if err != nil {
+		return false, err
+	}
+	return m.DeleteCity(ctx, id)
+}
+
+// DeliveryValidateCity is the resolver for the deliveryValidateCity field.
+func (r *mutationResolver) DeliveryValidateCity(ctx context.Context, config string) (*model.CityValidationResult, error) {
+	m, err := r.deliveryMutation()
+	if err != nil {
+		return nil, err
+	}
+	return m.ValidateCity(ctx, config)
+}
+
+// DeliveryAdmin is the resolver for the deliveryAdmin field.
+func (r *mutationResolver) DeliveryAdmin(ctx context.Context, key string) (*model.Admin, error) {
+	m, err := r.deliveryMutation()
+	if err != nil {
+		return nil, err
+	}
+	return m.Admin(ctx, key)
 }
 
 // Mazes is the resolver for the mazes field.
@@ -767,14 +907,14 @@ func (r *tesla_QueryResolver) Map(ctx context.Context, obj *graph3.Resolver, nam
 	return obj.Query().Map(ctx, name, password)
 }
 
+// Delivery_Admin returns generated.Delivery_AdminResolver implementation.
+func (r *Resolver) Delivery_Admin() generated.Delivery_AdminResolver {
+	return &delivery_AdminResolver{r}
+}
+
 // Delivery_LedgerView returns generated.Delivery_LedgerViewResolver implementation.
 func (r *Resolver) Delivery_LedgerView() generated.Delivery_LedgerViewResolver {
 	return &delivery_LedgerViewResolver{r}
-}
-
-// Delivery_Mutation returns generated.Delivery_MutationResolver implementation.
-func (r *Resolver) Delivery_Mutation() generated.Delivery_MutationResolver {
-	return &delivery_MutationResolver{r}
 }
 
 // Delivery_Query returns generated.Delivery_QueryResolver implementation.
@@ -795,6 +935,9 @@ func (r *Resolver) Global_Mutation() generated.Global_MutationResolver {
 // Global_Query returns generated.Global_QueryResolver implementation.
 func (r *Resolver) Global_Query() generated.Global_QueryResolver { return &global_QueryResolver{r} }
 
+// Mazes_Admin returns generated.Mazes_AdminResolver implementation.
+func (r *Resolver) Mazes_Admin() generated.Mazes_AdminResolver { return &mazes_AdminResolver{r} }
+
 // Mazes_Mutation returns generated.Mazes_MutationResolver implementation.
 func (r *Resolver) Mazes_Mutation() generated.Mazes_MutationResolver {
 	return &mazes_MutationResolver{r}
@@ -802,6 +945,9 @@ func (r *Resolver) Mazes_Mutation() generated.Mazes_MutationResolver {
 
 // Mazes_Query returns generated.Mazes_QueryResolver implementation.
 func (r *Resolver) Mazes_Query() generated.Mazes_QueryResolver { return &mazes_QueryResolver{r} }
+
+// Motor_Admin returns generated.Motor_AdminResolver implementation.
+func (r *Resolver) Motor_Admin() generated.Motor_AdminResolver { return &motor_AdminResolver{r} }
 
 // Motor_Map returns generated.Motor_MapResolver implementation.
 func (r *Resolver) Motor_Map() generated.Motor_MapResolver { return &motor_MapResolver{r} }
@@ -847,14 +993,16 @@ func (r *Resolver) Tesla_Mutation() generated.Tesla_MutationResolver {
 // Tesla_Query returns generated.Tesla_QueryResolver implementation.
 func (r *Resolver) Tesla_Query() generated.Tesla_QueryResolver { return &tesla_QueryResolver{r} }
 
+type delivery_AdminResolver struct{ *Resolver }
 type delivery_LedgerViewResolver struct{ *Resolver }
-type delivery_MutationResolver struct{ *Resolver }
 type delivery_QueryResolver struct{ *Resolver }
 type delivery_SnapshotResolver struct{ *Resolver }
 type global_MutationResolver struct{ *Resolver }
 type global_QueryResolver struct{ *Resolver }
+type mazes_AdminResolver struct{ *Resolver }
 type mazes_MutationResolver struct{ *Resolver }
 type mazes_QueryResolver struct{ *Resolver }
+type motor_AdminResolver struct{ *Resolver }
 type motor_MapResolver struct{ *Resolver }
 type motor_MutationResolver struct{ *Resolver }
 type motor_QueryResolver struct{ *Resolver }

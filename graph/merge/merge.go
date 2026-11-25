@@ -45,6 +45,9 @@ type Game struct {
 	ModelPkg string
 	// ResolverPkg is the module-relative Go package holding *graph.Resolver.
 	ResolverPkg string
+	// FlatMutation exposes the game's mutations as prefixed root fields
+	// (deliveryMoveCar) instead of a namespace object.
+	FlatMutation bool
 }
 
 // Games is the fixed merge order. The first entry is the global account
@@ -53,7 +56,7 @@ type Game struct {
 // everything else.
 var Games = []Game{
 	{Name: "Global", Namespace: "account", Dir: "platform/account", ModelPkg: "platform/account/graph/model", ResolverPkg: "platform/account/graph"},
-	{Name: "Delivery", Namespace: "delivery", Dir: "games/delivery", ModelPkg: "games/delivery/graph/model", ResolverPkg: "games/delivery/graph"},
+	{Name: "Delivery", Namespace: "delivery", Dir: "games/delivery", ModelPkg: "games/delivery/graph/model", ResolverPkg: "games/delivery/graph", FlatMutation: true},
 	{Name: "Mazes", Namespace: "mazes", Dir: "games/mazes", ModelPkg: "games/mazes/graph/model", ResolverPkg: "games/mazes/graph"},
 	{Name: "Motor", Namespace: "motorProgramming", Dir: "games/motor", ModelPkg: "games/motor/graph/model", ResolverPkg: "games/motor/graph"},
 	{Name: "Tesla", Namespace: "tesla", Dir: "games/tesla", ModelPkg: "games/tesla/graph/model", ResolverPkg: "games/tesla/graph"},
@@ -98,6 +101,9 @@ func BuildFrom(root string) ([]byte, error) {
 				continue
 			}
 			if isRoot(d.Name) && d.Name != "Subscription" {
+				if d.Name == "Mutation" && pg.game.FlatMutation {
+					continue // flattened into the root Mutation below
+				}
 				// Query and Mutation namespaces need a prefixed copy.
 				nd := *d
 				nd.Name = pg.game.Name + "_" + d.Name
@@ -120,7 +126,7 @@ func BuildFrom(root string) ([]byte, error) {
 	}
 	merged.Definitions = append(merged.Definitions,
 		namespaceRoot("Query", "Query"),
-		namespaceRoot("Mutation", "Mutation"),
+		mutationRoot(parsed),
 		subscriptionRoot(parsed),
 	)
 
@@ -221,4 +227,52 @@ func rewriteType(t *ast.Type, prefix string) {
 		return
 	}
 	t.NamedType = prefix + "_" + t.NamedType
+}
+
+// flatFieldName is the root field a flattened game operation gets: the game
+// namespace plus the capitalized operation name, e.g. deliveryMoveCar. The
+// same rule names the flat subscription roots.
+func flatFieldName(namespace, name string) string {
+	return namespace + strings.ToUpper(name[:1]) + name[1:]
+}
+
+// mutationRoot builds the root Mutation. Games with FlatMutation contribute
+// their operations as prefixed root fields; the rest keep a namespace field.
+// GraphQL runs only top-level mutation fields serially, and gqlgen resolves
+// nested objects concurrently, so a flattened game keeps aliased operations
+// (several moveCar calls in one document) in document order.
+func mutationRoot(parsed []parsedGame) *ast.Definition {
+	def := &ast.Definition{Kind: ast.Object, Name: "Mutation"}
+	for _, pg := range parsed {
+		if !pg.game.FlatMutation {
+			def.Fields = append(def.Fields, &ast.FieldDefinition{
+				Name: pg.game.Namespace,
+				Type: ast.NonNullNamedType(pg.game.Name+"_Mutation", nil),
+			})
+			continue
+		}
+		for _, d := range pg.defs {
+			if d.Name != "Mutation" {
+				continue
+			}
+			for _, f := range d.Fields {
+				nf := *f
+				nf.Name = flatFieldName(pg.game.Namespace, f.Name)
+				nf.Type = copyType(f.Type)
+				rewriteType(nf.Type, pg.game.Name)
+				nf.Arguments = copyArgs(f.Arguments, pg.game.Name)
+				def.Fields = append(def.Fields, &nf)
+			}
+		}
+	}
+	return def
+}
+
+func copyType(t *ast.Type) *ast.Type {
+	if t == nil {
+		return nil
+	}
+	nt := *t
+	nt.Elem = copyType(t.Elem)
+	return &nt
 }

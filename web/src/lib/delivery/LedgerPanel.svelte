@@ -21,6 +21,7 @@
 		CHARGING: 'Charging',
 		TOW: 'Tow',
 		CAR_PURCHASE: 'Bought car',
+		CAR_SALE: 'Sold car',
 		BUILD: 'Build',
 		GRANT: 'Grant'
 	};

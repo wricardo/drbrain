@@ -52,6 +52,10 @@ type World struct {
 	// NextCarSeq is the counter behind generated car ids.
 	NextCarSeq int
 
+	// PlacedChargers are the chargers the player bought with BuyCharger. They
+	// are saved because, unlike growth chargers, nothing can re-derive them.
+	PlacedChargers []ChargerConfig
+
 	// Orders holds every order ever raised this session, in creation order.
 	Orders []*Order
 
@@ -121,6 +125,11 @@ type World struct {
 	// instead was wrong once the log trimmed: the tail of the log and the tail
 	// of the tick are different things.
 	currentTickEvents []Event
+
+	// tickHook, when set, runs once after every completed tick. The session
+	// installs it to record a per-tick snapshot without teaching the engine
+	// about storage; production sessions leave it nil.
+	tickHook func()
 }
 
 // Event is one thing that happened in the world, for the client feed.
@@ -138,17 +147,19 @@ type Event struct {
 
 // Event type names.
 const (
-	EventBlocked    = "car_blocked"
-	EventCharged    = "car_charged"
-	EventStranded   = "car_stranded"
-	EventBoughtCar  = "car_bought"
-	EventPickedUp   = "order_picked_up"
-	EventDelivered  = "order_delivered"
-	EventExpired    = "order_expired"
-	EventSpawned    = "order_spawned"
-	EventGrowth     = "city_growth"
-	EventClosure    = "closure_started"
-	EventClosureEnd = "closure_ended"
+	EventBlocked       = "car_blocked"
+	EventCharged       = "car_charged"
+	EventStranded      = "car_stranded"
+	EventBoughtCar     = "car_bought"
+	EventBoughtCharger = "charger_bought"
+	EventSoldCar       = "car_sold"
+	EventPickedUp      = "order_picked_up"
+	EventDelivered     = "order_delivered"
+	EventExpired       = "order_expired"
+	EventSpawned       = "order_spawned"
+	EventGrowth        = "city_growth"
+	EventClosure       = "closure_started"
+	EventClosureEnd    = "closure_ended"
 )
 
 // NewWorld builds a world with the fixed default seed, for tests and tooling
@@ -253,6 +264,15 @@ func (w *World) TicksPerMonth() int { return int(w.ticksPerMonth) }
 // MaxEvents is how many feed entries the world retains before it drops the
 // oldest. Clients use it to tell a gap from a quiet stretch.
 func (w *World) MaxEvents() int { return w.maxEvents }
+
+// SetTickHook installs a callback that runs after every completed tick.
+//
+// It exists so a session can record a per-tick snapshot without the engine
+// knowing about storage. The hook runs synchronously at the end of Advance,
+// before Advance returns, so it observes the tick that just completed and is
+// subject to the same lock the caller holds. It must be quick and must not
+// mutate the world; nil removes it.
+func (w *World) SetTickHook(fn func()) { w.tickHook = fn }
 
 // AutosaveTicks returns how many world ticks may pass between background saves.
 func (w *World) AutosaveTicks() int64 { return w.autosaveTicks }
@@ -407,6 +427,9 @@ func (w *World) Advance() []Event {
 	w.chargeUpkeep()
 
 	w.Tick++
+	if w.tickHook != nil {
+		w.tickHook()
+	}
 	return append([]Event(nil), w.currentTickEvents...)
 }
 
@@ -829,11 +852,56 @@ func (w *World) BuyCar(class, depotID string) (*Car, error) {
 	if err != nil {
 		return nil, err
 	}
+	car.PurchasePrice = cc.Price
 	w.recordCash(CashCarPurchase, -cc.Price, car, "", "bought "+car.Name)
 	w.Cars = append(w.Cars, car)
 	w.NextCarSeq++
 	w.emit(EventBoughtCar, car, fmt.Sprintf("bought %s at %s for $%d", car.Name, depotID, cc.Price))
 	return car, nil
+}
+
+// SellCar removes a car from the fleet and banks CarResalePercent of its
+// purchase price. Any open charging bill is settled first, so charging up and
+// selling the car cannot erase the debt.
+//
+// A car that still owes a delivery is refused: selling it would either drop
+// carried cargo or leave an order assigned to a car that no longer exists.
+// Unassign the order (or deliver it) and try again.
+func (w *World) SellCar(carID string) (*Car, int, error) {
+	idx := -1
+	var car *Car
+	for i, c := range w.Cars {
+		if c.ID == carID {
+			idx, car = i, c
+			break
+		}
+	}
+	if car == nil {
+		return nil, 0, fmt.Errorf("%w %q", ErrNoCar, carID)
+	}
+	// Keep at least one car: a fleet-less save has no way to earn, and the UI
+	// does not offer the free starter class for repurchase.
+	if len(w.Cars) == 1 {
+		return nil, 0, fmt.Errorf("cannot sell the last vehicle")
+	}
+	if len(car.Cargo) > 0 {
+		return nil, 0, fmt.Errorf("%s is carrying %d order(s); deliver them before selling", car.Name, len(car.Cargo))
+	}
+	for _, o := range w.Orders {
+		// DONE and EXPIRED orders keep AssignedCar as history. Only a live
+		// order blocks a sale, otherwise a car that ever delivered could never
+		// be sold again.
+		if o.AssignedCar == carID && !o.State.Terminal() {
+			return nil, 0, fmt.Errorf("%s has order %s assigned; unassign it before selling", car.Name, o.ID)
+		}
+	}
+
+	w.settleCharging(car)
+	refund := car.SaleValue()
+	w.Cars = append(w.Cars[:idx], w.Cars[idx+1:]...)
+	w.recordCash(CashCarSale, refund, car, "", "sold "+car.Name)
+	w.emit(EventSoldCar, car, fmt.Sprintf("sold %s for $%d", car.Name, refund))
+	return car, refund, nil
 }
 
 // depot looks up a depot by id.

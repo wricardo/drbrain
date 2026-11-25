@@ -70,6 +70,10 @@ type Session struct {
 	// dir is where this session is persisted.
 	store sessionstore.Store
 
+	// snapshots records a per-tick world frame when the manager enabled the
+	// tick log. It is shared by every session and writes asynchronously.
+	snapshots *tickSnapshotRecorder
+
 	// hub fans state changes out to live subscribers. It has its own lock and
 	// is never held together with mu, so publishing cannot stall the tick loop
 	// behind a slow reader.
@@ -176,20 +180,27 @@ func (s *Session) Do(fn func(w *engine.World)) {
 // Start. Production creation goes through Manager.Create, which adds a store
 // and mints an owner token.
 func New(id string, city *engine.City, cfg *engine.CityConfig, seed uint64) (*Session, error) {
-	return newWithStore(id, city, cfg, "", seed, nil, "", "")
+	return newWithStore(id, city, cfg, "", seed, nil, "", "", nil)
 }
 
 // newWithStore builds a session sharing the manager's store. accountID and
 // ownerHash may be empty (guest session, or one created before owner tokens).
 // cityID is the catalogue id persisted with the save ("" for the legacy New
-// constructor, which never persists).
-func newWithStore(id string, city *engine.City, cfg *engine.CityConfig, cityID string, seed uint64, st sessionstore.Store, accountID, ownerHash string) (*Session, error) {
+// constructor, which never persists). snapshots, when non-nil, receives a frame
+// after every completed tick.
+func newWithStore(id string, city *engine.City, cfg *engine.CityConfig, cityID string, seed uint64, st sessionstore.Store, accountID, ownerHash string, snapshots *tickSnapshotRecorder) (*Session, error) {
 	if !ValidID(id) {
 		return nil, fmt.Errorf("invalid session id %q", id)
 	}
 	w, err := engine.NewWorldSeeded(city, cfg, seed)
 	if err != nil {
 		return nil, err
+	}
+	if snapshots != nil {
+		// The hook runs under the session lock at the end of every Advance, so
+		// ExportFrame copies the world while it is still consistent and Record
+		// only encodes the copy.
+		w.SetTickHook(func() { snapshots.Record(id, w.ExportFrame()) })
 	}
 
 	return &Session{
@@ -204,11 +215,12 @@ func newWithStore(id string, city *engine.City, cfg *engine.CityConfig, cityID s
 		// is still reading the screen. A paused clock makes the loop turn-based,
 		// which is what "drive it yourself" actually means. Agents and
 		// spectators resume with SetSpeed; nothing is lost by defaulting to 0.
-		speed: SpeedPaused,
-		stop:  make(chan struct{}),
-		done:  make(chan struct{}),
-		store: st,
-		hub:   newWatchHub(),
+		speed:     SpeedPaused,
+		stop:      make(chan struct{}),
+		done:      make(chan struct{}),
+		store:     st,
+		snapshots: snapshots,
+		hub:       newWatchHub(),
 		// -1 means "nothing projected yet"; the first save loads the real
 		// watermark from the history table.
 		historyCashSeq:       -1,

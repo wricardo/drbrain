@@ -300,8 +300,11 @@ type DistrictConfig struct {
 // order these values feed.
 type OrdersConfig struct {
 	// MaxActiveOrders is the hard cap on live orders (pending, assigned and
-	// picked up; done and expired do not count). Required: positive.
-	// Suggested: 6. It also caps the population-derived target below.
+	// picked up; done and expired do not count). Required: non-negative.
+	// Zero means NO CAP: the governor's target is the only bound and may grow
+	// without limit through TargetGrowthPer1000Ticks. A positive value is a
+	// hard ceiling that also caps the governor's target. Suggested: 0 for a
+	// map that should keep escalating, or a small number for a fixed-pace map.
 	MaxActiveOrders int `json:"max_active_orders"`
 
 	// TargetOrdersPerCustomer is the queue depth the governor aims for per
@@ -311,9 +314,22 @@ type OrdersConfig struct {
 	// the ones whose district is revealed; a hidden district contributes
 	// nothing until a growth stage opens it.
 	//
-	// The target is round(visible customers × ratio), floored at 1 and capped
-	// by MaxActiveOrders. Required: positive. Suggested: 0.75.
+	// The target is round(visible customers × ratio), floored at 1, then raised
+	// by TargetGrowthPer1000Ticks and finally capped by a positive
+	// MaxActiveOrders. Required: positive. Suggested: 0.75.
 	TargetOrdersPerCustomer float64 `json:"target_orders_per_customer"`
+
+	// TargetGrowthPer1000Ticks adds queue depth as the clock advances, after
+	// the growth schedule and the demand ramp have both run out:
+	//
+	//	target += floor(tick / 1000 * target_growth_per_1000_ticks)
+	//
+	// This is the only unbounded term in the governor, and it is what makes a
+	// long session keep getting harder once the city stops adding customers.
+	// Previously a finished map settled at round(visible × ratio) forever.
+	// Required: non-negative. Zero keeps the old population-only behaviour.
+	// Suggested: 0.5 (one extra standing order every 2000 ticks).
+	TargetGrowthPer1000Ticks float64 `json:"target_growth_per_1000_ticks"`
 
 	// MinSpawnGapTicks is the anti-dead-air floor: when nothing is live and
 	// no car is carrying anything, at least this many ticks must pass since
@@ -415,6 +431,21 @@ type OrdersConfig struct {
 	// orders arrive twice as often at the end of the ramp as at the start.
 	CustomerCooldownMinScale float64 `json:"customer_cooldown_min_scale"`
 
+	// CooldownDecayPer1000Ticks keeps the arrival rate rising after the ramp
+	// has finished, by shaving ticks off every customer's cooldown:
+	//
+	//	interval -= floor(tick / 1000 * cooldown_decay_per_1000_ticks)
+	//
+	// down to a floor of 1 tick. Target growth alone only deepens the standing
+	// queue; once the player's fleet keeps up, queue depth stops mattering and
+	// the rate of new work is the difficulty. This is that rate knob, and it
+	// has no upper bound other than the 1-tick floor and the engine's
+	// one-order-per-tick spawn loop. Required: non-negative. Zero keeps the
+	// old behaviour where cooldowns stop shrinking at ramp_ticks.
+	// Suggested: 1 (one tick faster every 1000 ticks, reaching the floor at
+	// roughly 30-60k ticks for the shipped intervals).
+	CooldownDecayPer1000Ticks float64 `json:"cooldown_decay_per_1000_ticks"`
+
 	// Quantity bands: how many boxes a customer can ask for. Bands are
 	// filtered by ramp progress and drawn with relative weights. With no bands,
 	// or none eligible, every order is a single box. A band may exceed the
@@ -486,6 +517,16 @@ type ChargingConfig struct {
 	// suggested: 1. A charger may override it with its own price_per_tick.
 	// Depots are always free: they are the home base, not a service station.
 	ChargerPricePerTick int `json:"charger_price_per_tick"`
+
+	// ChargerPurchasePrice is what a player pays to buy and place a charger
+	// with the buyCharger mutation. Non-negative; zero makes it free.
+	// Suggested: 150.
+	ChargerPurchasePrice int `json:"charger_purchase_price"`
+
+	// MaxPurchasedChargers caps how many chargers a player may buy in one
+	// session. Non-negative; zero (also the value when omitted) disables
+	// buying chargers on this map. Suggested: 6.
+	MaxPurchasedChargers int `json:"max_purchased_chargers"`
 }
 
 // FleetConfig is the running cost of owning more vehicles than you drive.

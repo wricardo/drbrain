@@ -98,6 +98,7 @@ describe('city JSON helpers', () => {
 		expect(cfg.name).toBe('Starter');
 		expect(cfg.grid_size).toBe(5);
 		expect((cfg.depots as unknown[]).length).toBe(1);
+		expect(cfg.charging).toMatchObject({ max_purchased_chargers: 6 });
 	});
 });
 
@@ -115,7 +116,14 @@ describe('cityConfigFromView', () => {
 		kitchens: [{ id: 'k1', name: 'Kitchen', x: 2, y: 1 }],
 		customers: [{ id: 'c1', name: 'Customer', x: 2, y: 3 }],
 		depots: [{ id: 'home', name: '', x: 2, y: 2 }],
-		chargers: []
+		chargers: [],
+		charging: {
+			depotRate: 6,
+			chargerRate: 2,
+			chargerPricePerTick: 1,
+			chargerPurchasePrice: 150,
+			maxPurchasedChargers: 6
+		}
 	};
 
 	it('keeps the layout, normalises house glyphs, and maps entities', () => {
@@ -126,6 +134,17 @@ describe('cityConfigFromView', () => {
 		expect((cfg.kitchens as { id: string }[])[0].id).toBe('k1');
 		expect((cfg.customers as { id: string }[])[0].id).toBe('c1');
 		expect((cfg.depots as { id: string }[])[0].id).toBe('home');
+	});
+
+	it('carries the charging economy through to the authored config', () => {
+		const cfg = cityConfigFromView(view);
+		expect(cfg.charging).toEqual({
+			depot_rate: 6,
+			charger_rate: 2,
+			charger_price_per_tick: 1,
+			charger_purchase_price: 150,
+			max_purchased_chargers: 6
+		});
 	});
 
 	it('round-trips through the pretty-printer', () => {

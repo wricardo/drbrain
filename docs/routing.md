@@ -23,7 +23,7 @@ per-game API surface (`API()` returns nil), so `/music/mcp` is not routed and
 
 ## GraphQL namespaces
 
-Queries and mutations select a namespace:
+Queries select a namespace; Delivery mutations are flat root fields instead:
 
 ```graphql
 query {
@@ -33,6 +33,16 @@ query {
   motorProgramming { maps { id } }
   tesla { maps { mapId } }
   music { excerpts { id title } }
+}
+```
+
+Delivery mutations are flat `deliveryXxx` root fields (root mutation fields run
+serially, so aliased mutations keep their order):
+
+```graphql
+mutation {
+  m0: deliveryMoveCar(id: "…", carId: "car_1", direction: EAST, ownerToken: "…") { id }
+  m1: deliveryMoveCar(id: "…", carId: "car_1", direction: EAST, ownerToken: "…") { id }
 }
 ```
 

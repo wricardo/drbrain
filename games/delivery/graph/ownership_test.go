@@ -211,7 +211,6 @@ func TestGatedMutationsRejectMissingAndWrongTokens(t *testing.T) {
 	}{
 		{"moveCar", `mutation ($id: ID!, $t: String) { moveCar(id: $id, carId: "car_1", direction: SOUTH, ownerToken: $t) { id } }`},
 		{"clearMoves", `mutation ($id: ID!, $t: String) { clearMoves(id: $id, carId: "car_1", ownerToken: $t) { id } }`},
-		{"tick", `mutation ($id: ID!, $t: String) { tick(id: $id, count: 1, ownerToken: $t) { id } }`},
 		{"setSpeed", `mutation ($id: ID!, $t: String) { setSpeed(id: $id, speed: 1, ownerToken: $t) { id } }`},
 		{"assignOrder", `mutation ($id: ID!, $t: String) { assignOrder(id: $id, orderId: "o1", carId: "car_1", ownerToken: $t) { id } }`},
 		{"unassignOrder", `mutation ($id: ID!, $t: String) { unassignOrder(id: $id, orderId: "o1", ownerToken: $t) { id } }`},
@@ -243,7 +242,7 @@ func TestGatedMutationsRejectMissingAndWrongTokens(t *testing.T) {
 
 func TestUnknownSessionIsNotFoundNotForbidden(t *testing.T) {
 	ts, _, _, _, _ := newOwnershipServer(t)
-	res := gqlAs(t, ts, "", `mutation { tick(id: "0000000000000000", count: 1) { id } }`, nil)
+	res := gqlAs(t, ts, "", `mutation { setSpeed(id: "0000000000000000", speed: 1) { id } }`, nil)
 	if msg := errText(res); !strings.HasPrefix(msg, "not_found:") {
 		t.Fatalf("message = %q, want not_found:", msg)
 	}
@@ -258,7 +257,7 @@ func TestSignedInOwnerNeedsNoToken(t *testing.T) {
 	ts, _, accounts, alice, _ := newOwnershipServer(t)
 	id, _ := createForToken(t, ts, alice, "mine1")
 
-	res := gqlAs(t, ts, alice, `mutation ($id: ID!) { tick(id: $id, count: 1) { tick } }`, map[string]any{"id": id})
+	res := gqlAs(t, ts, alice, `mutation ($id: ID!) { setSpeed(id: $id, speed: 1) { tick } }`, map[string]any{"id": id})
 	if len(res.Errors) > 0 {
 		t.Fatalf("the owning account was refused: %v", res.Errors)
 	}
@@ -267,7 +266,7 @@ func TestSignedInOwnerNeedsNoToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res = gqlAs(t, ts, bob.ID, `mutation ($id: ID!) { tick(id: $id, count: 1) { tick } }`, map[string]any{"id": id})
+	res = gqlAs(t, ts, bob.ID, `mutation ($id: ID!) { setSpeed(id: $id, speed: 1) { tick } }`, map[string]any{"id": id})
 	if msg := errText(res); !strings.HasPrefix(msg, "forbidden:") {
 		t.Fatalf("another account: message = %q, want forbidden:", msg)
 	}
@@ -295,7 +294,7 @@ func TestLegacySaveStaysOpen(t *testing.T) {
 	t.Cleanup(func() { _ = mgr2.Close() })
 	ts2 := ownershipTestServer(t, mgr2, accounts)
 
-	res := gqlAs(t, ts2, "", `mutation ($id: ID!) { tick(id: $id, count: 1) { tick } }`, map[string]any{"id": id})
+	res := gqlAs(t, ts2, "", `mutation ($id: ID!) { setSpeed(id: $id, speed: 1) { tick } }`, map[string]any{"id": id})
 	if len(res.Errors) > 0 {
 		t.Fatalf("a legacy save was locked: %v", res.Errors)
 	}

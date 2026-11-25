@@ -16,7 +16,7 @@ import (
 func TestPausedSessionFlushesSameTickWork(t *testing.T) {
 	city, cfg := testCity(t)
 	store := sessionstore.NewMemory(sessionstore.Options{})
-	s, err := newWithStore("dirty1", city, cfg, "city", 9, store, "", "")
+	s, err := newWithStore("dirty1", city, cfg, "city", 9, store, "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func (g *gatedStore) writeCount() int {
 func TestPauseFlushWaitsForInflightSave(t *testing.T) {
 	city, cfg := testCity(t)
 	store := newGatedStore(sessionstore.NewMemory(sessionstore.Options{}))
-	s, err := newWithStore("gated1", city, cfg, "city", 11, store, "", "")
+	s, err := newWithStore("gated1", city, cfg, "city", 11, store, "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestPauseFlushWaitsForInflightSave(t *testing.T) {
 // subscription consumer keying maps by city id must not receive "".
 func TestStreamSnapshotCarriesCityID(t *testing.T) {
 	city, cfg := testCity(t)
-	s, err := newWithStore("stream1", city, cfg, "city", 3, nil, "", "")
+	s, err := newWithStore("stream1", city, cfg, "city", 3, nil, "", "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

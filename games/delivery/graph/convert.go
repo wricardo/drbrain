@@ -124,6 +124,13 @@ func cityFrom(c session.CityView) *model.CityView {
 		Customers:   pointsFrom(c.Customers),
 		Depots:      pointsFrom(c.Depots),
 		Chargers:    pointsFrom(c.Chargers),
+		Charging: &model.ChargingView{
+			DepotRate:            c.Charging.DepotRate,
+			ChargerRate:          c.Charging.ChargerRate,
+			ChargerPricePerTick:  c.Charging.ChargerPricePerTick,
+			ChargerPurchasePrice: c.Charging.ChargerPurchasePrice,
+			MaxPurchasedChargers: c.Charging.MaxPurchasedChargers,
+		},
 	}
 }
 
@@ -205,6 +212,9 @@ func carFrom(c session.CarView) *model.CarView {
 		Cargo:      nonNil(c.Cargo),
 		State:      carStateFrom(c.State),
 		ChargeDue:  c.ChargeDue,
+
+		PurchasePrice: c.PurchasePrice,
+		ResaleValue:   c.ResaleValue,
 	}
 	if c.Queued != "" {
 		if d, ok := directionFrom(c.Queued); ok {
@@ -472,24 +482,6 @@ func nonNil(s []string) []string {
 		return []string{}
 	}
 	return s
-}
-
-// moneyHistoryFrom converts the session reader's tick series into the GraphQL
-// model, keeping every points list non-nil.
-func moneyHistoryFrom(rows []session.MoneyHistory) []*model.MoneyHistory {
-	out := make([]*model.MoneyHistory, 0, len(rows))
-	for _, h := range rows {
-		points := make([]*model.MoneyPoint, 0, len(h.Points))
-		for _, p := range h.Points {
-			points = append(points, &model.MoneyPoint{Tick: int(p.Tick), Money: p.Money})
-		}
-		out = append(out, &model.MoneyHistory{
-			SessionID: h.SessionID,
-			CityID:    h.CityID,
-			Points:    points,
-		})
-	}
-	return out
 }
 
 // seriesHistoryFrom converts a generic items/reputation series.

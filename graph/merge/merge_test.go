@@ -69,8 +69,23 @@ func TestMergedSchemaShape(t *testing.T) {
 	if got, want := names(schema.Query), []string{"account", "delivery", "mazes", "motorProgramming", "tesla", "music"}; !slices.Equal(got, want) {
 		t.Fatalf("Query fields = %v, want %v", got, want)
 	}
-	if got, want := names(schema.Mutation), []string{"account", "delivery", "mazes", "motorProgramming", "tesla", "music"}; !slices.Equal(got, want) {
-		t.Fatalf("Mutation fields = %v, want %v", got, want)
+	// Delivery mutations are flat deliveryXxx root fields so aliased
+	// operations run serially; every other game keeps a namespace field.
+	var namespaces, flat []string
+	for _, f := range names(schema.Mutation) {
+		if strings.HasPrefix(f, "delivery") {
+			flat = append(flat, f)
+		} else {
+			namespaces = append(namespaces, f)
+		}
+	}
+	if want := []string{"account", "mazes", "motorProgramming", "tesla", "music"}; !slices.Equal(namespaces, want) {
+		t.Fatalf("Mutation namespace fields = %v, want %v", namespaces, want)
+	}
+	for _, want := range []string{"deliveryCreateSession", "deliveryMoveCar", "deliveryWaitUntil", "deliveryAdmin"} {
+		if !slices.Contains(flat, want) {
+			t.Errorf("Mutation is missing flat field %s (have %v)", want, flat)
+		}
 	}
 	wantSubs := []string{
 		"deliverySession",
@@ -87,6 +102,12 @@ func TestMergedSchemaShape(t *testing.T) {
 	for _, g := range Games {
 		for _, typ := range []string{"Query", "Mutation"} {
 			name := g.Name + "_" + typ
+			if typ == "Mutation" && g.FlatMutation {
+				if schema.Types[name] != nil {
+					t.Errorf("flat-mutation game still has namespace type %s", name)
+				}
+				continue
+			}
 			if schema.Types[name] == nil {
 				t.Errorf("missing namespace type %s", name)
 			}

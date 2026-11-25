@@ -106,8 +106,10 @@ func (cfg *CityConfig) validate() error {
 	nonNegativeInt(cfg.StartMoney, "starting_money", 0)
 
 	o := &cfg.Orders
-	positiveInt(o.MaxActiveOrders, "orders.max_active_orders", 6)
+	nonNegativeInt(o.MaxActiveOrders, "orders.max_active_orders", 0)
 	positiveFloat(o.TargetOrdersPerCustomer, "orders.target_orders_per_customer", 0.75)
+	nonNegativeFloat(o.TargetGrowthPer1000Ticks, "orders.target_growth_per_1000_ticks", 0.5)
+	nonNegativeFloat(o.CooldownDecayPer1000Ticks, "orders.cooldown_decay_per_1000_ticks", 1)
 	positiveInt(o.MinSpawnGapTicks, "orders.min_spawn_gap_ticks", 12)
 	positiveFloat(o.DeadlineSlack, "orders.deadline_slack", 2)
 	positiveFloat(o.RewardBulkBase, "orders.reward_bulk_base", 0.6)
@@ -147,6 +149,8 @@ func (cfg *CityConfig) validate() error {
 	positiveInt(cfg.Charging.DepotRate, "charging.depot_rate", 6)
 	positiveInt(cfg.Charging.ChargerRate, "charging.charger_rate", 2)
 	nonNegativeInt(cfg.Charging.ChargerPricePerTick, "charging.charger_price_per_tick", 1)
+	nonNegativeInt(cfg.Charging.ChargerPurchasePrice, "charging.charger_purchase_price", 150)
+	nonNegativeInt(cfg.Charging.MaxPurchasedChargers, "charging.max_purchased_chargers", 6)
 	for i, ch := range cfg.Chargers {
 		prefix := fmt.Sprintf("chargers[%d]", i)
 		positiveInt(ch.Capacity, prefix+".capacity", 1)

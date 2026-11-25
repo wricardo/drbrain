@@ -6,8 +6,8 @@ import { ownerTokenFor, ownerTokens, rememberOwnerToken } from './ownerTokens';
 type Call = { query: string; variables: Record<string, unknown>; headers: Record<string, string> };
 let calls: Call[];
 
-/** Replaces fetch with one that records the operation and answers { data: { delivery } }. */
-function mockFetch(delivery: unknown) {
+/** Replaces fetch with one that records the operation and answers { data: { delivery } }, or { data } for flat root mutations. */
+function mockFetch(delivery: unknown, root = false) {
 	calls = [];
 	vi.stubGlobal(
 		'fetch',
@@ -16,7 +16,7 @@ function mockFetch(delivery: unknown) {
 				...JSON.parse(init.body as string),
 				headers: (init.headers ?? {}) as Record<string, string>
 			});
-			return new Response(JSON.stringify({ data: { delivery } }), { status: 200 });
+			return new Response(JSON.stringify({ data: root ? delivery : { delivery } }), { status: 200 });
 		})
 	);
 }
@@ -29,10 +29,10 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('delivery api owner tokens', () => {
 	it('createSession sends the mutation, city id and remembers the returned token', async () => {
-		mockFetch({ createSession: { session: { id: 's1', cars: [] }, ownerToken: 'tok-1' } });
+		mockFetch({ deliveryCreateSession: { session: { id: 's1', cars: [] }, ownerToken: 'tok-1' } }, true);
 		const snap = await api.createSession(undefined, undefined, 'alpha');
 		expect(snap.id).toBe('s1');
-		expect(calls[0].query).toContain('createSession(id: $id, seed: $seed, cityId: $cityId)');
+		expect(calls[0].query).toContain('deliveryCreateSession(id: $id, seed: $seed, cityId: $cityId)');
 		expect(calls[0].query).toContain('ownerToken');
 		expect(calls[0].variables).toMatchObject({ cityId: 'alpha' });
 		expect(ownerTokenFor('s1')).toBe('tok-1');
@@ -40,15 +40,15 @@ describe('delivery api owner tokens', () => {
 
 	it('a gated mutation sends the stored ownerToken', async () => {
 		rememberOwnerToken('s1', 'tok-1');
-		mockFetch({ tick: { id: 's1' } });
-		await api.tick('s1', 2);
+		mockFetch({ deliveryClearMoves: { id: 'car_1' } }, true);
+		await api.clearMoves('s1', 'car_1');
 		expect(calls[0].query).toContain('$ownerToken: String');
-		expect(calls[0].query).toContain('tick(id: $id, ownerToken: $ownerToken');
-		expect(calls[0].variables).toMatchObject({ id: 's1', ownerToken: 'tok-1', count: 2 });
+		expect(calls[0].query).toContain('deliveryClearMoves(id: $id, ownerToken: $ownerToken');
+		expect(calls[0].variables).toMatchObject({ id: 's1', ownerToken: 'tok-1', carId: 'car_1' });
 	});
 
 	it('a gated mutation sends null for a session without a token', async () => {
-		mockFetch({ setSpeed: { id: 'legacy' } });
+		mockFetch({ deliverySetSpeed: { id: 'legacy' } }, true);
 		await api.setSpeed('legacy', 1);
 		expect(calls[0].variables.ownerToken).toBeNull();
 	});
@@ -69,7 +69,7 @@ describe('delivery api owner tokens', () => {
 	it('deleteSession forgets the token', async () => {
 		rememberOwnerToken('s1', 'tok-1');
 		rememberOwnerToken('s2', 'tok-2');
-		mockFetch({ deleteSession: true });
+		mockFetch({ deliveryDeleteSession: true }, true);
 		await api.deleteSession('s1');
 		expect(calls[0].variables.ownerToken).toBe('tok-1');
 		expect(ownerTokens()).toEqual({ s2: 'tok-2' });
@@ -77,7 +77,7 @@ describe('delivery api owner tokens', () => {
 
 	it('deleteSession keeps the token when the server says no', async () => {
 		rememberOwnerToken('s1', 'tok-1');
-		mockFetch({ deleteSession: false });
+		mockFetch({ deliveryDeleteSession: false }, true);
 		await api.deleteSession('s1');
 		expect(ownerTokenFor('s1')).toBe('tok-1');
 	});
@@ -115,7 +115,7 @@ describe('delivery api owner tokens', () => {
 
 	it('claimSessions sends the claims and returns the results', async () => {
 		const results = [{ sessionID: 's1', status: 'ATTACHED' }];
-		mockFetch({ claimSessions: results });
+		mockFetch({ deliveryClaimSessions: results }, true);
 		const claims = [{ sessionID: 's1', ownerToken: 'tok-1' }];
 		expect(await api.claimSessions(claims)).toEqual(results);
 		expect(calls[0].variables).toEqual({ claims });
@@ -157,13 +157,16 @@ describe('delivery city api', () => {
 	});
 
 	it('sends city mutations with raw config', async () => {
-		mockFetch({
-			createCity: view,
-			updateCity: view,
-			publishCity: view,
-			deleteCity: true,
-			validateCity: { valid: true, publishable: false, issues: ['no depot'] }
-		});
+		mockFetch(
+			{
+				deliveryCreateCity: view,
+				deliveryUpdateCity: view,
+				deliveryPublishCity: view,
+				deliveryDeleteCity: true,
+				deliveryValidateCity: { valid: true, publishable: false, issues: ['no depot'] }
+			},
+			true
+		);
 		await api.createCity('alpha', '{"name":"Alpha"}');
 		await api.updateCity('alpha', '{"name":"Alpha 2"}');
 		await api.publishCity('alpha');
@@ -173,12 +176,12 @@ describe('delivery city api', () => {
 			publishable: false,
 			issues: ['no depot']
 		});
-		expect(calls[0].query).toContain('createCity(id: $id, config: $config)');
+		expect(calls[0].query).toContain('deliveryCreateCity(id: $id, config: $config)');
 		expect(calls[0].variables).toEqual({ id: 'alpha', config: '{"name":"Alpha"}' });
-		expect(calls[1].query).toContain('updateCity(id: $id, config: $config)');
-		expect(calls[2].query).toContain('publishCity(id: $id)');
-		expect(calls[3].query).toContain('deleteCity(id: $id)');
-		expect(calls[4].query).toContain('validateCity(config: $config)');
+		expect(calls[1].query).toContain('deliveryUpdateCity(id: $id, config: $config)');
+		expect(calls[2].query).toContain('deliveryPublishCity(id: $id)');
+		expect(calls[3].query).toContain('deliveryDeleteCity(id: $id)');
+		expect(calls[4].query).toContain('deliveryValidateCity(config: $config)');
 	});
 
 	it('sends the stored admin key header', async () => {
@@ -211,6 +214,9 @@ describe('delivery city api', () => {
 describe('delivery analytics metrics', () => {
 	it('fetches every cumulative metric in one aliased request', async () => {
 		mockFetch({
+			money: [{ sessionId: 's1', cityId: 'city', points: [{ tick: 0, value: 50 }] }],
+			boxesDelivered: [],
+			reputation: [],
 			deliveries: [{ sessionId: 's1', cityId: 'city', points: [{ tick: 0, value: 0 }] }],
 			lateDeliveries: [],
 			expiredOrders: [],
@@ -223,9 +229,12 @@ describe('delivery analytics metrics', () => {
 		});
 		const out = await api.metricsHistory(['s1'], { maxPoints: 200 });
 		expect(calls).toHaveLength(1);
+		expect(calls[0].query).toContain('metricHistory(metric: MONEY');
+		expect(calls[0].query).toContain('metricHistory(metric: BOXES_DELIVERED');
 		expect(calls[0].query).toContain('metricHistory(metric: DELIVERIES');
 		expect(calls[0].query).toContain('metricHistory(metric: TOW_SPEND');
 		expect(calls[0].variables).toMatchObject({ ids: ['s1'], maxPoints: 200 });
+		expect(out.MONEY[0].points[0].value).toBe(50);
 		expect(out.DELIVERIES[0].sessionId).toBe('s1');
 		expect(out.UPKEEP_SPEND).toEqual([]);
 	});

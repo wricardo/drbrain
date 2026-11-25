@@ -21,6 +21,15 @@ resolver:
 # conversion from engine/service types lives in graph/convert.go. Only scalars
 # are bound to existing Go types.
 models:
+  # Admin carries no data: the key is validated by Mutation.admin before the
+  # object exists, and both fields resolve through AdminResolver.
+  Admin:
+    model: github.com/wricardo/drbrain/games/mazes/graph/model.Admin
+    fields:
+      deleteSession:
+        resolver: true
+      renameSession:
+        resolver: true
   ID:
     model:
       - github.com/99designs/gqlgen/graphql.ID

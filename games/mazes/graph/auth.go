@@ -34,21 +34,40 @@ func requireViewer(ctx context.Context) (string, error) {
 	return id, nil
 }
 
-// adminAuthorized reports whether the current request carries valid admin
-// credentials (X-Admin-Key matches ADMIN_API_KEY, or the local-dev bypass).
-// Unlike checkAdminKey it never errors, so callers can use it as an override.
-func adminAuthorized(ctx context.Context) bool {
+// adminKeyMatches reports whether key is the configured admin secret. With no
+// key configured, the explicit local-development opt-out is the only way to
+// authorize an admin operation.
+func adminKeyMatches(key string) bool {
 	required := os.Getenv("ADMIN_API_KEY")
 	if required == "" {
 		return os.Getenv("ALLOW_UNAUTHENTICATED_ADMIN") == "true"
 	}
-	r, _ := ctx.Value(HTTPRequestKey{}).(*http.Request)
-	if r == nil {
-		return false
-	}
-	got := sha256.Sum256([]byte(r.Header.Get("X-Admin-Key")))
+	got := sha256.Sum256([]byte(key))
 	want := sha256.Sum256([]byte(required))
 	return subtle.ConstantTimeCompare(got[:], want[:]) == 1
+}
+
+// adminAuthorized reports whether the current request carries valid admin
+// credentials (X-Admin-Key matches ADMIN_API_KEY, or the local-dev bypass).
+// Unlike checkAdminKey it never errors, so callers can use it as an override.
+func adminAuthorized(ctx context.Context) bool {
+	r, _ := ctx.Value(HTTPRequestKey{}).(*http.Request)
+	if r == nil {
+		return adminKeyMatches("")
+	}
+	return adminKeyMatches(r.Header.Get("X-Admin-Key"))
+}
+
+// adminForKey validates an admin key passed as a mutation argument. It returns
+// the same FORBIDDEN codes the header path uses.
+func adminForKey(key string) error {
+	if adminKeyMatches(key) {
+		return nil
+	}
+	if os.Getenv("ADMIN_API_KEY") == "" && os.Getenv("ALLOW_UNAUTHENTICATED_ADMIN") != "true" {
+		return codedError(service.CodeForbidden, "admin operation disabled: set ADMIN_API_KEY and pass it as admin(key)")
+	}
+	return codedError(service.CodeForbidden, "admin operation requires a valid admin key")
 }
 
 // mapActor identifies who is changing a map.

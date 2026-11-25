@@ -103,6 +103,24 @@ type CityView struct {
 	Customers []PointView `json:"customers"`
 	Depots    []PointView `json:"depots"`
 	Chargers  []PointView `json:"chargers"`
+
+	// Charging is the city's charge economy, so a client can price a top-up
+	// and know the charger-buying cap without reading the map file.
+	Charging ChargingView `json:"charging"`
+}
+
+// ChargingView is the city's charging table as a client sees it.
+type ChargingView struct {
+	// DepotRate is battery restored per tick on a depot tile.
+	DepotRate int `json:"depot_rate"`
+	// ChargerRate is battery restored per tick on a standalone charger.
+	ChargerRate int `json:"charger_rate"`
+	// ChargerPricePerTick is the default dollar price of one full charger tick.
+	ChargerPricePerTick int `json:"charger_price_per_tick"`
+	// ChargerPurchasePrice is what buyCharger charges for one placement.
+	ChargerPurchasePrice int `json:"charger_purchase_price"`
+	// MaxPurchasedChargers caps charger purchases in this city; 0 disables.
+	MaxPurchasedChargers int `json:"max_purchased_chargers"`
 }
 
 // PointView is a named entity at a coordinate.
@@ -136,6 +154,10 @@ type CarView struct {
 	// the next tick first. Omitted when nothing is queued.
 	QueuedMoves []string `json:"queued_moves,omitempty"`
 	LastReject  string   `json:"last_reject,omitempty"`
+	// PurchasePrice is what was paid for this car (0 for starter/granted cars).
+	PurchasePrice int `json:"purchase_price,omitempty"`
+	// ResaleValue is the cash a sale banks now, after the resale cut.
+	ResaleValue int `json:"resale_value"`
 
 	// ChargeDue is the unpaid balance of a charging session in progress. It is
 	// zero on an uncharged car and after the session settles, so a client can
@@ -319,6 +341,38 @@ type EventView struct {
 	Y       int    `json:"y"`
 }
 
+// chargingView flattens the city's charging config for the client.
+func chargingView(c engine.ChargingConfig) ChargingView {
+	return ChargingView{
+		DepotRate:            c.DepotRate,
+		ChargerRate:          c.ChargerRate,
+		ChargerPricePerTick:  c.ChargerPricePerTick,
+		ChargerPurchasePrice: c.ChargerPurchasePrice,
+		MaxPurchasedChargers: c.MaxPurchasedChargers,
+	}
+}
+
+// BuildCarView converts one car into the client view. Call inside Do.
+func BuildCarView(c *engine.Car, city *engine.City) CarView {
+	return CarView{
+		ID: c.ID, Name: c.Name, Class: c.ClassName,
+		X: c.Pos.X, Y: c.Pos.Y,
+		Battery: c.Battery, MaxBattery: c.Class.MaxBattery,
+		BatteryPct:    c.BatteryPct(),
+		Capacity:      c.Class.Capacity,
+		Load:          c.Load(),
+		FreeBoxes:     c.FreeBoxes(),
+		Cargo:         nonNilStrings(c.Cargo),
+		State:         string(c.State(city)),
+		Queued:        string(c.QueuedMove),
+		QueuedMoves:   queuedDirections(c),
+		LastReject:    string(c.LastReject),
+		ChargeDue:     c.ChargeDue,
+		PurchasePrice: c.PaidPrice(),
+		ResaleValue:   c.SaleValue(),
+	}
+}
+
 // BuildSnapshot converts a world into the client view. Call inside Do so the
 // read is consistent with the tick loop.
 func BuildSnapshot(w *engine.World) Snapshot {
@@ -349,6 +403,7 @@ func BuildSnapshot(w *engine.World) Snapshot {
 			Customers: []PointView{},
 			Depots:    []PointView{},
 			Chargers:  []PointView{},
+			Charging:  chargingView(city.Charging),
 		},
 	}
 
@@ -366,21 +421,7 @@ func BuildSnapshot(w *engine.World) Snapshot {
 	}
 
 	for _, c := range w.Cars {
-		snap.Cars = append(snap.Cars, CarView{
-			ID: c.ID, Name: c.Name, Class: c.ClassName,
-			X: c.Pos.X, Y: c.Pos.Y,
-			Battery: c.Battery, MaxBattery: c.Class.MaxBattery,
-			BatteryPct:  c.BatteryPct(),
-			Capacity:    c.Class.Capacity,
-			Load:        c.Load(),
-			FreeBoxes:   c.FreeBoxes(),
-			Cargo:       nonNilStrings(c.Cargo),
-			State:       string(c.State(city)),
-			Queued:      string(c.QueuedMove),
-			QueuedMoves: queuedDirections(c),
-			LastReject:  string(c.LastReject),
-			ChargeDue:   c.ChargeDue,
-		})
+		snap.Cars = append(snap.Cars, BuildCarView(c, city))
 	}
 
 	for _, o := range w.OrdersList() {

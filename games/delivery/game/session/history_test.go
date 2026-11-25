@@ -198,7 +198,7 @@ func assertSessionMoney(t *testing.T, mgr *Manager, id string, money int) {
 	}
 }
 
-func TestMoneyHistoryReadsProjectionAndDownsamples(t *testing.T) {
+func TestMetricHistoryMoneyReadsProjectionAndDownsamples(t *testing.T) {
 	mgr := newTestManager(t)
 	first, _, err := mgr.Create("money-a", 1, "", "city")
 	if err != nil {
@@ -235,7 +235,7 @@ func TestMoneyHistoryReadsProjectionAndDownsamples(t *testing.T) {
 		}
 	}
 
-	got, err := mgr.MoneyHistory(context.Background(), MoneyHistoryRequest{
+	got, err := mgr.MetricHistory(context.Background(), MetricMoney, SeriesRequest{
 		IDs:       []string{first.ID, second.ID},
 		MaxPoints: 10,
 	})
@@ -251,22 +251,22 @@ func TestMoneyHistoryReadsProjectionAndDownsamples(t *testing.T) {
 	if len(got[0].Points) > 12 {
 		t.Fatalf("downsampled points = %d, want <= 12", len(got[0].Points))
 	}
-	if firstPoint, lastPoint := got[0].Points[0], got[0].Points[len(got[0].Points)-1]; firstPoint.Tick != 0 || lastPoint.Tick != 99 || lastPoint.Money != 99 {
+	if firstPoint, lastPoint := got[0].Points[0], got[0].Points[len(got[0].Points)-1]; firstPoint.Tick != 0 || lastPoint.Tick != 99 || lastPoint.Value != 99 {
 		t.Fatalf("first/last = %+v/%+v, want tick 0 and tick 99 money 99", firstPoint, lastPoint)
 	}
-	if last := got[1].Points[len(got[1].Points)-1]; last.Tick != 10 || last.Money != 12 {
+	if last := got[1].Points[len(got[1].Points)-1]; last.Tick != 10 || last.Value != 12 {
 		t.Fatalf("second last = %+v, want tick 10 money 12", last)
 	}
 }
 
-func TestMoneyHistoryRejectsInvalidID(t *testing.T) {
+func TestMetricHistoryRejectsInvalidID(t *testing.T) {
 	mgr := newTestManager(t)
-	if _, err := mgr.MoneyHistory(context.Background(), MoneyHistoryRequest{IDs: []string{"bad/id"}}); err == nil {
-		t.Fatal("MoneyHistory accepted an invalid session id")
+	if _, err := mgr.MetricHistory(context.Background(), MetricMoney, SeriesRequest{IDs: []string{"bad/id"}}); err == nil {
+		t.Fatal("MetricHistory accepted an invalid session id")
 	}
 }
 
-func TestItemsHistoryIsCumulativeDoneBoxes(t *testing.T) {
+func TestMetricHistoryBoxesIsCumulativeDoneBoxes(t *testing.T) {
 	mgr := newTestManager(t)
 	s, _, err := mgr.Create("items-history", 11, "", "city")
 	if err != nil {
@@ -285,7 +285,7 @@ func TestItemsHistoryIsCumulativeDoneBoxes(t *testing.T) {
 	if err := s.Save(); err != nil {
 		t.Fatalf("save: %v", err)
 	}
-	rows, err := mgr.ItemsHistory(context.Background(), SeriesRequest{IDs: []string{s.ID}, MaxPoints: 50})
+	rows, err := mgr.MetricHistory(context.Background(), MetricBoxesDelivered, SeriesRequest{IDs: []string{s.ID}, MaxPoints: 50})
 	if err != nil {
 		t.Fatalf("items history: %v", err)
 	}
@@ -301,7 +301,7 @@ func TestItemsHistoryIsCumulativeDoneBoxes(t *testing.T) {
 	})
 }
 
-func TestReputationHistoryUsesRecordedEntries(t *testing.T) {
+func TestMetricHistoryReputationUsesRecordedEntries(t *testing.T) {
 	mgr := newTestManager(t)
 	s, _, err := mgr.Create("reputation-history", 12, "", "city")
 	if err != nil {
@@ -319,7 +319,7 @@ func TestReputationHistoryUsesRecordedEntries(t *testing.T) {
 	if err := s.Save(); err != nil {
 		t.Fatalf("save: %v", err)
 	}
-	rows, err := mgr.ReputationHistory(context.Background(), SeriesRequest{IDs: []string{s.ID}, MaxPoints: 50})
+	rows, err := mgr.MetricHistory(context.Background(), MetricReputation, SeriesRequest{IDs: []string{s.ID}, MaxPoints: 50})
 	if err != nil {
 		t.Fatalf("reputation history: %v", err)
 	}
@@ -343,17 +343,24 @@ func TestMetricHistoryCumulativeSeries(t *testing.T) {
 		w.Orders = []*engine.Order{
 			{ID: "o1", Item: "pizza", Quantity: 2, State: engine.OrderDone, CreatedTick: 1, DeadlineTick: 9, DeliveredTick: 10, Paid: 100},
 			{ID: "o2", Item: "cafe", Quantity: 1, State: engine.OrderDone, CreatedTick: 2, DeadlineTick: 18, DeliveredTick: 20, Paid: 40, Late: true},
-			{ID: "o3", Item: "pizza", Quantity: 3, State: engine.OrderExpired, CreatedTick: 3, DeadlineTick: 18, Penalty: 15},
+			{ID: "o3", Item: "pizza", Quantity: 3, State: engine.OrderExpired, CreatedTick: 3, DeadlineTick: 18, Penalty: 20},
 			{ID: "o4", Item: "pastel", Quantity: 4, State: engine.OrderPending, CreatedTick: 5, DeadlineTick: 50},
 		}
 		w.Ledger.Cash = []engine.CashEntry{
 			{Seq: 0, Tick: 0, Kind: engine.CashOpening, Amount: 100, Balance: 100},
 			{Seq: 1, Tick: 12, Kind: engine.CashUpkeep, Amount: -5, Balance: 95},
-			{Seq: 2, Tick: 22, Kind: engine.CashCharging, Amount: -3, Balance: 92},
-			{Seq: 3, Tick: 33, Kind: engine.CashTow, Amount: -7, Balance: 85},
+			{Seq: 2, Tick: 19, Kind: engine.CashOrderFine, Amount: -15, Balance: 80},
+			{Seq: 3, Tick: 22, Kind: engine.CashCharging, Amount: -3, Balance: 77},
+			{Seq: 4, Tick: 33, Kind: engine.CashTow, Amount: -7, Balance: 70},
 		}
-		w.Ledger.NextCashSeq = 4
-		w.Ledger.Money = 85
+		w.Ledger.NextCashSeq = 5
+		w.Ledger.Money = 70
+		w.Ledger.Reputation = 4.5
+		w.Ledger.ReputationEntries = []engine.ReputationEntry{
+			{Seq: 0, Tick: 0, Delta: 5, Balance: 5, Reason: engine.ReputationOpening},
+			{Seq: 1, Tick: 25, Delta: -0.5, Balance: 4.5, Reason: engine.ReputationExpired},
+		}
+		w.Ledger.NextReputationSeq = 2
 	})
 	if err := s.Save(); err != nil {
 		t.Fatalf("save: %v", err)
@@ -363,6 +370,9 @@ func TestMetricHistoryCumulativeSeries(t *testing.T) {
 		metric Metric
 		want   []SeriesPoint
 	}{
+		{MetricMoney, []SeriesPoint{{Tick: 0, Value: 100}, {Tick: 12, Value: 95}, {Tick: 19, Value: 80}, {Tick: 22, Value: 77}, {Tick: 33, Value: 70}, {Tick: 40, Value: 70}}},
+		{MetricBoxesDelivered, []SeriesPoint{{Tick: 0, Value: 0}, {Tick: 10, Value: 2}, {Tick: 20, Value: 3}, {Tick: 40, Value: 3}}},
+		{MetricReputation, []SeriesPoint{{Tick: 0, Value: 5}, {Tick: 25, Value: 4.5}, {Tick: 40, Value: 4.5}}},
 		{MetricDeliveries, []SeriesPoint{{Tick: 0, Value: 0}, {Tick: 10, Value: 1}, {Tick: 40, Value: 1}}},
 		{MetricLateDeliveries, []SeriesPoint{{Tick: 0, Value: 0}, {Tick: 20, Value: 1}, {Tick: 40, Value: 1}}},
 		{MetricExpiredOrders, []SeriesPoint{{Tick: 0, Value: 0}, {Tick: 19, Value: 1}, {Tick: 40, Value: 1}}},

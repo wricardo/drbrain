@@ -32,73 +32,58 @@ func TestDraftCityAnalyticsAndCanPlay(t *testing.T) {
 	createCityAs(t, env, env.alice, "secret-city", cityJSON("Secret City", true))
 	sid, token := createSessionOnCity(t, env, env.alice, "secret-city")
 
-	if res := gqlAs(t, env.ts, env.alice,
-		`mutation ($id: ID!, $t: String) { tick(id: $id, count: 1, ownerToken: $t) { tick } }`,
-		map[string]any{"id": sid, "t": token}); len(res.Errors) > 0 {
-		t.Fatalf("tick: %v", res.Errors)
-	}
+	advanceTicks(t, env.resolver.Mgr, sid, 1)
 	if res := gqlAs(t, env.ts, env.alice,
 		`mutation ($id: ID!, $t: String) { saveSession(id: $id, ownerToken: $t) { id } }`,
 		map[string]any{"id": sid, "t": token}); len(res.Errors) > 0 {
 		t.Fatalf("save: %v", res.Errors)
 	}
 
-	seriesIDs := func(account, field string) []string {
+	seriesIDs := func(account, metric string) []string {
 		t.Helper()
-		q := `query ($id: ID!) { ` + field + `(ids: [$id]) { sessionId } }`
+		q := `query ($id: ID!) { rows: metricHistory(metric: ` + metric + `, ids: [$id]) { sessionId } }`
 		res := gqlAs(t, env.ts, account, q, map[string]any{"id": sid})
 		if len(res.Errors) > 0 {
-			t.Fatalf("%s as %q: %v", field, account, res.Errors)
+			t.Fatalf("%s as %q: %v", metric, account, res.Errors)
 		}
 		var out struct {
-			Money      []struct{ SessionID string } `json:"moneyHistory"`
-			Items      []struct{ SessionID string } `json:"itemsHistory"`
-			Reputation []struct{ SessionID string } `json:"reputationHistory"`
+			Rows []struct{ SessionID string } `json:"rows"`
 		}
 		if err := json.Unmarshal(res.Data, &out); err != nil {
 			t.Fatal(err)
 		}
-		var rows []struct{ SessionID string }
-		switch field {
-		case "moneyHistory":
-			rows = out.Money
-		case "itemsHistory":
-			rows = out.Items
-		case "reputationHistory":
-			rows = out.Reputation
-		}
-		ids := make([]string, 0, len(rows))
-		for _, r := range rows {
+		ids := make([]string, 0, len(out.Rows))
+		for _, r := range out.Rows {
 			ids = append(ids, r.SessionID)
 		}
 		return ids
 	}
 
-	for _, field := range []string{"moneyHistory", "itemsHistory", "reputationHistory"} {
-		if ids := seriesIDs(env.alice, field); !containsID(ids, sid) {
-			t.Fatalf("owner %s = %v, want %s", field, ids, sid)
+	for _, metric := range []string{"MONEY", "BOXES_DELIVERED", "REPUTATION"} {
+		if ids := seriesIDs(env.alice, metric); !containsID(ids, sid) {
+			t.Fatalf("owner %s = %v, want %s", metric, ids, sid)
 		}
 		for _, account := range []string{"", env.bob} {
-			if ids := seriesIDs(account, field); containsID(ids, sid) {
-				t.Fatalf("account %q read draft session via %s", account, field)
+			if ids := seriesIDs(account, metric); containsID(ids, sid) {
+				t.Fatalf("account %q read draft session via %s", account, metric)
 			}
 		}
 	}
 
 	// With ids omitted, the newest-20 window must not enumerate the draft.
-	res := gqlAs(t, env.ts, "", `query { moneyHistory { sessionId } }`, nil)
+	res := gqlAs(t, env.ts, "", `query { rows: metricHistory(metric: MONEY) { sessionId } }`, nil)
 	if len(res.Errors) > 0 {
-		t.Fatalf("guest moneyHistory: %v", res.Errors)
+		t.Fatalf("guest metricHistory: %v", res.Errors)
 	}
 	var all struct {
-		Money []struct{ SessionID string } `json:"moneyHistory"`
+		Rows []struct{ SessionID string } `json:"rows"`
 	}
 	if err := json.Unmarshal(res.Data, &all); err != nil {
 		t.Fatal(err)
 	}
-	for _, row := range all.Money {
+	for _, row := range all.Rows {
 		if row.SessionID == sid {
-			t.Fatal("guest enumerated a draft-city session through moneyHistory")
+			t.Fatal("guest enumerated a draft-city session through metricHistory")
 		}
 	}
 

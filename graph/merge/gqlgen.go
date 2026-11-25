@@ -26,8 +26,11 @@ func GQLGenConfig(root string) ([]byte, error) {
 	// Custom field resolvers that live in the game's graph package rather than
 	// its model struct. These mirror the per-game gqlgen.yml files.
 	custom := map[string][]string{
+		"Delivery_Admin":      {"deleteSession", "deleteSessions", "pauseSession", "evictSession", "saveSession", "saveAll"},
 		"Delivery_LedgerView": {"months", "cashEntries", "cars"},
 		"Delivery_Snapshot":   {"orders", "openOrders"},
+		"Mazes_Admin":         {"deleteSession", "renameSession"},
+		"Motor_Admin":         {"deleteSession", "pauseSession"},
 		"Motor_Map":           {"builtin", "status", "ownedByMe"},
 		"Tesla_GameState":     {"grid"},
 		"Tesla_GameMap":       {"layout"},
@@ -46,6 +49,9 @@ func GQLGenConfig(root string) ([]byte, error) {
 			if isRoot(d.Name) {
 				if d.Name == "Subscription" {
 					continue // flat root fields, no model
+				}
+				if d.Name == "Mutation" && g.FlatMutation {
+					continue // flat root fields on the unified Mutation, no model
 				}
 				var fields []string
 				for _, f := range d.Fields {

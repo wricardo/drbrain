@@ -181,6 +181,10 @@ full snapshot; ignore updates whose `seq` is not greater than the last one you s
 Other session calls: `renameSession(id, displayName, ownerToken)`, `deleteSession(id, ownerToken)`.
 Query `sessions(sort: RECENT, limit: 50, mapId: "...")` lists sessions.
 
+Operator calls: `mutation { mazes { admin(key: "…") { deleteSession(id) renameSession(id: "name") { id displayName } } } }`.
+`key` must match `ADMIN_API_KEY` (or the local `ALLOW_UNAUTHENTICATED_ADMIN=true` opt-out);
+no ownerToken is needed, and a missing session is still a successful delete.
+
 ---
 
 ## Map authoring

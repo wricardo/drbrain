@@ -13,6 +13,7 @@ import (
 	"errors"
 
 	deliverygraph "github.com/wricardo/drbrain/games/delivery/graph"
+	deliverygenerated "github.com/wricardo/drbrain/games/delivery/graph/generated"
 	mazesgraph "github.com/wricardo/drbrain/games/mazes/graph"
 	motorgraph "github.com/wricardo/drbrain/games/motor/graph"
 	musicgraph "github.com/wricardo/drbrain/games/music/graph"
@@ -40,4 +41,15 @@ type Resolver struct {
 // cmd/drbrain hides games not selected with DRBRAIN_GAMES.
 func New(account *accountgraph.Resolver, delivery *deliverygraph.Resolver, mazes *mazesgraph.Resolver, motor *motorgraph.Resolver, tesla *teslagraph.Resolver, music *musicgraph.Resolver) *Resolver {
 	return &Resolver{Account: account, Delivery: delivery, Mazes: mazes, Motor: motor, Tesla: tesla, Music: music}
+}
+
+// deliveryMutation returns the Delivery game's mutation resolvers. Delivery
+// mutations are flat root fields (deliveryMoveCar, ...) rather than a
+// namespace object, so each adapter resolves the game here and returns
+// errGameDisabled when DRBRAIN_GAMES left delivery out.
+func (r *Resolver) deliveryMutation() (deliverygenerated.MutationResolver, error) {
+	if r.Delivery == nil {
+		return nil, errGameDisabled
+	}
+	return r.Delivery.Mutation(), nil
 }

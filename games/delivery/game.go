@@ -46,6 +46,10 @@ type Env struct {
 	// AllowUnauthenticatedAdmin permits admin writes while no key is configured
 	// (local development only; ignored once AdminAPIKey is set).
 	AllowUnauthenticatedAdmin bool `envconfig:"ALLOW_UNAUTHENTICATED_ADMIN"`
+	// TickSnapshots is how many per-tick world frames to retain per session in
+	// delivery_tick_snapshots. Zero disables the tick log; a negative value
+	// fails startup.
+	TickSnapshots int `envconfig:"TICK_SNAPSHOTS" default:"1800"`
 }
 
 func loadEnv() (Env, error) {
@@ -192,7 +196,9 @@ func (g *Game) Mount(mux *http.ServeMux, deps platform.Deps) error {
 	if deps.DB == nil {
 		return fmt.Errorf("delivery: PostgreSQL is required (DRBRAIN_DATABASE_URL is unset)")
 	}
-	mgr, err := session.NewManager(catalog, deps.DB)
+	mgr, err := session.NewManagerWithOptions(catalog, deps.DB, session.ManagerOptions{
+		TickSnapshots: env.TickSnapshots,
+	})
 	if err != nil {
 		return fmt.Errorf("session manager: %w", err)
 	}

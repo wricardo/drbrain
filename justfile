@@ -1,7 +1,7 @@
 # Local dev loop for the single drbrain binary.
 #
 #   just db-up                # start PostgreSQL from docker-compose.yaml (:55432)
-#   just restart              # stop drbrain on :8181, regen, rebuild, restart
+#   just restart              # stop drbrain on :8181, generate, rebuild, restart
 #   just port=8081 restart    # same on another port
 #   just verify               # gofmt check, vet, lint, tests, schema drift, web checks
 #
@@ -88,9 +88,19 @@ clear-local-test-data:
 
 # --- code generation -------------------------------------------------------
 
-# Regenerate per-game SDL, merged schema, gqlgen executors and web GraphQL types
-regen:
+# Regenerate everything: per-game SDL, merged schema + graph/gqlgen.yml, gqlgen
+# executors and web GraphQL types. Order matters: merge-schema rebuilds
+# graph/gqlgen.yml from the split SDL, and the unified gqlgen run below reads it,
+# so running `go generate ./graph` before merge-schema leaves stale bindings.
+#
+# Regenerate SDL, merged schema/config, gqlgen executors and web types.
+generate:
+    go run ./cmd/split-schema
+    go run ./cmd/merge-schema
     go generate ./games/... ./platform/account ./graph
+
+# Older name for the same recipe
+alias regen := generate
 
 # Fail when the split schema, merged schema or generated TypeScript is stale
 schema-check:
@@ -302,6 +312,5 @@ perses-apply: perses-build
 # --- compose ---------------------------------------------------------------
 
 # Stop, regenerate, rebuild web + binary, start
-restart: stop regen build-web build start
+restart: stop generate build-web build start
 
-alias generate := regen

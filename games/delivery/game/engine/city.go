@@ -329,6 +329,10 @@ func parseCity(cfg *CityConfig) (*City, error) {
 	if c.Charging.ChargerPricePerTick < 0 {
 		return nil, fmt.Errorf("charging.charger_price_per_tick is %d; use 0 for free or a positive price", c.Charging.ChargerPricePerTick)
 	}
+	if c.Charging.ChargerPurchasePrice < 0 || c.Charging.MaxPurchasedChargers < 0 {
+		return nil, fmt.Errorf("charging.charger_purchase_price (%d) and charging.max_purchased_chargers (%d) must not be negative",
+			c.Charging.ChargerPurchasePrice, c.Charging.MaxPurchasedChargers)
+	}
 	for k, v := range cfg.Items {
 		c.Items[k] = v
 	}

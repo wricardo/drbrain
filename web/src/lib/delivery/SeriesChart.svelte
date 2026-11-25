@@ -9,13 +9,16 @@
 		/** Formats y-axis labels and the legend values. */
 		formatValue?: (value: number) => string;
 		ariaLabel?: string;
+		/** Chart height in px; defaults to a screen-size-aware value. */
+		height?: number;
 	}
 
 	let {
 		series,
 		labels = {},
 		formatValue = (value) => String(Math.round(value)),
-		ariaLabel = 'Series by tick'
+		ariaLabel = 'Series by tick',
+		height
 	}: Props = $props();
 	let wrap: HTMLDivElement | undefined = $state();
 	let width = $state(960);
@@ -34,11 +37,23 @@
 	const chart = $derived(
 		buildSeriesChart(series, {
 			width,
-			height: width < 640 ? 300 : 360,
+			height: height ?? (width < 640 ? 300 : 360),
 			tickCount: width < 640 ? 3 : 5
 		})
 	);
 	const hasData = $derived(chart.series.some((s) => s.points.length > 0));
+	// A flat series still gets a padded domain, which can round two grid lines
+	// to the same label ("1, 1, 0"). Keep the axis honest by showing each
+	// formatted label once.
+	const yTicks = $derived.by(() => {
+		const seen = new Set<string>();
+		return chart.yTicks.filter((tick) => {
+			const label = formatValue(tick.value);
+			if (seen.has(label)) return false;
+			seen.add(label);
+			return true;
+		});
+	});
 </script>
 
 {#if !hasData}
@@ -53,7 +68,7 @@
 			data-testid="series-chart"
 		>
 			<g aria-hidden="true">
-				{#each chart.yTicks as tick (tick.value)}
+				{#each yTicks as tick (tick.value)}
 					<line
 						class="grid"
 						x1={chart.plot.left}

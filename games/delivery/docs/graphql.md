@@ -28,9 +28,13 @@ and `go run ./cmd/split-schema -check` fail when generated output is stale, so a
 schema change without regeneration breaks the build instead of silently shipping
 a lying client.
 
-**Every operation goes through the `delivery` namespace.** The examples below
-show the delivery selection set; wrap a full operation in `delivery { … }`
-(`mutation { delivery { … } }`, `query { delivery { … } }`). Subscriptions stay
+**Queries go through the `delivery` namespace; mutations are flat root fields.**
+Wrap a query in `delivery { … }` (`query { delivery { … } }`). Every mutation is
+a top-level `Mutation` field named `delivery` + the capitalized operation
+(`mutation { deliveryMoveCar(…) { … } }`); root mutation fields run serially, so
+aliased mutations in one document keep their order. The mutation names in the
+prose below (`moveCar`, `setSpeed`, …) are the operation names without the
+`delivery` prefix. Subscriptions stay
 flat at the operation root: `subscription { deliverySession(id: "…") { … } }`.
 
 ## Commands vs. the clock
@@ -38,14 +42,14 @@ flat at the operation root: `subscription { deliverySession(id: "…") { … } }
 **A move does not move the car.** `moveCar` appends one step to a car's movement
 queue; the tick loop applies at most one queued step per car per tick. Each car
 has its own queue, so driving several cars by hand is unambiguous, and an agent
-can preload a route and then advance the clock. A car may hold up to 64 queued
+can preload a route for the running clock. A car may hold up to 64 queued
 steps (`LIMIT_REACHED` beyond that); `clearMoves` empties the queue when traffic
 or a closure invalidates the plan. A rejected step is spent, not retried.
 
 **Every session starts paused, including a restored one.** This is a
 manual-driving game; a live clock would expire orders while the player was
-reading the screen. Unpause with `setSpeed`, or step deterministically with
-`tick`.
+reading the screen. Unpause with `setSpeed`: the clock is the only thing that
+advances the world.
 
 **CHANGED (was an asymmetry, now uniform):** loading a save used to restore the
 `speed` stored in the save and start ticking immediately. It now always comes
@@ -76,8 +80,8 @@ server recomputes the interval each iteration instead of using a fixed ticker, s
 a speed change takes effect on the next tick and a paused session never
 accumulates ticks to fire in a burst on resume. The cost is that each interval
 includes the tick's own work time, so a long run drifts slightly slower than
-`tickMs / speed`. Do not treat `tick` as a wall clock; use the `tick` mutation
-when you need exact steps.
+`tickMs / speed`. Do not treat `tick` as a wall clock; use `waitUntil` when you
+need exact tick boundaries.
 
 **Saving is implicit in more places than the name suggests.** `saveSession` is
 the explicit one, autosave runs every `autosave_ticks` world ticks (60 on the
@@ -116,19 +120,30 @@ query {
   # Saves plus live sessions. sort: CREATED_AT|TICK|MONEY; limit <= 500; before is a createdAt cursor; mine keeps the viewer's saves (UNAUTHENTICATED when signed out).
   sessions(sort: CREATED_AT, limit: 50) { id createdAt displayName tick money reputation deliveries loaded ownerDisplayName mine }
 
-  # Money by tick from the indexed delivery history projection. Up to 20 sessions; maxPoints downsamples each series.
-  moneyHistory(ids: ["demo"], fromTick: 0, toTick: 5000, maxPoints: 500) {
-    sessionId cityId points { tick money }
+  # One analytics series per field, read from the indexed delivery history projection.
+  # Metrics: MONEY, BOXES_DELIVERED, REPUTATION, DELIVERIES, LATE_DELIVERIES,
+  # EXPIRED_ORDERS, ORDERS_CREATED, DELIVERY_INCOME, ORDER_FINES, UPKEEP_SPEND,
+  # CHARGING_SPEND, TOW_SPEND. Up to 20 sessions; maxPoints downsamples each series.
+  money: metricHistory(metric: MONEY, ids: ["demo"], fromTick: 0, toTick: 5000, maxPoints: 500) {
+    sessionId cityId points { tick value }
   }
-
-  # Cumulative boxes from done orders; expired and open orders do not count.
-  itemsHistory(ids: ["demo"], maxPoints: 500) {
+  boxes: metricHistory(metric: BOXES_DELIVERED, ids: ["demo"], maxPoints: 500) {
+    sessionId cityId points { tick value }
+  }
+  reputation: metricHistory(metric: REPUTATION, ids: ["demo"], maxPoints: 500) {
     sessionId cityId points { tick value }
   }
 
-  # Recorded standing; pre-ledger saves return one current point.
-  reputationHistory(ids: ["demo"], maxPoints: 500) {
-    sessionId cityId points { tick value }
+  # Per-tick world frames recorded for one session (the replayable tick log).
+  # Ordered by tick ascending; fromTick/toTick are inclusive and afterTick is an
+  # exclusive keyset cursor. limit defaults to 100 and is capped at 500.
+  # A missing or hidden session is NOT_FOUND; a disabled log returns [].
+  tickSnapshots(sessionId: "demo", fromTick: 100, toTick: 400, limit: 50) {
+    sessionId tick recordedAt money moneyEarned reputation
+    deliveries lateDeliveries expiredOrders ordersSpawned onTimeStreak tows upkeepPaid towFees
+    deliveriesByItem { item count }
+    cars { id name className x y battery cargo chargeDue queuedMove lastReject stepsTaken }
+    orders { id item quantity kitchenId customerId assignedCar state createdTick deadlineTick deliveredTick reward penalty paid late }
   }
 
   # One session's full state. Loads from PostgreSQL when not in memory.
@@ -209,9 +224,9 @@ it per frame is the difference between a small and a multi-megabyte payload.
 
 ### `lastReject`, `queuedMove` and `queuedMoves` timing
 
-`moveCar` only appends to the queue; it does not touch `lastReject`. So
-immediately after `moveCar` you still see the *previous* rejection, and only a
-`tick` replaces it. `queuedMove` is the head — the step for the next tick —
+`moveCar` only appends to the queue; it does not touch `lastReject`, and it
+returns just that car (`CarView`). So immediately after `moveCar` you still see
+the *previous* rejection, and only a world tick replaces it. `queuedMove` is the head — the step for the next tick —
 while `queuedMoves` is the whole plan in execution order. Verified on the
 shipped map:
 
@@ -219,12 +234,12 @@ shipped map:
 car at (3,2), lastReject null
 moveCar WEST   -> lastReject null, queuedMove "WEST", queuedMoves ["WEST"]
 moveCar SOUTH  -> lastReject null, queuedMove "WEST", queuedMoves ["WEST","SOUTH"]
-tick           -> lastReject "BLOCKED", queuedMove "SOUTH", queuedMoves ["SOUTH"]
-tick           -> (3,3), lastReject null, queuedMove null, queuedMoves []
+world tick     -> lastReject "BLOCKED", queuedMove "SOUTH", queuedMoves ["SOUTH"]
+world tick     -> (3,3), lastReject null, queuedMove null, queuedMoves []
 ```
 
 A client that wants to explain *this* refusal must read the snapshot returned by
-`tick`, not the one `moveCar` returned. `lastReject` is also sticky in a second
+`waitUntil` (or a `session` query), not the car `moveCar` returned. `lastReject` is also sticky in a second
 sense: it stays set until a later tick either rejects again with the same reason
 or lets a step succeed, so it is "the most recent failure", not "the failure of
 the last command". A rejected step is consumed: the next tick tries the next
@@ -541,52 +556,93 @@ branch on the code instead of matching text.
 ```graphql
 mutation {
   # Returns the session AND the secret that proves you created it. Keep it. cityId picks the city snapshot; omit it for the default.
-  createSession(id: "demo", seed: 7, cityId: "city") {
+  deliveryCreateSession(id: "demo", seed: 7, cityId: "city") {
     session { id tick paused }
     ownerToken
   }
 
   # Append one step to the car's queue. Does NOT advance the clock.
-  moveCar(id: "demo", carId: "car_1", direction: SOUTH, ownerToken: "…") { cars { x y queuedMove queuedMoves } }
+  deliveryMoveCar(id: "demo", carId: "car_1", direction: SOUTH, ownerToken: "…") { x y queuedMove queuedMoves }
 
   # Drop the whole queue, including the next step.
-  clearMoves(id: "demo", carId: "car_1", ownerToken: "…") { cars { queuedMove queuedMoves } }
+  deliveryClearMoves(id: "demo", carId: "car_1", ownerToken: "…") { queuedMove queuedMoves }
 
-  # Advance manually. count is capped at 1000.
-  tick(id: "demo", count: 1, ownerToken: "…") { tick orders { id state } }
-
-  setSpeed(id: "demo", speed: 0, ownerToken: "…") { paused }  # 0 pauses; 1/2/4 run
+  deliverySetSpeed(id: "demo", speed: 0, ownerToken: "…") { paused }  # 0 pauses; 1/2/4 run
 
   # Block until the running clock reaches a target. Exactly one of tick/ticks;
   # ticks is capped at 1000. Paused -> INVALID_ARGUMENT, including mid-wait.
-  waitUntil(id: "demo", ticks: 5, ownerToken: "…") { tick paused }
+  deliveryWaitUntil(id: "demo", ticks: 5, ownerToken: "…") { tick paused }
 
-  assignOrder(id: "demo", orderId: "ord_1", carId: "car_1", ownerToken: "…") { orders { state } }
-  unassignOrder(id: "demo", orderId: "ord_1", ownerToken: "…") { orders { state } }
+  deliveryAssignOrder(id: "demo", orderId: "ord_1", carId: "car_1", ownerToken: "…") { orders { state } }
+  deliveryUnassignOrder(id: "demo", orderId: "ord_1", ownerToken: "…") { orders { state } }
 
-  buyCar(id: "demo", className: "van", depotId: "d_main", ownerToken: "…") { cars { id className } }
+  deliveryBuyCar(id: "demo", className: "van", depotId: "d_main", ownerToken: "…") { cars { id className } }
+  # Buy and build a charger on tile (x, y): revealed open road/ground, no building or car on
+  # it, reachable from a depot. Price and cap come from the city file and are
+  # readable as city.charging.chargerPurchasePrice / maxPurchasedChargers
+  # (cap 0 disables).
+  deliveryBuyCharger(id: "demo", x: 3, y: 4, ownerToken: "…") { city { chargers { id x y } } ledger { money } }
+  # Sell and bank 70% of the original purchase price; keeps the last car and
+  # refuses a car that is carrying cargo or has an order assigned.
+  deliverySellCar(id: "demo", carId: "car_1", ownerToken: "…") { cars { id } ledger { money } }
   # Costs tow_fee_per_tile x route distance (min tow_fee_min), clamped to the balance.
-  towCar(id: "demo", carId: "car_1", ownerToken: "…") { ledger { money towFees } cars { state } }
+  deliveryTowCar(id: "demo", carId: "car_1", ownerToken: "…") { ledger { money towFees } cars { state } }
 
   # The city grows on its own schedule: there is no build mutation.
 
-  saveSession(id: "demo", ownerToken: "…") { tick }
+  deliverySaveSession(id: "demo", ownerToken: "…") { tick }
   # Name this save. Blank clears it; every view then falls back to the city name. Persisted immediately.
-  renameSession(id: "demo", displayName: "Fleet run", ownerToken: "…") { displayName }
-  evictSession(id: "demo", ownerToken: "…")   # save, then drop from memory
-  deleteSession(id: "demo", ownerToken: "…")  # remove the save row
+  deliveryRenameSession(id: "demo", displayName: "Fleet run", ownerToken: "…") { displayName }
+  deliveryEvictSession(id: "demo", ownerToken: "…")   # save, then drop from memory
+  deliveryDeleteSession(id: "demo", ownerToken: "…")  # remove the save row
 }
 ```
 
 Every state-changing mutation returns the **full snapshot**, so a client never
 needs a follow-up read to know the new state. The two exceptions are
-`evictSession` and `deleteSession`, which return a bare `Boolean` because the
+`deliveryEvictSession` and `deliveryDeleteSession`, which return a bare `Boolean` because the
 session they would have described no longer exists — verified live (`true` for
 each, with no snapshot in the payload).
 
-An omitted `createSession` id is generated (16 random hex characters); a
+An omitted `deliveryCreateSession` id is generated (16 random hex characters); a
 client-supplied id is accepted when it is 1-64 characters of `[A-Za-z0-9_-]`.
 A signed-in creator's session belongs to their account automatically.
+
+### Admin
+
+`Mutation.deliveryAdmin(key)` is the operator path for saves that no longer belong to a
+caller. It validates `key` against `DELIVERY_ADMIN_API_KEY` (the same secret
+`X-Admin-Key` carries for city writes), so a wrong or missing key is `FORBIDDEN`
+before any id is looked at. When no key is configured, only
+`DELIVERY_ALLOW_UNAUTHENTICATED_ADMIN=true` (local development) accepts it.
+
+```graphql
+mutation AdminDelete {
+  deliveryAdmin(key: "…") {
+    # Permanently removes the save, its live session and its tick log.
+    # Bypasses ownerToken/account checks; idempotent (unknown id returns true).
+    deleteSession(id: "demo")
+  }
+}
+```
+
+The same object carries operational verbs, all authorized by the key validated
+at `deliveryAdmin(key)`:
+
+| field | effect |
+|---|---|
+| `pauseSession(id)` | `SetSpeed(0)` without an owner token; returns the paused snapshot and flushes the pause to the store |
+| `evictSession(id)` | save a live session, then drop it from memory (the save stays readable) |
+| `saveSession(id)` | persist one live session; a stored-only save is a no-op success |
+| `saveAll` | persist every live session, returning how many were flushed |
+| `deleteSessions(ids: [ID!]!)` | bulk delete; returns `{ deleted, missing }`, deduplicates ids, caps at 500, and rejects the whole batch on an invalid id |
+
+`deleteSessions` classifies `deleted` vs `missing` from a list of live plus
+stored sessions taken before any delete, so it is best-effort under concurrent
+writes.
+
+Prefer the `X-Admin-Key` header where the client can set headers: the argument
+travels in the GraphQL document, so it may end up in request logs.
 
 ### City catalogue and authoring
 
@@ -611,31 +667,31 @@ editor's read: the server returns its decoded, defaulted document, so the keys m
 players write and unknown fields cannot survive a round trip. Guests can read published and
 builtin cities; the authoring mutations still require sign-in.
 
-`createSession(cityId: "…")` snapshots that city; an omitted `cityId` uses the default. The
+`deliveryCreateSession(cityId: "…")` snapshots that city; an omitted `cityId` uses the default. The
 session keeps the snapshot, so later city edits never change a running game. A DRAFT city
 cannot be started, played or published by anyone but its owner.
 
 ```graphql
 mutation {
   # Signed-in only: stores a DRAFT owned by the caller. config is raw city JSON.
-  createCity(id: "harbour", config: "{ ...city JSON... }") { id name status ownedByMe }
+  deliveryCreateCity(id: "harbour", config: "{ ...city JSON... }") { id name status ownedByMe }
 
   # Owner-only; replaces the config and puts the city back into DRAFT.
-  updateCity(id: "harbour", config: "{ ...city JSON... }") { id status }
+  deliveryUpdateCity(id: "harbour", config: "{ ...city JSON... }") { id status }
 
   # Owner-only; runs the full startup validation (grid, districts, orders, reachability).
-  publishCity(id: "harbour") { id status }
+  deliveryPublishCity(id: "harbour") { id status }
 
   # Stores nothing; signed-in only.
-  validateCity(config: "{ ...city JSON... }") { valid publishable issues }
+  deliveryValidateCity(config: "{ ...city JSON... }") { valid publishable issues }
 
   # Owner-only for community cities; shipped/legacy ownerless cities need X-Admin-Key.
-  deleteCity(id: "harbour")
+  deliveryDeleteCity(id: "harbour")
 }
 ```
 
-`createCity`, `updateCity`, `publishCity`, `deleteCity` and `validateCity` need a signed-in
-viewer (`UNAUTHENTICATED` otherwise). `createCity` never overwrites a builtin city. Shipped
+`deliveryCreateCity`, `deliveryUpdateCity`, `deliveryPublishCity`, `deliveryDeleteCity` and `deliveryValidateCity` need a signed-in
+viewer (`UNAUTHENTICATED` otherwise). `deliveryCreateCity` never overwrites a builtin city. Shipped
 cities are builtin files and always PUBLISHED; changing or deleting one, or editing a legacy
 ownerless custom city, needs the operator `X-Admin-Key`. `valid` means the JSON parses into a
 city; `publishable` means `publishCity` would accept it. An invalid publish is
@@ -702,25 +758,46 @@ is null for guests and private profiles, and `mine` is true when the row belongs
 to the signed-in viewer. A save made before owner tokens can never be claimed
 and has no display name beyond `Guest`; it stays open for anyone with its id.
 
-`moneyHistory` is the analytics read. It never rehydrates a session: it reads
-the indexed `delivery_sessions` / `delivery_cash_entries` projection, which the
-save and autosave paths maintain. Omitted `ids` selects the newest saves;
-`cityId` narrows the set; `fromTick`/`toTick` are inclusive. `maxPoints`
-(default 500, capped at 2000) buckets each series by tick and keeps the last
-balance in the bucket, and the session's current balance is appended when the
-window reaches its current tick.
+`metricHistory` is the analytics read. It never rehydrates a session: it reads
+the indexed `delivery_sessions` and history projections, which the save and
+autosave paths maintain. Omitted `ids` selects the newest saves; `cityId`
+narrows the set; `fromTick`/`toTick` are inclusive. `maxPoints` (default 500,
+capped at 2000) buckets each series by tick. Balances (`MONEY`, `REPUTATION`)
+keep the last value in each bucket; count and money-flow metrics accumulate a
+running total. The session's current value is appended when the window reaches
+its current tick.
 
-The analytics page has three charts sharing those controls:
+The metrics:
 
-- `moneyHistory` — cash balance from every checking-account movement.
-- `itemsHistory` — cumulative boxes delivered from `done` orders in
+- `MONEY` — cash balance from every checking-account movement.
+- `BOXES_DELIVERED` — cumulative boxes from `done` orders in
   `delivery_order_history`; expired and open orders do not count.
-- `reputationHistory` — recorded standing from
-  `delivery_reputation_entries`. Sessions saved before that ledger existed
-  return one current point until their next reputation change, because the old
-  history cannot be reconstructed from order outcomes alone.
+- `REPUTATION` — recorded standing from `delivery_reputation_entries`.
+  Sessions saved before that ledger existed return one current point until
+  their next reputation change, because the old history cannot be reconstructed
+  from order outcomes alone.
+- `DELIVERIES`, `LATE_DELIVERIES`, `EXPIRED_ORDERS`, `ORDERS_CREATED` —
+  cumulative order counts; expiry is counted just after the deadline.
+- `DELIVERY_INCOME`, `ORDER_FINES`, `UPKEEP_SPEND`, `CHARGING_SPEND`,
+  `TOW_SPEND` — cumulative cash by category. Spend is a positive magnitude.
+  `ORDER_FINES` reads the cash ledger, so it reports the fine actually charged
+  after the balance clamp, not the nominal penalty.
+
 
 `/delivery/analytics` overlays up to six sessions on a shared tick axis.
+
+`tickSnapshots` is the replay read: one frame per completed tick, written from
+the engine tick hook into `delivery_tick_snapshots`. Unlike `metricHistory` it
+does rehydrate the session first, so city visibility and ownership rules apply
+and a missing or hidden session is `NOT_FOUND`; the tick log itself is optional
+infrastructure, and a deployment with `DELIVERY_TICK_SNAPSHOTS=0` returns an
+empty list. Frames carry the mutable state (cars, orders, balances, counters)
+and deliberately omit the append-only cash/reputation statements and event
+feed. Filtering and paging happen in SQL: `fromTick`/`toTick` are inclusive,
+`afterTick` is exclusive and wins over `fromTick` when higher, and pass the last
+returned tick as `afterTick` for the next page. Retention keeps the newest
+`DELIVERY_TICK_SNAPSHOTS` ticks (default 1800) per session, so an old tick that
+was pruned is absent rather than an error.
 
 ## Subscription — live updates instead of polling
 
@@ -847,17 +924,20 @@ G=http://127.0.0.1:8181/graphql
 q() { curl -s -X POST "$G" -H 'Content-Type: application/json' -d "$1"; }
 
 # createSession returns the session and the ownerToken every later mutation needs.
-q '{"query":"mutation { delivery { createSession(id:\"demo\", seed:7) { session { id tick paused } ownerToken } } }"}'
+q '{"query":"mutation { deliveryCreateSession(id:\"demo\", seed:7) { session { id tick paused } ownerToken } }"}'
 
 TOKEN=...  # ownerToken from the response above
-q "{\"query\":\"mutation { delivery { tick(id:\\\"demo\\\", count:1, ownerToken:\\\"$TOKEN\\\") { orders { id state } } } }\"}"
-q "{\"query\":\"mutation { delivery { assignOrder(id:\\\"demo\\\", orderId:\\\"ord_1\\\", carId:\\\"car_1\\\", ownerToken:\\\"$TOKEN\\\") { orders { state } } } }\"}"
+
+# Start the clock and wait one tick so the first orders spawn.
+q "{\"query\":\"mutation { deliverySetSpeed(id:\\\"demo\\\", speed:4, ownerToken:\\\"$TOKEN\\\") { paused } }\"}"
+q "{\"query\":\"mutation { deliveryWaitUntil(id:\\\"demo\\\", ticks:1, ownerToken:\\\"$TOKEN\\\") { orders { id state } } }\"}"
+q "{\"query\":\"mutation { deliveryAssignOrder(id:\\\"demo\\\", orderId:\\\"ord_1\\\", carId:\\\"car_1\\\", ownerToken:\\\"$TOKEN\\\") { orders { state } } }\"}"
 
 # East three times to Pizza Palace (x=6), then west three times and south
 # three times to Anna's Flat (3,6). Verified against the shipped 22x22 map.
 for d in EAST EAST EAST WEST WEST WEST SOUTH SOUTH SOUTH; do
-  q "{\"query\":\"mutation { delivery { moveCar(id:\\\"demo\\\", carId:\\\"car_1\\\", direction: $d, ownerToken:\\\"$TOKEN\\\") { tick } } }\"}"
-  q "{\"query\":\"mutation { delivery { tick(id:\\\"demo\\\", count:1, ownerToken:\\\"$TOKEN\\\") { tick } } }\"}"
+  q "{\"query\":\"mutation { deliveryMoveCar(id:\\\"demo\\\", carId:\\\"car_1\\\", direction: $d, ownerToken:\\\"$TOKEN\\\") { id } }\"}"
+  q "{\"query\":\"mutation { deliveryWaitUntil(id:\\\"demo\\\", ticks:1, ownerToken:\\\"$TOKEN\\\") { tick } }\"}"
 done
 
 q '{"query":"query { delivery { session(id:\"demo\") { ledger { money deliveries } orders { state paid } } } }"}'

@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"path/filepath"
 	"testing"
 )
 
@@ -280,5 +281,37 @@ func TestBoxLoadTracksPickupAndDropoff(t *testing.T) {
 	}
 	if len(car.Cargo) != 0 {
 		t.Fatalf("cargo after expiry = %v, want empty", car.Cargo)
+	}
+}
+
+// TestShippedCitiesDoNotAskForWhatTheStartingFleetCannotCarry holds every shipped
+// city to the rule the truck band already followed: a band whose smallest order
+// does not fit the starting cars must not be in the draw before its gate.
+//
+// The cities start with one scooter (4 boxes) and $0, and a van costs $600. An
+// early_weight on the 5 to 10 or 13 to 24 box band let an order of that size roll
+// in the first 400 ticks, when nothing that could carry it could yet be bought
+// inside its 25 to 35 tick window, so it could only expire (about one run in
+// two). Both gates sit after the point a good run has earned a van's price.
+func TestShippedCitiesDoNotAskForWhatTheStartingFleetCannotCarry(t *testing.T) {
+	paths, err := filepath.Glob(filepath.Join("..", "..", "maps", "*.json"))
+	if err != nil || len(paths) == 0 {
+		t.Fatalf("no shipped cities found: %v", err)
+	}
+	for _, path := range paths {
+		_, cfg, err := CityFromFile(path)
+		if err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+		startCap := 0
+		for _, c := range cfg.InitialCars {
+			startCap = max(startCap, cfg.CarClasses[c.Class].Capacity)
+		}
+		for _, b := range cfg.Orders.QuantityBands {
+			if b.MinSize > startCap && b.EarlyWeight != 0 {
+				t.Errorf("%s: band %d-%d boxes has early_weight %d but the starting fleet carries %d",
+					filepath.Base(path), b.MinSize, b.MaxSize, b.EarlyWeight, startCap)
+			}
+		}
 	}
 }

@@ -137,7 +137,7 @@ func newGraphQLServer(svc service.GameService, hub *websocket.Hub, opts Options)
 		initTimeout = wsInitTimeout
 	}
 	resolver := graph.NewResolver(svc, hub)
-	resolver.Admin = graph.Admin{Key: opts.AdminKey, AllowUnauthenticated: opts.AllowUnauthenticatedAdmin}
+	resolver.AdminPolicy = graph.Admin{Key: opts.AdminKey, AllowUnauthenticated: opts.AllowUnauthenticatedAdmin}
 	srv := handler.New(generated.NewExecutableSchema(generated.Config{
 		Resolvers:  resolver,
 		Complexity: complexityRoot(),

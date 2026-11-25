@@ -30,8 +30,10 @@ type Resolver struct {
 	Hub     *websocket.Hub
 	// Accounts is the global account service (nil keeps the game guest-only).
 	Accounts *account.Service
-	// Admin gates writes to shipped content.
-	Admin Admin
+	// AdminPolicy gates writes to shipped content and the admin namespace.
+	// Named AdminPolicy because gqlgen generates a Resolver.Admin() accessor
+	// for the GraphQL Admin object.
+	AdminPolicy Admin
 }
 
 // Admin is the built-in map gate (ADMIN_API_KEY and
@@ -102,13 +104,37 @@ func requireViewer(ctx context.Context) (*account.Account, error) {
 	return nil, codedError(service.CodeUnauthenticated, "sign in first")
 }
 
+// adminKeyMatches reports whether key is this resolver's admin secret. With no
+// key configured, the explicit local-development opt-out is the only way to
+// authorize an admin operation.
+func (r *Resolver) adminKeyMatches(key string) bool {
+	if r.AdminPolicy.Key == "" {
+		return r.AdminPolicy.AllowUnauthenticated
+	}
+	got := sha256.Sum256([]byte(key))
+	want := sha256.Sum256([]byte(r.AdminPolicy.Key))
+	return subtle.ConstantTimeCompare(got[:], want[:]) == 1
+}
+
+// requireAdminKey validates an admin key passed as a mutation argument. It
+// returns the same FORBIDDEN codes the header path uses.
+func (r *Resolver) requireAdminKey(key string) error {
+	if r.adminKeyMatches(key) {
+		return nil
+	}
+	if r.AdminPolicy.Key == "" && !r.AdminPolicy.AllowUnauthenticated {
+		return codedError(service.CodeForbidden, "admin operation disabled: set ADMIN_API_KEY and pass it as admin(key)")
+	}
+	return codedError(service.CodeForbidden, "admin operation requires a valid admin key")
+}
+
 // checkAdminKey gates operations that change shipped content. ADMIN_API_KEY
 // must be configured and sent as X-Admin-Key; local development can opt out
 // explicitly with ALLOW_UNAUTHENTICATED_ADMIN=true (only honoured while no key
 // is configured).
 func (r *Resolver) checkAdminKey(ctx context.Context) error {
-	if r.Admin.Key == "" {
-		if r.Admin.AllowUnauthenticated {
+	if r.AdminPolicy.Key == "" {
+		if r.AdminPolicy.AllowUnauthenticated {
 			return nil
 		}
 		return codedError(service.CodeForbidden, "admin operation disabled: set ADMIN_API_KEY and send X-Admin-Key")
@@ -119,7 +145,7 @@ func (r *Resolver) checkAdminKey(ctx context.Context) error {
 	}
 	// Compare fixed-length digests so the key length is not leaked.
 	got := sha256.Sum256([]byte(req.Header.Get("X-Admin-Key")))
-	want := sha256.Sum256([]byte(r.Admin.Key))
+	want := sha256.Sum256([]byte(r.AdminPolicy.Key))
 	if subtle.ConstantTimeCompare(got[:], want[:]) != 1 {
 		return codedError(service.CodeForbidden, "forbidden: invalid or missing X-Admin-Key")
 	}

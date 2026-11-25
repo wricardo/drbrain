@@ -11,6 +11,8 @@
 		assignedCarIds: ReadonlySet<string>;
 		onSelect?: (id: string) => void;
 		onTow?: (id: string) => void;
+		/** Sells a car, banking its resale value. Omit for spectators. */
+		onSell?: (id: string) => void;
 		buyable?: {
 			cls: string;
 			price: number;
@@ -29,6 +31,7 @@
 		assignedCarIds,
 		onSelect,
 		onTow,
+		onSell,
 		buyable = [],
 		onBuy
 	}: Props = $props();
@@ -39,6 +42,10 @@
 		`${cars.length} vehicle${cars.length === 1 ? '' : 's'}` +
 			(upkeepDue > 0 ? ` · Upkeep Fee $${upkeepDue}` : '')
 	);
+
+	// Selling is irreversible and pays back less than the purchase price, so the
+	// first click asks for confirmation in place rather than acting immediately.
+	let confirmingSale = $state<string | null>(null);
 
 	// Typed by the generated union: a new car state on the server breaks the
 	// build here rather than silently rendering with no colour.
@@ -132,6 +139,46 @@
 						>
 							Tow to depot
 						</button>
+					</div>
+				{/if}
+
+				{#if onSell && cars.length > 1 && car.cargo.length === 0 && !assignedCarIds.has(car.id)}
+					<div class="px-3 pb-2">
+						{#if confirmingSale === car.id}
+							<div class="flex items-center justify-between gap-2 rounded border border-[var(--color-money)]/40 bg-[var(--color-money)]/5 px-2 py-1">
+								<span class="text-xs text-body">
+									Sell {car.name} for ${car.resaleValue}?
+									<span class="block text-[11px] text-faint">70% of purchase price, non-refundable</span>
+								</span>
+								<span class="flex shrink-0 gap-1">
+									<button
+										type="button"
+										class="min-h-9 rounded border border-[var(--color-money)]/50 px-2 text-xs text-[var(--color-money)] hover:bg-[var(--color-money)]/10"
+										onclick={() => {
+											confirmingSale = null;
+											onSell(car.id);
+										}}
+									>
+										Sell
+									</button>
+									<button
+										type="button"
+										class="min-h-9 rounded border border-edge px-2 text-xs text-muted hover:bg-surface-muted"
+										onclick={() => (confirmingSale = null)}
+									>
+										Cancel
+									</button>
+								</span>
+							</div>
+						{:else}
+							<button
+								type="button"
+								class="min-h-9 w-full rounded border border-edge px-2 py-1 text-xs text-muted hover:bg-surface-muted"
+								onclick={() => (confirmingSale = car.id)}
+							>
+								Sell · +${car.resaleValue}
+							</button>
+						{/if}
 					</div>
 				{/if}
 			</li>

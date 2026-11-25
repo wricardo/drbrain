@@ -2,7 +2,7 @@
 	import { onDestroy, onMount, untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { api, ApiError, SNAPSHOT_FIELDS, type CityInfo, type Direction, type SessionSummary, type Snapshot } from '$lib/delivery/api';
+	import { api, ApiError, SNAPSHOT_FIELDS, type CarView, type CityInfo, type Direction, type SessionSummary, type Snapshot } from '$lib/delivery/api';
 	import { canPlayCity, sortCities, statusLabel } from '$lib/delivery/cities';
 	import { pageTitle } from '$lib/delivery/brand';
 	import { subscribeToSession } from '$lib/delivery/subscribe';
@@ -14,6 +14,7 @@
 	import LedgerPanel from '$lib/delivery/LedgerPanel.svelte';
 	import MonthlyPanel from '$lib/delivery/MonthlyPanel.svelte';
 	import OrdersPanel from '$lib/delivery/OrdersPanel.svelte';
+	import SessionAnalytics from '$lib/delivery/SessionAnalytics.svelte';
 	import Hero from '@drbrain/ui/components/Hero.svelte';
 	import Button from '@drbrain/ui/components/Button.svelte';
 	import EmptyState from '@drbrain/ui/components/EmptyState.svelte';
@@ -30,8 +31,6 @@
 	/** Which order's route is highlighted on the map. */
 	let selectedOrderId = $state<string | null>(null);
 	let busy = $state(false);
-	/** When true the D-pad only queues a step; the clock advances via step. */
-	let queueOnly = $state(false);
 
 	/** False when the open session belongs to someone else: the page then only watches. */
 	let canPlay = $state(true);
@@ -222,21 +221,6 @@
 
 	// --- networking ----------------------------------------------------------
 
-	/**
-	 * How long a car takes to glide one tile when the clock is paused, i.e. when
-	 * the player is driving by hand.
-	 *
-	 * This must not be zero. Sessions start paused (the game is manual driving),
-	 * so a paused step is the *normal* way a car moves — and `moveMs` used to be
-	 * derived from the poll interval, which is 0 while paused because "nothing
-	 * moves". The result was that every keystroke teleported the car a whole
-	 * tile and only a running clock ever animated. A manual step is a single
-	 * discrete event, so it needs its own fixed duration rather than a cadence:
-	 * long enough to read as driving, short enough that the next keystroke does
-	 * not queue behind it.
-	 */
-	const STEP_GLIDE_MS = 160;
-
 	/*
 	 * History note: this page used to poll. It kept a `pollMs` cadence of one
 	 * tick (tickMs / speed) because a fixed 400 ms sampled an interval that does
@@ -287,25 +271,17 @@
 	let renderedTick = 0;
 
 	/**
-	 * How long a car takes to slide from the tile it was on to the tile the
+	 * How long a car takes to glide from the tile it was on to the tile the
 	 * latest snapshot puts it on.
 	 *
 	 * A running clock pushes once per tick, so the glide lasts exactly one tick
 	 * and the next frame lands just as the car arrives: continuous motion with
-	 * no interpolation needed.
-	 *
-	 * A paused clock is the default state and the normal way the game is
-	 * played, and it still has to animate. Deriving this from the poll interval
-	 * gave 0 while paused (a paused city "has nothing to animate"), so every
-	 * manual step teleported the car a whole tile — the bug this used to cause.
-	 * A step is a discrete event with no cadence to match, so it gets a fixed
-	 * duration instead: a running clock keeps the tick-synced glide, a paused
-	 * one glides for STEP_GLIDE_MS.
+	 * no interpolation needed. A paused clock never moves a car (queued steps
+	 * wait for the clock), so there is nothing to glide.
 	 */
 	const moveMs = $derived.by(() => {
-		if (!snap) return 0;
-		if (!snap.paused && snap.speed > 0) return Math.max(50, Math.floor(snap.tickMs / snap.speed));
-		return STEP_GLIDE_MS;
+		if (!snap || snap.paused || snap.speed <= 0) return 0;
+		return Math.max(50, Math.floor(snap.tickMs / snap.speed));
 	});
 
 	/**
@@ -427,10 +403,6 @@
 		void startSession(selectedCityId || undefined);
 	}
 
-	/** Back to the city picker: navigating drops ?city, and the effect below closes the city. */
-	function leave() {
-		void goto('?', { noScroll: true });
-	}
 
 	/** Close the open city. The save stays on disk. */
 	async function closeCity() {
@@ -454,28 +426,27 @@
 	}
 
 	/**
-	 * Drive one step: queue the direction and advance the clock.
+	 * Queue a step for the selected car.
 	 *
-	 * The API separates commands from the clock, but a player pressing `s`
-	 * expects the car to move. Doing both keeps the UI feeling like driving
-	 * while the engine keeps its deterministic split. `step()` on its own is
-	 * still available for setting up multi-car moves.
+	 * Commands and the clock are separate: the step runs on the next tick of
+	 * the running clock, and several cars can be loaded with steps before it
+	 * gets there. The clock is the only thing that advances the world.
 	 */
-	async function drive(dir: Direction) {
+	function queueStep(dir: Direction) {
 		if (!snap || !canPlay || !selectedCar) return;
-		const id = snap.id;
-		const carId = selectedCar.id;
+		void applyCar(() => api.moveCar(snap!.id, selectedCar!.id, dir));
+	}
+
+	/**
+	 * Queue acknowledgements return only the car, so patch it into the current
+	 * snapshot rather than replacing it. The tick and everything else keep coming
+	 * from the live stream.
+	 */
+	async function applyCar(fn: () => Promise<CarView>) {
 		busy = true;
 		try {
-			// Direct driving is "move this car now": a leftover queue from
-			// queue-only mode would otherwise make the tick execute the stale
-			// head instead of the direction just pressed.
-			if (selectedCar.queuedMoves.length > 0) await api.clearMoves(id, carId);
-			await api.moveCar(id, carId, dir);
-			// More than one round trip, so a frame may describe the state in
-			// between; only the tick's own response is authoritative for this step.
-			snap = await api.tick(id, 1);
-			renderedTick = snap.tick;
+			const car = await fn();
+			if (snap) snap = { ...snap, cars: snap.cars.map((c) => (c.id === car.id ? car : c)) };
 			error = null;
 		} catch (e) {
 			error = e instanceof ApiError ? `${e.message} (${e.code})` : String(e);
@@ -484,26 +455,15 @@
 		}
 	}
 
-	/**
-	 * Queue a step for the selected car WITHOUT advancing the clock.
-	 *
-	 * This is how several cars are set up to move on the same tick: queue a
-	 * direction for each, then press space once. The engine keeps commands and
-	 * the clock separate for exactly this, so the UI must not hide it.
-	 */
-	function queueStep(dir: Direction) {
-		if (!snap || !canPlay || !selectedCar) return;
-		void apply(() => api.moveCar(snap!.id, selectedCar!.id, dir));
-	}
-
-	function step(n = 1) {
-		if (!snap || !canPlay) return;
-		void apply(() => api.tick(snap!.id, n));
-	}
-
 	function setSpeed(speed: number) {
 		if (!snap || !canPlay) return;
 		void apply(() => api.setSpeed(snap!.id, speed));
+	}
+
+	/** Drop the selected car's queued steps before replanning. */
+	function clearQueue() {
+		if (!snap || !canPlay || !selectedCar) return;
+		void applyCar(() => api.clearMoves(snap!.id, selectedCar!.id));
 	}
 
 	function assign(orderId: string) {
@@ -524,6 +484,11 @@
 	function buy(cls: string) {
 		if (!snap || !canPlay) return;
 		void apply(() => api.buyCar(snap!.id, cls));
+	}
+
+	function sell(carId: string) {
+		if (!snap || !canPlay) return;
+		void apply(() => api.sellCar(snap!.id, carId));
 	}
 
 	function cycleCar(delta: number) {
@@ -553,28 +518,12 @@
 		// leaves focus on its map or fleet button, and driving from there is the
 		// normal way to play, so buttons and links must not swallow the keys.
 		if (target?.closest('input, textarea, select, [contenteditable]')) return;
-		const onControl = target?.closest('button, a') !== null;
 
 		const dir = KEY_DIRS[e.key];
 		if (dir) {
 			e.preventDefault();
-			// A direction key drives: queue the move and step once. Shift queues
-			// the step without advancing, which is how a multi-car player sets up
-			// several cars for the same tick.
-			if (e.shiftKey) {
-				queueStep(dir);
-			} else {
-				void drive(dir);
-			}
-			return;
-		}
-		if (e.key === ' ' || e.key === 'Enter') {
-			// Space and Enter belong to the focused control: pressing them while
-			// a button has focus must activate that button, not also advance the
-			// clock.
-			if (onControl) return;
-			e.preventDefault();
-			step(1);
+			// A direction key queues the step; the running clock applies it.
+			queueStep(dir);
 			return;
 		}
 		if (e.key.toLowerCase() === 'c') {
@@ -757,23 +706,23 @@
 	</div>
 {:else}
 	<div class="db-container flex min-h-0 flex-col gap-3 py-4">
-		<header class="db-panel game-run-title">
-			<h1 class="text-xl">Fleet dashboard</h1>
-			<span class="text-sm text-faint" data-testid="open-city-name">{openName}</span>
-			{#if canPlay}
-				{#if editingName}
-					<form class="flex flex-wrap items-end gap-2" onsubmit={(event) => { event.preventDefault(); void saveName(); }}>
-						<label class="text-sm text-muted">
-							Session name (optional)
-							<input class="db-input mt-1" bind:value={nameDraft} maxlength="80" placeholder="e.g. Scooter-only strategy" />
-						</label>
-						<Button type="submit" disabled={nameSaving}>{nameSaving ? 'Saving…' : 'Save name'}</Button>
-						<Button variant="secondary" disabled={nameSaving} onclick={() => { editingName = false; nameError = null; }}>Cancel</Button>
-						{#if nameError}<p class="text-sm text-[var(--db-danger)]" role="alert">{nameError}</p>{/if}
-					</form>
-				{:else}
-					<Button variant="secondary" onclick={() => { nameDraft = snap?.displayName ?? ''; editingName = true; }}>Name session</Button>
-				{/if}
+		<header class="db-panel game-run-title !justify-start !gap-x-3 !gap-y-1 !px-3 !py-1">
+			{#if editingName && canPlay}
+				<form class="flex flex-wrap items-center gap-1" onsubmit={(event) => { event.preventDefault(); void saveName(); }}>
+					<input class="db-input" aria-label="Session name" bind:value={nameDraft} maxlength="80" placeholder="Session name" />
+					<button type="submit" class="min-h-11 rounded-lg px-2 text-sm font-semibold text-[var(--db-accent)]" disabled={nameSaving}>{nameSaving ? 'Saving…' : 'Save'}</button>
+					<button type="button" class="min-h-11 rounded-lg px-2 text-sm text-muted" disabled={nameSaving} onclick={() => { editingName = false; nameError = null; }}>Cancel</button>
+					{#if nameError}<p class="text-sm text-[var(--db-danger)]" role="alert">{nameError}</p>{/if}
+				</form>
+			{:else}
+				<div class="flex min-w-0 items-center">
+					<h1 class="text-lg" data-testid="open-city-name">{openName}</h1>
+					{#if canPlay}
+						<button type="button" class="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-faint hover:bg-surface-muted hover:text-body" aria-label="Edit session name" title="Edit session name" onclick={() => { nameDraft = snap?.displayName ?? ''; editingName = true; }}>
+							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" /></svg>
+						</button>
+					{/if}
+				</div>
 			{/if}
 			<div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm tabular-nums">
 				<span class="text-faint">Tick <strong class="text-body">{snap.tick}</strong></span>
@@ -811,16 +760,7 @@
 			</div>
 
 			<div class="flex flex-wrap items-center gap-1.5">
-				<button
-					type="button"
-					class="min-h-11 rounded-lg px-2.5 text-sm font-semibold text-faint hover:bg-surface-muted hover:text-body"
-					onclick={leave}
-					title="Save and return to the city picker"
-				>
-					← Saved cities
-				</button>
 				{#if canPlay}
-					<span class="hidden h-4 w-px bg-track sm:block"></span>
 					{#each SPEEDS as s (s.value)}
 						<button
 							type="button"
@@ -834,17 +774,6 @@
 							{s.value === 0 ? (snap.paused ? 'paused' : 'pause') : s.label}
 						</button>
 					{/each}
-					<span class="mx-1 hidden h-4 w-px bg-track sm:block"></span>
-					<button
-						type="button"
-						class="min-h-11 min-w-11 rounded-lg border border-edge-strong px-2.5 text-sm font-semibold text-muted hover:bg-surface-muted hover:text-body"
-						onclick={() => step(1)}>step</button
-					>
-					<button
-						type="button"
-						class="min-h-11 min-w-11 rounded-lg border border-edge-strong px-2.5 text-sm font-semibold text-muted hover:bg-surface-muted hover:text-body"
-						onclick={() => step(10)}>+10</button
-					>
 				{/if}
 			</div>
 		</header>
@@ -887,9 +816,7 @@
 				{#if canPlay}
 					<Panel
 						title="Controls"
-						summary={selectedCar
-							? `driving ${selectedCar.name}${queueOnly ? ' · queueing — press step to advance' : ''}`
-							: ''}
+						summary={selectedCar ? `driving ${selectedCar.name}` : ''}
 					>
 						<div class="flex flex-wrap items-center gap-x-4 gap-y-2 px-3 py-2 text-xs text-muted">
 							<!-- A D-pad, because keyboard-only excludes mouse and touch. -->
@@ -898,60 +825,40 @@
 								<button
 									type="button"
 									class="size-11 rounded-lg border border-edge-strong text-base font-semibold text-body hover:border-[var(--db-accent)] hover:text-[var(--db-accent)]"
-									onclick={() => (queueOnly ? queueStep('NORTH') : drive('NORTH'))}
+									onclick={() => queueStep('NORTH')}
 									aria-label="Move north"
-									title={queueOnly ? 'Queue north (w)' : 'Move north (w)'}>↑</button
+									title="Queue north (w)">↑</button
 								>
 								<span></span>
 								<button
 									type="button"
 									class="size-11 rounded-lg border border-edge-strong text-base font-semibold text-body hover:border-[var(--db-accent)] hover:text-[var(--db-accent)]"
-									onclick={() => (queueOnly ? queueStep('WEST') : drive('WEST'))}
+									onclick={() => queueStep('WEST')}
 									aria-label="Move west"
-									title={queueOnly ? 'Queue west (a)' : 'Move west (a)'}>←</button
-								>
-								<button
-									type="button"
-									class="size-11 rounded-lg border border-edge-strong text-base font-semibold text-body hover:border-[var(--db-accent)] hover:text-[var(--db-accent)]"
-									onclick={() => step(1)}
-									aria-label="Advance one tick"
-									title="Advance one tick (space)">•</button
-								>
-								<button
-									type="button"
-									class="size-11 rounded-lg border border-edge-strong text-base font-semibold text-body hover:border-[var(--db-accent)] hover:text-[var(--db-accent)]"
-									onclick={() => (queueOnly ? queueStep('EAST') : drive('EAST'))}
-									aria-label="Move east"
-									title={queueOnly ? 'Queue east (d)' : 'Move east (d)'}>→</button
+									title="Queue west (a)">←</button
 								>
 								<span></span>
 								<button
 									type="button"
 									class="size-11 rounded-lg border border-edge-strong text-base font-semibold text-body hover:border-[var(--db-accent)] hover:text-[var(--db-accent)]"
-									onclick={() => (queueOnly ? queueStep('SOUTH') : drive('SOUTH'))}
+									onclick={() => queueStep('EAST')}
+									aria-label="Move east"
+									title="Queue east (d)">→</button
+								>
+								<span></span>
+								<button
+									type="button"
+									class="size-11 rounded-lg border border-edge-strong text-base font-semibold text-body hover:border-[var(--db-accent)] hover:text-[var(--db-accent)]"
+									onclick={() => queueStep('SOUTH')}
 									aria-label="Move south"
-									title={queueOnly ? 'Queue south (s)' : 'Move south (s)'}>↓</button
+									title="Queue south (s)">↓</button
 								>
 								<span></span>
 							</div>
 
-							<button
-								type="button"
-								class="min-h-11 rounded-lg border px-2.5 text-sm font-semibold transition-colors {queueOnly
-									? 'border-[var(--db-accent)]/40 bg-[var(--db-accent)]/15 text-[var(--db-accent)]'
-									: 'border-edge-strong text-muted hover:bg-surface-muted hover:text-body'}"
-								aria-pressed={queueOnly}
-								onclick={() => (queueOnly = !queueOnly)}
-								title="Queue a step without advancing the clock"
-							>
-								Queue only
-							</button>
-
 							<div class="flex flex-col gap-0.5">
-								<span><kbd class="text-body">w a s d</kbd> drive</span>
-								<span><kbd class="text-body">shift</kbd> + direction: queue only</span>
-								<span>toggle: tap to queue, step to advance</span>
-								<span><kbd class="text-body">space</kbd> tick only</span>
+								<span><kbd class="text-body">w a s d</kbd> queue a step</span>
+								<span>queued steps run as the clock advances</span>
 								<span><kbd class="text-body">c</kbd> switch car</span>
 								<span><kbd class="text-body">p</kbd> pause/resume</span>
 							</div>
@@ -961,6 +868,11 @@
 								driving <span class="text-body">{selectedCar.name}</span>
 								{#if selectedCar.queuedMoves.length > 0}
 									<span class="text-faint"> — {selectedCar.queuedMoves.length} queued</span>
+									<button
+										type="button"
+										class="ml-1 underline hover:text-body"
+										onclick={clearQueue}>clear</button
+									>
 								{/if}
 								{#if selectedCar.batteryPct <= 25}
 									<span class="text-[var(--color-warn)]"> — low battery</span>
@@ -983,6 +895,10 @@
 						{/if}
 					</ul>
 				</Panel>
+
+				<Panel title="Analytics" summary="this city">
+					<SessionAnalytics sessionId={snap.id} tick={snap.tick} />
+				</Panel>
 			</div>
 
 			<div class="flex min-h-0 flex-col gap-3 overflow-y-auto">
@@ -1002,6 +918,7 @@
 					selectedCarId={selectedCar?.id ?? null}
 					onSelect={(id) => (selectedCarId = id)}
 					onTow={canPlay ? tow : undefined}
+					onSell={canPlay ? sell : undefined}
 					buyable={canPlay ? buyable : []}
 					onBuy={canPlay ? buy : undefined}
 				/>

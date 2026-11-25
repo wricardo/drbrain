@@ -6,6 +6,7 @@ function save(id: string, overrides: Partial<SessionSummary> = {}): SessionSumma
 	return {
 		id,
 		createdAt: '2026-01-01T00:00:00Z',
+		displayName: '',
 		tick: 0,
 		speed: 0,
 		money: 0,
@@ -26,6 +27,17 @@ describe('analytics labels', () => {
 		expect(sessionLabel(save('123456789abc'))).toBe('City …789abc');
 	});
 
+	it('prefers the session name over ownership and owner name', () => {
+		expect(
+			sessionLabel(save('aaaaaaaaaaaa', { displayName: 'Scooter only', mine: true }))
+		).toBe('Scooter only');
+		expect(
+			sessionLabel(
+				save('aaaaaaaaaaaa', { displayName: 'Van rush', ownerDisplayName: 'Ada' })
+			)
+		).toBe('Van rush');
+	});
+
 	it('prefers progressed sessions and caps the default overlay', () => {
 		const saves = [
 			save('empty-1'),
@@ -41,5 +53,14 @@ describe('analytics labels', () => {
 
 	it('falls back to the newest saves when everything is at tick 0', () => {
 		expect(defaultSelection([save('a'), save('b')], 1)).toEqual(['a']);
+	});
+});
+
+describe('analytics chart coverage', () => {
+	it('charts every metric exactly once across the play-screen groups', async () => {
+		const { emptyMetrics, MONEY_CHARTS, ORDER_CHARTS, OVERVIEW_CHARTS } = await import('./analytics');
+		const metrics = [...OVERVIEW_CHARTS, ...ORDER_CHARTS, ...MONEY_CHARTS].map((c) => c.metric);
+		expect([...metrics].sort()).toEqual(Object.keys(emptyMetrics()).sort());
+		expect(new Set(metrics).size).toBe(metrics.length);
 	});
 });

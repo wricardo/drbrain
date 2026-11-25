@@ -30,6 +30,24 @@ resolver:
 # replaces gqlgen's defaults: omit one (String, Boolean) and generation fails
 # with "unable to find type", sometimes silently.
 models:
+  # The admin object carries no data; the key is validated by Mutation.admin
+  # before it is returned, and deleteSession runs through AdminResolver so it
+  # can reach the resolver's session manager.
+  Admin:
+    model: github.com/wricardo/drbrain/games/delivery/graph/model.Admin
+    fields:
+      deleteSession:
+        resolver: true
+      deleteSessions:
+        resolver: true
+      pauseSession:
+        resolver: true
+      evictSession:
+        resolver: true
+      saveSession:
+        resolver: true
+      saveAll:
+        resolver: true
   ID:
     model:
       - github.com/99designs/gqlgen/graphql.ID

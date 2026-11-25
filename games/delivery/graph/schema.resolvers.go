@@ -21,6 +21,109 @@ import (
 	"github.com/wricardo/drbrain/platform/mapstore"
 )
 
+// DeleteSession is the resolver for the deleteSession field. The admin key was
+// already validated by Mutation.deliveryAdmin, so this bypasses the ownership check the
+// player-facing deleteSession performs. Idempotent: a missing save is true.
+func (r *adminResolver) DeleteSession(ctx context.Context, obj *model.Admin, id string) (bool, error) {
+	if !session.ValidID(id) {
+		return false, errBadInput("invalid session id")
+	}
+	if err := r.Mgr.Delete(id); err != nil {
+		slog.Error("delivery admin deleteSession", "session", id, "err", err)
+		return false, codedErr(codeInternal, "delete failed")
+	}
+	return true, nil
+}
+
+// DeleteSessions is the resolver for the deleteSessions field. Ids are
+// validated and deduplicated before anything is deleted, so an invalid id in
+// the batch rejects the whole call. The existence snapshot makes `deleted` vs
+// `missing` best effort, matching the store's own list-then-delete view.
+func (r *adminResolver) DeleteSessions(ctx context.Context, obj *model.Admin, ids []string) (*model.AdminDeleteResult, error) {
+	const maxIDs = 500
+	if len(ids) > maxIDs {
+		return nil, errLimit(fmt.Sprintf("at most %d ids per call", maxIDs))
+	}
+	seen := make(map[string]bool, len(ids))
+	unique := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if !session.ValidID(id) {
+			return nil, errBadInput(fmt.Sprintf("invalid session id %q", id))
+		}
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		unique = append(unique, id)
+	}
+	deleted, missing, err := r.Mgr.DeleteMany(unique)
+	if err != nil {
+		slog.Error("delivery admin deleteSessions", "ids", unique, "err", err)
+		return nil, codedErr(codeInternal, "delete failed")
+	}
+	return &model.AdminDeleteResult{Deleted: deleted, Missing: missing}, nil
+}
+
+// PauseSession is the resolver for the pauseSession field. It loads a saved
+// session through the same path a reader uses, so an unknown id is NOT_FOUND;
+// SetSpeed(0) also flushes the pause to the store.
+func (r *adminResolver) PauseSession(ctx context.Context, obj *model.Admin, id string) (*model.Snapshot, error) {
+	sess, err := r.loadRaw(id)
+	if err != nil {
+		return nil, err
+	}
+	if err := sess.SetSpeed(session.SpeedPaused); err != nil {
+		return nil, errBadInput(err.Error())
+	}
+	return r.snapshotView(ctx, sess.Snapshot()), nil
+}
+
+// EvictSession is the resolver for the evictSession field. Only a live session
+// needs work: a stored-only save has nothing to flush and is a no-op success.
+func (r *adminResolver) EvictSession(ctx context.Context, obj *model.Admin, id string) (bool, error) {
+	if !session.ValidID(id) {
+		return false, errBadInput("invalid session id")
+	}
+	sess, ok := r.Mgr.Get(id)
+	if !ok {
+		return true, nil
+	}
+	if err := sess.Save(); err != nil {
+		slog.Error("delivery admin evictSession", "session", id, "err", err)
+		return false, codedErr(codeInternal, "save before evict failed")
+	}
+	r.Mgr.Evict(id)
+	return true, nil
+}
+
+// SaveSession is the resolver for the saveSession field. A session that is not
+// resident has no newer state to write, so it succeeds without loading it.
+func (r *adminResolver) SaveSession(ctx context.Context, obj *model.Admin, id string) (bool, error) {
+	if !session.ValidID(id) {
+		return false, errBadInput("invalid session id")
+	}
+	sess, ok := r.Mgr.Get(id)
+	if !ok {
+		return true, nil
+	}
+	if err := sess.Save(); err != nil {
+		slog.Error("delivery admin saveSession", "session", id, "err", err)
+		return false, codedErr(codeInternal, "save failed")
+	}
+	return true, nil
+}
+
+// SaveAll is the resolver for the saveAll field. The count is the live set the
+// flush started from; stored-only saves are not rewritten.
+func (r *adminResolver) SaveAll(ctx context.Context, obj *model.Admin) (int, error) {
+	n := r.Mgr.LiveCount()
+	if err := r.Mgr.SaveAll(); err != nil {
+		slog.Error("delivery admin saveAll", "live", n, "err", err)
+		return 0, codedErr(codeInternal, "save failed")
+	}
+	return n, nil
+}
+
 // CashEntries is the resolver for the cashEntries field.
 //
 // With no arguments it returns the window the snapshot already carries, so the
@@ -136,7 +239,7 @@ func (r *mutationResolver) CreateSession(ctx context.Context, id *string, seed *
 //
 // Queues one step. It deliberately does not advance the clock: that separation
 // is what lets several cars be driven on the same tick.
-func (r *mutationResolver) MoveCar(ctx context.Context, id string, carID string, direction model.Direction, ownerToken *string) (*model.Snapshot, error) {
+func (r *mutationResolver) MoveCar(ctx context.Context, id string, carID string, direction model.Direction, ownerToken *string) (*model.CarView, error) {
 	sess, err := r.authorize(ctx, id, ownerToken)
 	if err != nil {
 		return nil, err
@@ -146,50 +249,37 @@ func (r *mutationResolver) MoveCar(ctx context.Context, id string, carID string,
 		return nil, errBadInput("unknown direction")
 	}
 	var opErr error
+	var car session.CarView
 	sess.Do(func(w *engine.World) {
-		opErr = w.QueueMove(carID, engine.Direction(dir))
+		if opErr = w.QueueMove(carID, engine.Direction(dir)); opErr == nil {
+			c, _ := w.Car(carID)
+			car = session.BuildCarView(c, w.City)
+		}
 	})
 	if opErr != nil {
 		return nil, engineMutationError(opErr)
 	}
-	return r.snapshotView(ctx, sess.Snapshot()), nil
+	return carFrom(car), nil
 }
 
 // ClearMoves is the resolver for the clearMoves field.
-func (r *mutationResolver) ClearMoves(ctx context.Context, id string, carID string, ownerToken *string) (*model.Snapshot, error) {
+func (r *mutationResolver) ClearMoves(ctx context.Context, id string, carID string, ownerToken *string) (*model.CarView, error) {
 	sess, err := r.authorize(ctx, id, ownerToken)
 	if err != nil {
 		return nil, err
 	}
 	var opErr error
+	var car session.CarView
 	sess.Do(func(w *engine.World) {
-		opErr = w.ClearMoves(carID)
+		if opErr = w.ClearMoves(carID); opErr == nil {
+			c, _ := w.Car(carID)
+			car = session.BuildCarView(c, w.City)
+		}
 	})
 	if opErr != nil {
 		return nil, engineMutationError(opErr)
 	}
-	return r.snapshotView(ctx, sess.Snapshot()), nil
-}
-
-// Tick is the resolver for the tick field.
-func (r *mutationResolver) Tick(ctx context.Context, id string, count int, ownerToken *string) (*model.Snapshot, error) {
-	sess, err := r.authorize(ctx, id, ownerToken)
-	if err != nil {
-		return nil, err
-	}
-	if count <= 0 {
-		count = 1
-	}
-	// A cap keeps one call from monopolising the session lock for seconds.
-	if count > 1000 {
-		return nil, errBadInput("count must be <= 1000")
-	}
-	sess.Do(func(w *engine.World) {
-		for range count {
-			w.Advance()
-		}
-	})
-	return r.snapshotView(ctx, sess.Snapshot()), nil
+	return carFrom(car), nil
 }
 
 // WaitUntil is the resolver for the waitUntil field.
@@ -226,7 +316,7 @@ func (r *mutationResolver) WaitUntil(ctx context.Context, id string, tick *int, 
 
 	switch err := sess.WaitUntil(ctx, target); {
 	case errors.Is(err, session.ErrPaused):
-		return nil, errBadInput("cannot wait while paused: resume the clock or advance it with tick")
+		return nil, errBadInput("cannot wait while paused: resume the clock with setSpeed")
 	case errors.Is(err, session.ErrClosed):
 		return nil, errConflict("session closed before the target tick")
 	case err != nil:
@@ -288,6 +378,38 @@ func (r *mutationResolver) BuyCar(ctx context.Context, id string, className stri
 	var opErr error
 	sess.Do(func(w *engine.World) {
 		_, opErr = w.BuyCar(className, depotID)
+	})
+	if opErr != nil {
+		return nil, engineMutationError(opErr)
+	}
+	return r.snapshotView(ctx, sess.Snapshot()), nil
+}
+
+// BuyCharger is the resolver for the buyCharger field.
+func (r *mutationResolver) BuyCharger(ctx context.Context, id string, x int, y int, ownerToken *string) (*model.Snapshot, error) {
+	sess, err := r.authorize(ctx, id, ownerToken)
+	if err != nil {
+		return nil, err
+	}
+	var opErr error
+	sess.Do(func(w *engine.World) {
+		_, opErr = w.BuyCharger(engine.Position{X: x, Y: y})
+	})
+	if opErr != nil {
+		return nil, engineMutationError(opErr)
+	}
+	return r.snapshotView(ctx, sess.Snapshot()), nil
+}
+
+// SellCar is the resolver for the sellCar field.
+func (r *mutationResolver) SellCar(ctx context.Context, id string, carID string, ownerToken *string) (*model.Snapshot, error) {
+	sess, err := r.authorize(ctx, id, ownerToken)
+	if err != nil {
+		return nil, err
+	}
+	var opErr error
+	sess.Do(func(w *engine.World) {
+		_, _, opErr = w.SellCar(carID)
 	})
 	if opErr != nil {
 		return nil, engineMutationError(opErr)
@@ -561,6 +683,19 @@ func (r *mutationResolver) ValidateCity(ctx context.Context, config string) (*mo
 	return &model.CityValidationResult{Valid: true, Publishable: true, Issues: []string{}}, nil
 }
 
+// Admin is the resolver for the admin field. It validates the key before the
+// admin object exists, so no field on it can run unauthorized. Unknown ids are
+// never revealed here: a wrong key is FORBIDDEN regardless of the target.
+func (r *mutationResolver) Admin(ctx context.Context, key string) (*model.Admin, error) {
+	if !r.adminKeyMatches(key) {
+		if r.AdminKey == "" && !r.AllowUnauthenticatedAdmin {
+			return nil, codedErr(codeForbidden, "admin operation disabled: set DELIVERY_ADMIN_API_KEY and pass it as admin(key)")
+		}
+		return nil, codedErr(codeForbidden, "admin operation requires a valid admin key")
+	}
+	return &model.Admin{}, nil
+}
+
 // Health is the resolver for the health field.
 func (r *queryResolver) Health(ctx context.Context) (*model.Health, error) {
 	return &model.Health{Status: "ok"}, nil
@@ -691,45 +826,6 @@ func (r *queryResolver) Sessions(ctx context.Context, sort *model.SessionSort, l
 	return out, nil
 }
 
-// MoneyHistory is the resolver for the moneyHistory field.
-func (r *queryResolver) MoneyHistory(ctx context.Context, ids []string, cityID *string, fromTick *int, toTick *int, maxPoints *int) ([]*model.MoneyHistory, error) {
-	if err := validateHistoryArgs(ids); err != nil {
-		return nil, err
-	}
-	rows, err := r.Mgr.MoneyHistory(ctx, r.seriesRequest(ctx, ids, cityID, fromTick, toTick, maxPoints))
-	if err != nil {
-		slog.Error("delivery moneyHistory", "err", err)
-		return nil, codedErr(codeInternal, "money history is unavailable")
-	}
-	return moneyHistoryFrom(rows), nil
-}
-
-// ItemsHistory is the resolver for the itemsHistory field.
-func (r *queryResolver) ItemsHistory(ctx context.Context, ids []string, cityID *string, fromTick *int, toTick *int, maxPoints *int) ([]*model.ValueSeries, error) {
-	if err := validateHistoryArgs(ids); err != nil {
-		return nil, err
-	}
-	rows, err := r.Mgr.ItemsHistory(ctx, r.seriesRequest(ctx, ids, cityID, fromTick, toTick, maxPoints))
-	if err != nil {
-		slog.Error("delivery itemsHistory", "err", err)
-		return nil, codedErr(codeInternal, "items history is unavailable")
-	}
-	return seriesHistoryFrom(rows), nil
-}
-
-// ReputationHistory is the resolver for the reputationHistory field.
-func (r *queryResolver) ReputationHistory(ctx context.Context, ids []string, cityID *string, fromTick *int, toTick *int, maxPoints *int) ([]*model.ValueSeries, error) {
-	if err := validateHistoryArgs(ids); err != nil {
-		return nil, err
-	}
-	rows, err := r.Mgr.ReputationHistory(ctx, r.seriesRequest(ctx, ids, cityID, fromTick, toTick, maxPoints))
-	if err != nil {
-		slog.Error("delivery reputationHistory", "err", err)
-		return nil, codedErr(codeInternal, "reputation history is unavailable")
-	}
-	return seriesHistoryFrom(rows), nil
-}
-
 // MetricHistory is the resolver for the metricHistory field.
 func (r *queryResolver) MetricHistory(ctx context.Context, metric model.AnalyticsMetric, ids []string, cityID *string, fromTick *int, toTick *int, maxPoints *int) ([]*model.ValueSeries, error) {
 	if err := validateHistoryArgs(ids); err != nil {
@@ -750,6 +846,58 @@ func (r *queryResolver) Session(ctx context.Context, id string) (*model.Snapshot
 		return nil, err
 	}
 	return r.snapshotView(ctx, sess.Snapshot()), nil
+}
+
+// TickSnapshots is the resolver for the tickSnapshots field.
+//
+// Reads the recorded per-tick log for one session. The session is resolved
+// through the normal read path first, so an unknown save and another player's
+// draft city are NOT_FOUND rather than an empty page. Tick bounds are
+// inclusive and afterTick is an exclusive keyset cursor; both filters run in
+// SQL so a page never decodes frames it will not return.
+func (r *queryResolver) TickSnapshots(ctx context.Context, sessionID string, fromTick *int, toTick *int, afterTick *int, limit *int) ([]*model.TickSnapshot, error) {
+	if _, err := r.load(ctx, sessionID); err != nil {
+		return nil, err
+	}
+	q := session.TickSnapshotQuery{}
+	if fromTick != nil {
+		if *fromTick < 0 {
+			return nil, errBadInput("fromTick must not be negative")
+		}
+		q.FromTick = int64(*fromTick)
+	}
+	if toTick != nil {
+		if *toTick < 0 {
+			return nil, errBadInput("toTick must not be negative")
+		}
+		q.ToTick = int64(*toTick)
+	}
+	if afterTick != nil {
+		if *afterTick < 0 {
+			return nil, errBadInput("afterTick must not be negative")
+		}
+		q.AfterTick = int64(*afterTick)
+	}
+	if q.FromTick > 0 && q.ToTick > 0 && q.FromTick > q.ToTick {
+		return nil, errBadInput("fromTick must not be after toTick")
+	}
+	if limit != nil {
+		if *limit < 1 {
+			return nil, errBadInput("limit must be at least 1")
+		}
+		q.Limit = *limit
+	}
+	rows, err := r.Mgr.TickSnapshots(ctx, sessionID, q)
+	if errors.Is(err, session.ErrSnapshotsDisabled) {
+		// The log is optional infrastructure: a deployment with it off serves an
+		// empty history instead of failing a read that has a valid answer.
+		return []*model.TickSnapshot{}, nil
+	}
+	if err != nil {
+		slog.Error("delivery tickSnapshots", "session", sessionID, "err", err)
+		return nil, codedErr(codeInternal, "tick snapshots are unavailable")
+	}
+	return tickSnapshotsFrom(rows), nil
 }
 
 // CarView is the resolver for the carView field.
@@ -1015,6 +1163,9 @@ func (r *subscriptionResolver) Session(ctx context.Context, id string) (<-chan *
 	return out, nil
 }
 
+// Admin returns generated.AdminResolver implementation.
+func (r *Resolver) Admin() generated.AdminResolver { return &adminResolver{r} }
+
 // LedgerView returns generated.LedgerViewResolver implementation.
 func (r *Resolver) LedgerView() generated.LedgerViewResolver { return &ledgerViewResolver{r} }
 
@@ -1030,6 +1181,7 @@ func (r *Resolver) Snapshot() generated.SnapshotResolver { return &snapshotResol
 // Subscription returns generated.SubscriptionResolver implementation.
 func (r *Resolver) Subscription() generated.SubscriptionResolver { return &subscriptionResolver{r} }
 
+type adminResolver struct{ *Resolver }
 type ledgerViewResolver struct{ *Resolver }
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }

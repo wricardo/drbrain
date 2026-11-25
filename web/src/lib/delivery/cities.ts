@@ -87,7 +87,13 @@ export function starterCityConfig(name = 'New city'): Record<string, unknown> {
 		car_classes: {},
 		districts: {},
 		orders: {},
-		charging: {},
+		charging: {
+			depot_rate: 6,
+			charger_rate: 2,
+			charger_price_per_tick: 1,
+			charger_purchase_price: 150,
+			max_purchased_chargers: 6
+		},
 		growth: []
 	};
 }
@@ -146,7 +152,13 @@ export function cityConfigFromView(view: CityView): Record<string, unknown> {
 		car_classes: {},
 		districts: {},
 		orders: {},
-		charging: {},
+		charging: {
+			depot_rate: view.charging.depotRate,
+			charger_rate: view.charging.chargerRate,
+			charger_price_per_tick: view.charging.chargerPricePerTick,
+			charger_purchase_price: view.charging.chargerPurchasePrice,
+			max_purchased_chargers: view.charging.maxPurchasedChargers
+		},
 		growth: []
 	};
 }

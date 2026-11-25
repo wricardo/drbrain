@@ -17,7 +17,50 @@ export interface Query {
 
 export interface Mutation {
 	account: Global_Mutation;
-	delivery: Delivery_Mutation;
+	/** Start a new city. Every argument is optional; a seed makes it reproducible, and an omitted id is generated. cityId selects the city config to snapshot (omitted = the default city); the session keeps that snapshot, so later city edits never change a running game. A signed-in creator's session belongs to their account. The response carries the secret ownerToken, needed to change the session later, so keep it. */
+	deliveryCreateSession: Delivery_CreateSessionResult;
+	/** Queue one step for one car by appending it to that car's movement queue. Does NOT advance the clock: queued steps run one per tick, in order, so a client can preload a route for the running clock. A rejected step (wall, battery, closure, traffic) is spent, not retried. At most 64 steps may be queued per car; the overflow is LIMIT_REACHED. Only the session's creator may change it: pass the ownerToken from createSession, or be signed in to the account that owns the session (FORBIDDEN otherwise). Sessions created before owner tokens stay open.  Returns that car only, with the step appended to `queuedMoves`. Position and battery are unchanged until the clock ticks, and `lastReject` still reports the previous tick's move, not this call. Read the world with `session`. */
+	deliveryMoveCar: Delivery_CarView;
+	/** Drop a car's entire movement queue, including the step for the next tick. Use it to replan: a preloaded route must not keep steering after traffic or closures change. Creator-only, as moveCar. Returns that car, with empty `queuedMove`/`queuedMoves`. */
+	deliveryClearMoves: Delivery_CarView;
+	/** Wait for the running clock to reach a target tick, then return that snapshot. Pass exactly one of `tick` (an absolute tick in the future) or `ticks` (a count from the tick when the call starts, at most 1000). The clock must be running: a paused session never advances, so the call fails with INVALID_ARGUMENT instead of hanging, and pausing while it waits ends it the same way. Creator-only, as moveCar. */
+	deliveryWaitUntil: Delivery_Snapshot;
+	/** Set the clock multiplier. 0 pauses. Creator-only, as moveCar. */
+	deliverySetSpeed: Delivery_Snapshot;
+	/** Point an order at a car; refreshes its deadline from that car's position. Creator-only, as moveCar. */
+	deliveryAssignOrder: Delivery_Snapshot;
+	/** Remove the car from an order, returning it to PENDING. Creator-only, as moveCar. */
+	deliveryUnassignOrder: Delivery_Snapshot;
+	/** Buy a vehicle at a depot. Creator-only, as moveCar. */
+	deliveryBuyCar: Delivery_Snapshot;
+	/** Buy a standalone charger and build it on tile (x, y) in one step. The tile must be a revealed open road or ground tile, free of buildings and cars, and reachable from a depot. Price and limit come from the city config (charging.charger_purchase_price, charging.max_purchased_chargers; 0 max disables). Creator-only, as moveCar. */
+	deliveryBuyCharger: Delivery_Snapshot;
+	/** Sell a vehicle and bank 70% of what it originally cost. Any open charging bill is settled first. Refused while the car is carrying cargo or has an order assigned, so an order can never be orphaned. Creator-only, as moveCar. */
+	deliverySellCar: Delivery_Snapshot;
+	/** Return a stranded car to its nearest depot for a fee. Creator-only, as moveCar. */
+	deliveryTowCar: Delivery_Snapshot;
+	/** Persist the save to PostgreSQL now. Creator-only, as moveCar. */
+	deliverySaveSession: Delivery_Snapshot;
+	/** Name this save for the player. Creator-only, as moveCar. A blank name clears it and every view falls back to the city name. Persisted immediately, so the name survives a restart and shows in the session list before the save loads. */
+	deliveryRenameSession: Delivery_Snapshot;
+	/** Save, then drop from memory. The next read rehydrates. Creator-only: evicting someone else's session would stop their clock. */
+	deliveryEvictSession: boolean;
+	/** Delete the save row permanently. Needs the ownerToken (or the owning account) even for a guest session; only a save created before owner tokens is open. */
+	deliveryDeleteSession: boolean;
+	/** Attaches guest sessions of this browser to the signed-in account; each needs its owner token (up to 100 per call). UNAUTHENTICATED when not signed in. */
+	deliveryClaimSessions: Delivery_SessionClaimResult[];
+	/** Saves a new DRAFT city owned by the signed-in player (UNAUTHENTICATED otherwise). config is the raw city JSON; it is stored as written, so validateCity and publishCity can report every problem. */
+	deliveryCreateCity: Delivery_CityView;
+	/** Replaces the caller's own city and puts it back into DRAFT. Only the owner may edit a community city; shipped and legacy unowned cities need X-Admin-Key. */
+	deliveryUpdateCity: Delivery_CityView;
+	/** Publishes a draft after the full startup validation (grid, districts, orders and reachability). Only the owner may do it, and an invalid city is refused with INVALID_ARGUMENT. */
+	deliveryPublishCity: Delivery_CityView;
+	/** Removes a city. Community cities need their owner; shipped and legacy unowned cities need X-Admin-Key. Sessions already started keep their snapshot. */
+	deliveryDeleteCity: boolean;
+	/** Checks raw city JSON and stores nothing. Signed-in players only. valid means it parses into a city; publishable means publishCity would accept it. */
+	deliveryValidateCity: Delivery_CityValidationResult;
+	/** Administrative operations. `key` must match DELIVERY_ADMIN_API_KEY (the same secret X-Admin-Key carries); a wrong or missing key is FORBIDDEN and never reveals whether a save exists. When no key is configured, the explicit local-development opt-out still applies. */
+	deliveryAdmin: Delivery_Admin;
 	mazes: Mazes_Mutation;
 	motorProgramming: Motor_Mutation;
 	tesla: Tesla_Mutation;
@@ -42,7 +85,7 @@ export interface Subscription {
 /**
  * Cumulative operational series available from metricHistory.
  */
-export type Delivery_AnalyticsMetric = 'DELIVERIES' | 'LATE_DELIVERIES' | 'EXPIRED_ORDERS' | 'ORDERS_CREATED' | 'DELIVERY_INCOME' | 'ORDER_FINES' | 'UPKEEP_SPEND' | 'CHARGING_SPEND' | 'TOW_SPEND';
+export type Delivery_AnalyticsMetric = 'MONEY' | 'BOXES_DELIVERED' | 'REPUTATION' | 'DELIVERIES' | 'LATE_DELIVERIES' | 'EXPIRED_ORDERS' | 'ORDERS_CREATED' | 'DELIVERY_INCOME' | 'ORDER_FINES' | 'UPKEEP_SPEND' | 'CHARGING_SPEND' | 'TOW_SPEND';
 
 /**
  * What a car is doing right now.
@@ -53,13 +96,13 @@ export type Delivery_CarState = 'IDLE' | 'CARRYING' | 'CHARGING' | 'STRANDED';
  * Economic bucket used by the monthly report. Income buckets are positive;
  * expense buckets are negative.
  */
-export type Delivery_CashCategory = 'OPENING' | 'DELIVERY_INCOME' | 'REWARDS' | 'ORDER_FINES' | 'UPKEEP' | 'CHARGING' | 'TOWS' | 'CAR_PURCHASES' | 'BUILDS' | 'OTHER';
+export type Delivery_CashCategory = 'OPENING' | 'DELIVERY_INCOME' | 'REWARDS' | 'ORDER_FINES' | 'UPKEEP' | 'CHARGING' | 'TOWS' | 'CAR_PURCHASES' | 'CAR_SALES' | 'BUILDS' | 'OTHER';
 
 /**
  * Specific reason for a checking-account movement. The category groups these for
  * the monthly report.
  */
-export type Delivery_CashKind = 'OPENING' | 'DELIVERY' | 'LATE_DELIVERY' | 'ORDER_FINE' | 'UPKEEP' | 'CHARGING' | 'TOW' | 'CAR_PURCHASE' | 'BUILD' | 'GRANT';
+export type Delivery_CashKind = 'OPENING' | 'DELIVERY' | 'LATE_DELIVERY' | 'ORDER_FINE' | 'UPKEEP' | 'CHARGING' | 'TOW' | 'CAR_PURCHASE' | 'CAR_SALE' | 'BUILD' | 'GRANT';
 
 /**
  * Lifecycle of a city: a draft is private to its owner, a published city is
@@ -195,6 +238,37 @@ export type Tesla_SessionSort = 'CREATED' | 'ACTION';
 export type Tesla_SortOrder = 'ASC' | 'DESC';
 
 /**
+ * Administrative operations that bypass ownership checks. This object can only be
+ * reached through `Mutation.deliveryAdmin(key)`, which validates the admin key, so
+ * every field here is already authorized.
+ */
+export interface Delivery_Admin {
+	/** Delete a save permanently, bypassing the owner-token/account check of `deleteSession`. Also drops the live session and its tick log. Idempotent: an unknown or already-deleted id returns true. */
+	deleteSession: boolean;
+	/** Bulk delete. Bypasses ownership like `deleteSession`. Ids are processed in order and deduplicated; `deleted` holds the ids that had a live or stored session, `missing` those that had neither. At most 500 ids per call. A failure part-way through is an error, and the ids already deleted stay deleted. */
+	deleteSessions: Delivery_AdminDeleteResult;
+	/** Set the clock multiplier to 0 without an owner token, then return the snapshot. Loading a saved session already starts it paused, so this is mainly for stopping a live session left running. Idempotent. */
+	pauseSession: Delivery_Snapshot;
+	/** Save the session if it is live, then drop it from memory. A save that exists only on disk is a no-op: there is nothing to flush. Idempotent. */
+	evictSession: boolean;
+	/** Persist one live session now. A session that is not in memory is a no-op success; it has nothing newer to write. */
+	saveSession: boolean;
+	/** Persist every live session, returning how many were flushed. Stored-only saves are untouched. Fails on the first save error. */
+	saveAll: number;
+}
+
+/**
+ * Outcome of an admin bulk delete. Iteration order matches the input with
+ * duplicates removed.
+ */
+export interface Delivery_AdminDeleteResult {
+	/** Ids that had a live or stored session and are now deleted. */
+	deleted: string[];
+	/** Ids that had neither a live nor a stored session. */
+	missing: string[];
+}
+
+/**
  * One purchasable vehicle class, with this session's unlock and affordability
  * flags.
  */
@@ -271,6 +345,10 @@ export interface Delivery_CarView {
 	lastReject: Delivery_RejectReason | null;
 	/** Unpaid balance of a charging session in progress, in dollars. Zero when the car is not charging or the session has already been billed. */
 	chargeDue: number;
+	/** What the player actually paid for this car, in dollars. Zero for starter and granted cars. */
+	purchasePrice: number;
+	/** Cash a sale would bank now: 70% of the purchase price, rounded down. Zero for a car that cost nothing. */
+	resaleValue: number;
 }
 
 /**
@@ -319,6 +397,22 @@ export interface Delivery_CashEntryView {
 	orderId: string | null;
 	/** Short human-readable detail, e.g. "pizza to Rosa's" or "fleet upkeep". */
 	memo: string;
+}
+
+/**
+ * The city's charging table. Rates are battery units restored per tick.
+ */
+export interface Delivery_ChargingView {
+	/** Battery restored per tick on a depot tile. */
+	depotRate: number;
+	/** Battery restored per tick on a standalone charger. */
+	chargerRate: number;
+	/** Default dollars for one full tick at a standalone charger. Zero is free. */
+	chargerPricePerTick: number;
+	/** Dollars buyCharger charges to place one charger. Zero is free. */
+	chargerPurchasePrice: number;
+	/** How many chargers may be bought in this city. Zero disables buying. */
+	maxPurchasedChargers: number;
 }
 
 /**
@@ -385,6 +479,8 @@ export interface Delivery_CityView {
 	depots: Delivery_PointView[];
 	/** Standalone charging points (slower than a depot). */
 	chargers: Delivery_PointView[];
+	/** The city's charging economy: rates, price and the charger-buying cap. */
+	charging: Delivery_ChargingView;
 }
 
 /**
@@ -537,31 +633,6 @@ export interface Delivery_LedgerView {
 }
 
 /**
- * A session's money-by-tick series, read from the indexed delivery history
- * projection. Points are downsampled to at most the requested maxPoints; when the
- * window reaches the session's current tick, the last point is its current
- * balance.
- */
-export interface Delivery_MoneyHistory {
-	/** Session the series belongs to. */
-	sessionId: string;
-	/** City the session was created from. */
-	cityId: string;
-	/** Sampled balances, oldest first. */
-	points: Delivery_MoneyPoint[];
-}
-
-/**
- * One balance point in a session's money-by-tick curve.
- */
-export interface Delivery_MoneyPoint {
-	/** Tick of the sampled balance. */
-	tick: number;
-	/** Balance at that tick, in dollars. */
-	money: number;
-}
-
-/**
  * One economic bucket's totals within a month.
  */
 export interface Delivery_MonthCategoryView {
@@ -591,53 +662,6 @@ export interface Delivery_MonthView {
 	net: number;
 	/** Per-bucket totals for the month, in category order. */
 	categories: Delivery_MonthCategoryView[];
-}
-
-/**
- * Delivery writes and lifecycle. Every session mutation requires the creator's
- * owner token or the owning account; reads stay public.
- */
-export interface Delivery_Mutation {
-	/** Start a new city. Every argument is optional; a seed makes it reproducible, and an omitted id is generated. cityId selects the city config to snapshot (omitted = the default city); the session keeps that snapshot, so later city edits never change a running game. A signed-in creator's session belongs to their account. The response carries the secret ownerToken, needed to change the session later, so keep it. */
-	createSession: Delivery_CreateSessionResult;
-	/** Queue one step for one car by appending it to that car's movement queue. Does NOT advance the clock: queued steps run one per tick, in order, so a client can preload a route and then call tick. A rejected step (wall, battery, closure, traffic) is spent, not retried. At most 64 steps may be queued per car; the overflow is LIMIT_REACHED. Only the session's creator may change it: pass the ownerToken from createSession, or be signed in to the account that owns the session (FORBIDDEN otherwise). Sessions created before owner tokens stay open. */
-	moveCar: Delivery_Snapshot;
-	/** Drop a car's entire movement queue, including the step for the next tick. Use it to replan: a preloaded route must not keep steering after traffic or closures change. Creator-only, as moveCar. */
-	clearMoves: Delivery_Snapshot;
-	/** Advance the world manually. Useful when paused. Creator-only, as moveCar. */
-	tick: Delivery_Snapshot;
-	/** Wait for the running clock to reach a target tick, then return that snapshot. Pass exactly one of `tick` (an absolute tick in the future) or `ticks` (a count from the tick when the call starts, at most 1000). The clock must be running: a paused session never advances, so the call fails with INVALID_ARGUMENT instead of hanging, and pausing while it waits ends it the same way. Creator-only, as moveCar. */
-	waitUntil: Delivery_Snapshot;
-	/** Set the clock multiplier. 0 pauses. Creator-only, as moveCar. */
-	setSpeed: Delivery_Snapshot;
-	/** Point an order at a car; refreshes its deadline from that car's position. Creator-only, as moveCar. */
-	assignOrder: Delivery_Snapshot;
-	/** Remove the car from an order, returning it to PENDING. Creator-only, as moveCar. */
-	unassignOrder: Delivery_Snapshot;
-	/** Buy a vehicle at a depot. Creator-only, as moveCar. */
-	buyCar: Delivery_Snapshot;
-	/** Return a stranded car to its nearest depot for a fee. Creator-only, as moveCar. */
-	towCar: Delivery_Snapshot;
-	/** Persist the save to PostgreSQL now. Creator-only, as moveCar. */
-	saveSession: Delivery_Snapshot;
-	/** Name this save for the player. Creator-only, as moveCar. A blank name clears it and every view falls back to the city name. Persisted immediately, so the name survives a restart and shows in the session list before the save loads. */
-	renameSession: Delivery_Snapshot;
-	/** Save, then drop from memory. The next read rehydrates. Creator-only: evicting someone else's session would stop their clock. */
-	evictSession: boolean;
-	/** Delete the save row permanently. Needs the ownerToken (or the owning account) even for a guest session; only a save created before owner tokens is open. */
-	deleteSession: boolean;
-	/** Attaches guest sessions of this browser to the signed-in account; each needs its owner token (up to 100 per call). UNAUTHENTICATED when not signed in. */
-	claimSessions: Delivery_SessionClaimResult[];
-	/** Saves a new DRAFT city owned by the signed-in player (UNAUTHENTICATED otherwise). config is the raw city JSON; it is stored as written, so validateCity and publishCity can report every problem. */
-	createCity: Delivery_CityView;
-	/** Replaces the caller's own city and puts it back into DRAFT. Only the owner may edit a community city; shipped and legacy unowned cities need X-Admin-Key. */
-	updateCity: Delivery_CityView;
-	/** Publishes a draft after the full startup validation (grid, districts, orders and reachability). Only the owner may do it, and an invalid city is refused with INVALID_ARGUMENT. */
-	publishCity: Delivery_CityView;
-	/** Removes a city. Community cities need their owner; shipped and legacy unowned cities need X-Admin-Key. Sessions already started keep their snapshot. */
-	deleteCity: boolean;
-	/** Checks raw city JSON and stores nothing. Signed-in players only. valid means it parses into a city; publishable means publishCity would accept it. */
-	validateCity: Delivery_CityValidationResult;
 }
 
 /**
@@ -707,16 +731,12 @@ export interface Delivery_Query {
 	cityConfig: string | null;
 	/** Saved sessions, ordered by sort. A save's row is described from its stored counters, so a bounded list does not decode the save payloads; saves written before counters existed are decoded only when they survive the filter and the limit. mine = true requires a signed-in viewer and keeps that account's saves. */
 	sessions: Delivery_SessionSummary[];
-	/** Money-by-tick series for up to 20 delivery sessions, read from the indexed delivery history projection rather than from live sessions or Prometheus.  Omitted ids select the most recently created sessions. cityId narrows the set. fromTick/toTick are inclusive; an omitted toTick runs to each session's current tick. maxPoints downsamples each series into tick buckets and keeps the last balance in each bucket, so a long session stays bounded. */
-	moneyHistory: Delivery_MoneyHistory[];
-	/** Cumulative boxes delivered at each tick, from done orders in the indexed delivery history projection. Expired and open orders do not contribute. Same window and downsampling contract as moneyHistory. */
-	itemsHistory: Delivery_ValueSeries[];
-	/** Recorded reputation at each tick. Sessions saved before the reputation ledger existed return one current point until their next reputation change. Same window and downsampling contract as moneyHistory. */
-	reputationHistory: Delivery_ValueSeries[];
-	/** Cumulative operational metrics at each tick, read from the indexed delivery history projection. Every metric is monotonic from tick 0 except the spending series, which accumulate spend as a positive magnitude. Same window and downsampling contract as moneyHistory. */
+	/** One analytics series at each tick, read from the indexed delivery history projection. MONEY and REPUTATION keep the last balance in each tick bucket; BOXES_DELIVERED and the operational counters accumulate a running total. Spending metrics accumulate spend as a positive magnitude. Every metric uses the same window and downsampling contract. */
 	metricHistory: Delivery_ValueSeries[];
 	/** One session's full state. Loads the PostgreSQL row when not in memory. */
 	session: Delivery_Snapshot;
+	/** Per-tick world frames recorded for one session, oldest first. This is the replayable tick log, not the save: the authoritative latest state is `session`. Frames carry cars, orders, balances and counters; the append-only cash/reputation statements and the event feed are not repeated per frame.  `fromTick`/`toTick` are inclusive tick bounds. `afterTick` is a keyset cursor returning only frames with tick > afterTick, which makes forward paging exact and cheap: pass the last returned tick. `limit` defaults to 100 and is capped at 500. An unknown session or a disabled tick log returns an empty list. */
+	tickSnapshots: Delivery_TickSnapshot[];
 	/** A window of the city around one car, for cheap agent polling.  radius is the half-width in tiles and is clamped to 10; a larger value returns the same window as 10. */
 	carView: Delivery_CarWindow;
 	/** Events newer than a tick, so a client can poll for deltas.  The returned feed says whether the request reached further back than the retained ring: truncated = true means events before oldestTick are gone, not absent. limit keeps the newest matching events, capped at the feed capacity. */
@@ -809,17 +829,121 @@ export interface Delivery_Snapshot {
 }
 
 /**
- * One value at a tick in a non-money analytics series.
+ * One car inside a recorded frame.
+ */
+export interface Delivery_TickCar {
+	/** Stable car id. */
+	id: string;
+	/** Display name. */
+	name: string;
+	/** Catalogue class key the car was built from. */
+	className: string;
+	/** Tile column. */
+	x: number;
+	/** Tile row. */
+	y: number;
+	/** Charge at this tick. */
+	battery: number;
+	/** Order ids on board. */
+	cargo: string[];
+	/** Open paid-charging bill at this tick. */
+	chargeDue: number;
+	/** Direction queued for the next tick, or null when standing still. */
+	queuedMove: Delivery_Direction | null;
+	/** Why the last attempted move failed, or empty. */
+	lastReject: string;
+	/** Successful moves taken by this tick. */
+	stepsTaken: number;
+}
+
+/**
+ * One order inside a recorded frame.
+ */
+export interface Delivery_TickOrder {
+	/** Stable order id. */
+	id: string;
+	/** Item code. */
+	item: string;
+	/** Boxes requested. */
+	quantity: number;
+	/** Authored pickup site. */
+	kitchenId: string;
+	/** Authored dropoff site. */
+	customerId: string;
+	/** Car allowed to collect it, or empty while pending. */
+	assignedCar: string;
+	/** Lifecycle position at this tick. */
+	state: Delivery_OrderState;
+	/** Tick the order was raised. */
+	createdTick: number;
+	/** On-time cutoff. */
+	deadlineTick: number;
+	/** Tick it was delivered, or zero. */
+	deliveredTick: number;
+	/** Full on-time payment. */
+	reward: number;
+	/** Cash fine on expiry. */
+	penalty: number;
+	/** Amount actually paid, or zero. */
+	paid: number;
+	/** True when the delivery landed after the deadline. */
+	late: boolean;
+}
+
+/**
+ * One recorded world frame from the per-tick log. It is the compact state at a
+ * completed tick: the append-only cash and reputation statements and the event
+ * feed are stored separately and are not repeated here.
+ */
+export interface Delivery_TickSnapshot {
+	/** Session this frame belongs to. */
+	sessionId: string;
+	/** Completed world tick. */
+	tick: number;
+	/** When the frame was written (UTC). */
+	recordedAt: string;
+	/** Spendable balance at this tick. */
+	money: number;
+	/** Lifetime income at this tick. */
+	moneyEarned: number;
+	/** Standing score at this tick. */
+	reputation: number;
+	/** On-time deliveries completed by this tick. */
+	deliveries: number;
+	/** Late deliveries completed by this tick. */
+	lateDeliveries: number;
+	/** Orders that expired undelivered by this tick. */
+	expiredOrders: number;
+	/** Orders raised by this tick. */
+	ordersSpawned: number;
+	/** Current run of consecutive on-time deliveries. */
+	onTimeStreak: number;
+	/** Paid tows taken by this tick. */
+	tows: number;
+	/** Lifetime fleet upkeep paid by this tick. */
+	upkeepPaid: number;
+	/** Lifetime tow fees paid by this tick. */
+	towFees: number;
+	/** Delivered orders per item by this tick, in item-id order. */
+	deliveriesByItem: Delivery_ItemCount[];
+	/** The fleet at this tick. */
+	cars: Delivery_TickCar[];
+	/** Every order raised by this tick. */
+	orders: Delivery_TickOrder[];
+}
+
+/**
+ * One value at a tick in an analytics series.
  */
 export interface Delivery_ValuePoint {
 	/** Tick of the sample. */
 	tick: number;
-	/** Sample value: cumulative boxes for itemsHistory, reputation for reputationHistory. */
+	/** Sample value: a count or cash amount for metricHistory, the balance for MONEY and REPUTATION. */
 	value: number;
 }
 
 /**
- * One session's downsampled items-or-reputation series.
+ * One session's downsampled analytics series.
  */
 export interface Delivery_ValueSeries {
 	/** Session the series belongs to. */
@@ -918,6 +1042,18 @@ export interface Global_User {
 	handleChangeableAt: string | null;
 	/** True for a username/password account (the only kind that can change a password). */
 	hasPassword: boolean;
+}
+
+/**
+ * Administrative operations that bypass ownership checks. This object can only be
+ * reached through `Mutation.mazes.admin(key)`, which validates the admin key, so
+ * every field here is already authorized.
+ */
+export interface Mazes_Admin {
+	/** Delete a session permanently, bypassing the owner-token/account check of `deleteSession`. Idempotent: an unknown or already-deleted id returns true. */
+	deleteSession: boolean;
+	/** Rename any session for moderation, bypassing the owner check. */
+	renameSession: Mazes_Session;
 }
 
 /**
@@ -1118,6 +1254,8 @@ export interface Mazes_Mutation {
 	deleteMap: boolean;
 	/** Checks a map and stores nothing. Signed-in players only. finishReachable is the publication gate: a map is publishable when it is structurally valid and the finish can be reached. */
 	validateMap: Mazes_MapValidationResult;
+	/** Administrative operations. `key` must match ADMIN_API_KEY (the same secret X-Admin-Key carries); a wrong or missing key is FORBIDDEN and never reveals whether a session exists. When no key is configured, the explicit ALLOW_UNAUTHENTICATED_ADMIN opt-out still applies. */
+	admin: Mazes_Admin;
 }
 
 /**
@@ -1205,6 +1343,18 @@ export interface Mazes_SessionUpdate {
 	session: Mazes_Session;
 	/** The move that produced this frame; null for non-move changes. */
 	event: Mazes_MoveEvent | null;
+}
+
+/**
+ * Administrative operations that bypass ownership checks. This object can only be
+ * reached through `Mutation.motorProgramming.admin(key)`, which validates the
+ * admin key, so every field here is already authorized.
+ */
+export interface Motor_Admin {
+	/** Delete a session permanently, bypassing the owner-token/account check of `deleteSession` and stopping any running program. Idempotent: an unknown or already-deleted id returns true. */
+	deleteSession: boolean;
+	/** Stop a running program without an owner token. Idempotent. */
+	pauseSession: Motor_Session;
 }
 
 /**
@@ -1401,6 +1551,8 @@ export interface Motor_Mutation {
 	publishMap: Motor_Map;
 	/** Removes a map. Community maps need their owner; shipped and legacy unowned maps need X-Admin-Key. */
 	deleteMap: boolean;
+	/** Administrative operations. `key` must match ADMIN_API_KEY (the same secret X-Admin-Key carries); a wrong or missing key is FORBIDDEN and never reveals whether a session exists. When no key is configured, the explicit ALLOW_UNAUTHENTICATED_ADMIN opt-out still applies. */
+	admin: Motor_Admin;
 }
 
 /**
